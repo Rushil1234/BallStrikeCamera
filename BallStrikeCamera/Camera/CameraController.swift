@@ -26,26 +26,37 @@ final class CameraController: NSObject, ObservableObject {
     nonisolated(unsafe) private var _searchROI: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)
 
     func updateSearchROI(_ roi: CGRect) {
+        print("CameraController search ROI updated: \(roi)")
         roiLock.lock()
         defer { roiLock.unlock() }
         _searchROI = roi
     }
 
     private var rollingBuffer: [CapturedFrame] = []
-    private let rollingBufferLimit = 72
-    private let preHitFrames = 10
-    private let postHitFrames = 10
+    private let rollingBufferLimit = 120
+    private let preHitFrames = 20
+    private let postHitFrames = 20
 
     private var stableRect: CGRect?
     private var stableFrameCount = 0
-    private let requiredStableFrames = 12
-    private let stableCenterThreshold: CGFloat = 0.012
+    private let requiredStableFrames = 8
+    private let stableCenterThreshold: CGFloat = 0.025
     private let leaveSpotThreshold: CGFloat = 0.035
 
     private var pendingPostCapture = false
     private var eventFrames: [CapturedFrame] = []
     private var remainingPostFrames = 0
     private var lastPublishedDetectionTime = CACurrentMediaTime()
+
+    // Frame timing diagnostics — touched only from videoQueue, so nonisolated(unsafe) is safe.
+    private let targetFPS: Double = 240.0
+    private let frameStatsPrintInterval: Double = 2.0
+    nonisolated(unsafe) private var lastFrameTimestamp: Double = -1
+    nonisolated(unsafe) private var totalFramesSeen: Int = 0
+    nonisolated(unsafe) private var droppedFrameEstimate: Int = 0
+    nonisolated(unsafe) private var lastFrameStatsPrintTime: Double = -1
+    nonisolated(unsafe) private var frameStatsWindowStartTime: Double = -1
+    nonisolated(unsafe) private var windowFramesSeen: Int = 0
 
     override init() {
         super.init()
@@ -183,6 +194,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                                    from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let timestamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
+        logFrameTiming(timestamp: timestamp)
         roiLock.lock()
         let roi = _searchROI
         roiLock.unlock()
@@ -199,6 +211,45 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         Task { @MainActor in
             processFrame(frame, observation: observation)
+        }
+    }
+
+    nonisolated private func logFrameTiming(timestamp: Double) {
+        let expectedDuration = 1.0 / targetFPS
+
+        // Initialise window on first frame.
+        if lastFrameStatsPrintTime < 0 {
+            lastFrameStatsPrintTime = timestamp
+            frameStatsWindowStartTime = timestamp
+        }
+
+        // Estimate dropped frames by looking at the gap since the last delivered frame.
+        if lastFrameTimestamp >= 0 {
+            let delta = timestamp - lastFrameTimestamp
+            if delta > expectedDuration * 1.5 {
+                let missed = Int(round(delta / expectedDuration)) - 1
+                droppedFrameEstimate += missed
+            }
+        }
+        lastFrameTimestamp = timestamp
+
+        totalFramesSeen  += 1
+        windowFramesSeen += 1
+
+        let elapsed = timestamp - lastFrameStatsPrintTime
+        if elapsed >= frameStatsPrintInterval {
+            let windowDuration = timestamp - frameStatsWindowStartTime
+            let windowFPS = windowDuration > 0 ? Double(windowFramesSeen) / windowDuration : 0
+            let dropRate = totalFramesSeen + droppedFrameEstimate > 0
+                ? Double(droppedFrameEstimate) / Double(totalFramesSeen + droppedFrameEstimate) * 100
+                : 0
+
+            print(String(format: "Frame stats: seen=%d estimatedDropped=%d dropRate=%.1f%% windowFPS=%.1f",
+                         totalFramesSeen, droppedFrameEstimate, dropRate, windowFPS))
+
+            lastFrameStatsPrintTime    = timestamp
+            frameStatsWindowStartTime  = timestamp
+            windowFramesSeen           = 0
         }
     }
 
@@ -265,6 +316,8 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 phase = .ready
                 stableRect = observation.normalizedRect
                 statusText = "Ready — waiting for hit"
+                print("LOCKED ball at rect: \(observation.normalizedRect)")
+                print("stableFrameCount: \(stableFrameCount)")
             }
 
         case .ready:

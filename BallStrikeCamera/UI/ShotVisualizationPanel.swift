@@ -23,7 +23,25 @@ struct ShotVisualizationPanel: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .animation(.easeInOut(duration: 0.18), value: camera.phase)
+            // .onAppear fires synchronously on first render — more reliable than .task alone.
+            .onAppear {
+                print("ShotVisualizationPanel appeared size: \(geo.size)")
+                guard geo.size.width > 0, geo.size.height > 0 else { return }
+                let roi = placementCircleROI(in: geo.size)
+                print("Updating search ROI: \(roi)")
+                camera.updateSearchROI(roi)
+            }
+            // .onChange catches rotation or any deferred first-layout where size was zero on appear.
+            .onChange(of: geo.size) { newSize in
+                print("ShotVisualizationPanel size changed: \(newSize)")
+                guard newSize.width > 0, newSize.height > 0 else { return }
+                let roi = placementCircleROI(in: newSize)
+                print("Updating search ROI: \(roi)")
+                camera.updateSearchROI(roi)
+            }
+            // .task kept as a third safety net (async, fires after appear).
             .task(id: geo.size) {
+                guard geo.size.width > 0, geo.size.height > 0 else { return }
                 camera.updateSearchROI(placementCircleROI(in: geo.size))
             }
         }
