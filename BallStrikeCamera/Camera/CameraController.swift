@@ -39,14 +39,34 @@ final class CameraController: NSObject, ObservableObject {
 
     private var stableRect: CGRect?
     private var stableFrameCount = 0
+    private var lockedBallRect: CGRect?
     private let requiredStableFrames = 8
     private let stableCenterThreshold: CGFloat = 0.025
     private let leaveSpotThreshold: CGFloat = 0.035
+
+    // How many consecutive missing/invalid frames are tolerated before leaving .ready.
+    private var readyLostFrameCount = 0
+    private let readyLostFrameLimit = 120   // ~0.5 s at 240 fps
+    private let readyNearThreshold: CGFloat = 0.06
+    private let readyHoldLogInterval = 60   // throttle "hold" prints
 
     private var pendingPostCapture = false
     private var eventFrames: [CapturedFrame] = []
     private var remainingPostFrames = 0
     private var lastPublishedDetectionTime = CACurrentMediaTime()
+
+    // Plausibility thresholds — based on observed good rects (w≈0.021–0.038, h≈0.037–0.067)
+    // and bad false locks (w≈0.21–0.24, h≈0.37–0.43).
+    private let ballMinWidth:  CGFloat = 0.012
+    private let ballMaxWidth:  CGFloat = 0.070
+    private let ballMinHeight: CGFloat = 0.020
+    private let ballMaxHeight: CGFloat = 0.120
+    private let ballMinAspect: CGFloat = 0.35   // width / height
+    private let ballMaxAspect: CGFloat = 0.95
+
+    // Throttle rejection prints: print at most once every 30 rejected frames.
+    private var rejectedFrameCount = 0
+    private let rejectionLogInterval = 30
 
     // Frame timing diagnostics — touched only from videoQueue, so nonisolated(unsafe) is safe.
     private let targetFPS: Double = 240.0
@@ -278,6 +298,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             if remainingPostFrames <= 0 {
                 capturedFrames = Array(eventFrames.prefix(preHitFrames + postHitFrames + 1))
                 currentBallRect = nil
+                lockedBallRect = nil
                 phase = .captured
                 statusText = "Captured \(capturedFrames.count) hit frames"
                 pendingPostCapture = false
@@ -286,49 +307,110 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             return
         }
 
-        guard let observation else {
-            currentBallRect = nil
-            if phase == .ready {
-                triggerHitCapture()
+        // Handle the .ready phase before the observation guard so we can apply the
+        // lost-frame counter regardless of whether the detector returned anything.
+        if phase == .ready {
+            currentBallRect = lockedBallRect
+            let observationValid = observation.map { isPlausibleBallObservation($0) } ?? false
+            let nearLock = observationValid && observation.map { isObservationNearLockedBall($0) } ?? false
+
+            if nearLock {
+                if readyLostFrameCount > 0 {
+                    print("READY maintained: valid ball near locked rect (was lost for \(readyLostFrameCount) frames)")
+                }
+                readyLostFrameCount = 0
             } else {
-                phase = .searching
-                statusText = "Looking for ball"
-                stableFrameCount = 0
-                stableRect = nil
+                readyLostFrameCount += 1
+                if readyLostFrameCount % readyHoldLogInterval == 1 {
+                    print("READY hold: missing/invalid frame count \(readyLostFrameCount)")
+                }
+                if readyLostFrameCount >= readyLostFrameLimit {
+                    print("READY lost — ball absent/invalid for \(readyLostFrameCount) frames")
+                    phase = .searching
+                    statusText = "Looking for ball"
+                    lockedBallRect = nil
+                    stableRect = nil
+                    stableFrameCount = 0
+                    readyLostFrameCount = 0
+                    currentBallRect = nil
+                }
             }
             return
         }
 
-        currentBallRect = observation.normalizedRect
+        guard let observation else {
+            currentBallRect = nil
+            phase = .searching
+            statusText = "Looking for ball"
+            stableFrameCount = 0
+            stableRect = nil
+            lockedBallRect = nil
+            return
+        }
+
         lastPublishedDetectionTime = CACurrentMediaTime()
+
+        // Outside .ready, filter implausible observations before they touch stability logic.
+        guard isPlausibleBallObservation(observation) else { return }
 
         switch phase {
         case .searching, .captured:
+            currentBallRect = observation.normalizedRect
             phase = .tracking
             statusText = "Ball found"
             stableRect = observation.normalizedRect
             stableFrameCount = 1
 
         case .tracking:
+            currentBallRect = observation.normalizedRect
             updateStability(with: observation.normalizedRect)
             statusText = "Tracking ball: \(stableFrameCount)/\(requiredStableFrames) stable frames"
             if stableFrameCount >= requiredStableFrames {
+                let rect = observation.normalizedRect
+                let aspect = rect.width / rect.height
+                lockedBallRect = rect
+                currentBallRect = rect
                 phase = .ready
-                stableRect = observation.normalizedRect
-                statusText = "Ready — waiting for hit"
-                print("LOCKED ball at rect: \(observation.normalizedRect)")
+                stableRect = rect
+                readyLostFrameCount = 0
+                statusText = "READY — swing when ready"
+                print("LOCKED valid ball rect: \(rect), aspect: \(String(format: "%.3f", aspect))")
                 print("stableFrameCount: \(stableFrameCount)")
             }
 
         case .ready:
-            guard let stableRect else { return }
-            let distance = normalizedDistance(stableRect.center, observation.normalizedRect.center)
-            if distance > leaveSpotThreshold {
-                triggerHitCapture()
-            } else {
-                self.stableRect = observation.normalizedRect
-                statusText = "Ready — ball stationary"
-            }
+            break  // handled above
+        }
+    }
+
+    @MainActor
+    private func isPlausibleBallObservation(_ observation: BallObservation) -> Bool {
+        let rect = observation.normalizedRect
+        guard rect.width  >= ballMinWidth,  rect.width  <= ballMaxWidth,
+              rect.height >= ballMinHeight, rect.height <= ballMaxHeight else {
+            logRejection(rect)
+            return false
+        }
+        let aspect = rect.width / rect.height
+        guard aspect >= ballMinAspect, aspect <= ballMaxAspect else {
+            logRejection(rect)
+            return false
+        }
+        return true
+    }
+
+    @MainActor
+    private func isObservationNearLockedBall(_ observation: BallObservation) -> Bool {
+        guard let locked = lockedBallRect else { return false }
+        let distance = normalizedDistance(locked.center, observation.normalizedRect.center)
+        return distance <= readyNearThreshold
+    }
+
+    @MainActor
+    private func logRejection(_ rect: CGRect) {
+        rejectedFrameCount += 1
+        if rejectedFrameCount % rejectionLogInterval == 1 {
+            print("Rejected implausible ball rect: \(rect) (rejection #\(rejectedFrameCount))")
         }
     }
 
@@ -359,6 +441,8 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         eventFrames = Array(rollingBuffer.suffix(preHitFrames))
         stableFrameCount = 0
         stableRect = nil
+        lockedBallRect = nil
+        readyLostFrameCount = 0
     }
 
     nonisolated private func normalizedDistance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {

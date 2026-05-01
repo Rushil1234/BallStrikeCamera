@@ -19,6 +19,14 @@ struct ShotVisualizationPanel: View {
                 AimLineOverlayView()
 
                 BallCircleOverlayView(rect: camera.currentBallRect, crop: crop)
+
+                // Subtle darkening when locked — draws attention to the ready state
+                // without hiding the circle or status text.
+                if camera.phase == .ready {
+                    Color.black.opacity(0.18)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
