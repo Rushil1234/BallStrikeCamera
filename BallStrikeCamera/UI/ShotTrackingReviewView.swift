@@ -5,8 +5,15 @@ struct ShotTrackingReviewView: View {
     let onDismiss: () -> Void
 
     @State private var currentIndex: Int
-    @State private var displayMode: FrameNormalizationMode = .darkenedHighContrast
-    @State private var showComposite: Bool = false
+    @State private var displayMode:    FrameNormalizationMode = .darkenedHighContrast
+    @State private var showComposite:  Bool = false
+    @State private var isExporting:    Bool = false
+    @State private var showShareSheet: Bool = false
+    @State private var exportedURL:    URL? = nil
+    @State private var exportError:    String? = nil
+    #if DEBUG
+    @State private var showTester: Bool = false
+    #endif
 
     init(analysis: ShotAnalysisResult, onDismiss: @escaping () -> Void) {
         self.analysis = analysis
@@ -30,10 +37,18 @@ struct ShotTrackingReviewView: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .fullScreenCover(isPresented: $showComposite) {
-            ShotCompositeView(analysis: analysis) {
-                showComposite = false
+            ShotCompositeView(analysis: analysis) { showComposite = false }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let url = exportedURL {
+                ActivityViewController(activityItems: [url])
             }
         }
+        #if DEBUG
+        .fullScreenCover(isPresented: $showTester) {
+            BallTrackingTestView { showTester = false }
+        }
+        #endif
     }
 
     // MARK: - Sections
@@ -71,6 +86,29 @@ struct ShotTrackingReviewView: View {
                     .background(Color.indigo.opacity(0.7))
                     .clipShape(Capsule())
             }
+
+            Button(action: doExport) {
+                Text(isExporting ? "Exporting…" : "Export")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(isExporting ? Color.gray.opacity(0.5) : Color.green.opacity(0.7))
+                    .clipShape(Capsule())
+            }
+            .disabled(isExporting)
+
+            #if DEBUG
+            Button(action: { showTester = true }) {
+                Text("Tester")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.purple.opacity(0.7))
+                    .clipShape(Capsule())
+            }
+            #endif
 
             Button("Done") {
                 onDismiss()
@@ -283,6 +321,28 @@ struct ShotTrackingReviewView: View {
         .background(Color(white: 0.10))
     }
 
+    // MARK: - Export
+
+    private func doExport() {
+        guard !isExporting else { return }
+        isExporting = true
+        Task.detached(priority: .userInitiated) {
+            do {
+                let result = try ShotExportService().export(from: analysis)
+                await MainActor.run {
+                    exportedURL    = result.zipURL
+                    isExporting    = false
+                    showShareSheet = true
+                }
+            } catch {
+                await MainActor.run {
+                    exportError = error.localizedDescription
+                    isExporting = false
+                }
+            }
+        }
+    }
+
     // MARK: - Geometry Helpers
 
     private func aspectFitRect(imageSize: CGSize, in containerSize: CGSize) -> CGRect {
@@ -308,4 +368,16 @@ struct ShotTrackingReviewView: View {
         CGPoint(x: dr.minX + normalized.x * dr.width,
                 y: dr.minY + normalized.y * dr.height)
     }
+}
+
+import UIKit
+
+struct ActivityViewController: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

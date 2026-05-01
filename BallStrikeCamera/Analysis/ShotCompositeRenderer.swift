@@ -1,12 +1,58 @@
 import UIKit
 
+enum CompositeStyle: String, CaseIterable {
+    case twentyOneFrame  = "21 Frames"
+    case elevenFrame     = "11 Frames"
+    case postImpactOnly  = "Post-Impact"
+
+    // Short label for the compact top-bar picker.
+    var shortName: String {
+        switch self {
+        case .twentyOneFrame:  return "21F"
+        case .elevenFrame:     return "11F"
+        case .postImpactOnly:  return "Post"
+        }
+    }
+
+    // Frame range relative to the impact index.
+    func frameRange(impact: Int, totalFrames: Int) -> ClosedRange<Int> {
+        switch self {
+        case .twentyOneFrame:
+            return max(0, impact - 10)...min(totalFrames - 1, impact + 10)
+        case .elevenFrame:
+            return max(0, impact - 5)...min(totalFrames - 1, impact + 5)
+        case .postImpactOnly:
+            let start = min(impact + 1, totalFrames - 1)
+            let end   = min(totalFrames - 1, impact + 10)
+            return start...max(start, end)
+        }
+    }
+
+    // Per-frame alpha — fewer frames need higher alpha to accumulate enough brightness.
+    var frameAlpha: CGFloat {
+        switch self {
+        case .twentyOneFrame:  return 0.045
+        case .elevenFrame:     return 0.080
+        case .postImpactOnly:  return 0.100
+        }
+    }
+
+    // Impact frame rendered brighter for 21F and 11F; postImpactOnly excludes the impact frame.
+    var highlightImpactFrame: Bool {
+        switch self {
+        case .twentyOneFrame, .elevenFrame: return true
+        case .postImpactOnly:               return false
+        }
+    }
+}
+
 final class ShotCompositeRenderer {
 
     struct Configuration {
-        var preCount:         Int     = 10
-        var postCount:        Int     = 10
-        var frameAlpha:       CGFloat = 0.08
-        var impactFrameAlpha: CGFloat = 0.18
+        var style:               CompositeStyle = .elevenFrame
+        // nil = use style default; set explicitly to override.
+        var frameAlphaOverride:  CGFloat?       = nil
+        var impactFrameAlpha:    CGFloat        = 0.16
     }
 
     func render(
@@ -18,17 +64,23 @@ final class ShotCompositeRenderer {
         guard !frames.isEmpty else { return nil }
 
         let impact   = analysis.impactFrameIndex
-        let firstIdx = max(0, impact - configuration.preCount)
-        let lastIdx  = min(frames.count - 1, impact + configuration.postCount)
-        let selected = Array(frames[firstIdx...lastIdx])
+        let style    = configuration.style
+        let range    = style.frameRange(impact: impact, totalFrames: frames.count)
+        let selected = Array(frames[range])
+        let baseAlpha = configuration.frameAlphaOverride ?? style.frameAlpha
 
-        print("Rendering 21-frame shot composite")
-        print("Composite frame range: \(firstIdx)...\(lastIdx)")
-        print("Composite mode: \(mode.displayName)")
-
-        guard let refCG = sourceImage(selected[0], mode: mode).cgImage else { return nil }
+        // Derive pixel dimensions from the first selected frame's source image.
+        guard let refImage = sourceImage(selected[0], mode: mode),
+              let refCG    = refImage.cgImage else { return nil }
 
         let size = CGSize(width: refCG.width, height: refCG.height)
+
+        print("Rendering composite at source resolution: \(Int(size.width)) x \(Int(size.height))")
+        print("Composite style: \(style.rawValue)")
+        print("Composite frame range: \(range.lowerBound)...\(range.upperBound)")
+        print("Composite image mode: \(mode.displayName)")
+        print(String(format: "Composite alpha: %.3f (impact: %.3f)", baseAlpha,
+                     style.highlightImpactFrame ? configuration.impactFrameAlpha : baseAlpha))
 
         UIGraphicsBeginImageContextWithOptions(size, true, 1.0)
         defer { UIGraphicsEndImageContext() }
@@ -38,8 +90,10 @@ final class ShotCompositeRenderer {
 
         var fallbackLogged = false
         for frame in selected {
-            let img   = sourceImageWithFallback(frame, mode: mode, fallbackLogged: &fallbackLogged)
-            let alpha = frame.frameIndex == impact ? configuration.impactFrameAlpha : configuration.frameAlpha
+            guard let img = sourceImageWithFallback(frame, mode: mode, fallbackLogged: &fallbackLogged) else { continue }
+            let alpha: CGFloat = (style.highlightImpactFrame && frame.frameIndex == impact)
+                ? configuration.impactFrameAlpha
+                : baseAlpha
             img.draw(in: CGRect(origin: .zero, size: size), blendMode: .normal, alpha: alpha)
         }
 
@@ -50,7 +104,7 @@ final class ShotCompositeRenderer {
 
     // MARK: - Private
 
-    private func sourceImage(_ frame: AnalyzedShotFrame, mode: FrameNormalizationMode) -> UIImage {
+    private func sourceImage(_ frame: AnalyzedShotFrame, mode: FrameNormalizationMode) -> UIImage? {
         switch mode {
         case .original:            return frame.originalFrame.image
         case .brightened:          return frame.brightenedImage           ?? frame.originalFrame.image
@@ -62,7 +116,7 @@ final class ShotCompositeRenderer {
         _ frame: AnalyzedShotFrame,
         mode: FrameNormalizationMode,
         fallbackLogged: inout Bool
-    ) -> UIImage {
+    ) -> UIImage? {
         if mode == .darkenedHighContrast, frame.darkenedHighContrastImage == nil {
             if !fallbackLogged {
                 print("ShotCompositeRenderer: darkenedHighContrast missing for frame \(frame.frameIndex), using original")

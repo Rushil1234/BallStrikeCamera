@@ -4,17 +4,16 @@ struct ShotCompositeView: View {
     let analysis: ShotAnalysisResult
     let onDismiss: () -> Void
 
-    @State private var displayMode: FrameNormalizationMode = .darkenedHighContrast
-    @State private var compositeImage: UIImage? = nil
+    // Default: 11-frame composite, original image mode.
+    @State private var compositeStyle: CompositeStyle       = .elevenFrame
+    @State private var displayMode:    FrameNormalizationMode = .original
+    @State private var compositeImage: UIImage?             = nil
 
     private let renderer = ShotCompositeRenderer()
-    private let config   = ShotCompositeRenderer.Configuration()
 
     private var frameRange: ClosedRange<Int> {
-        let impact = analysis.impactFrameIndex
-        let first  = max(0, impact - config.preCount)
-        let last   = min(analysis.frames.count - 1, impact + config.postCount)
-        return first...last
+        compositeStyle.frameRange(impact: analysis.impactFrameIndex,
+                                  totalFrames: analysis.frames.count)
     }
 
     var body: some View {
@@ -27,20 +26,17 @@ struct ShotCompositeView: View {
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
-        .onAppear {
-            print("Default review mode: DarkenedHighContrast")
-            renderComposite()
-        }
-        .onChange(of: displayMode) { _ in
-            renderComposite()
-        }
+        .onAppear { renderComposite() }
+        .onChange(of: compositeStyle) { _ in renderComposite() }
+        .onChange(of: displayMode)    { _ in renderComposite() }
     }
 
     private func renderComposite() {
+        let config = ShotCompositeRenderer.Configuration(style: compositeStyle)
         compositeImage = renderer.render(analysis: analysis, mode: displayMode, configuration: config)
     }
 
-    // MARK: - Sections
+    // MARK: - Top bar
 
     private var topBar: some View {
         HStack(spacing: 10) {
@@ -50,21 +46,19 @@ struct ShotCompositeView: View {
 
             Spacer()
 
-            // Mode picker: Original | Darkened | Brightened
-            HStack(spacing: 0) {
-                ForEach(FrameNormalizationMode.allCases, id: \.self) { mode in
-                    Button(action: { displayMode = mode }) {
-                        Text(mode.displayName)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(displayMode == mode ? .black : .white.opacity(0.65))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(displayMode == mode ? Color.white : Color.clear)
-                    }
-                }
-            }
-            .background(Color.white.opacity(0.15))
-            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            // Style picker: 21F | 11F | Post
+            compactPicker(
+                options: CompositeStyle.allCases,
+                selected: $compositeStyle,
+                label: { $0.shortName }
+            )
+
+            // Image mode picker: Original | Darkened | Brightened
+            compactPicker(
+                options: FrameNormalizationMode.allCases,
+                selected: $displayMode,
+                label: { $0.displayName }
+            )
 
             Button("Done") {
                 print("ShotCompositeView dismissed")
@@ -72,14 +66,37 @@ struct ShotCompositeView: View {
             }
             .font(.system(size: 14, weight: .semibold))
             .foregroundColor(.blue)
-            .padding(.leading, 6)
+            .padding(.leading, 4)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(white: 0.10))
     }
 
-    // Pure blended image — no overlays drawn on it.
+    // Generic segmented-style pill picker.
+    private func compactPicker<T: Hashable>(
+        options: [T],
+        selected: Binding<T>,
+        label: @escaping (T) -> String
+    ) -> some View {
+        HStack(spacing: 0) {
+            ForEach(options, id: \.self) { option in
+                Button(action: { selected.wrappedValue = option }) {
+                    Text(label(option))
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(selected.wrappedValue == option ? .black : .white.opacity(0.65))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(selected.wrappedValue == option ? Color.white : Color.clear)
+                }
+            }
+        }
+        .background(Color.white.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    // MARK: - Image area (pure blended composite — no overlays)
+
     private var imageArea: some View {
         Group {
             if let img = compositeImage {
@@ -89,8 +106,7 @@ struct ShotCompositeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 VStack(spacing: 12) {
-                    ProgressView()
-                        .tint(.white)
+                    ProgressView().tint(.white)
                     Text("Rendering composite…")
                         .font(.system(size: 13))
                         .foregroundColor(.white.opacity(0.6))
@@ -103,11 +119,12 @@ struct ShotCompositeView: View {
         .layoutPriority(1)
     }
 
-    // All text lives here, outside the image.
+    // MARK: - Info panel (all text lives here, outside the image)
+
     private var infoPanel: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("21-frame composite")
+                Text("\(compositeStyle.rawValue) composite")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white)
                 Text("Frames \(frameRange.lowerBound)–\(frameRange.upperBound)")

@@ -16,6 +16,11 @@
 		BF000001000000000000001E /* PostImpactBallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011E /* PostImpactBallTracker.swift */; };
 		BF000001000000000000001F /* ShotTrackingReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011F /* ShotTrackingReviewView.swift */; };
 		BF0000010000000000000021 /* ShotCompositeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000121 /* ShotCompositeView.swift */; };
+		BF0000010000000000000022 /* ShotExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000122 /* ShotExportService.swift */; };
+		BF0000010000000000000023 /* BallTrackingTestModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000123 /* BallTrackingTestModels.swift */; };
+		BF0000010000000000000024 /* TestFrameLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000124 /* TestFrameLoader.swift */; };
+		BF0000010000000000000025 /* ExperimentalBallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000125 /* ExperimentalBallTracker.swift */; };
+		BF0000010000000000000026 /* BallTrackingTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000126 /* BallTrackingTestView.swift */; };
 		BF0000010000000000000020 /* ShotCompositeRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000120 /* ShotCompositeRenderer.swift */; };
 		BF0000010000000000000004 /* BallObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000104 /* BallObservation.swift */; };
 		BF0000010000000000000005 /* BallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000105 /* BallDetector.swift */; };
@@ -45,6 +50,11 @@
 		BF000001000000000000011E /* PostImpactBallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostImpactBallTracker.swift; sourceTree = "<group>"; };
 		BF000001000000000000011F /* ShotTrackingReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotTrackingReviewView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000121 /* ShotCompositeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotCompositeView.swift; sourceTree = "<group>"; };
+		BF0000010000000000000122 /* ShotExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotExportService.swift; sourceTree = "<group>"; };
+		BF0000010000000000000123 /* BallTrackingTestModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTrackingTestModels.swift; sourceTree = "<group>"; };
+		BF0000010000000000000124 /* TestFrameLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestFrameLoader.swift; sourceTree = "<group>"; };
+		BF0000010000000000000125 /* ExperimentalBallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalBallTracker.swift; sourceTree = "<group>"; };
+		BF0000010000000000000126 /* BallTrackingTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTrackingTestView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000120 /* ShotCompositeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotCompositeRenderer.swift; sourceTree = "<group>"; };
 		BF0000010000000000000104 /* BallObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallObservation.swift; sourceTree = "<group>"; };
 		BF0000010000000000000105 /* BallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallDetector.swift; sourceTree = "<group>"; };
@@ -95,6 +105,8 @@
 				BF0000010000000000000307 /* UI */,
 				BF0000010000000000000308 /* Models */,
 				BF0000010000000000000309 /* Resources */,
+				BF000001000000000000030B /* Export */,
+				BF000001000000000000030C /* Experimental */,
 			);
 			path = BallStrikeCamera;
 			sourceTree = "<group>";
@@ -181,6 +193,33 @@
 				BF000001000000000000011B /* LaunchScreen.storyboard */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		BF000001000000000000030B /* Export */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000010000000000000122 /* ShotExportService.swift */,
+			);
+			path = Export;
+			sourceTree = "<group>";
+		};
+		BF000001000000000000030D /* BallTrackingTester */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000010000000000000123 /* BallTrackingTestModels.swift */,
+				BF0000010000000000000124 /* TestFrameLoader.swift */,
+				BF0000010000000000000125 /* ExperimentalBallTracker.swift */,
+				BF0000010000000000000126 /* BallTrackingTestView.swift */,
+			);
+			path = BallTrackingTester;
+			sourceTree = "<group>";
+		};
+		BF000001000000000000030C /* Experimental */ = {
+			isa = PBXGroup;
+			children = (
+				BF000001000000000000030D /* BallTrackingTester */,
+			);
+			path = Experimental;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -277,6 +316,11 @@
 				BF000001000000000000001A /* CompactMetricsBarView.swift in Sources */,
 				BF000001000000000000001F /* ShotTrackingReviewView.swift in Sources */,
 				BF0000010000000000000021 /* ShotCompositeView.swift in Sources */,
+				BF0000010000000000000022 /* ShotExportService.swift in Sources */,
+				BF0000010000000000000023 /* BallTrackingTestModels.swift in Sources */,
+				BF0000010000000000000024 /* TestFrameLoader.swift in Sources */,
+				BF0000010000000000000025 /* ExperimentalBallTracker.swift in Sources */,
+				BF0000010000000000000026 /* BallTrackingTestView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
