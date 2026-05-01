@@ -32,23 +32,18 @@ final class PostImpactBallTracker {
         var postMaxAspect:           CGFloat = 5.00
 
         // ── ROI scales ──
-        // Pre-impact: ball stationary → tight window
         var preImpactSearchScale:    CGFloat = 2.0
-        // Impact frame: slightly expanded
         var impactSearchScale:       CGFloat = 3.5
-        // Post-impact: starts large, grows rapidly so fast-moving ball stays in view.
+        // Post-impact grows rapidly so a fast-moving ball stays in view.
         // scale(offset) = min(maxScale, base + offset × growth)
-        // e.g. frame 21 (offset 1): scale 7 → radius ≈ 0.030×7/2 = 0.105 (ball moves ~0.09/frame)
-        //      frame 25 (offset 5): scale 15 → radius ≈ 0.225
-        //      frame 30 (offset 10): scale 25 → radius ≈ 0.375
         var postImpactBaseScale:     CGFloat = 7.0
         var postImpactScaleGrowth:   CGFloat = 2.0
-        var postImpactMaxScale:      CGFloat = 30.0   // ~full-frame at typical ball sizes
+        var postImpactMaxScale:      CGFloat = 30.0
 
         var isPostImpactDebugLoggingEnabled: Bool = true
     }
 
-    // Internal per-scan threshold set — lets pre and post use the same scan kernel.
+    // Internal per-scan threshold set.
     private struct ScanConfig {
         let brightnessThreshold: Int
         let maxChannelSpread:    Int
@@ -62,11 +57,18 @@ final class PostImpactBallTracker {
     }
 
     private struct Candidate {
-        let center:     CGPoint   // normalized 0–1
-        let diameter:   CGFloat   // normalized avg of width + height
+        let center:     CGPoint
+        let diameter:   CGFloat
         let confidence: Double
         let normWidth:  CGFloat
         let normHeight: CGFloat
+    }
+
+    // Scan returns both the candidate (if any) and diagnostic data for the review UI.
+    private struct ScanResult {
+        let candidate:       Candidate?
+        let brightPixelCount: Int
+        let rejectionReason: String?
     }
 
     private let cfg: Configuration
@@ -81,19 +83,17 @@ final class PostImpactBallTracker {
         frames: [AnalyzedShotFrame],
         lockedBallRect: CGRect,
         impactFrameIndex: Int
-    ) -> [ShotBallObservation] {
+    ) -> (observations: [ShotBallObservation], debugInfos: [ShotFrameDebugInfo]) {
 
-        // Pre-extract pixel bytes once per frame to avoid repeated CGContext creation.
-        // Store alongside each frame index.
+        print("PostImpactBallTracker analysis mode: DarkenedHighContrast")
         let pixelData: [(bytes: [UInt8], width: Int, height: Int)?] = frames.map {
-            pixelBytes(from: $0.normalizedImage ?? $0.originalFrame.image)
+            pixelBytes(from: $0.darkenedHighContrastImage ?? $0.originalFrame.image)
         }
 
         var observations: [ShotBallObservation] = []
+        var debugInfos:   [ShotFrameDebugInfo]  = []
 
-        // lastPreCenter: last confirmed pre/impact detection (tee position basically).
-        var lastPreCenter = lockedBallRect.center
-        // lastPostCenter: last confirmed POST-impact detection; nil until first reacquisition.
+        var lastPreCenter  = lockedBallRect.center
         var lastPostCenter: CGPoint? = nil
 
         let preConfig = ScanConfig(
@@ -123,35 +123,43 @@ final class PostImpactBallTracker {
             let idx = frame.frameIndex
             guard let pd = pixelData[i] else {
                 observations.append(miss(frame))
+                debugInfos.append(ShotFrameDebugInfo(frameIndex: idx, searchROI: nil,
+                                                      candidateCount: 0,
+                                                      rejectionReason: "no_pixel_data"))
                 continue
             }
 
             let obs: ShotBallObservation
 
             if idx < impactFrameIndex {
-                // ── Pre-impact: ball stationary, tight search ──
-                let roi = expanded(lockedBallRect, scale: cfg.preImpactSearchScale)
-                if let c = scan(pd, roi: roi, config: preConfig) {
+                let roi    = expanded(lockedBallRect, scale: cfg.preImpactSearchScale)
+                let result = scan(pd, roi: roi, config: preConfig)
+                if let c = result.candidate {
                     obs = hit(frame, c)
                     lastPreCenter = c.center
                 } else {
                     obs = miss(frame)
                 }
+                debugInfos.append(ShotFrameDebugInfo(frameIndex: idx, searchROI: roi,
+                                                      candidateCount: result.brightPixelCount,
+                                                      rejectionReason: result.rejectionReason))
 
             } else if idx == impactFrameIndex {
-                // ── Impact frame: slightly expanded, normal thresholds ──
-                let roi = expanded(lockedBallRect, scale: cfg.impactSearchScale)
-                if let c = scan(pd, roi: roi, config: preConfig) {
+                let roi    = expanded(lockedBallRect, scale: cfg.impactSearchScale)
+                let result = scan(pd, roi: roi, config: preConfig)
+                if let c = result.candidate {
                     obs = hit(frame, c)
                     lastPreCenter = c.center
                 } else {
                     obs = miss(frame)
                 }
+                debugInfos.append(ShotFrameDebugInfo(frameIndex: idx, searchROI: roi,
+                                                      candidateCount: result.brightPixelCount,
+                                                      rejectionReason: result.rejectionReason))
 
             } else {
-                // ── Post-impact: multi-scale reacquisition with relaxed thresholds ──
                 let postOffset = idx - impactFrameIndex
-                obs = trackPostImpact(
+                let (postObs, postDebug) = trackPostImpact(
                     pd: pd,
                     frame: frame,
                     postOffset: postOffset,
@@ -159,6 +167,8 @@ final class PostImpactBallTracker {
                     lastPostCenter: lastPostCenter,
                     postConfig: postConfig
                 )
+                obs = postObs
+                debugInfos.append(postDebug)
                 if let cx = obs.centerX, let cy = obs.centerY {
                     lastPostCenter = CGPoint(x: cx, y: cy)
                 }
@@ -167,13 +177,11 @@ final class PostImpactBallTracker {
             observations.append(obs)
         }
 
-        return observations
+        return (observations, debugInfos)
     }
 
     // MARK: - Post-Impact Tracking
 
-    // Multi-scale search: tries progressively larger ROIs so small initial ROI avoids
-    // merging the ball with distant white objects, while later passes guarantee coverage.
     private func trackPostImpact(
         pd: (bytes: [UInt8], width: Int, height: Int),
         frame: AnalyzedShotFrame,
@@ -181,28 +189,29 @@ final class PostImpactBallTracker {
         lockedBallRect: CGRect,
         lastPostCenter: CGPoint?,
         postConfig: ScanConfig
-    ) -> ShotBallObservation {
+    ) -> (observation: ShotBallObservation, debugInfo: ShotFrameDebugInfo) {
 
         let maxScale = min(cfg.postImpactMaxScale,
                           cfg.postImpactBaseScale + CGFloat(postOffset) * cfg.postImpactScaleGrowth)
 
-        // ROI center: prefer last confirmed post-impact position; fall back to locked ball.
-        let roiCenter = lastPostCenter ?? lockedBallRect.center
-
-        // Two-pass: moderate ROI first (fewer false positives), then max-scale if needed.
+        let roiCenter  = lastPostCenter ?? lockedBallRect.center
         let scalePass1 = min(maxScale, max(cfg.postImpactBaseScale, maxScale * 0.5))
         let rois: [CGRect] = [
             expandedAround(roiCenter, rect: lockedBallRect, scale: scalePass1),
             expandedAround(roiCenter, rect: lockedBallRect, scale: maxScale)
         ]
 
-        var found: Candidate? = nil
-        var usedROI: CGRect = rois[0]
+        var found:      Candidate?  = nil
+        var usedROI:    CGRect      = rois[0]
+        var lastResult              = ScanResult(candidate: nil, brightPixelCount: 0,
+                                                  rejectionReason: nil)
 
         for roi in rois {
-            if let c = scan(pd, roi: roi, config: postConfig) {
+            usedROI    = roi
+            let result = scan(pd, roi: roi, config: postConfig)
+            lastResult = result
+            if let c = result.candidate {
                 found = c
-                usedROI = roi
                 break
             }
         }
@@ -214,23 +223,30 @@ final class PostImpactBallTracker {
                 print(String(format: "frame=%02d postROI=%@ selected=(x=%.4f y=%.4f d=%.4f conf=%.2f)",
                              frame.frameIndex, roiStr, c.center.x, c.center.y, c.diameter, c.confidence))
             } else {
-                print(String(format: "frame=%02d postROI=%@ selected=nil reason=no_candidate",
-                             frame.frameIndex, roiStr))
+                print(String(format: "frame=%02d postROI=%@ selected=nil reason=%@ bright=%d",
+                             frame.frameIndex, roiStr,
+                             lastResult.rejectionReason ?? "unknown",
+                             lastResult.brightPixelCount))
             }
         }
 
-        return found.map { hit(frame, $0) } ?? miss(frame)
+        let obs       = found.map { hit(frame, $0) } ?? miss(frame)
+        let debugInfo = ShotFrameDebugInfo(
+            frameIndex:      frame.frameIndex,
+            searchROI:       usedROI,
+            candidateCount:  lastResult.brightPixelCount,
+            rejectionReason: found != nil ? nil : (lastResult.rejectionReason ?? "no_candidate")
+        )
+        return (obs, debugInfo)
     }
 
     // MARK: - Pixel Scanner
 
-    // Core scan: finds the single brightest compact blob within the ROI.
-    // Returns nil if no plausible ball candidate is found.
     private func scan(
         _ pd: (bytes: [UInt8], width: Int, height: Int),
         roi: CGRect,
         config: ScanConfig
-    ) -> Candidate? {
+    ) -> ScanResult {
         let (bytes, width, height) = pd
         let step = max(1, cfg.sampleStride)
 
@@ -238,7 +254,9 @@ final class PostImpactBallTracker {
         let xEnd   = min(width,  Int(roi.maxX * CGFloat(width)))
         let yStart = max(0,      Int(roi.minY * CGFloat(height)))
         let yEnd   = min(height, Int(roi.maxY * CGFloat(height)))
-        guard xEnd > xStart, yEnd > yStart else { return nil }
+        guard xEnd > xStart, yEnd > yStart else {
+            return ScanResult(candidate: nil, brightPixelCount: 0, rejectionReason: "empty_roi")
+        }
 
         var count = 0
         var minX = width, minY = height, maxX = 0, maxY = 0
@@ -260,28 +278,48 @@ final class PostImpactBallTracker {
             }
         }
 
-        guard count >= config.minimumBrightSamples else { return nil }
+        guard count >= config.minimumBrightSamples else {
+            return ScanResult(candidate: nil, brightPixelCount: count,
+                              rejectionReason: "too_few_bright_pixels(\(count)<\(config.minimumBrightSamples))")
+        }
 
         let boxW = CGFloat(maxX - minX + step)
         let boxH = CGFloat(maxY - minY + step)
-        guard boxW > 0, boxH > 0 else { return nil }
+        guard boxW > 0, boxH > 0 else {
+            return ScanResult(candidate: nil, brightPixelCount: count,
+                              rejectionReason: "degenerate_bbox")
+        }
 
-        let nW = boxW / CGFloat(width)
-        let nH = boxH / CGFloat(height)
+        let nW     = boxW / CGFloat(width)
+        let nH     = boxH / CGFloat(height)
         let aspect = nW / nH
 
         guard nW >= config.minNormWidth,  nW <= config.maxNormWidth,
               nH >= config.minNormHeight, nH <= config.maxNormHeight,
-              aspect >= config.minAspect, aspect <= config.maxAspect else { return nil }
+              aspect >= config.minAspect, aspect <= config.maxAspect else {
+            let reason: String
+            if nW < config.minNormWidth {
+                reason = "width_too_small(\(String(format: "%.4f", nW)))"
+            } else if nW > config.maxNormWidth {
+                reason = "width_too_large(\(String(format: "%.4f", nW)))"
+            } else if nH < config.minNormHeight {
+                reason = "height_too_small(\(String(format: "%.4f", nH)))"
+            } else if nH > config.maxNormHeight {
+                reason = "height_too_large(\(String(format: "%.4f", nH)))"
+            } else {
+                reason = "aspect_out_of_range(\(String(format: "%.2f", aspect)))"
+            }
+            return ScanResult(candidate: nil, brightPixelCount: count, rejectionReason: reason)
+        }
 
         let cx  = CGFloat(sumX) / CGFloat(count) / CGFloat(width)
         let cy  = CGFloat(sumY) / CGFloat(count) / CGFloat(height)
         let dia = (nW + nH) / 2.0
-        // ~20 samples = good pre-impact detection; post-impact accepts fewer, so scale accordingly
         let confidence = min(1.0, Double(count) / Double(config.minimumBrightSamples * 4))
 
-        return Candidate(center: CGPoint(x: cx, y: cy), diameter: dia,
-                         confidence: confidence, normWidth: nW, normHeight: nH)
+        let candidate = Candidate(center: CGPoint(x: cx, y: cy), diameter: dia,
+                                  confidence: confidence, normWidth: nW, normHeight: nH)
+        return ScanResult(candidate: candidate, brightPixelCount: count, rejectionReason: nil)
     }
 
     // MARK: - Summary
@@ -303,12 +341,8 @@ final class PostImpactBallTracker {
         print("Pre-impact tracked:  \(preTracked)/\(preObs.count)")
         print("Impact frame tracked: \(impactTracked ? "yes" : "no")")
         print("Post-impact tracked: \(postTracked.count)/\(postObs.count)")
-        if let first = postTracked.first {
-            print("First post-impact tracked frame: index \(first.frameIndex)")
-        }
-        if let last = postTracked.last {
-            print("Last post-impact tracked frame: index \(last.frameIndex)")
-        }
+        if let first = postTracked.first { print("First post-impact tracked frame: index \(first.frameIndex)") }
+        if let last  = postTracked.last  { print("Last post-impact tracked frame: index \(last.frameIndex)") }
         print(String(format: "Average confidence (tracked): %.2f", avgConf))
 
         print("--- Per-frame tracking table ---")

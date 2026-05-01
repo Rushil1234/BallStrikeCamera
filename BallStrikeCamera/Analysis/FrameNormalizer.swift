@@ -1,47 +1,75 @@
 import UIKit
 import CoreImage
 
+// Declaration order controls picker order: Original | Darkened | Brightened.
+enum FrameNormalizationMode: String, CaseIterable {
+    case original
+    case darkenedHighContrast
+    case brightened
+
+    var displayName: String {
+        switch self {
+        case .original:            return "Original"
+        case .darkenedHighContrast: return "Darkened"
+        case .brightened:          return "Brightened"
+        }
+    }
+}
+
 final class FrameNormalizer {
-    struct Configuration {
-        var exposureEV: Float = 1.2
-        var contrast: Float = 1.25
-        var gammaPower: Float = 0.9
-        var isDebugLoggingEnabled: Bool = true
+
+    struct Preset {
+        let exposureEV:  Float
+        let contrast:    Float
+        let gammaPower:  Float
+
+        // Primary analysis mode — makes white ball pop against darkened background.
+        static let darkenedHighContrast = Preset(exposureEV: -0.6, contrast: 1.35, gammaPower: 1.10)
+        // Visual comparison only — over-brightens mats, not used for tracking.
+        static let brightened           = Preset(exposureEV:  1.0, contrast: 1.20, gammaPower: 0.90)
+
+        var description: String {
+            String(format: "EV=%.1f contrast=%.2f gamma=%.2f", exposureEV, contrast, gammaPower)
+        }
     }
 
-    private let configuration: Configuration
+    private static let presetMap: [FrameNormalizationMode: Preset] = [
+        .darkenedHighContrast: .darkenedHighContrast,
+        .brightened:           .brightened
+    ]
+
     private let context: CIContext
 
-    init(configuration: Configuration = Configuration()) {
-        self.configuration = configuration
-        // Shared CIContext with no color management for speed.
+    init() {
         self.context = CIContext(options: [.workingColorSpace: NSNull()])
     }
 
-    func normalizedImage(from image: UIImage) -> UIImage {
-        guard let cgInput = image.cgImage else { return image }
+    func normalizedImage(from image: UIImage, mode: FrameNormalizationMode) -> UIImage {
+        if mode == .original { return image }
+        guard let preset = FrameNormalizer.presetMap[mode] else { return image }
+        return apply(preset, to: image)
+    }
 
+    private func apply(_ preset: Preset, to image: UIImage) -> UIImage {
+        guard let cgInput = image.cgImage else { return image }
         var ci = CIImage(cgImage: cgInput)
 
-        // 1. Exposure lift.
         if let filter = CIFilter(name: "CIExposureAdjust") {
             filter.setValue(ci, forKey: kCIInputImageKey)
-            filter.setValue(configuration.exposureEV, forKey: kCIInputEVKey)
+            filter.setValue(preset.exposureEV, forKey: kCIInputEVKey)
             if let output = filter.outputImage { ci = output }
         }
 
-        // 2. Contrast boost (brightness kept at 0 — exposure filter handles lift).
         if let filter = CIFilter(name: "CIColorControls") {
             filter.setValue(ci, forKey: kCIInputImageKey)
-            filter.setValue(configuration.contrast, forKey: kCIInputContrastKey)
+            filter.setValue(preset.contrast, forKey: kCIInputContrastKey)
             filter.setValue(0.0, forKey: kCIInputBrightnessKey)
             if let output = filter.outputImage { ci = output }
         }
 
-        // 3. Gamma correction — pulls midtones up when < 1.
         if let filter = CIFilter(name: "CIGammaAdjust") {
             filter.setValue(ci, forKey: kCIInputImageKey)
-            filter.setValue(configuration.gammaPower, forKey: "inputPower")
+            filter.setValue(preset.gammaPower, forKey: "inputPower")
             if let output = filter.outputImage { ci = output }
         }
 

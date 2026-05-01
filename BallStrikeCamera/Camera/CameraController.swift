@@ -14,6 +14,7 @@ final class CameraController: NSObject, ObservableObject {
     @Published var isAnalyzingShot: Bool = false
     @Published var latestShotAnalysis: ShotAnalysisResult?
     @Published var analysisStatusText: String = ""
+    @Published var showReview: Bool = false
 
     let session = AVCaptureSession()
 
@@ -327,11 +328,14 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 capturedFrames = Array(eventFrames.prefix(preHitFrames + postHitFrames + 1))
                 print("Captured \(capturedFrames.count) hit frames")
                 print("Resetting shot pipeline")
-                let savedLockedBallRect = lockedBallRect  // capture before reset clears it
+                let savedLockedBallRect  = lockedBallRect   // capture before reset clears them
+                let savedLockedImpactROI = lockedImpactROI
                 pendingPostCapture = false
                 eventFrames = []
                 resetShotPipeline(to: .captured, status: "Captured \(capturedFrames.count) hit frames")
-                analyzeCapturedFrames(capturedFrames, lockedBallRect: savedLockedBallRect)
+                analyzeCapturedFrames(capturedFrames,
+                                      lockedBallRect: savedLockedBallRect,
+                                      lockedImpactROI: savedLockedImpactROI)
             }
             return
         }
@@ -483,18 +487,21 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 
     @MainActor
-    private func analyzeCapturedFrames(_ frames: [CapturedFrame], lockedBallRect: CGRect?) {
+    private func analyzeCapturedFrames(_ frames: [CapturedFrame],
+                                       lockedBallRect: CGRect?,
+                                       lockedImpactROI: CGRect?) {
         guard !frames.isEmpty else { return }
         isAnalyzingShot = true
         analysisStatusText = "Analyzing shot..."
         print("Shot analysis started with \(frames.count) frames")
 
-        let impactIndex = min(preHitFrames, frames.count - 1)
+        let impactIndex     = min(preHitFrames, frames.count - 1)
         let originTimestamp = frames[impactIndex].timestamp
-        let normalizer = FrameNormalizer()
+        let normalizer      = FrameNormalizer()
 
         // Step 1 — Normalize
-        print("Normalizing \(frames.count) shot frames")
+        print("Using frame normalization mode: darkenedHighContrast")
+        print("FrameNormalizer presets — brightened: \(FrameNormalizer.Preset.brightened.description) | darkenedHighContrast: \(FrameNormalizer.Preset.darkenedHighContrast.description)")
         let normStart = Date()
         let prelimFrames: [AnalyzedShotFrame] = frames.enumerated().map { idx, frame in
             AnalyzedShotFrame(
@@ -502,38 +509,45 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 timestamp: frame.timestamp,
                 relativeTime: frame.timestamp - originTimestamp,
                 originalFrame: frame,
-                normalizedImage: normalizer.normalizedImage(from: frame.image),
-                ballObservation: nil
+                brightenedImage: normalizer.normalizedImage(from: frame.image, mode: .brightened),
+                darkenedHighContrastImage: normalizer.normalizedImage(from: frame.image, mode: .darkenedHighContrast),
+                ballObservation: nil,
+                debugInfo: nil
             )
         }
         let normMs = Date().timeIntervalSince(normStart) * 1000
         print(String(format: "Frame normalization took %.1f ms", normMs))
-        print("Frame normalization complete")
+        print("Frame normalization complete for modes: original, brightened, darkenedHighContrast")
+        print("Default analysis mode: DarkenedHighContrast")
 
         // Step 2 — Track
         var observationMap: [Int: ShotBallObservation] = [:]
+        var debugInfoMap:   [Int: ShotFrameDebugInfo]  = [:]
         if let lockedRect = lockedBallRect {
             let tracker = PostImpactBallTracker()
-            let observations = tracker.track(
+            let (observations, debugInfos) = tracker.track(
                 frames: prelimFrames,
                 lockedBallRect: lockedRect,
                 impactFrameIndex: impactIndex
             )
             PostImpactBallTracker.printSummary(observations, impactFrameIndex: impactIndex)
-            for obs in observations { observationMap[obs.frameIndex] = obs }
+            for obs  in observations { observationMap[obs.frameIndex]  = obs }
+            for info in debugInfos   { debugInfoMap[info.frameIndex]   = info }
         } else {
             print("PostImpactBallTracker: no lockedBallRect — skipping tracking")
         }
 
-        // Step 3 — Merge observations into final frames
+        // Step 3 — Merge into final frames
         let finalFrames: [AnalyzedShotFrame] = prelimFrames.map { frame in
             AnalyzedShotFrame(
                 frameIndex: frame.frameIndex,
                 timestamp: frame.timestamp,
                 relativeTime: frame.relativeTime,
                 originalFrame: frame.originalFrame,
-                normalizedImage: frame.normalizedImage,
-                ballObservation: observationMap[frame.frameIndex]
+                brightenedImage: frame.brightenedImage,
+                darkenedHighContrastImage: frame.darkenedHighContrastImage,
+                ballObservation: observationMap[frame.frameIndex],
+                debugInfo: debugInfoMap[frame.frameIndex]
             )
         }
 
@@ -541,6 +555,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             frames: finalFrames,
             impactFrameIndex: impactIndex,
             lockedBallRect: lockedBallRect,
+            lockedImpactROI: lockedImpactROI,
             createdAt: Date()
         )
 
@@ -548,6 +563,8 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         isAnalyzingShot = false
         analysisStatusText = "Analysis complete"
         print("Shot analysis complete: \(result.frames.count) frames, impact at index \(result.impactFrameIndex)")
+        print("Showing ShotTrackingReviewView with \(result.frames.count) frames")
+        showReview = true
     }
 
     @MainActor

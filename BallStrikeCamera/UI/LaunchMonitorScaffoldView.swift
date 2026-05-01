@@ -112,6 +112,14 @@ struct LaunchMonitorScaffoldView: View {
         .navigationBarHidden(true)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
+        .fullScreenCover(isPresented: $camera.showReview) {
+            if let analysis = camera.latestShotAnalysis {
+                ShotTrackingReviewView(analysis: analysis) {
+                    camera.showReview = false
+                    print("ShotTrackingReviewView dismissed")
+                }
+            }
+        }
     }
 }
 

@@ -14,6 +14,9 @@
 		BF000001000000000000001B /* ShotAnalysisModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011C /* ShotAnalysisModels.swift */; };
 		BF000001000000000000001C /* FrameNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011D /* FrameNormalizer.swift */; };
 		BF000001000000000000001E /* PostImpactBallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011E /* PostImpactBallTracker.swift */; };
+		BF000001000000000000001F /* ShotTrackingReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011F /* ShotTrackingReviewView.swift */; };
+		BF0000010000000000000021 /* ShotCompositeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000121 /* ShotCompositeView.swift */; };
+		BF0000010000000000000020 /* ShotCompositeRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000120 /* ShotCompositeRenderer.swift */; };
 		BF0000010000000000000004 /* BallObservation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000104 /* BallObservation.swift */; };
 		BF0000010000000000000005 /* BallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000105 /* BallDetector.swift */; };
 		BF0000010000000000000006 /* CameraController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000106 /* CameraController.swift */; };
@@ -40,6 +43,9 @@
 		BF000001000000000000011C /* ShotAnalysisModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotAnalysisModels.swift; sourceTree = "<group>"; };
 		BF000001000000000000011D /* FrameNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameNormalizer.swift; sourceTree = "<group>"; };
 		BF000001000000000000011E /* PostImpactBallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostImpactBallTracker.swift; sourceTree = "<group>"; };
+		BF000001000000000000011F /* ShotTrackingReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotTrackingReviewView.swift; sourceTree = "<group>"; };
+		BF0000010000000000000121 /* ShotCompositeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotCompositeView.swift; sourceTree = "<group>"; };
+		BF0000010000000000000120 /* ShotCompositeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotCompositeRenderer.swift; sourceTree = "<group>"; };
 		BF0000010000000000000104 /* BallObservation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallObservation.swift; sourceTree = "<group>"; };
 		BF0000010000000000000105 /* BallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallDetector.swift; sourceTree = "<group>"; };
 		BF0000010000000000000106 /* CameraController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraController.swift; sourceTree = "<group>"; };
@@ -132,6 +138,7 @@
 			children = (
 				BF000001000000000000011D /* FrameNormalizer.swift */,
 				BF000001000000000000011E /* PostImpactBallTracker.swift */,
+				BF0000010000000000000120 /* ShotCompositeRenderer.swift */,
 			);
 			path = Analysis;
 			sourceTree = "<group>";
@@ -150,6 +157,8 @@
 				BF0000010000000000000118 /* ShotVisualizationPanel.swift */,
 				BF0000010000000000000119 /* ShotSummaryPanelView.swift */,
 				BF000001000000000000011A /* CompactMetricsBarView.swift */,
+				BF000001000000000000011F /* ShotTrackingReviewView.swift */,
+				BF0000010000000000000121 /* ShotCompositeView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -251,6 +260,7 @@
 				BF000001000000000000001B /* ShotAnalysisModels.swift in Sources */,
 				BF000001000000000000001C /* FrameNormalizer.swift in Sources */,
 				BF000001000000000000001E /* PostImpactBallTracker.swift in Sources */,
+				BF0000010000000000000020 /* ShotCompositeRenderer.swift in Sources */,
 				BF0000010000000000000004 /* BallObservation.swift in Sources */,
 				BF0000010000000000000005 /* BallDetector.swift in Sources */,
 				BF0000010000000000000006 /* CameraController.swift in Sources */,
@@ -265,6 +275,8 @@
 				BF0000010000000000000018 /* ShotVisualizationPanel.swift in Sources */,
 				BF0000010000000000000019 /* ShotSummaryPanelView.swift in Sources */,
 				BF000001000000000000001A /* CompactMetricsBarView.swift in Sources */,
+				BF000001000000000000001F /* ShotTrackingReviewView.swift in Sources */,
+				BF0000010000000000000021 /* ShotCompositeView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
