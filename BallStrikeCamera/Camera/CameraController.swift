@@ -17,6 +17,7 @@ final class CameraController: NSObject, ObservableObject {
     private let sessionQueue = DispatchQueue(label: "com.ballstrike.camera.session")
     private let videoQueue = DispatchQueue(label: "com.ballstrike.camera.video", qos: .userInteractive)
     private let detector = BallDetector()
+    private let impactDetector = ImpactDetector()
     private let ciContext = CIContext()
 
     private var device: AVCaptureDevice?
@@ -24,6 +25,11 @@ final class CameraController: NSObject, ObservableObject {
     // ROI in normalized 1x-camera space; accessed from both main and video threads.
     private let roiLock = NSLock()
     nonisolated(unsafe) private var _searchROI: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)
+
+    // Impact ROI — set on MainActor when ball locks, read on videoQueue via impactLock.
+    private let impactLock = NSLock()
+    nonisolated(unsafe) private var _impactROI: CGRect? = nil
+    private var lockedImpactROI: CGRect?
 
     func updateSearchROI(_ roi: CGRect) {
         print("CameraController search ROI updated: \(roi)")
@@ -48,7 +54,7 @@ final class CameraController: NSObject, ObservableObject {
     private var readyLostFrameCount = 0
     private let readyLostFrameLimit = 120   // ~0.5 s at 240 fps
     private let readyNearThreshold: CGFloat = 0.06
-    private let readyHoldLogInterval = 60   // throttle "hold" prints
+    private let readyHoldLogInterval = 240  // throttle "hold" prints (~1 s at 240 fps)
 
     private var pendingPostCapture = false
     private var eventFrames: [CapturedFrame] = []
@@ -193,6 +199,15 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
+    private func expandedImpactROI(from rect: CGRect, scale: CGFloat = 2.5) -> CGRect {
+        let cx = rect.midX
+        let cy = rect.midY
+        let w  = rect.width  * scale
+        let h  = rect.height * scale
+        let expanded = CGRect(x: cx - w / 2, y: cy - h / 2, width: w, height: h)
+        return expanded.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+    }
+
     private func best240FPSFormat(for camera: AVCaptureDevice) -> AVCaptureDevice.Format? {
         let formats = camera.formats.filter { format in
             format.videoSupportedFrameRateRanges.contains { range in
@@ -227,10 +242,20 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             let dy = (obs.center.y - roi.midY) / (roi.height / 2)
             return dx * dx + dy * dy <= 1 ? obs : nil
         }
+        impactLock.lock()
+        let impactROI = _impactROI
+        impactLock.unlock()
+
+        var impactDetected = false
+        if let impactROI {
+            impactDetector.establishBaselineIfNeeded(pixelBuffer: pixelBuffer, roi: impactROI)
+            impactDetected = impactDetector.checkForImpact(pixelBuffer: pixelBuffer, roi: impactROI)
+        }
+
         let frame = makeCapturedFrame(from: pixelBuffer, timestamp: timestamp)
 
         Task { @MainActor in
-            processFrame(frame, observation: observation)
+            processFrame(frame, observation: observation, impactDetected: impactDetected)
         }
     }
 
@@ -284,7 +309,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
     }
 
     @MainActor
-    private func processFrame(_ frame: CapturedFrame?, observation: BallObservation?) {
+    private func processFrame(_ frame: CapturedFrame?, observation: BallObservation?, impactDetected: Bool) {
         if let frame {
             rollingBuffer.append(frame)
             if rollingBuffer.count > rollingBufferLimit {
@@ -297,12 +322,11 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             remainingPostFrames -= 1
             if remainingPostFrames <= 0 {
                 capturedFrames = Array(eventFrames.prefix(preHitFrames + postHitFrames + 1))
-                currentBallRect = nil
-                lockedBallRect = nil
-                phase = .captured
-                statusText = "Captured \(capturedFrames.count) hit frames"
+                print("Captured \(capturedFrames.count) hit frames")
+                print("Resetting shot pipeline")
                 pendingPostCapture = false
                 eventFrames = []
+                resetShotPipeline(to: .captured, status: "Captured \(capturedFrames.count) hit frames")
             }
             return
         }
@@ -311,6 +335,14 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         // lost-frame counter regardless of whether the detector returned anything.
         if phase == .ready {
             currentBallRect = lockedBallRect
+            statusText = "READY — watching for impact"
+
+            if impactDetected {
+                print("ROI IMPACT DETECTED — triggering capture")
+                triggerHitCapture()
+                return
+            }
+
             let observationValid = observation.map { isPlausibleBallObservation($0) } ?? false
             let nearLock = observationValid && observation.map { isObservationNearLockedBall($0) } ?? false
 
@@ -326,25 +358,14 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 }
                 if readyLostFrameCount >= readyLostFrameLimit {
                     print("READY lost — ball absent/invalid for \(readyLostFrameCount) frames")
-                    phase = .searching
-                    statusText = "Looking for ball"
-                    lockedBallRect = nil
-                    stableRect = nil
-                    stableFrameCount = 0
-                    readyLostFrameCount = 0
-                    currentBallRect = nil
+                    resetShotPipeline(to: .searching, status: "Looking for ball")
                 }
             }
             return
         }
 
         guard let observation else {
-            currentBallRect = nil
-            phase = .searching
-            statusText = "Looking for ball"
-            stableFrameCount = 0
-            stableRect = nil
-            lockedBallRect = nil
+            resetShotPipeline(to: .searching, status: "Looking for ball")
             return
         }
 
@@ -374,6 +395,15 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 stableRect = rect
                 readyLostFrameCount = 0
                 statusText = "READY — swing when ready"
+
+                let impactROI = expandedImpactROI(from: rect)
+                lockedImpactROI = impactROI
+                impactLock.lock()
+                _impactROI = impactROI
+                impactLock.unlock()
+                impactDetector.reset()
+                print("Impact ROI: \(impactROI)")
+
                 print("LOCKED valid ball rect: \(rect), aspect: \(String(format: "%.3f", aspect))")
                 print("stableFrameCount: \(stableFrameCount)")
             }
@@ -433,15 +463,33 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
     @MainActor
     private func triggerHitCapture() {
-        guard !pendingPostCapture else { return }
+        guard !pendingPostCapture, phase != .captured else { return }
         phase = .captured
-        statusText = "Hit detected — collecting surrounding frames"
+        statusText = "Impact detected — capturing"
         pendingPostCapture = true
         remainingPostFrames = postHitFrames
-        eventFrames = Array(rollingBuffer.suffix(preHitFrames))
+        // suffix(preHitFrames + 1): 20 pre-impact frames + the impact frame itself.
+        eventFrames = Array(rollingBuffer.suffix(preHitFrames + 1))
+        print("Started hit capture with \(eventFrames.count) pre/impact frames")
+        impactDetector.reset()
         stableFrameCount = 0
         stableRect = nil
+        readyLostFrameCount = 0
+    }
+
+    @MainActor
+    private func resetShotPipeline(to newPhase: CameraPhase, status: String) {
+        phase = newPhase
+        statusText = status
+        currentBallRect = nil
         lockedBallRect = nil
+        lockedImpactROI = nil
+        impactLock.lock()
+        _impactROI = nil
+        impactLock.unlock()
+        impactDetector.reset()
+        stableRect = nil
+        stableFrameCount = 0
         readyLostFrameCount = 0
     }
 

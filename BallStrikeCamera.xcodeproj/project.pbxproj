@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */; };
 		BF0000010000000000000001 /* BallStrikeCameraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000101 /* BallStrikeCameraApp.swift */; };
 		BF0000010000000000000002 /* CameraPhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000102 /* CameraPhase.swift */; };
 		BF0000010000000000000003 /* PlatformImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000103 /* PlatformImage.swift */; };
@@ -29,6 +30,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImpactDetector.swift; sourceTree = "<group>"; };
 		BF0000010000000000000101 /* BallStrikeCameraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallStrikeCameraApp.swift; sourceTree = "<group>"; };
 		BF0000010000000000000102 /* CameraPhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPhase.swift; sourceTree = "<group>"; };
 		BF0000010000000000000103 /* PlatformImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformImage.swift; sourceTree = "<group>"; };
@@ -104,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				BF0000010000000000000106 /* CameraController.swift */,
+				209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */,
 			);
 			path = Camera;
 			sourceTree = "<group>";
@@ -225,6 +228,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BF0000010000000000000001 /* BallStrikeCameraApp.swift in Sources */,
+				209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */,
 				BF0000010000000000000002 /* CameraPhase.swift in Sources */,
 				BF0000010000000000000003 /* PlatformImage.swift in Sources */,
 				BF0000010000000000000004 /* BallObservation.swift in Sources */,
