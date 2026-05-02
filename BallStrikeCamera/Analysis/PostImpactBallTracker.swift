@@ -10,7 +10,7 @@ final class PostImpactBallTracker {
         var sampleStride: Int = 2
 
         // ── Pre-impact / impact thresholds (ball is stationary, sharp) ──
-        var preBrightnessThreshold:  Int    = 145
+        var preBrightnessThreshold:  Int    = 90
         var preMaxChannelSpread:     Int    = 90
         var preMinBrightSamples:     Int    = 6
         var preMinNormWidth:         CGFloat = 0.008
@@ -32,12 +32,12 @@ final class PostImpactBallTracker {
         var postMaxAspect:           CGFloat = 5.00
 
         // ── ROI scales ──
-        var preImpactSearchScale:    CGFloat = 2.0
-        var impactSearchScale:       CGFloat = 3.5
+        var preImpactSearchScale:    CGFloat = 5.67
+        var impactSearchScale:       CGFloat = 8.66
         // Post-impact grows rapidly so a fast-moving ball stays in view.
         // scale(offset) = min(maxScale, base + offset × growth)
-        var postImpactBaseScale:     CGFloat = 7.0
-        var postImpactScaleGrowth:   CGFloat = 2.0
+        var postImpactBaseScale:     CGFloat = 5.03
+        var postImpactScaleGrowth:   CGFloat = 5.00
         var postImpactMaxScale:      CGFloat = 30.0
 
         var isPostImpactDebugLoggingEnabled: Bool = true
@@ -85,6 +85,7 @@ final class PostImpactBallTracker {
         impactFrameIndex: Int
     ) -> (observations: [ShotBallObservation], debugInfos: [ShotFrameDebugInfo]) {
 
+        print("PostImpactBallTracker live defaults: preBright=\(cfg.preBrightnessThreshold) preROI=\(cfg.preImpactSearchScale) impactScale=\(cfg.impactSearchScale) postBase=\(cfg.postImpactBaseScale) postGrowth=\(cfg.postImpactScaleGrowth) postMax=\(cfg.postImpactMaxScale)")
         print("PostImpactBallTracker analysis mode: DarkenedHighContrast")
         let pixelData: [(bytes: [UInt8], width: Int, height: Int)?] = frames.map {
             pixelBytes(from: $0.darkenedHighContrastImage ?? $0.originalFrame.image)
