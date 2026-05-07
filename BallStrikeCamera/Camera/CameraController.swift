@@ -45,7 +45,7 @@ final class CameraController: NSObject, ObservableObject {
     private var rollingBuffer: [CapturedFrame] = []
     private let rollingBufferLimit = 120
     private let preHitFrames = 20
-    private let postHitFrames = 20
+    private let postHitFrames = 80
 
     private var stableRect: CGRect?
     private var stableFrameCount = 0
@@ -324,9 +324,14 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         if pendingPostCapture {
             if let frame { eventFrames.append(frame) }
             remainingPostFrames -= 1
+            let collectedPost = postHitFrames - remainingPostFrames
+            if collectedPost % 20 == 0 && collectedPost > 0 && remainingPostFrames > 0 {
+                print("Post-impact frames collected: \(collectedPost)/\(postHitFrames)")
+            }
             if remainingPostFrames <= 0 {
                 capturedFrames = Array(eventFrames.prefix(preHitFrames + postHitFrames + 1))
-                print("Captured \(capturedFrames.count) hit frames")
+                let expectedTotal = preHitFrames + postHitFrames + 1
+                print("Shot capture complete: totalFrames=\(capturedFrames.count) expected=\(expectedTotal)")
                 print("Resetting shot pipeline")
                 let savedLockedBallRect  = lockedBallRect   // capture before reset clears them
                 let savedLockedImpactROI = lockedImpactROI
@@ -479,6 +484,9 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         remainingPostFrames = postHitFrames
         // suffix(preHitFrames + 1): 20 pre-impact frames + the impact frame itself.
         eventFrames = Array(rollingBuffer.suffix(preHitFrames + 1))
+        let expectedFrameCount = preHitFrames + postHitFrames + 1
+        print("Impact capture config: preHitFrames=\(preHitFrames) postHitFrames=\(postHitFrames) expectedFrameCount=\(expectedFrameCount)")
+        print("Impact capture started")
         print("Started hit capture with \(eventFrames.count) pre/impact frames")
         impactDetector.reset()
         stableFrameCount = 0

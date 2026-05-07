@@ -255,6 +255,10 @@ struct BallCandidateScoringSettings {
     // Part A: Impact frame merged spike (separate from post-impact)
     var maxImpactDiameterSpikeRatio: Double = 1.75
 
+    // Strict impact frame diameter gate
+    var enableStrictImpactDiameterGate:    Bool   = true
+    var impactFrameMaxDiameterGrowthRatio: Double = 1.25
+
     // Part C: Cone search
     var useConeSearchRegion:                 Bool   = true
     var coneHalfAngleDegrees:               Double = 18.0
@@ -390,6 +394,8 @@ struct BallCandidateScoringSettings {
             maxFirstPostImpactDiameterRatio:  CGFloat(maxFirstPostImpactDiameterRatio),
             mergedCandidateFrameWindow:       Int(mergedCandidateFrameWindow.rounded()),
             maxImpactDiameterSpikeRatio:      CGFloat(maxImpactDiameterSpikeRatio),
+            enableStrictImpactDiameterGate:    enableStrictImpactDiameterGate,
+            impactFrameMaxDiameterGrowthRatio: CGFloat(impactFrameMaxDiameterGrowthRatio),
             useConeSearchRegion:              useConeSearchRegion,
             coneHalfAngleDegrees:            coneHalfAngleDegrees,
             coneInitialLengthNorm:            CGFloat(coneInitialLengthNorm),
@@ -519,8 +525,9 @@ struct BallTrackingTuningSettings {
     var diameterGrowthVLAWeight:    Double = 0.75
     var imageYVLAWeight:            Double = 0.25
 
-    // New VLA model (pinhole2DSize)
-    var vlaEstimationMode: VLAEstimationMode = .pinhole2DSize
+    // New VLA model (pinhole2DSize / trainedModel)
+    var vlaEstimationMode: VLAEstimationMode = .trainedModel
+    var vlaModelFilePath: String? = nil
     var vlaImageYWeight: Double = 0.45
     var vlaDiameterDepthWeight: Double = 0.55
     var vlaDepthSign: Double = 1.0
@@ -592,6 +599,7 @@ struct BallTrackingTuningSettings {
         c.diameterGrowthVLAWeight  = diameterGrowthVLAWeight
         c.imageYVLAWeight          = imageYVLAWeight
         c.vlaEstimationMode        = vlaEstimationMode
+        c.vlaModelFilePath         = vlaModelFilePath
         c.vlaImageYWeight          = vlaImageYWeight
         c.vlaDiameterDepthWeight   = vlaDiameterDepthWeight
         c.vlaDepthSign             = vlaDepthSign

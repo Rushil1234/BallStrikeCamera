@@ -33,6 +33,9 @@ final class ShotExportService {
         try FileManager.default.createDirectory(at: packageDir, withIntermediateDirectories: true)
 
         let frames = analysis.frames
+        if frames.count == 41 {
+            print("Warning: export received only 41 frames; exporter is not capping, capture source provided 41")
+        }
         print("Exporting \(frames.count) original frames")
         for frame in frames {
             let name = String(format: "frame_%03d.png", frame.frameIndex)
@@ -40,11 +43,12 @@ final class ShotExportService {
                 try data.write(to: packageDir.appendingPathComponent(name))
             }
         }
+        print("Wrote \(frames.count) frame PNGs")
 
         let tsData = try JSONSerialization.data(
             withJSONObject: timestampsJSON(frames: frames), options: [.prettyPrinted])
         try tsData.write(to: packageDir.appendingPathComponent("timestamps.json"))
-        print("Wrote timestamps.json")
+        print("Wrote timestamps.json entries=\(frames.count)")
 
         let metaData = try JSONSerialization.data(
             withJSONObject: metadataJSON(analysis: analysis), options: [.prettyPrinted])
@@ -78,11 +82,23 @@ final class ShotExportService {
     }
 
     private func metadataJSON(analysis: ShotAnalysisResult) -> [String: Any] {
+        let n = analysis.frames.count
+        let impactIdx = analysis.impactFrameIndex
+        let preHit  = impactIdx
+        let postHit = max(0, n - impactIdx - 1)
         var d: [String: Any] = [
             "export_version": 1,
             "created_at": ISO8601DateFormatter().string(from: analysis.createdAt),
-            "frame_count": analysis.frames.count,
-            "impact_frame_index": analysis.impactFrameIndex,
+            "frame_count": n,
+            "exported_frame_count": n,
+            "first_frame_index": 0,
+            "last_frame_index": max(0, n - 1),
+            "pre_hit_frames": preHit,
+            "post_hit_frames": postHit,
+            "expected_frame_count": n,
+            "impact_frame_index": impactIdx,
+            "fallback_impact_frame_index": analysis.fallbackImpactFrameIndex,
+            "detected_impact_frame_index": analysis.detectedImpactFrameIndex,
             "fps_estimate": 240
         ]
         if let r = analysis.lockedBallRect {

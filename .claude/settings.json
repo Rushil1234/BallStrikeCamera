@@ -50,11 +50,39 @@
       "Bash(python3 -c \"import ast; ast.parse\\(open\\('/tmp/shot_tester.py'\\).read\\(\\)\\); print\\('Python syntax OK'\\)\")",
       "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build)",
       "Bash(xcrun simctl *)",
-      "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 16e' build)"
+      "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 16e' build)",
+      "Bash(xcodebuild -scheme BallStrikeCamera -destination 'generic/platform=iOS Simulator' build)",
+      "Bash(git -C /Users/noahtobias/Downloads/BallStrikeCamera diff HEAD -- BallStrikeCamera/Camera/CameraController.swift)",
+      "Bash(git -C /Users/noahtobias/Downloads/BallStrikeCamera diff HEAD -- BallStrikeCamera/Export/ShotExportService.swift)",
+      "Bash(python3 /tmp/shot_tester.py --build-ground-calibration --calibration-zip /Users/noahtobias/Downloads/drive-download-20260507T003806Z-3-001.zip --save-ground-calibration /Users/noahtobias/Downloads/ground_ball_size_calibration.json)",
+      "Bash(python3 /tmp/shot_tester.py --export-ball-points --shots-root /Users/noahtobias/Downloads/drive-download-20260504T195054Z-3-001 --ground-calibration /Users/noahtobias/Downloads/ground_ball_size_calibration.json --output /Users/noahtobias/Downloads/ball_points_for_vla.csv)",
+      "Bash(python3 -c \"import ast, sys; ast.parse\\(open\\('/tmp/shot_tester.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(python3 /tmp/shot_tester.py --train-vla-model --summary /Users/noahtobias/Downloads/shot_summary_for_vla.csv --output-model /dev/null --output-report /dev/null --output-plot /dev/null)",
+      "Bash(python3 /tmp/shot_tester.py --predict-vla-model --summary /Users/noahtobias/Downloads/shot_summary_for_vla.csv --model /Users/noahtobias/Downloads/vla_model.json)",
+      "Bash(open \"/Users/noahtobias/Downloads/shot_summary_for_vla.csv\")",
+      "Bash(python3 /tmp/shot_tester.py --export-ball-points --shots-root /Users/noahtobias/Downloads/drive-download-20260504T195054Z-3-001 --ground-calibration /Users/noahtobias/Downloads/ground_ball_size_calibration.json --output /Users/noahtobias/Downloads/ball_points_for_vla.csv --expanded-features)",
+      "Bash(python3 /tmp/shot_tester.py --train-vla-model --summary /Users/noahtobias/Downloads/shot_summary_for_vla.csv --output-model /Users/noahtobias/Downloads/vla_model.json --output-report /Users/noahtobias/Downloads/vla_model_report.txt --output-plot /Users/noahtobias/Downloads/vla_model_fit.png --feature-search --use-expanded-features --allow-high-feature-count)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('Keys:', list\\(d.keys\\(\\)\\)\\); print\\('modelType:', d.get\\('modelType'\\)\\); print\\('features:', d.get\\('features'\\)\\); print\\('predictionClamp:', d.get\\('predictionClamp'\\)\\); print\\('metrics:', d.get\\('metrics'\\)\\); print\\('featureSearchTopSubset:', d.get\\('featureSearchTopSubset'\\)\\)\")",
+      "Bash(python3 /tmp/shot_tester.py --predict-vla-model --summary /Users/noahtobias/Downloads/drive-download-20260504T195054Z-3-001/shot_summary_for_vla.csv --model /Users/noahtobias/Downloads/vla_model.json)",
+      "Bash(python3 /tmp/shot_tester.py --export-ball-points --shots-root /Users/noahtobias/Downloads/drive-download-20260504T195054Z-3-001 --vla-model trainedmodel --vla-model-file /Users/noahtobias/Downloads/vla_model.json)",
+      "Bash(head -5 \"/mnt/data/flightscope_trajectory_optimizer_2026-05-07_0950.csv\" 2>/dev/null || head -5 ~/Downloads/flightscope_trajectory_optimizer_2026-05-07_0950.csv 2>/dev/null || echo \"NOT FOUND\")",
+      "Read(//mnt/data/**)",
+      "Bash(find /Users/noahtobias -name \"flightscope*\" 2>/dev/null | head -5)",
+      "Read(//Users/noahtobias/**)",
+      "Bash(python3 /tmp/shot_tester.py --fit-flight-model --flightscope-csv /mnt/data/flightscope_trajectory_optimizer_2026-05-07_0950.csv --output-model /Users/noahtobias/Downloads/flight_model.json --output-report /Users/noahtobias/Downloads/flight_model_report.txt --output-plot /Users/noahtobias/Downloads/flight_model_fit.png)",
+      "Bash(find /Volumes /mnt /private/tmp ~/Downloads -name \"flightscope_trajectory*\" 2>/dev/null | head -5)",
+      "Read(//Volumes/**)",
+      "Bash(python3 /tmp/shot_tester.py --fit-flight-model --flightscope-csv /Users/noahtobias/Downloads/flightscope_trajectory_optimizer_2026-05-07_0950.csv --output-model /Users/noahtobias/Downloads/flight_model.json --output-report /Users/noahtobias/Downloads/flight_model_report.txt --output-plot /Users/noahtobias/Downloads/flight_model_fit.png)",
+      "Bash(python3 /tmp/shot_tester.py /Users/noahtobias/Downloads/drive-download-20260504T195054Z-3-001/ShotExport_20260504_141105 --vla-model trainedmodel --vla-model-file /Users/noahtobias/Downloads/vla_model.json --flight-model-file /Users/noahtobias/Downloads/flight_model.json)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/tmp/shot_tester.py'\\).read\\(\\)\\); print\\('Syntax OK'\\)\")",
+      "Bash(git -C /Users/noahtobias/Downloads/BallStrikeCamera diff --name-only HEAD)",
+      "Bash(git -C /Users/noahtobias/Downloads/BallStrikeCamera status --short)",
+      "Bash(python3 -c \"import ast, sys; ast.parse\\(open\\('/tmp/shot_tester.py'\\).read\\(\\)\\); print\\('syntax OK'\\)\")"
     ],
     "additionalDirectories": [
       "/tmp",
-      "/private/tmp"
+      "/private/tmp",
+      "/Users/noahtobias/Downloads"
     ]
   }
 }

@@ -7,8 +7,12 @@ Features: mask refinement, B&W preview, dynamic impact detection,
 import json, os, sys, glob, math, argparse as _ap
 from collections import deque
 import numpy as np
+_HEADLESS = any(x in sys.argv for x in [
+    "--build-ground-calibration", "--export-ball-points", "--prepare-vla-training",
+    "--train-vla-model", "--predict-vla-model", "--fit-flight-model"])
+_LABELING_MODE = "--label-vla-interactive" in sys.argv
 import matplotlib
-matplotlib.use("MacOSX")
+matplotlib.use("Agg" if _HEADLESS else "MacOSX")
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from matplotlib.widgets import Slider, Button, RadioButtons
@@ -27,6 +31,19 @@ def _patch_mpl_widgets():
         try: _orig_sl(self, event)
         except (AttributeError, RuntimeError): pass
     _mplw.Slider._update = _safe_sl
+    # Also patch _click which triggers the "Another Axes already grabs mouse" error
+    if hasattr(_mplw.Slider, "_click"):
+        _orig_click = _mplw.Slider._click
+        def _safe_click(self, event):
+            try: _orig_click(self, event)
+            except RuntimeError: pass
+        _mplw.Slider._click = _safe_click
+    if hasattr(_mplw.Slider, "_release"):
+        _orig_release = _mplw.Slider._release
+        def _safe_release(self, event):
+            try: _orig_release(self, event)
+            except RuntimeError: pass
+        _mplw.Slider._release = _safe_release
 _patch_mpl_widgets()
 
 _aparser = _ap.ArgumentParser(add_help=False)
@@ -55,55 +72,103 @@ _aparser.add_argument("--face-hough-max-gap",     type=int,   default=10)
 _aparser.add_argument("--face-angle-normal-mode", default="line", choices=["line","normal"])
 _aparser.add_argument("--face-angle-flip",        type=int,   default=0, choices=[0,1])
 _aparser.add_argument("--face-save-mask-debug",   action="store_true")
-_aparser.add_argument("--vla-model", default="pinhole2dsize",
-                      choices=["legacy","pinhole2dsize","blended"],
-                      help="VLA estimation model")
+_aparser.add_argument("--vla-model", default="auto",
+                      choices=["auto","legacy","pinhole2dsize","blended",
+                               "groundcalibrated","trainedmodel"],
+                      help="VLA estimation model (auto=trainedmodel if json found else pinhole2dsize)")
+_aparser.add_argument("--vla-model-file", default=None, metavar="JSON",
+                      help="Path to vla_model.json for trainedmodel mode")
 _aparser.add_argument("--vla-image-y-weight",    type=float, default=0.45)
 _aparser.add_argument("--vla-diameter-depth-weight", type=float, default=0.55)
 _aparser.add_argument("--vla-depth-sign",        type=float, default=1.0)
 _aparser.add_argument("--vla-depth-scale",       type=float, default=1.0)
 _aparser.add_argument("--rightward-size-correction-strength", type=float, default=0.35)
 _aparser.add_argument("--disable-rightward-size-correction",  action="store_true")
+_aparser.add_argument("--build-ground-calibration", action="store_true")
+_aparser.add_argument("--calibration-zip",          default=None, metavar="ZIP")
+_aparser.add_argument("--save-ground-calibration",  default=None, metavar="JSON")
+_aparser.add_argument("--export-ball-points",       action="store_true")
+_aparser.add_argument("--shots-root",               default=None, metavar="DIR")
+_aparser.add_argument("--ground-calibration",       default=None, metavar="JSON")
+_aparser.add_argument("--output",                   default=None, metavar="FILE")
+_aparser.add_argument("--prepare-vla-training",     action="store_true")
+_aparser.add_argument("--summary",                  default=None, metavar="CSV")
+_aparser.add_argument("--label-vla-interactive",    action="store_true")
+_aparser.add_argument("--points",                   default=None, metavar="CSV")
+_aparser.add_argument("--output-summary",           default=None, metavar="CSV")
+_aparser.add_argument("--train-after-labeling",     action="store_true")
+_aparser.add_argument("--relabel",                  action="store_true")
+_aparser.add_argument("--start-index",              type=int, default=0)
+_aparser.add_argument("--shot-name",                default=None, metavar="NAME")
+_aparser.add_argument("--train-vla-model",          action="store_true")
+_aparser.add_argument("--output-model",             default=None, metavar="JSON")
+_aparser.add_argument("--output-report",            default=None, metavar="TXT")
+_aparser.add_argument("--output-plot",              default=None, metavar="PNG")
+_aparser.add_argument("--predict-vla-model",        action="store_true")
+_aparser.add_argument("--model",                    default=None, metavar="JSON")
+_aparser.add_argument("--fit-flight-model",         action="store_true",
+                      help="Fit carry/rollout/backspin model from Flightscope CSV")
+_aparser.add_argument("--flightscope-csv",          default=None, metavar="CSV",
+                      help="Flightscope trajectory optimizer CSV for --fit-flight-model")
+_aparser.add_argument("--flight-model-file",        default=None, metavar="JSON",
+                      help="Path to flight_model.json (default: ~/Downloads/flight_model.json)")
+_aparser.add_argument("--expanded-features",        action="store_true")
+_aparser.add_argument("--feature-search",           action="store_true")
+_aparser.add_argument("--use-expanded-features",    action="store_true")
+_aparser.add_argument("--allow-high-feature-count", action="store_true")
+_aparser.add_argument("--ground-roll-calibration-mode", action="store_true")
 _face_args, _ = _aparser.parse_known_args()
 FOLDER = _face_args.folder
-VLA_MODEL = _face_args.vla_model
+VLA_MODEL = _face_args.vla_model  # may be "auto"; resolved by _init_runtime()
 
-png_paths = sorted(glob.glob(os.path.join(FOLDER, "frame_*.png")))
-assert png_paths, f"No frame_*.png in {FOLDER}"
-raw_frames = [np.array(Image.open(p).convert("RGB")) for p in png_paths]
-H, W = raw_frames[0].shape[:2]
-N = len(raw_frames)
-print(f"Loaded {N} frames ({W}x{H})")
+# Runtime globals — populated by _init_runtime() after all functions are defined
+_RUNTIME_VLA_MODEL    = None  # (model_dict, path) or None
+_RUNTIME_GROUND_CAL   = None  # ground calibration dict or None
+_RUNTIME_FLIGHT_MODEL = None  # flight_model.json dict or None
 
-meta_path = os.path.join(FOLDER, "metadata.json")
-metadata = {}
-impact_idx = 20
-locked_rect = (0.45, 0.45, 0.10, 0.10)
-fps_estimate = 240.0
-if os.path.exists(meta_path):
-    metadata = json.load(open(meta_path))
-    impact_idx = metadata.get("impact_frame_index", impact_idx)
-    fps_estimate = float(metadata.get("fps_estimate", fps_estimate) or fps_estimate)
-    if "locked_ball_rect" in metadata:
-        r = metadata["locked_ball_rect"]
-        locked_rect = (r["x"], r["y"], r["width"], r["height"])
+_is_updating = False          # matplotlib callback re-entry guard (Part M)
 
-timestamps = [dict(frame_index=i, timestamp=i/fps_estimate,
-                   relative_time=(i-impact_idx)/fps_estimate) for i in range(N)]
-ts_path = os.path.join(FOLDER, "timestamps.json")
-if os.path.exists(ts_path):
-    ts_data = json.load(open(ts_path))
-    ts_items = ts_data.get("timestamps", ts_data if isinstance(ts_data, list) else [])
-    ts_by = {int(t.get("frame_index", t.get("frameIndex", i))): t for i, t in enumerate(ts_items)}
-    for i in range(N):
-        t = ts_by.get(i)
-        if t:
-            timestamps[i] = dict(frame_index=i,
-                timestamp=float(t.get("timestamp", i/fps_estimate)),
-                relative_time=float(t.get("relative_time", t.get("relativeTime",
-                                           (i-impact_idx)/fps_estimate))))
+if not _HEADLESS and not _LABELING_MODE:
+    png_paths = sorted(glob.glob(os.path.join(FOLDER, "frame_*.png")))
+    assert png_paths, f"No frame_*.png in {FOLDER}"
+    raw_frames = [np.array(Image.open(p).convert("RGB")) for p in png_paths]
+    H, W = raw_frames[0].shape[:2]
+    N = len(raw_frames)
+    print(f"Loaded {N} frames ({W}x{H})")
 
-rel_times = np.array([t["relative_time"] for t in timestamps], dtype=float)
+    meta_path = os.path.join(FOLDER, "metadata.json")
+    metadata = {}
+    impact_idx = 20
+    locked_rect = (0.45, 0.45, 0.10, 0.10)
+    fps_estimate = 240.0
+    if os.path.exists(meta_path):
+        metadata = json.load(open(meta_path))
+        impact_idx = metadata.get("impact_frame_index", impact_idx)
+        fps_estimate = float(metadata.get("fps_estimate", fps_estimate) or fps_estimate)
+        if "locked_ball_rect" in metadata:
+            r = metadata["locked_ball_rect"]
+            locked_rect = (r["x"], r["y"], r["width"], r["height"])
+
+    timestamps = [dict(frame_index=i, timestamp=i/fps_estimate,
+                       relative_time=(i-impact_idx)/fps_estimate) for i in range(N)]
+    ts_path = os.path.join(FOLDER, "timestamps.json")
+    if os.path.exists(ts_path):
+        ts_data = json.load(open(ts_path))
+        ts_items = ts_data.get("timestamps", ts_data if isinstance(ts_data, list) else [])
+        ts_by = {int(t.get("frame_index", t.get("frameIndex", i))): t for i, t in enumerate(ts_items)}
+        for i in range(N):
+            t = ts_by.get(i)
+            if t:
+                timestamps[i] = dict(frame_index=i,
+                    timestamp=float(t.get("timestamp", i/fps_estimate)),
+                    relative_time=float(t.get("relative_time", t.get("relativeTime",
+                                               (i-impact_idx)/fps_estimate))))
+
+    rel_times = np.array([t["relative_time"] for t in timestamps], dtype=float)
+else:
+    raw_frames = []; H = W = 360; N = 0
+    impact_idx = 20; locked_rect = (0.45, 0.45, 0.10, 0.10)
+    rel_times = np.array([])
 
 # ── Normalization ─────────────────────────────────────────────────────────────
 def normalize(img, mode):
@@ -676,6 +741,8 @@ def run_tracking_pass(frames_norm, p, impact, locked):
     _single_point_pred_count = 0
     # Part C (new): near-impact diameter jump guard
     _near_impact_diam_guard_rejected = 0
+    # Strict impact frame diameter gate counter
+    _strict_impact_dia_gate_triggered = 0
     # Part E (new): first post-impact clean point flag
     _first_post_clean = None
 
@@ -919,6 +986,12 @@ def run_tracking_pass(frames_norm, p, impact, locked):
             if eligible_sorted_accepted:
                 eligible_sorted = eligible_sorted_accepted + [c for c in eligible_sorted if not c.get("accepted", True)]
 
+        # Strict impact gate: pre-impact median reference (computed once at impact frame)
+        _strict_impact_preimpact_ref = None
+        if idx == impact and pre_final_dias:
+            _sp = sorted(pre_final_dias)
+            _strict_impact_preimpact_ref = _sp[len(_sp) // 2]
+
         mask_dia=None; preview=None; cand_in_crop=None; ref_in_crop=None
         mask_reason="disabled"; mask_center=None; mask_center_in_crop=None; mask_count=0
         mask_fill_ratio=0.0; mask_brightness_mean=0.0; mask_aspect_ratio=1.0
@@ -995,6 +1068,26 @@ def run_tracking_pass(frames_norm, p, impact, locked):
                 mask_center, mask_center_in_crop, mask_count, \
                 mask_fill_ratio, mask_brightness_mean, mask_aspect_ratio = \
                 mask_refine_diameter(img, _cand['cx'], _cand['cy'], _cand['dia'], p=p)
+
+            # Strict impact frame diameter gate — overrides all scoring including rescue
+            if p.get("enable_strict_impact_dia_gate", 1.0) > 0.5 and idx == impact:
+                _strict_ref = _strict_impact_preimpact_ref
+                if _strict_ref is not None and _strict_ref > 0:
+                    _cand_d = mask_dia if mask_dia is not None else _cand["dia"]
+                    _strict_ratio = _cand_d / _strict_ref
+                    _strict_max = float(p.get("strict_impact_max_diam_growth", 1.25))
+                    if _strict_ratio > _strict_max:
+                        print(f"Strict impact diameter gate: frame={idx} diameterRatio={_strict_ratio:.2f} > {_strict_max}, rejecting likely club+ball merged candidate")
+                        _cand["reason"] = f"rejected_strict_impact_diameter_growth({_strict_ratio:.2f}x)"
+                        _cand["accepted"] = False
+                        _cand["strictImpactDiameterGateTriggered"] = True
+                        _cand["preImpactMedianDiameter"] = _strict_ref
+                        _cand["impactFrameDiameterGrowthRatio"] = _strict_ratio
+                        _strict_impact_dia_gate_triggered += 1
+                        if _attempt < len(eligible_sorted) - 1:
+                            mask_dia = None; chosen = None; continue
+                        else:
+                            break
 
             # Part B / new session Part A: mask quality gate — reject weak/tiny detections
             if (p.get("require_min_mask_quality", 1.0) > 0.5 and cfg == "post"):
@@ -1330,6 +1423,11 @@ def run_tracking_pass(frames_norm, p, impact, locked):
             mask_aspect_ratio=mask_aspect_ratio,
             predictionMode=_pred_mode,
             merged_club_hints=[]))
+        # Mark result if strict impact gate triggered this frame
+        if idx == impact and any(c.get("strictImpactDiameterGateTriggered") for c in eligible_sorted):
+            results[-1]["strict_impact_dia_gate_triggered"] = True
+            results[-1]["preImpactMedianDiameter"] = _strict_impact_preimpact_ref
+            results[-1]["impactFrameMaxDiameterGrowthRatio"] = float(p.get("strict_impact_max_diam_growth", 1.25))
         # Final edge safety gate — runs after all candidate selection and rescue
         if chosen is not None and p.get("enable_final_edge_ball_filter", 1.0) > 0.5:
             _efm = float(p.get("final_edge_margin_norm", 0.012))
@@ -1553,6 +1651,9 @@ def run_tracking_pass(frames_norm, p, impact, locked):
         nearImpactDiamGuardRejectedCount=_near_impact_diam_guard_rejected,
         edgeRejectedCount=_edge_rejected_count,
         edgeRejectedFrames=_edge_rejected_frames,
+        strictImpactDiameterGateTriggeredCount=_strict_impact_dia_gate_triggered,
+        strictImpactDiameterRejectedFrames=[r["idx"] for r in results if r.get("strict_impact_dia_gate_triggered")],
+        preImpactMedianDiameter=sorted(pre_final_dias)[len(pre_final_dias)//2] if pre_final_dias else None,
     ))
     return results
 
@@ -1871,8 +1972,11 @@ def calc_ball_metrics(ball3d, impact, p=None):
         vla_diam_est, diam_growth, diam_vla_reason = _estimate_vla_from_diameter(post, p)
     # VLA model selection
     vla_model = p.get("vla_model", "pinhole2dsize")
+    # "trainedmodel" override happens in compute_metrics_and_club;
+    # here we compute the pinhole2dsize VLA as the interim estimate
+    _internal_mode = vla_model if vla_model in ("legacy", "pinhole2dsize", "blended") else "pinhole2dsize"
     pinhole_debug = {}
-    if vla_model == "pinhole2dsize":
+    if _internal_mode == "pinhole2dsize":
         fx2, fy2 = focal_lengths(p)
         vla_pinhole, pinhole_debug, pinhole_warns = _vla_pinhole2dsize(post, p, fx2, fy2)
         warns.extend(pinhole_warns)
@@ -1880,7 +1984,7 @@ def calc_ball_metrics(ball3d, impact, p=None):
             vla = max(0.0, min(70.0, vla_pinhole))
         else:
             vla = vla_3d  # fallback
-    elif vla_model == "blended":
+    elif _internal_mode == "blended":
         fx2, fy2 = focal_lengths(p)
         vla_pinhole, pinhole_debug, pinhole_warns = _vla_pinhole2dsize(post, p, fx2, fy2)
         warns.extend(pinhole_warns)
@@ -2006,90 +2110,187 @@ def _ideal_carry_yards(ball_speed_mph, vla_deg):
     ideal_m   = (speed_mps**2 * math.sin(2 * vla_rad)) / 9.80665
     return ideal_m * 1.09361  # yards
 
-def estimate_distance(ball_speed, vla, hla, carry_correction_factor=0.75):
+def _ridge_predict(model_dict, features_dict):
+    """Apply a saved ridge regression model dict to a feature dict. Returns float."""
+    feats   = model_dict["features"]
+    means   = model_dict["means"]
+    stds    = model_dict["stds"]
+    coefs   = model_dict["coefficients"]
+    intcpt  = float(model_dict["intercept"])
+    med     = model_dict.get("imputationMedians", {})
+    x = []
+    for f in feats:
+        raw = features_dict.get(f)
+        if raw is None or (isinstance(raw, float) and math.isnan(raw)):
+            raw = med.get(f, 0.0)
+        s = stds.get(f, 1.0)
+        m = means.get(f, 0.0)
+        x.append((float(raw) - m) / max(s, 1e-9))
+    return float(np.dot(x, [coefs.get(f, 0.0) for f in feats]) + intcpt)
+
+def _flight_features(ball_speed, vla_c):
+    """Build feature dict for flight model carry/roll prediction."""
+    import math as _m
+    ideal = _ideal_carry_yards(ball_speed, vla_c)
+    return {
+        "ball_speed":        ball_speed,
+        "vla":               vla_c,
+        "ball_speed_sq":     ball_speed ** 2,
+        "vla_sq":            vla_c ** 2,
+        "speed_times_vla":   ball_speed * vla_c,
+        "sin_2vla":          _m.sin(2 * _m.radians(vla_c)),
+        "ideal_carry_yards": ideal,
+    }
+
+def estimate_distance(ball_speed, vla, hla, carry_correction_factor=0.75,
+                      flight_model=None, backspin=None):
     warns = []
     if ball_speed is None or vla is None:
         return dict(ideal_carry=None, carry_correction_factor=carry_correction_factor,
                     carry=None, rollout_yards=None, total=None,
                     rollout_fraction=None, vla_bucket="unknown",
+                    carry_model_used="unavailable",
+                    rollout_model_used="unavailable",
                     warnings=["Missing ball speed or VLA."])
-    vla_c = min(max(vla, 0.5), 45)
+    vla_c = min(max(vla, 0.5), 65)
     if vla_c != vla:
-        warns.append(f"VLA {vla:.1f}° clamped to {vla_c:.1f}°.")
+        warns.append(f"VLA {vla:.1f}° clamped to {vla_c:.1f}° for distance estimate.")
 
-    ccf = max(0.40, min(1.20, carry_correction_factor))
     ideal_carry = _ideal_carry_yards(ball_speed, vla_c)
-    carry = max(0, min(450, ideal_carry * ccf))
 
-    # Finer VLA-bucket rollout table
-    if vla_c < 1:
-        base_rollout, vla_bucket = 0.85, "vla<1°"
-    elif vla_c < 3:
-        base_rollout, vla_bucket = 0.65, "1°≤vla<3°"
-    elif vla_c < 6:
-        base_rollout, vla_bucket = 0.45, "3°≤vla<6°"
-    elif vla_c < 10:
-        base_rollout, vla_bucket = 0.30, "6°≤vla<10°"
-    elif vla_c < 15:
-        base_rollout, vla_bucket = 0.20, "10°≤vla<15°"
-    elif vla_c < 22:
-        base_rollout, vla_bucket = 0.12, "15°≤vla<22°"
-    elif vla_c < 30:
-        base_rollout, vla_bucket = 0.07, "22°≤vla<30°"
+    # Carry model
+    if flight_model and "carryModel" in flight_model:
+        try:
+            feats = _flight_features(ball_speed, vla_c)
+            carry_raw = _ridge_predict(flight_model["carryModel"], feats)
+            carry = max(0, min(350, carry_raw))
+            carry_model = f"flight_model:{flight_model['carryModel'].get('type','ridge')}"
+        except Exception as e:
+            warns.append(f"Flight model carry failed ({e}); falling back to physics.")
+            ccf = max(0.40, min(1.20, carry_correction_factor))
+            carry = max(0, min(350, ideal_carry * ccf))
+            carry_model = f"physics_cf{ccf:.2f}_fallback"
     else:
-        base_rollout, vla_bucket = 0.03, "vla≥30°"
+        ccf = max(0.40, min(1.20, carry_correction_factor))
+        carry = max(0, min(350, ideal_carry * ccf))
+        carry_model = f"physics_cf{ccf:.2f}"
 
-    speed_adj = (0.45 if ball_speed < 40 else 0.75 if ball_speed < 80
-                 else 1.10 if ball_speed >= 130 else 1.00)
-    rollout_fraction = max(0.02, min(0.90, base_rollout * speed_adj))
-    rollout_yards = carry * rollout_fraction
+    # Rollout model
+    if flight_model and "rollModel" in flight_model:
+        try:
+            feats_r = _flight_features(ball_speed, vla_c)
+            feats_r["carry_yards"] = carry
+            feats_r["backspin"]    = backspin if backspin is not None else 4000.0
+            roll_raw = _ridge_predict(flight_model["rollModel"], feats_r)
+            rollout_yards = max(0, min(carry * 0.85, roll_raw))
+            rollout_fraction = rollout_yards / max(carry, 1)
+            vla_bucket = "flight_model"
+            rollout_model = f"flight_model:{flight_model['rollModel'].get('type','ridge')}"
+        except Exception as e:
+            warns.append(f"Flight model rollout failed ({e}); falling back to VLA bucket.")
+            rollout_yards, rollout_fraction, vla_bucket, rollout_model = \
+                _vla_bucket_rollout(vla_c, ball_speed, carry, backspin)
+    else:
+        rollout_yards, rollout_fraction, vla_bucket, rollout_model = \
+            _vla_bucket_rollout(vla_c, ball_speed, carry, backspin)
+
     total = min(carry + rollout_yards, 400)
     if total > 350:
         warns.append("Total >350 yd — verify calibration/FOV.")
-    warns.append("Total = carry + VLA-based rollout. Spin/ground unknown.")
-    warns.append(f"Carry: idealCarry={ideal_carry:.0f} yd × cf={ccf:.2f} = {carry:.0f} yd")
-    warns.append(f"Rollout: {rollout_fraction*100:.0f}% of carry (VLA bucket: {vla_bucket})")
-    return dict(ideal_carry=ideal_carry, carry_correction_factor=ccf,
+    warns.append(f"Carry model: {carry_model}  Rollout model: {rollout_model}")
+    warns.append(f"Carry: ideal={ideal_carry:.0f} yd → {carry:.0f} yd   "
+                 f"Rollout: {rollout_fraction*100:.0f}% ({vla_bucket})")
+    return dict(ideal_carry=ideal_carry,
+                carry_correction_factor=max(0.40, min(1.20, carry_correction_factor)),
                 carry=carry, rollout_yards=rollout_yards, total=total,
-                rollout_fraction=rollout_fraction, vla_bucket=vla_bucket, warnings=warns)
+                rollout_fraction=rollout_fraction, vla_bucket=vla_bucket,
+                carry_model_used=carry_model, rollout_model_used=rollout_model,
+                warnings=warns)
+
+def _vla_bucket_rollout(vla_c, ball_speed, carry, backspin):
+    """Improved VLA-bucket rollout with spin correction."""
+    if vla_c < 1:      base, bucket = 0.65, "vla<1°"
+    elif vla_c < 3:    base, bucket = 0.45, "1°≤vla<3°"
+    elif vla_c < 6:    base, bucket = 0.30, "3°≤vla<6°"
+    elif vla_c < 10:   base, bucket = 0.18, "6°≤vla<10°"
+    elif vla_c < 15:   base, bucket = 0.12, "10°≤vla<15°"
+    elif vla_c < 22:   base, bucket = 0.07, "15°≤vla<22°"
+    elif vla_c < 35:   base, bucket = 0.03, "22°≤vla<35°"
+    elif vla_c < 50:   base, bucket = 0.01, "35°≤vla<50°"
+    else:              base, bucket = 0.00, "vla≥50°"
+    speed_adj = (0.55 if ball_speed < 40 else 0.80 if ball_speed < 80
+                 else 1.05 if ball_speed >= 130 else 1.00)
+    spin_roll_factor = 1.0
+    if backspin is not None:
+        spin_roll_factor = max(0.25, min(1.15, 1.0 - (backspin - 3000) / 10000))
+    frac = max(0.0, min(0.85, base * speed_adj * spin_roll_factor))
+    yards = carry * frac
+    return yards, frac, bucket, f"vla_bucket_spin_adj"
 
 # ── Estimated spin ────────────────────────────────────────────────────────────
-def estimate_spin(ball_speed, vla, hla, club_path):
-    """Estimate backspin, sidespin and spin axis from launch parameters."""
-    warns = ["Backspin ESTIMATED from speed+VLA model.",
+def _piecewise_backspin(vla):
+    """Piecewise linear interpolation: VLA (degrees) → base backspin (rpm)."""
+    table = [(0,1800),(5,2200),(10,2600),(15,3200),(20,4200),
+             (30,5800),(40,7200),(50,8700),(60,10500),(65,11200)]
+    if vla <= table[0][0]: return table[0][1]
+    if vla >= table[-1][0]: return table[-1][1]
+    for i in range(len(table)-1):
+        v0,s0 = table[i]; v1,s1 = table[i+1]
+        if v0 <= vla <= v1:
+            return s0 + (vla-v0)/(v1-v0)*(s1-s0)
+    return 4200.0
+
+def estimate_spin(ball_speed, vla, hla, club_path, smash=None):
+    """Estimate backspin/sidespin from VLA/speed/smash piecewise model."""
+    warns = ["Backspin ESTIMATED from VLA/speed/smash piecewise model.",
              "Sidespin ESTIMATED from HLA/path difference."]
     if ball_speed is None or ball_speed <= 0:
         warns.append("Spin estimate unavailable: missing ball speed.")
         return dict(backspin=None, sidespin=None, sidespin_display="—",
                     spin_axis=None, spin_axis_display="—", method="unavailable",
+                    backspin_base=None, backspin_smash_adj=1.0, backspin_speed_adj=1.0,
                     warnings=warns)
     vla_eff = vla if vla is not None else 15.0
     if vla is None: warns.append("VLA unavailable — backspin uses default VLA=15°.")
 
-    vla_mult = (0.60 if vla_eff < 5 else 0.80 if vla_eff < 10 else
-                1.00 if vla_eff < 20 else 1.20 if vla_eff < 30 else 1.35)
-    raw_bs = (800 + 90 * ball_speed + 120 * vla_eff) * vla_mult
-    backspin = max(300, min(9000, raw_bs))
+    base = _piecewise_backspin(vla_eff)
 
-    method = "unavailable_sidespin"
+    # Smash adjustment: higher smash → lower spin
+    smash_adj = 1.0
+    if smash is not None and smash > 0:
+        smash_adj = max(0.75, min(1.25, 1.0 + (1.30 - smash) * 0.35))
+        if smash_adj < 0.95:
+            warns.append(f"Backspin reduced by smash={smash:.2f} (adj={smash_adj:.2f}).")
+
+    # Speed adjustment
+    if vla_eff < 20:
+        speed_adj = max(0.75, min(1.15, 1.0 - (ball_speed - 70) * 0.003))
+    else:
+        speed_adj = max(0.85, min(1.15, 1.0 - (ball_speed - 80) * 0.0015))
+
+    backspin = max(1200, min(11500, base * smash_adj * speed_adj))
+
     if hla is not None and club_path is not None:
         ftp = hla - club_path
         sidespin = max(-4000, min(4000, ftp * 200 * (ball_speed / 100)))
-        method = "hla_minus_path"
+        method = "vla_speed_smash_piecewise_sidespin_hla_minus_path"
     elif hla is not None:
         sidespin = max(-4000, min(4000, hla * 150 * (ball_speed / 100)))
         warns.append("Club path unavailable — sidespin from HLA only.")
-        method = "hla_only"
+        method = "vla_speed_smash_piecewise_sidespin_hla_only"
     else:
         sidespin = None
         warns.append("HLA unavailable — sidespin unavailable.")
+        method = "vla_speed_smash_piecewise_sidespin_unavailable"
 
     spin_axis = (math.degrees(math.atan2(sidespin, backspin))
                  if sidespin is not None else None)
     return dict(backspin=backspin, sidespin=sidespin,
                 sidespin_display=format_spin_lr(sidespin),
                 spin_axis=spin_axis, spin_axis_display=format_lr(spin_axis),
-                method=method, warnings=warns)
+                method=method, backspin_base=base,
+                backspin_smash_adj=smash_adj, backspin_speed_adj=speed_adj,
+                warnings=warns)
 
 # ── Club path (image-space) ───────────────────────────────────────────────────
 def estimate_club_path(club_obs, zero_deg, impact):
@@ -2126,14 +2327,39 @@ def estimate_club_path(club_obs, zero_deg, impact):
                 warnings=["Club path is image-space estimate only."])
 
 # ── Face angle (bbox heuristic — pixel data not available in Python) ──────────
-def estimate_face_angle(club_obs, zero_deg, impact, club_path_angle):
-    """Face angle via bounding-box longest-axis heuristic."""
+def estimate_face_angle(club_obs, zero_deg, impact, club_path_angle, ball_hla=None):
+    """Face angle using ball HLA as strong prior, bbox heuristic as refinement."""
+    _MAX_FACE_DEV = 25.0  # max degrees from prior allowed
+
+    # Compute face prior: ball HLA is the strongest signal
+    if ball_hla is not None and club_path_angle is not None:
+        face_prior = 0.85 * ball_hla + 0.15 * club_path_angle
+        prior_src  = "ball_hla_0.85_path_0.15"
+    elif ball_hla is not None:
+        face_prior = ball_hla
+        prior_src  = "ball_hla_only"
+    elif club_path_angle is not None:
+        face_prior = club_path_angle
+        prior_src  = "club_path_only"
+    else:
+        face_prior = 0.0
+        prior_src  = "none"
+
+    warns = [f"Face prior: {prior_src} = {face_prior:.1f}°"]
+
     near = [o for o in club_obs
             if o.get("found") and o.get("bbox") and o.get("idx", 9999) <= impact]
     if not near:
-        return dict(angle=None, display="—", ftp=None, ftp_display="—",
-                    confidence="unavailable", method="no_bbox",
-                    warnings=["Face angle unavailable: no bbox near impact."])
+        # Use prior as fallback — no bbox at all
+        warns.append("Face angle: no bbox near impact — using ball HLA prior.")
+        ftp = (face_prior - club_path_angle) if club_path_angle is not None else None
+        return dict(angle=face_prior if ball_hla is not None else None,
+                    display=format_lr(face_prior) if ball_hla is not None else "—",
+                    ftp=ftp, ftp_display=format_lr(ftp),
+                    confidence="ball_hla_prior_fallback" if ball_hla is not None else "unavailable",
+                    method="ball_hla_prior_fallback",
+                    warnings=warns + ["Face estimated from ball HLA prior because image face detection was unreliable."])
+
     co = min(near, key=lambda o: abs(o["idx"] - impact))
     bbx, bby, bbw, bbh = co["bbox"]
     bbox_w_px = bbw * W; bbox_h_px = bbh * H
@@ -2145,12 +2371,27 @@ def estimate_face_angle(club_obs, zero_deg, impact, club_path_angle):
     fd_x = math.cos(face_rad); fd_y = math.sin(face_rad)
     fwd = fd_x*ref_x + fd_y*ref_y
     lat = fd_x*perp_x + fd_y*perp_y
-    face_angle = math.degrees(math.atan2(lat, fwd))
+    raw_face = math.degrees(math.atan2(lat, fwd))
+
+    # Clamp to within _MAX_FACE_DEV degrees of prior
+    dev = raw_face - face_prior
+    # Normalize to (-180, 180]
+    dev = (dev + 180) % 360 - 180
+    if abs(dev) > _MAX_FACE_DEV:
+        clamped_face = face_prior + math.copysign(_MAX_FACE_DEV, dev)
+        warns.append(f"Face bbox angle {raw_face:.1f}° was {abs(dev):.1f}° from prior {face_prior:.1f}° — clamped.")
+        face_angle = clamped_face
+        method = "bbox_aspect_ratio_prior_clamped"
+    else:
+        face_angle = raw_face
+        method = "bbox_aspect_ratio"
+
     ftp = (face_angle - club_path_angle) if club_path_angle is not None else None
     return dict(angle=face_angle, display=format_lr(face_angle),
                 ftp=ftp, ftp_display=format_lr(ftp),
-                confidence="low_bbox_heuristic", method="bbox_aspect_ratio",
-                warnings=["Face angle is a rough bbox-aspect heuristic. Very low confidence."])
+                confidence="low_bbox_heuristic", method=method,
+                prior=face_prior, prior_src=prior_src,
+                warnings=warns + ["Face angle is a rough bbox heuristic guided by ball HLA prior."])
 
 # ── Clubface debug figure ─────────────────────────────────────────────────────
 def _clubface_roi_norm(ball_cx, ball_cy, ball_dia, co_best, fa):
@@ -2291,13 +2532,19 @@ def _face_angle_info(face_result, zero_deg, fa):
     deg = math.degrees(math.atan2(lat, fwd))
     return dict(angle_deg=deg, display=format_lr(deg), angle_rad_used=angle_rad)
 
-def generate_clubface_debug(track_results, club_obs, metrics, impact, fa, p):
+def generate_clubface_debug(track_results, club_obs, metrics, impact, fa, p, fallback_impact=None):
     """Save clubface_debug.png + face_debug.json. Graceful no-crash on any missing data."""
     if not metrics:
         print("Clubface debug: no metrics — run tracker first."); return
 
     frame_i = fa.face_frame if fa.face_frame is not None else (impact + fa.face_frame_offset)
     frame_i = max(0, min(N - 1, frame_i))
+    face_frame_reason = "manual_override" if fa.face_frame is not None else "detectedImpactFrameIndex_plus_one"
+    print(f"Clubface detection frame: {frame_i}")
+    print(f"Clubface frame reason: {face_frame_reason}")
+    print(f"  detectedImpactFrameIndex: {impact}")
+    if fallback_impact is not None:
+        print(f"  fallbackImpactFrameIndex: {fallback_impact}")
 
     ball_cx = ball_cy = ball_dia = None
     if track_results:
@@ -2459,7 +2706,9 @@ def generate_clubface_debug(track_results, club_obs, metrics, impact, fa, p):
         _save_clubface_mask_debug(frame_i, gray_crop, excl, face_result, x0r, y0r, fa)
 
     _save_face_debug_json(frame_i, impact, ball_cx, ball_cy, ball_dia,
-                          roi, face_result, ainfo, metrics, p, fa)
+                          roi, face_result, ainfo, metrics, p, fa,
+                          fallback_impact=fallback_impact,
+                          face_frame_reason=face_frame_reason)
 
 def _clubface_failure_fig(frame_i, reason):
     fig2, ax = plt.subplots(figsize=(10, 6), facecolor="#111")
@@ -2497,11 +2746,16 @@ def _save_clubface_mask_debug(frame_i, gray_crop, excl, face_result, x0r, y0r, f
     print(f"Saved: {out_png}")
 
 def _save_face_debug_json(frame_i, impact, ball_cx, ball_cy, ball_dia,
-                           roi, face_result, ainfo, metrics, p, fa):
+                           roi, face_result, ainfo, metrics, p, fa,
+                           fallback_impact=None, face_frame_reason="detectedImpactFrameIndex_plus_one"):
     cp_ = (metrics or {}).get("club_path", {})
     payload = dict(
         schema="ballstrike.face_debug.v1",
-        frameIndex=frame_i, impactFrameIndex=impact,
+        frameIndex=frame_i, faceFrameIndex=frame_i,
+        faceFrameReason=face_frame_reason,
+        detectedImpactFrameIndex=impact,
+        fallbackImpactFrameIndex=fallback_impact,
+        impactFrameIndex=impact,
         zeroDegreeAngleDegrees=p.get("zero_deg", 0.0),
         faceDetectionMethod=fa.face_method,
         faceAngleNormalMode=fa.face_angle_normal_mode,
@@ -2540,7 +2794,7 @@ def _save_face_debug_json(frame_i, impact, ball_cx, ball_cy, ball_dia,
 def _club_roi(ball_center, ball_dia, p):
     cx, cy = ball_center
     rw = ball_dia*p["club_roi_x"]; rh = ball_dia*p["club_roi_y"]
-    if p.get("club_behind",1.0) >= 0.5: cx -= rw*0.30  # expanded: was 0.22
+    if p.get("club_behind",1.0) >= 0.5: cx -= rw*0.40  # further behind ball (was 0.30)
     x0=max(0,cx-rw/2); y0=max(0,cy-rh/2)
     x1=min(1,cx+rw/2); y1=min(1,cy+rh/2)
     return (x0, y0, max(0,x1-x0), max(0,y1-y0))
@@ -2672,56 +2926,163 @@ def calc_club_metrics(club_obs, ball3d, impact, p):
     fx, fy = focal_lengths(p)
     points = []
     for o in club_obs:
-        if o.get("found") and o["idx"] <= impact:
+        # Include impact+1 frame: club is still near impact speed one frame later
+        if o.get("found") and o["idx"] <= impact + 1:
             x = o.get("lead_x", o.get("cx")); y = o.get("lead_y", o.get("cy"))
             if x is None or y is None: continue
             points.append(dict(idx=o["idx"], t=rel_times[o["idx"]],
                                pos=image_point_to_3d(x,y,depth,fx,fy), conf=o.get("conf",0)))
     if len(points) < 2:
         return dict(club_speed=None,points=len(points),quality=0,method="not_enough_data",
-                    warnings=warns+["Not enough club points."],speed_frames=[p["idx"] for p in points])
+                    warnings=warns+["Not enough club points (need ≥ 2)."],speed_frames=[p["idx"] for p in points])
     vel, method = fit_velocity(points)
     if vel is None:
         return dict(club_speed=None,points=len(points),quality=0,method=method,
                     warnings=warns,speed_frames=[p["idx"] for p in points])
+    if len(points) == 2:
+        method = "two_point_club_speed"
+        warns.append("Club speed computed from 2 points (lower confidence).")
     speed = float(np.linalg.norm(vel)) * 2.23694
     avg_conf = sum(p_["conf"] for p_ in points)/len(points)
-    print(f"Club speed: {speed:.1f} mph ({len(points)} pts)")
+    quality = min(1.0, len(points)/6) * avg_conf * (0.45 if len(points) == 2 else 0.65)
+    print(f"Club speed: {speed:.1f} mph ({len(points)} pts, method={method})")
     return dict(club_speed=speed, points=len(points),
-                quality=min(1.0,len(points)/6)*avg_conf*0.65,
-                method=method, warnings=warns, speed_frames=[p_["idx"] for p_ in points])
+                quality=quality, method=method,
+                warnings=warns, speed_frames=[p_["idx"] for p_ in points])
 
 def compute_metrics_and_club(frames_norm, results, impact, p):
     ball3d = ball_3d_observations(results, p)
     ball = calc_ball_metrics(ball3d, impact, p=p)
+
+    # ── Trained VLA model override ────────────────────────────────────────────
+    vla_mode = p.get("vla_model", "pinhole2dsize")
+    vla_model_result = None
+    if vla_mode == "trainedmodel" and _RUNTIME_VLA_MODEL is not None:
+        mdl_dict, mdl_path = _RUNTIME_VLA_MODEL
+        # Use same post-impact filter as calc_ball_metrics
+        raw_post = [o for o in sorted(ball3d, key=lambda x: x["idx"]) if o["idx"] > impact][:6]
+        post_filt, _ = _filter_metric_points(raw_post, p)
+        n_tracked = sum(1 for r in results if r.get("chosen") is not None)
+        feats = _compute_shot_vla_features(post_filt, ball, _RUNTIME_GROUND_CAL, N, n_tracked, impact)
+        raw_vla, clamped_vla, feat_vals, mdl_warns = _predict_vla_trained(feats, mdl_dict)
+
+        ball["vla_legacy"]             = ball["vla"]
+        ball["vla_pinhole"]            = ball["vla"]
+        ball["vla_trained_model"]      = clamped_vla
+        ball["vla_trained_raw"]        = raw_vla
+        ball["vla_final"]              = clamped_vla
+        ball["vla"]                    = clamped_vla   # downstream metrics use this
+        ball["vla_model_used"]         = "trainedModel"
+        ball["vla_model_file"]         = mdl_path
+        ball["vla_model_type"]         = mdl_dict.get("modelType")
+        ball["vla_model_features_used"]= mdl_dict.get("featureSearchTopSubset",
+                                                       list(feat_vals.keys())[:5])
+        ball["vla_model_feature_values"]= feat_vals
+        ball["vla_model_warnings"]     = mdl_warns
+        ball["vla_model_metrics"]      = mdl_dict.get("metrics", {})
+        ball["vla_was_clamped"]        = abs(raw_vla - clamped_vla) > 0.01
+        vla_model_result = ball
+
+        top_feats = mdl_dict.get("featureSearchTopSubset", list(feat_vals.keys())[:3])
+        print(f"\nVLA MODEL PREDICTION")
+        print(f"  model:      trainedModel")
+        print(f"  file:       {mdl_path}")
+        print(f"  prediction: {clamped_vla:.1f}° (raw: {raw_vla:.1f}°)"
+              f"{'  [CLAMPED]' if ball['vla_was_clamped'] else ''}")
+        print(f"  features used:")
+        for fn in top_feats:
+            v = feat_vals.get(fn)
+            print(f"    {fn} = {v:.5f}" if v is not None else f"    {fn} = missing")
+        if mdl_warns:
+            print(f"  warnings: {'; '.join(mdl_warns)}")
+    elif vla_mode == "trainedmodel" and _RUNTIME_VLA_MODEL is None:
+        ball["vla_legacy"]       = ball["vla"]
+        ball["vla_trained_model"]= None
+        ball["vla_final"]        = ball["vla"]
+        ball["vla_model_used"]   = "trainedModel_unavailable_fallback_pinhole2dsize"
+        ball["vla_model_warnings"] = ["vla_model.json not found — fallback to pinhole2dsize."]
+        ball["vla_model_file"]   = None
+        ball["vla_model_feature_values"] = {}
+        ball["vla_model_metrics"] = {}
+        ball["vla_model_features_used"] = []
+        print("[VLA model] WARNING: trainedmodel selected but vla_model.json not found; using pinhole2dsize VLA.")
+    else:
+        ball["vla_legacy"]       = ball["vla"]
+        ball["vla_trained_model"]= None
+        ball["vla_final"]        = ball["vla"]
+        ball["vla_model_used"]   = vla_mode
+        ball["vla_model_file"]   = None
+        ball["vla_model_feature_values"] = {}
+        ball["vla_model_warnings"] = []
+        ball["vla_model_metrics"] = {}
+        ball["vla_model_features_used"] = []
+
     club_obs = run_club_tracker(frames_norm, results, impact, p)
     club = calc_club_metrics(club_obs, ball3d, impact, p)
-    smash = None
-    if ball["ball_speed"] and club["club_speed"] and club["club_speed"] > 0:
-        smash = ball["ball_speed"] / club["club_speed"]
 
+    # Part C: cap smash factor at 1.50
+    raw_smash = None
+    smash     = None
+    smash_clamped = False
+    if ball["ball_speed"] and club["club_speed"] and club["club_speed"] > 0:
+        raw_smash = ball["ball_speed"] / club["club_speed"]
+        smash = min(1.50, raw_smash)
+        smash_clamped = raw_smash > 1.50
+
+    club_path = estimate_club_path(club_obs, p.get("zero_deg", 0), impact)
+    # Part K: pass ball HLA as prior to face estimator
+    face      = estimate_face_angle(club_obs, p.get("zero_deg", 0), impact,
+                                    club_path["angle"], ball_hla=ball.get("hla"))
+    # Part D: pass smash to spin estimator
+    spin      = estimate_spin(ball["ball_speed"], ball["vla"], ball["hla"],
+                              club_path["angle"], smash=smash)
+    spin["vla_used_source"] = ball.get("vla_model_used", vla_mode)
+
+    # Part I: use flight model for carry/rollout if available
     ccf = p.get("carry_correction_factor", 0.75)
     dist = estimate_distance(ball["ball_speed"], ball["vla"], ball["hla"],
-                             carry_correction_factor=ccf)
-    club_path = estimate_club_path(club_obs, p.get("zero_deg", 0), impact)
-    face      = estimate_face_angle(club_obs, p.get("zero_deg", 0), impact,
-                                    club_path["angle"])
-    spin      = estimate_spin(ball["ball_speed"], ball["vla"], ball["hla"],
-                              club_path["angle"])
+                             carry_correction_factor=ccf,
+                             flight_model=_RUNTIME_FLIGHT_MODEL,
+                             backspin=spin.get("backspin"))
+    dist["vla_used"]        = ball["vla"]
+    dist["vla_used_source"] = ball.get("vla_model_used", vla_mode)
 
     warnings = sorted(set(ball["warnings"] + club["warnings"] + dist["warnings"] +
                           spin["warnings"] + club_path["warnings"] + face["warnings"] +
                           ["Experimental FOV calibration is estimated."]))
     fmt = lambda v,s="",d=1: "—" if v is None else f"{v:.{d}f}{s}"
+    vla_src = ball.get("vla_model_used", vla_mode)
+    if _RUNTIME_FLIGHT_MODEL:
+        fm = _RUNTIME_FLIGHT_MODEL
+        print(f"\nFLIGHT MODEL")
+        print(f"  model file: {fm.get('_path', fm.get('sourceCsv','?'))}")
+        print(f"  carry model: {fm['carryModel'].get('type','?')}  "
+              f"LOO MAE={fm.get('metrics',{}).get('carry_mae','?')} yd")
+        print(f"  roll model:  {fm['rollModel'].get('type','?')}  "
+              f"LOO MAE={fm.get('metrics',{}).get('roll_mae','?')} yd")
+        print(f"  carry: {fmt(dist['carry'],' yd',0)}  rollout: {fmt(dist.get('rollout_yards'),' yd',0)}"
+              f"  total: {fmt(dist['total'],' yd',0)}")
+    print(f"\nDOWNSTREAM METRICS USING FINAL VLA")
+    print(f"  final VLA: {fmt(ball['vla'],'°')}  source: {vla_src}")
     print(f"Ball: {fmt(ball['ball_speed'],' mph')} HLA={format_lr(ball['hla'])} VLA={fmt(ball['vla'],'°')}")
-    print(f"Club: {fmt(club['club_speed'],' mph')}  Smash: {fmt(smash,'',2)}")
-    print(f"Carry: {fmt(dist['carry'],' yd',0)} (ideal={fmt(dist['ideal_carry'],' yd',0)} × cf={ccf:.2f})"
-          f"  Total: {fmt(dist['total'],' yd',0)}")
-    print(f"Backspin(est): {fmt(spin['backspin'],' rpm',0)}  "
-          f"Sidespin: {spin['sidespin_display']}  SpinAxis: {spin['spin_axis_display']}")
-    print(f"ClubPath(est): {club_path['display']}  Face(est): [PCA pending...]")
+    smash_str = f"{smash:.2f}" if smash else "—"
+    if smash_clamped:
+        smash_str += f" (raw={raw_smash:.2f} CLAMPED)"
+    fm_src = ("flight_model" if _RUNTIME_FLIGHT_MODEL else "physics_formula")
+    print(f"Club: {fmt(club['club_speed'],' mph')}  Smash: {smash_str}")
+    print(f"Carry: {fmt(dist['carry'],' yd',0)}  Total: {fmt(dist['total'],' yd',0)}"
+          f"  [{fm_src}]")
+    bs = spin.get("backspin")
+    print(f"Backspin(est): {fmt(bs,' rpm',0)}  "
+          f"[base={fmt(spin.get('backspin_base'),' rpm',0)}  "
+          f"smashAdj={spin.get('backspin_smash_adj',1.0):.2f}  "
+          f"speedAdj={spin.get('backspin_speed_adj',1.0):.2f}]")
+    print(f"Sidespin: {spin['sidespin_display']}  SpinAxis: {spin['spin_axis_display']}")
+    print(f"ClubPath(est): {club_path['display']}  Face(est): {face.get('display','—')}  "
+          f"[prior={fmt(face.get('prior'),'°')} src={face.get('prior_src','')}]")
     return dict(ball3d=ball3d, ball=ball, club_obs=club_obs, club=club,
-                smash=smash, distance=dist, spin=spin, club_path=club_path,
+                smash=smash, raw_smash=raw_smash, smash_clamped=smash_clamped,
+                distance=dist, spin=spin, club_path=club_path,
                 face_angle=face, warnings=warnings)
 
 def write_python_metrics_json(results, metrics, impact, fallback, reason):
@@ -2769,7 +3130,9 @@ def write_python_metrics_json(results, metrics, impact, fallback, reason):
             edgeRejected=r.get("edge_rejected", False),
             excludedFromMetricsEdge=r.get("excluded_from_metrics_edge", False),
             edgeRejectReason=r.get("edge_reject_reason"),
-            edgeBounds=r.get("edge_bounds")))
+            edgeBounds=r.get("edge_bounds"),
+            strictImpactDiameterGateTriggered=r.get("strict_impact_dia_gate_triggered", False),
+            preImpactMedianDiameter=r.get("preImpactMedianDiameter")))
     b_ = metrics["ball"]; dist_ = metrics["distance"]
     spin_ = metrics.get("spin", {}); cp_ = metrics.get("club_path", {})
     fa_ = metrics.get("face_angle", {})
@@ -2794,11 +3157,24 @@ def write_python_metrics_json(results, metrics, impact, fallback, reason):
                      hlaLateralComponent=b_.get("hla_lateral"),
                      ballMovementVector2D=({"dx": bm_dx, "dy": bm_dy}
                                           if bm_dx is not None and bm_dy is not None else None),
+                     # VLA — all variants
                      vlaDegrees=b_["vla"],
+                     vlaFinalDegrees=b_.get("vla_final", b_["vla"]),
+                     vlaLegacyDegrees=b_.get("vla_legacy"),
+                     vlaPinhole2DSizeDegrees=b_.get("vla_pinhole"),
+                     vlaTrainedModelDegrees=b_.get("vla_trained_model"),
+                     vlaModelUsed=b_.get("vla_model_used", b_.get("vla_model","legacy")),
+                     vlaModelFile=b_.get("vla_model_file"),
+                     vlaModelType=b_.get("vla_model_type"),
+                     vlaModelFeaturesUsed=b_.get("vla_model_features_used", []),
+                     vlaModelFeatureValues=b_.get("vla_model_feature_values", {}),
+                     vlaModelWarnings=b_.get("vla_model_warnings", []),
+                     vlaModelMetrics=b_.get("vla_model_metrics", {}),
+                     vlaWasClamped=b_.get("vla_was_clamped", False),
+                     # Legacy debug fields
                      vlaRaw3DDegrees=b_.get("vla_3d"),
                      vlaDiameterEstDegrees=b_.get("vla_diam_est"),
                      diameterGrowthFraction=b_.get("diam_growth"),
-                     vlaModel=b_.get("vla_model","legacy"),
                      vlaPinholeDebug=b_.get("pinhole_debug"),
                      clubSpeedMph=metrics["club"]["club_speed"], smashFactor=metrics["smash"],
                      idealCarryYards=dist_.get("ideal_carry"),
@@ -2808,12 +3184,19 @@ def write_python_metrics_json(results, metrics, impact, fallback, reason):
                      rolloutFraction=dist_.get("rollout_fraction"),
                      vlaBucket=dist_.get("vla_bucket"),
                      totalYards=dist_["total"],
+                     # Distance with VLA source
+                     distanceVLAUsed=dist_.get("vla_used"),
+                     distanceVLAUsedSource=dist_.get("vla_used_source"),
+                     carryYardsUsingFinalVLA=dist_["carry"],
+                     rolloutYardsUsingFinalVLA=dist_.get("rollout_yards"),
+                     totalYardsUsingFinalVLA=dist_["total"],
                      estimatedBackspinRpm=spin_.get("backspin"),
                      estimatedSidespinRpmSigned=spin_.get("sidespin"),
                      estimatedSidespinDisplay=spin_.get("sidespin_display","—"),
                      estimatedSpinAxisDegreesSigned=spin_.get("spin_axis"),
                      estimatedSpinAxisDisplay=spin_.get("spin_axis_display","—"),
                      spinEstimateMethod=spin_.get("method","unavailable"),
+                     spinVLAUsedSource=spin_.get("vla_used_source"),
                      clubPathDegreesSigned=cp_.get("angle"),
                      clubPathDisplay=cp_.get("display","—"),
                      estimatedFaceAngleDegreesSigned=fa_.get("angle"),
@@ -2852,6 +3235,10 @@ def write_python_metrics_json(results, metrics, impact, fallback, reason):
             nearImpactDiamGuardRejectedCount=_last_tracking_stats.get("nearImpactDiamGuardRejectedCount", 0),
             edgeRejectedCount=_last_tracking_stats.get("edgeRejectedCount", 0),
             edgeRejectedFrames=_last_tracking_stats.get("edgeRejectedFrames", []),
+            strictImpactDiameterGateTriggeredCount=_last_tracking_stats.get("strictImpactDiameterGateTriggeredCount", 0),
+            strictImpactDiameterRejectedFrames=_last_tracking_stats.get("strictImpactDiameterRejectedFrames", []),
+            preImpactMedianDiameter=_last_tracking_stats.get("preImpactMedianDiameter"),
+            impactFrameMaxDiameterGrowthRatio=params.get("strict_impact_max_diam_growth", 1.25),
             faceFrameOffset=int(_face_args.face_frame_offset),
             detectedImpactReason=reason,
         ),
@@ -2890,7 +3277,7 @@ params = dict(
     move_thresh=0.006, confirm_frames=2, stable_window=10,
     fov_x=70.0, fov_y=45.0, ball_diam_m=0.04267,
     club_enabled=1.0, club_behind=1.0, club_exclusion=1.8,
-    club_roi_x=8.0, club_roi_y=6.0, club_use_diff=1.0,
+    club_roi_x=10.0, club_roi_y=7.5, club_use_diff=1.0,
     club_diff=34, club_dark=85, club_edge_thresh=20,
     club_min_area=5, club_max_area=6000, club_min_conf=0.20, club_stride=2,
     club_mode="frameDiff",
@@ -3100,6 +3487,9 @@ params = dict(
     final_edge_margin_norm=0.012,
     final_edge_radius_margin_scale=1.00,
     exclude_edge_ball_from_metrics=1.0,
+    # Strict impact frame diameter gate
+    enable_strict_impact_dia_gate=1.0,
+    strict_impact_max_diam_growth=1.25,
 )
 
 # Override vla_model from CLI arg
@@ -3131,6 +3521,2453 @@ def club_window():
     start = max(0, detected_impact-10)
     end   = min(N-1, detected_impact+1)
     return list(range(start, end+1))
+
+# ── Ground calibration helpers ────────────────────────────────────────────────
+
+def _load_shot_folder(folder):
+    """Load frames + metadata from a ShotExport folder. Returns (frames_norm, imp, locked, rel_times_arr) or None."""
+    global W, H, N, rel_times
+    png_paths = sorted(glob.glob(os.path.join(folder, "frame_*.png")))
+    if not png_paths:
+        return None
+    frames = [np.array(Image.open(p).convert("RGB")) for p in png_paths]
+    H_, W_ = frames[0].shape[:2]
+    n = len(frames)
+    meta_path = os.path.join(folder, "metadata.json")
+    meta = {}; imp = 20; fps = 240.0; locked = (0.45, 0.45, 0.10, 0.10)
+    if os.path.exists(meta_path):
+        meta = json.load(open(meta_path))
+        imp = meta.get("impact_frame_index", meta.get("detected_impact_frame_index", imp))
+        fps = float(meta.get("fps_estimate", fps) or fps)
+        if "locked_ball_rect" in meta:
+            r = meta["locked_ball_rect"]
+            locked = (r["x"], r["y"], r["width"], r["height"])
+    ts = [{"frame_index": i, "timestamp": i/fps, "relative_time": (i-imp)/fps} for i in range(n)]
+    ts_path = os.path.join(folder, "timestamps.json")
+    if os.path.exists(ts_path):
+        tsd = json.load(open(ts_path))
+        tsi = tsd.get("timestamps", tsd if isinstance(tsd, list) else [])
+        tsb = {int(t.get("frame_index", t.get("frameIndex", ii))): t for ii, t in enumerate(tsi)}
+        for ii in range(n):
+            tt = tsb.get(ii)
+            if tt:
+                ts[ii] = {"frame_index": ii,
+                    "timestamp": float(tt.get("timestamp", ii/fps)),
+                    "relative_time": float(tt.get("relative_time", tt.get("relativeTime", (ii-imp)/fps)))}
+    W = W_; H = H_; N = n
+    rel_times = np.array([t["relative_time"] for t in ts], dtype=float)
+    frames_norm = [normalize(f, "darkened") for f in frames]
+    return frames_norm, imp, locked, rel_times.copy()
+
+def _collect_calib_samples(results, det_imp, shot_name, rt):
+    """Extract valid ground-roll ball samples from tracking results."""
+    samples = []
+    for r in results:
+        if not r.get("chosen"): continue
+        if r["idx"] <= det_imp: continue           # only post-impact
+        if r.get("likely_merged_club_ball"): continue
+        if r.get("excluded_from_metrics_merged"): continue
+        if r.get("edge_rejected"): continue
+        if r.get("excluded_from_metrics_edge"): continue
+        c = r["chosen"]
+        reason = (c.get("reason") or "")
+        bad_reasons = ("rejected_partial_offscreen", "rejected_edge", "rejected_line_like",
+                       "rejected_near_impact", "rejected_outside_cone", "rejected_prediction_rescue_edge")
+        if any(b in reason for b in bad_reasons): continue
+        final_dia = r.get("final_dia")
+        if not final_dia or final_dia <= 0: continue
+        mc = r.get("mask_center")
+        cx = mc[0] if mc else c["cx"]
+        cy = mc[1] if mc else c["cy"]
+        ri = r["idx"]
+        rt_val = float(rt[ri]) if ri < len(rt) else float(ri - det_imp) / 240.0
+        samples.append({"u": float(cx), "v": float(cy),
+                         "diameter": float(final_dia), "radius": float(final_dia / 2.0),
+                         "confidence": float(c.get("conf", 1.0)),
+                         "sourceShotName": shot_name, "frameIndex": int(ri),
+                         "relativeTime": rt_val,
+                         "maskWhitePixelCount": int(r.get("mask_count", 0)),
+                         "maskFillRatio": float(r.get("mask_fill_ratio") or 0),
+                         "maskAspectRatio": float(r.get("mask_aspect_ratio") or 1.0)})
+    return samples
+
+def idw_expected_diameter(u, v, samples, k=12, power=2.0, max_dist=0.25):
+    """Inverse-distance weighted interpolation for expected ground ball diameter."""
+    if len(samples) < 3:
+        return None, 0.0
+    pts  = np.array([[s["u"], s["v"]] for s in samples])
+    dias = np.array([s["diameter"] for s in samples])
+    dists = np.sqrt((pts[:, 0] - u)**2 + (pts[:, 1] - v)**2)
+    near_mask = dists <= max_dist
+    if not np.any(near_mask):
+        return None, 0.0
+    near_dists = dists[near_mask]; near_dias = dias[near_mask]
+    order = np.argsort(near_dists); k_actual = min(k, len(near_dists))
+    nd = near_dists[order[:k_actual]]; ndia = near_dias[order[:k_actual]]
+    if nd[0] < 1e-9:
+        return float(ndia[0]), 1.0
+    w = 1.0 / (nd ** power)
+    est = float(np.sum(w * ndia) / np.sum(w))
+    conf = min(1.0, k_actual / 30.0) * min(1.0, 1.0 - nd[0] / max_dist)
+    return est, max(0.0, conf)
+
+# ── Ground-roll calibration helpers ───────────────────────────────────────────
+
+def _ground_roll_params(base_p):
+    """Return a copy of params with settings relaxed for ground-roll calibration tracking."""
+    p = dict(base_p)
+    p["sc_term_miss_limit"]          = 6      # allow 6 consecutive misses before termination
+    p["enable_final_edge_ball_filter"] = 0.0  # disable — we want near-edge samples
+    p["final_edge_margin_norm"]      = 0.002  # only exclude if actually fully off-screen
+    p["sc_max_jump"]                 = 0.14   # allow wider search per frame
+    p["sc_jump_by_dia"]              = 6.0
+    p["sc_max_cand_hla"]             = 90.0   # don't restrict HLA for ground rolls
+    p["sc_hard_reject_hla"]          = 0.0
+    p["sc_reacquire_term"]           = 0.0
+    p["sc_straight_resid"]           = 0.040  # looser straight-line constraint on ground
+    p["metric_max_hla"]              = 90.0
+    return p
+
+
+def _idw_full(u, v, samples, k=12, power=2.0, max_dist=0.25):
+    """IDW interpolation returning (diameter, confidence, nearest_dist, k_used)."""
+    if not samples:
+        return None, 0.0, None, 0
+    pts  = np.array([[s["u"], s["v"]] for s in samples])
+    dias = np.array([s["diameter"] for s in samples])
+    wts  = np.array([float(s.get("calibrationSampleWeight", s.get("calibration_sample_weight", 1.0)))
+                     for s in samples])
+    dists = np.sqrt((pts[:, 0] - u)**2 + (pts[:, 1] - v)**2)
+    near  = dists <= max_dist
+    if not np.any(near):
+        return None, 0.0, float(np.min(dists)), 0
+    nd = dists[near]; nd_d = dias[near]; nd_w = wts[near]
+    order = np.argsort(nd); k_actual = min(k, len(nd))
+    nd = nd[order[:k_actual]]; nd_d = nd_d[order[:k_actual]]; nd_w = nd_w[order[:k_actual]]
+    if nd[0] < 1e-9:
+        return float(nd_d[0]), float(nd_w[0]), 0.0, 1
+    iw = nd_w / (nd ** power)
+    est = float(np.sum(iw * nd_d) / np.sum(iw))
+    conf = min(1.0, k_actual / 20.0) * min(1.0, 1.0 - nd[0] / max_dist)
+    return est, max(0.0, conf), float(nd[0]), k_actual
+
+
+# ── Trained VLA model helpers ─────────────────────────────────────────────────
+
+_DEFAULT_VLA_MODEL_PATHS = [
+    "/Users/noahtobias/Downloads/vla_model.json",
+    os.path.join(os.path.expanduser("~"), "Downloads", "vla_model.json"),
+]
+_DEFAULT_GROUND_CAL_PATHS = [
+    "/Users/noahtobias/Downloads/ground_ball_size_calibration.json",
+    os.path.join(os.path.expanduser("~"), "Downloads", "ground_ball_size_calibration.json"),
+]
+
+
+def _auto_load_vla_model(path_override=None):
+    """Load vla_model.json. Returns (model_dict, path) or (None, None)."""
+    paths = ([path_override] if path_override else []) + _DEFAULT_VLA_MODEL_PATHS
+    for p in paths:
+        if not p or not os.path.exists(p): continue
+        try:
+            with open(p) as f: m = json.load(f)
+            if "features" in m and "coefficients" in m and "intercept" in m:
+                mae = m.get("metrics", {}).get("mae", "?")
+                print(f"[VLA model] Loaded: {p}  type={m.get('modelType','?')} "
+                      f"n={m.get('trainingShots','?')} MAE={mae}°")
+                return m, p
+        except Exception as e:
+            print(f"[VLA model] Failed to load {p}: {e}")
+    return None, None
+
+
+def _auto_load_ground_cal(path_override=None):
+    """Load ground calibration JSON for VLA feature computation. Returns dict or None."""
+    paths = ([path_override] if path_override else []) + _DEFAULT_GROUND_CAL_PATHS
+    for p in paths:
+        if not p or not os.path.exists(p): continue
+        try:
+            with open(p) as f: gc = json.load(f)
+            n = len(gc.get("samples", []))
+            if n > 0:
+                print(f"[Ground cal] Loaded for VLA features: {p} ({n} samples)")
+                return gc
+        except Exception as e:
+            print(f"[Ground cal] Failed to load {p}: {e}")
+    return None
+
+
+def _predict_vla_trained(shot_features, model):
+    """Apply saved ridge model to shot features dict.
+    Returns (raw_pred, clamped_pred, feature_values_dict, warnings_list).
+    """
+    import math as _m
+    features   = model["features"]
+    f_means    = model["featureMeans"]
+    f_stds     = model["featureStds"]
+    coef_d     = model["coefficients"]
+    intercept  = float(model["intercept"])
+    medians    = model.get("imputationMedians", {})
+    clamp_rng  = model.get("predictionClamp", [0, 65])
+
+    warns = []; feat_vals = {}; x = []
+    for fn in features:
+        v = shot_features.get(fn)
+        if v is None or (isinstance(v, float) and not _m.isfinite(v)):
+            imputed = medians.get(fn, 0.0)
+            warns.append(f"Feature '{fn}' missing — imputed {imputed:.4f}")
+            v = float(imputed)
+        feat_vals[fn] = float(v)
+        std = max(float(f_stds.get(fn, 1.0)), 1e-10)
+        x.append((float(v) - float(f_means.get(fn, 0.0))) / std)
+
+    coef_arr = np.array([float(coef_d[fn]) for fn in features])
+    raw_pred = float(np.array(x) @ coef_arr + intercept)
+    clamped  = float(np.clip(raw_pred, clamp_rng[0], clamp_rng[1]))
+    if abs(raw_pred - clamped) > 0.01:
+        warns.append(f"Trained VLA {raw_pred:.1f}° clamped to {clamped:.1f}°")
+    return raw_pred, clamped, feat_vals, warns
+
+
+def _compute_shot_vla_features(post_obs, ball_metrics, ground_cal,
+                                n_total_frames, n_tracked_frames, impact_frame):
+    """Compute VLA model features from real-time post-impact observations.
+
+    post_obs: list of dicts from ball_3d_observations filtered to post-impact.
+              Each has: cx, cy, dia/final_dia, t, idx, conf.
+    ball_metrics: dict from calc_ball_metrics (hla, ball_speed).
+    ground_cal: loaded ground calibration dict or None.
+    Returns: feature dict with same column names as training shot summary.
+    """
+    import math as _m
+
+    if not post_obs:
+        return {}
+
+    # Enrich post_obs with ground ratio fields via IDW lookup
+    post_pts = []
+    for obs in post_obs:
+        dia = obs.get("dia") or obs.get("final_dia")
+        pt = dict(
+            cx=obs.get("cx"), cy=obs.get("cy"),
+            diameter_norm=dia,
+            frame_index=obs.get("idx", 0),
+            relative_time=obs.get("t", 0.0),
+            confidence=obs.get("conf", 0.0),
+            radius_norm=(dia / 2.0) if dia else None,
+        )
+        if ground_cal and pt["cx"] is not None and pt["cy"] is not None:
+            samples = ground_cal.get("samples", [])
+            eg_dia, gc_conf, _, _ = _idw_full(pt["cx"], pt["cy"], samples)
+        else:
+            eg_dia, gc_conf = None, None
+        if eg_dia and pt["diameter_norm"]:
+            pt["expected_ground_diameter"] = eg_dia
+            pt["ground_diameter_ratio"]    = pt["diameter_norm"] / eg_dia
+            pt["ground_diameter_excess"]   = pt["diameter_norm"] - eg_dia
+        else:
+            pt["expected_ground_diameter"] = None
+            pt["ground_diameter_ratio"]    = None
+            pt["ground_diameter_excess"]   = None
+        pt["ground_calibration_confidence"] = gc_conf
+        post_pts.append(pt)
+
+    def _vals(key): return [p[key] for p in post_pts if p.get(key) is not None]
+    def _mean(lst): return float(np.mean(lst)) if lst else None
+    def _med(lst):  return float(np.median(lst)) if lst else None
+    def _std(lst):  return float(np.std(lst)) if lst else None
+
+    hla     = ball_metrics.get("hla")
+    spd     = ball_metrics.get("ball_speed")
+    gr_vals = _vals("ground_diameter_ratio")
+    dia_vals= _vals("diameter_norm")
+    cx_vals = _vals("cx"); cy_vals = _vals("cy")
+    gex_vals= _vals("ground_diameter_excess")
+    gc_vals = _vals("ground_calibration_confidence")
+    rt_vals = [p["relative_time"] for p in post_pts]
+    fi_vals = [p["frame_index"]   for p in post_pts]
+
+    feats = {}
+    feats["n_valid_post_points"]             = len(post_pts)
+    feats["impact_frame"]                    = impact_frame
+    feats["hla_degrees"]                     = hla
+    feats["ball_speed_mph"]                  = spd
+    feats["tracked_frames"]                  = n_tracked_frames
+    feats["total_frames"]                    = n_total_frames
+    feats["abs_hla_degrees"]                 = abs(hla) if hla is not None else None
+    feats["mean_ground_calibration_confidence"] = _mean(gc_vals)
+
+    if post_pts:
+        p0 = post_pts[0]; pN = post_pts[-1]
+        feats["first_post_cx"]  = p0["cx"];  feats["first_post_cy"]  = p0["cy"]
+        feats["first_post_dia"] = p0["diameter_norm"]
+        feats["last_post_cx"]   = pN["cx"];  feats["last_post_cy"]   = pN["cy"]
+        feats["last_post_dia"]  = pN["diameter_norm"]
+        feats["first_post_expected_ground_diameter"] = p0.get("expected_ground_diameter")
+        feats["first_post_ground_diameter_ratio"]    = p0.get("ground_diameter_ratio")
+        feats["last_post_expected_ground_diameter"]  = pN.get("expected_ground_diameter")
+        feats["last_post_ground_diameter_ratio"]     = pN.get("ground_diameter_ratio")
+
+    feats["mean_expected_ground_diameter"] = _mean(_vals("expected_ground_diameter"))
+    feats["mean_ground_diameter_ratio"]    = _mean(gr_vals)
+    feats["median_expected_ground_diameter"] = _med(_vals("expected_ground_diameter"))
+    feats["median_ground_diameter_ratio"]   = _med(gr_vals)
+
+    if len(post_pts) >= 2 and gr_vals:
+        feats["ground_ratio_growth"] = (
+            (post_pts[-1].get("ground_diameter_ratio") or 0) -
+            (post_pts[0].get("ground_diameter_ratio") or 0))
+
+    # Geometry stats
+    feats["max_center_x"]      = max(cx_vals) if cx_vals else None
+    feats["min_center_x"]      = min(cx_vals) if cx_vals else None
+    feats["max_center_y"]      = max(cy_vals) if cy_vals else None
+    feats["min_center_y"]      = min(cy_vals) if cy_vals else None
+    feats["center_x_range"]    = (max(cx_vals)-min(cx_vals)) if len(cx_vals)>=2 else None
+    feats["max_diameter_norm"] = max(dia_vals) if dia_vals else None
+    feats["min_diameter_norm"] = min(dia_vals) if dia_vals else None
+    feats["mean_diameter_norm"]= _mean(dia_vals)
+    feats["max_ground_ratio"]  = max(gr_vals) if gr_vals else None
+    feats["min_ground_ratio"]  = min(gr_vals) if gr_vals else None
+    feats["mean_ground_ratio"] = _mean(gr_vals)
+    feats["median_ground_ratio"]= _med(gr_vals)
+    feats["std_ground_ratio"]  = _std(gr_vals)
+    feats["ground_ratio_range"]= (max(gr_vals)-min(gr_vals)) if len(gr_vals)>=2 else None
+    feats["mean_ground_excess"]= _mean(gex_vals)
+    feats["max_ground_excess"] = max(gex_vals) if gex_vals else None
+
+    # Trajectory
+    if len(cx_vals) >= 2:
+        dx_fl = cx_vals[-1] - cx_vals[0]
+        dy_fl = cy_vals[-1] - cy_vals[0]
+        feats["dx_first_last"]              = dx_fl
+        feats["forward_progress_total"]     = dx_fl
+        feats["vertical_image_change_total"]= dy_fl
+        pl = sum(_m.sqrt((cx_vals[i]-cx_vals[i-1])**2+(cy_vals[i]-cy_vals[i-1])**2)
+                 for i in range(1, len(cx_vals)))
+        feats["path_length_norm"] = pl
+        if len(cx_vals) >= 3:
+            sl, si = np.polyfit(cx_vals, cy_vals, 1)
+            resids = [abs(cy_vals[i]-(sl*cx_vals[i]+si)) for i in range(len(cx_vals))]
+            feats["straight_line_slope"]   = float(sl)
+            feats["path_residual_mean"]    = float(np.mean(resids))
+        dur = rt_vals[-1]-rt_vals[0] if len(rt_vals)>=2 else 0.0
+        if dur > 1e-6:
+            feats["x_speed_norm"] = dx_fl / dur
+            feats["y_speed_norm"] = dy_fl / dur
+
+    # Ground ratio slopes
+    if len(gr_vals) >= 2:
+        gr_fi = [fi_vals[i] for i,p in enumerate(post_pts) if p.get("ground_diameter_ratio") is not None]
+        gr_rt = [rt_vals[i] for i,p in enumerate(post_pts) if p.get("ground_diameter_ratio") is not None]
+        fi_arr = np.array(gr_fi); rt_arr = np.array(gr_rt); gr_arr = np.array(gr_vals)
+        if len(fi_arr) >= 2:
+            feats["ground_ratio_slope_over_frame"] = float(np.polyfit(fi_arr, gr_arr, 1)[0])
+        if len(rt_arr) >= 2 and rt_arr[-1] != rt_arr[0]:
+            feats["ground_ratio_slope_over_time"] = float(np.polyfit(rt_arr, gr_arr, 1)[0])
+        feats["early_ground_ratio_slope_1to3"] = (gr_vals[min(2,len(gr_vals)-1)]-gr_vals[0]) / max(1, min(2,len(gr_vals)-1))
+        feats["early_ground_ratio_slope_1to5"] = (gr_vals[min(4,len(gr_vals)-1)]-gr_vals[0]) / max(1, min(4,len(gr_vals)-1))
+        feats["final_minus_initial_ground_ratio"] = gr_vals[-1]-gr_vals[0]
+        feats["ratio_at_first_3_mean"] = _mean(gr_vals[:3])
+        feats["ratio_at_first_5_mean"] = _mean(gr_vals[:5])
+
+    # Diameter slopes
+    if len(dia_vals) >= 2:
+        feats["diameter_growth_ratio"] = dia_vals[-1]/dia_vals[0] if dia_vals[0] else None
+        fi_d = np.array(fi_vals[:len(dia_vals)]); da_d = np.array(dia_vals)
+        if len(fi_d) >= 2:
+            feats["diameter_slope_over_frame"] = float(np.polyfit(fi_d, da_d, 1)[0])
+        feats["early_diameter_slope_1to3"] = (dia_vals[min(2,len(dia_vals)-1)]-dia_vals[0]) / max(1,min(2,len(dia_vals)-1))
+
+    # Window features
+    WINDOW_NS = [2,3,5,8,12]; WINDOW_LAST_NS = [3,5,8]
+    for wn in WINDOW_NS:
+        pts_w = post_pts[:wn]
+        if not pts_w: continue
+        pf = f"first{wn}_"
+        cxw = [p["cx"] for p in pts_w if p.get("cx") is not None]
+        cyw = [p["cy"] for p in pts_w if p.get("cy") is not None]
+        daw = [p["diameter_norm"] for p in pts_w if p.get("diameter_norm") is not None]
+        grw = [p["ground_diameter_ratio"] for p in pts_w if p.get("ground_diameter_ratio") is not None]
+        feats[pf+"mean_cx"] = _mean(cxw); feats[pf+"mean_cy"] = _mean(cyw)
+        feats[pf+"mean_dia"] = _mean(daw)
+        feats[pf+"mean_ground_ratio"] = _mean(grw)
+        feats[pf+"max_ground_ratio"]   = max(grw) if grw else None
+        feats[pf+"min_ground_ratio"]   = min(grw) if grw else None
+        feats[pf+"ground_ratio_range"] = (max(grw)-min(grw)) if len(grw)>=2 else None
+        feats[pf+"diameter_growth_ratio"] = (daw[-1]/daw[0]) if daw and daw[0] else None
+        feats[pf+"ground_ratio_growth"]   = (grw[-1]-grw[0]) if len(grw)>=2 else None
+        feats[pf+"x_progress"] = (cxw[-1]-cxw[0]) if len(cxw)>=2 else None
+        feats[pf+"y_change"]   = (cyw[-1]-cyw[0]) if len(cyw)>=2 else None
+        if len(pts_w) >= 2:
+            fi_w = np.array([p["frame_index"] for p in pts_w])
+            if daw and len(daw) == len(pts_w):
+                feats[pf+"slope_dia_per_frame"] = float(np.polyfit(fi_w, daw, 1)[0])
+            if grw and len(grw) == len(pts_w):
+                feats[pf+"slope_ground_ratio_per_frame"] = float(np.polyfit(fi_w, grw, 1)[0])
+    for wn in WINDOW_LAST_NS:
+        pts_w = post_pts[-wn:] if len(post_pts)>=wn else post_pts
+        if not pts_w: continue
+        pf = f"last{wn}_"
+        grw = [p["ground_diameter_ratio"] for p in pts_w if p.get("ground_diameter_ratio") is not None]
+        feats[pf+"mean_cx"]  = _mean([p["cx"] for p in pts_w if p.get("cx") is not None])
+        feats[pf+"mean_cy"]  = _mean([p["cy"] for p in pts_w if p.get("cy") is not None])
+        feats[pf+"mean_dia"] = _mean([p["diameter_norm"] for p in pts_w if p.get("diameter_norm") is not None])
+        feats[pf+"mean_ground_ratio"]  = _mean(grw)
+        feats[pf+"ground_ratio_growth"]= (grw[-1]-grw[0]) if len(grw)>=2 else None
+
+    # Indexed p1..p10
+    for pi in range(1, 11):
+        p = post_pts[pi-1] if pi <= len(post_pts) else None
+        pf = f"p{pi}_"
+        feats[pf+"x"]       = p["cx"] if p else None
+        feats[pf+"y"]       = p["cy"] if p else None
+        feats[pf+"diameter"]= p["diameter_norm"] if p else None
+        feats[pf+"radius"]  = p["radius_norm"] if p else None
+        feats[pf+"expected_ground_diameter"] = p.get("expected_ground_diameter") if p else None
+        feats[pf+"ground_ratio"]   = p.get("ground_diameter_ratio") if p else None
+        feats[pf+"ground_excess"]  = p.get("ground_diameter_excess") if p else None
+        feats[pf+"confidence"]     = p["confidence"] if p else None
+
+    # Nonlinear transforms
+    mgr  = feats.get("mean_ground_ratio")
+    maxgr= feats.get("max_ground_ratio")
+    mcx  = feats.get("first_post_cx") or feats.get("max_center_x")
+    mcy  = feats.get("first_post_cy") or feats.get("max_center_y")
+    dgr  = feats.get("diameter_growth_ratio")
+    gex2 = feats.get("mean_ground_excess")
+    def _sqr(v): return v**2 if v is not None else None
+    def _cube(v): return v**3 if v is not None else None
+    def _log(v): return _m.log(v) if v and v > 0 else None
+    def _mul(a,b): return a*b if a is not None and b is not None else None
+    feats["mean_ground_ratio_squared"]    = _sqr(mgr)
+    feats["mean_ground_ratio_cubed"]      = _cube(mgr)
+    feats["log_mean_ground_ratio"]        = _log(mgr)
+    feats["max_ground_ratio_squared"]     = _sqr(maxgr)
+    feats["ground_excess_squared"]        = _sqr(gex2)
+    feats["diameter_growth_ratio_squared"]= _sqr(dgr)
+    feats["mean_cx_times_mean_ground_ratio"] = _mul(mcx, mgr)
+    feats["mean_cy_times_mean_ground_ratio"] = _mul(mcy, mgr)
+    feats["hla_times_mean_ground_ratio"]     = _mul(hla, mgr)
+    feats["max_cx_times_max_ground_ratio"]   = _mul(feats.get("max_center_x"), maxgr)
+    for pi in range(1, 4):
+        pgr = feats.get(f"p{pi}_ground_ratio"); px = feats.get(f"p{pi}_x")
+        feats[f"p{pi}_ground_ratio_squared"]  = _sqr(pgr)
+        feats[f"p{pi}_x_times_ground_ratio"]  = _mul(px, pgr)
+
+    return feats
+
+
+_DEFAULT_FLIGHT_MODEL_PATHS = [
+    os.path.join(os.path.expanduser("~"), "Downloads", "flight_model.json"),
+    os.path.join(os.path.expanduser("~"), "Documents", "flight_model.json"),
+]
+
+def _auto_load_flight_model(path_override=None):
+    """Load flight_model.json. Returns dict or None."""
+    paths = ([path_override] if path_override else []) + _DEFAULT_FLIGHT_MODEL_PATHS
+    for p in paths:
+        if not p or not os.path.exists(p): continue
+        try:
+            with open(p) as f: m = json.load(f)
+            if "carryModel" in m or "rollModel" in m:
+                carry_mae = m.get("metrics", {}).get("carry_mae", "?")
+                roll_mae  = m.get("metrics", {}).get("roll_mae",  "?")
+                print(f"[Flight model] Loaded: {p}  carry_mae={carry_mae}  roll_mae={roll_mae}")
+                m["_path"] = p
+                return m
+        except Exception as e:
+            print(f"[Flight model] Failed to load {p}: {e}")
+    print("[Flight model] Not found — using improved physics/VLA-bucket fallback.")
+    return None
+
+
+def _init_runtime():
+    """Auto-load VLA model, ground calibration, and flight model; resolve 'auto' VLA mode."""
+    global _RUNTIME_VLA_MODEL, _RUNTIME_GROUND_CAL, _RUNTIME_FLIGHT_MODEL, VLA_MODEL
+    mdl, mdl_path = _auto_load_vla_model(getattr(_face_args, "vla_model_file", None))
+    if mdl:
+        _RUNTIME_VLA_MODEL = (mdl, mdl_path)
+    gc = _auto_load_ground_cal(getattr(_face_args, "ground_calibration", None))
+    if gc:
+        _RUNTIME_GROUND_CAL = gc
+    # Load flight model
+    fm = _auto_load_flight_model(getattr(_face_args, "flight_model_file", None))
+    if fm:
+        _RUNTIME_FLIGHT_MODEL = fm
+    if VLA_MODEL == "auto":
+        if _RUNTIME_VLA_MODEL:
+            VLA_MODEL = "trainedmodel"
+            params["vla_model"] = "trainedmodel"
+            print(f"[VLA mode] Auto-selected: trainedmodel")
+        else:
+            VLA_MODEL = "pinhole2dsize"
+            params["vla_model"] = "pinhole2dsize"
+            print(f"[VLA mode] Auto-selected: pinhole2dsize (no model found)")
+    else:
+        params["vla_model"] = VLA_MODEL
+
+
+def _ground_roll_line_recovery(frames_norm, results, det_imp, gr_params, max_near_edge=0.002):
+    """
+    After normal tracking, extend ground-roll tracking along a fitted line
+    toward the right edge. Returns an extended results list with extra
+    entries tagged with ground_roll_rescue fields.
+    """
+    # Collect valid post-impact positions for line fit
+    post_valid = []
+    for r in results:
+        if r["idx"] <= det_imp: continue
+        c = r.get("chosen")
+        if not c: continue
+        mc = r.get("mask_center")
+        cx = mc[0] if mc else c["cx"]
+        cy = mc[1] if mc else c["cy"]
+        post_valid.append((r["idx"], cx, cy, r.get("final_dia") or c.get("dia", 0.033)))
+
+    if len(post_valid) < 2:
+        return results   # not enough to fit a line
+
+    xs = np.array([p[1] for p in post_valid])
+    ys = np.array([p[2] for p in post_valid])
+    idxs = np.array([p[0] for p in post_valid])
+    dias = np.array([p[3] for p in post_valid])
+
+    # Fit line: cy = slope * cx + intercept (or horizontal if little x variation)
+    if np.std(xs) > 1e-4:
+        slope_xy, intercept_xy = np.polyfit(xs, ys, 1)
+        slope_fi, intercept_fi = np.polyfit(idxs, xs, 1)  # x as function of frame index
+    else:
+        slope_xy = 0.0; intercept_xy = float(np.mean(ys))
+        slope_fi = 0.0; intercept_fi = float(np.mean(xs))
+
+    last_idx = int(idxs[-1])
+    n_frames = len(frames_norm)
+    existing_idxs = {r["idx"] for r in results}
+
+    mean_dia = float(np.mean(dias))
+    extra_results = []
+
+    for fi in range(last_idx + 1, n_frames):
+        pred_cx = float(slope_fi * fi + intercept_fi)
+        pred_cy = float(slope_xy * pred_cx + intercept_xy)
+
+        # Stop if predicted position is fully off-screen
+        if pred_cx > 1.0 + mean_dia or pred_cx < -mean_dia:
+            break
+        if pred_cy > 1.0 + mean_dia or pred_cy < -mean_dia:
+            break
+
+        # Clamp prediction into image
+        pred_cx_c = max(0.0, min(1.0, pred_cx))
+        pred_cy_c = max(0.0, min(1.0, pred_cy))
+
+        # Try to find a ball candidate near predicted position
+        img = frames_norm[fi]
+        H_l, W_l = img.shape[:2]
+        search_r = max(0.06, mean_dia * 3.0)
+        x0 = max(0, int((pred_cx_c - search_r) * W_l))
+        x1 = min(W_l, int((pred_cx_c + search_r) * W_l))
+        y0 = max(0, int((pred_cy_c - search_r) * H_l))
+        y1 = min(H_l, int((pred_cy_c + search_r) * H_l))
+
+        # Estimate near-edge status
+        edge_r = mean_dia / 2.0
+        is_near_edge = (pred_cx - edge_r < max_near_edge or
+                        pred_cx + edge_r > 1.0 - max_near_edge or
+                        pred_cy - edge_r < max_near_edge or
+                        pred_cy + edge_r > 1.0 - max_near_edge)
+        edge_right_dist = 1.0 - (pred_cx + edge_r)
+        visible_frac = max(0.0, min(1.0, (1.0 - pred_cx) / (mean_dia + 1e-9)))
+        if visible_frac < 0.45:
+            break  # ball more than half off-screen — stop
+
+        sample_weight = 1.0 if not is_near_edge else max(0.3, min(0.8, visible_frac))
+
+        # Build a synthetic chosen entry for this recovery frame
+        chosen_syn = {"cx": pred_cx_c, "cy": pred_cy_c, "dia": mean_dia,
+                      "conf": 0.40, "reason": "ground_roll_line_recovery"}
+
+        # Simple mask check in the search region
+        if x1 > x0 and y1 > y0:
+            crop = img[y0:y1, x0:x1]
+            bright_mask = crop.max(axis=2) > 0.35
+            n_bright = int(bright_mask.sum())
+            expected_px = max(4, int(np.pi * (mean_dia * W_l / 2) ** 2 * 0.8))
+            if n_bright > expected_px * 0.15:
+                chosen_syn["conf"] = 0.55
+
+        extra_results.append(dict(
+            idx=fi, roi=None, candidates=[], chosen=chosen_syn,
+            mask_dia=None, preview=None, cand_in_crop=None, ref_in_crop=None,
+            mask_center=(pred_cx_c, pred_cy_c), mask_center_in_crop=None,
+            mask_count=0, mask_fill_ratio=None, mask_brightness_mean=None,
+            mask_reason="ground_roll_line_recovery", final_dia=mean_dia,
+            predicted_pos=(pred_cx_c, pred_cy_c), jump_dist=None,
+            expected_diameter=mean_dia, launch_dir=None, ball_launched=True,
+            launch_frame=det_imp, max_progress=None, prev_progress=None,
+            ball_terminated=False, prediction_disabled=False,
+            prediction_disabled_frame=None, rescued=False,
+            prediction_rescued=False, pred_rescue_inside_rect=False,
+            pred_rescue_inside_circle=False, pred_rescue_dist=None,
+            mask_aspect_ratio=1.0, predictionMode="ground_roll_line",
+            merged_club_hints=[], likely_merged_club_ball=False,
+            edge_rejected=False, excluded_from_metrics_edge=False,
+            edge_reject_reason=None, edge_bounds=None,
+            ground_roll_rescue=True, ground_roll_rescue_success=True,
+            ground_roll_edge_sample=is_near_edge,
+            ground_roll_stopped_reason=None,
+            edge_reliability=sample_weight,
+            calibration_sample_weight=sample_weight,
+            edge_distance_left=pred_cx_c - mean_dia / 2,
+            edge_distance_right=1.0 - (pred_cx_c + mean_dia / 2),
+            edge_distance_top=pred_cy_c - mean_dia / 2,
+            edge_distance_bottom=1.0 - (pred_cy_c + mean_dia / 2),
+            visible_circle_fraction_estimate=visible_frac,
+        ))
+
+    return results + extra_results
+
+
+def _collect_calib_samples_v2(results, det_imp, shot_name, rt, ground_roll_mode=False):
+    """Extract valid ground-roll ball samples; adds edge-reliability fields."""
+    samples = []
+    for r in results:
+        if not r.get("chosen"): continue
+        if r["idx"] <= det_imp: continue
+        if r.get("likely_merged_club_ball"): continue
+        if r.get("excluded_from_metrics_merged"): continue
+        # In ground-roll mode allow near-edge; out of it respect edge filter
+        if not ground_roll_mode and r.get("edge_rejected"): continue
+        if not ground_roll_mode and r.get("excluded_from_metrics_edge"): continue
+        c = r["chosen"]
+        reason = (c.get("reason") or "")
+        bad = ("rejected_partial_offscreen", "rejected_edge", "rejected_line_like",
+               "rejected_near_impact", "rejected_outside_cone",
+               "rejected_prediction_rescue_edge")
+        if any(b in reason for b in bad): continue
+        final_dia = r.get("final_dia")
+        if not final_dia or final_dia <= 0: continue
+        mc = r.get("mask_center")
+        cx = mc[0] if mc else c["cx"]
+        cy = mc[1] if mc else c["cy"]
+        ri = r["idx"]
+        rt_val = float(rt[ri]) if ri < len(rt) else float(ri - det_imp) / 240.0
+        edge_r = final_dia / 2.0
+        e_left   = float(cx - edge_r)
+        e_right  = float(1.0 - (cx + edge_r))
+        e_top    = float(cy - edge_r)
+        e_bottom = float(1.0 - (cy + edge_r))
+        is_near  = any(d < 0.015 for d in [e_left, e_right, e_top, e_bottom])
+        vis_frac = r.get("visible_circle_fraction_estimate", 1.0)
+        # Exclude heavily clipped balls from calibration
+        if vis_frac < 0.45: continue
+        edge_rel = r.get("edge_reliability", 1.0 if not is_near else max(0.3, vis_frac))
+        cal_wt   = r.get("calibration_sample_weight", edge_rel)
+        samples.append({
+            "u": float(cx), "v": float(cy),
+            "diameter": float(final_dia), "radius": float(final_dia / 2),
+            "confidence": float(c.get("conf", 1.0)),
+            "sourceShotName": shot_name,
+            "frameIndex": int(ri),
+            "relativeTime": rt_val,
+            "edgeReliability": float(edge_rel),
+            "calibrationSampleWeight": float(cal_wt),
+            "isNearEdge": bool(is_near),
+            "edgeDistanceLeft": round(e_left, 5),
+            "edgeDistanceRight": round(e_right, 5),
+            "edgeDistanceTop": round(e_top, 5),
+            "edgeDistanceBottom": round(e_bottom, 5),
+            "visibleCircleFraction": round(float(vis_frac), 4),
+            "groundRollRescue": bool(r.get("ground_roll_rescue", False)),
+            "maskWhitePixelCount": int(r.get("mask_count", 0)),
+            "maskFillRatio": float(r.get("mask_fill_ratio") or 0),
+            "maskAspectRatio": float(r.get("mask_aspect_ratio") or 1.0),
+        })
+    return samples
+
+
+def cmd_build_ground_calibration(args):
+    import zipfile, io, tempfile, datetime, shutil, csv as _csv
+    outer_zip    = args.calibration_zip
+    save_path    = args.save_ground_calibration or os.path.expanduser("~/Downloads/ground_ball_size_calibration.json")
+    out_dir      = os.path.dirname(os.path.abspath(save_path))
+    map_path     = os.path.join(out_dir, "ground_calibration_map.png")
+    summary_path = os.path.join(out_dir, "ground_calibration_summary.txt")
+    coverage_csv = os.path.join(out_dir, "ground_calibration_coverage.csv")
+    gr_mode      = True  # always use ground-roll mode for calibration
+
+    print(f"\n{'='*80}")
+    print(f"GROUND CALIBRATION BUILDER  (ground-roll mode ON)")
+    print(f"Source zip : {outer_zip}")
+    print(f"Output JSON: {save_path}")
+    print(f"{'='*80}\n")
+
+    gr_params = _ground_roll_params(params)
+    tmpdir = tempfile.mkdtemp(prefix="ground_calib_")
+    all_samples = []; source_shot_names = []; skipped = []; coverage_rows = []
+    try:
+        with zipfile.ZipFile(outer_zip) as oz:
+            entries = oz.namelist()
+            inner_zips = sorted(e for e in entries if e.lower().endswith(".zip"))
+            # Also support direct ShotExport folders inside the outer zip
+            inner_dirs = sorted(set(
+                e.split("/")[0] for e in entries
+                if "/" in e and e.split("/")[0].startswith("ShotExport_")
+            ))
+            n_shots_found = len(inner_zips) + len(inner_dirs)
+            print(f"Calibration shots found: {len(inner_zips)} zip(s), {len(inner_dirs)} folder(s)  ({n_shots_found} total)\n")
+
+            def _process_shot_dir(shot_name, shot_dir):
+                loaded = _load_shot_folder(shot_dir)
+                if loaded is None:
+                    skipped.append((shot_name, "no PNG frames found"))
+                    print(f"  SKIP: no PNG frames"); return
+                frames_norm_loc, imp, locked, rt = loaded
+                try:
+                    results_loc, det_imp, _, _ = run_tracker(frames_norm_loc, gr_params, imp, locked)
+                    # Right-edge line recovery
+                    results_loc = _ground_roll_line_recovery(frames_norm_loc, results_loc, det_imp, gr_params)
+                except Exception as e:
+                    skipped.append((shot_name, f"tracker error: {e}"))
+                    print(f"  SKIP: tracker error: {e}"); return
+                samples = _collect_calib_samples_v2(results_loc, det_imp, shot_name, rt, ground_roll_mode=True)
+                if not samples:
+                    skipped.append((shot_name, "0 valid post-impact samples"))
+                    print(f"  SKIP: 0 valid samples"); return
+                all_samples.extend(samples)
+                source_shot_names.append(shot_name)
+
+                # Coverage stats
+                us_ = [s["u"] for s in samples]; vs_ = [s["v"] for s in samples]
+                near_edge = sum(1 for s in samples if s.get("isNearEdge"))
+                max_cx = max(us_) if us_ else 0
+                cov_warn = f"max_cx={max_cx:.3f} < 0.70" if max_cx < 0.70 else ""
+                # Find stop info from results
+                chosen_idxs = [r["idx"] for r in results_loc if r.get("chosen")]
+                stop_fi = max(chosen_idxs) if chosen_idxs else det_imp
+                rescue_count = sum(1 for r in results_loc if r.get("ground_roll_rescue"))
+                coverage_rows.append({
+                    "shot_name": shot_name, "valid_samples": len(samples),
+                    "max_center_x": round(max_cx, 5),
+                    "min_center_x": round(min(us_), 5),
+                    "max_center_y": round(max(vs_), 5),
+                    "min_center_y": round(min(vs_), 5),
+                    "near_edge_samples": near_edge,
+                    "rescue_samples": rescue_count,
+                    "stop_frame": stop_fi,
+                    "coverage_warning": cov_warn,
+                })
+                print(f"  → {len(samples)} samples  max_cx={max_cx:.3f}"
+                      f"  near_edge={near_edge}  rescue={rescue_count}"
+                      f"  (total: {len(all_samples)})")
+                if cov_warn:
+                    print(f"  ⚠  Calibration weak on right edge: {cov_warn}")
+
+            for entry in inner_zips:
+                shot_name = os.path.splitext(os.path.basename(entry))[0]
+                print(f"--- {shot_name} ---")
+                inner_data = oz.read(entry)
+                shot_dir   = os.path.join(tmpdir, shot_name)
+                os.makedirs(shot_dir, exist_ok=True)
+                with zipfile.ZipFile(io.BytesIO(inner_data)) as iz:
+                    iz.extractall(shot_dir)
+                _process_shot_dir(shot_name, shot_dir)
+
+            for dname in inner_dirs:
+                if any(sn == dname for sn in source_shot_names): continue
+                shot_dir = os.path.join(tmpdir, dname)
+                os.makedirs(shot_dir, exist_ok=True)
+                for e in entries:
+                    if e.startswith(dname + "/") and not e.endswith("/"):
+                        data = oz.read(e)
+                        dest = os.path.join(tmpdir, e)
+                        os.makedirs(os.path.dirname(dest), exist_ok=True)
+                        with open(dest, "wb") as fh: fh.write(data)
+                print(f"--- {dname} ---")
+                _process_shot_dir(dname, shot_dir)
+
+        print(f"\nCalibration shots processed: {len(source_shot_names)}/{n_shots_found}")
+        print(f"Total valid samples: {len(all_samples)}")
+        if skipped:
+            for sn, reason in skipped:
+                print(f"  SKIPPED {sn}: {reason}")
+
+        # ── JSON ──────────────────────────────────────────────────────────────
+        cal_data = {
+            "version": 1,
+            "createdAt": datetime.datetime.utcnow().isoformat() + "Z",
+            "method": "ground_roll_ball_size_idw",
+            "trueVLA": 0,
+            "sourceZip": os.path.abspath(outer_zip),
+            "sourceShotNames": source_shot_names,
+            "samples": all_samples,
+            "interpolation": {
+                "method": "inverse_distance_weighted",
+                "kNearest": 12,
+                "distancePower": 2.0,
+                "maxUsefulDistance": 0.25,
+                "minCalibrationSamples": 30
+            }
+        }
+        with open(save_path, "w") as f:
+            json.dump(cal_data, f, indent=2)
+        print(f"\nWrote: {save_path}")
+
+        # ── Map PNG ───────────────────────────────────────────────────────────
+        _fig2, _ax2 = plt.subplots(figsize=(10, 7), facecolor="#111")
+        _ax2.set_facecolor("#111")
+        if all_samples:
+            us_  = np.array([s["u"] for s in all_samples])
+            vs_  = np.array([s["v"] for s in all_samples])
+            ds_  = np.array([s["diameter"] for s in all_samples])
+            wts_ = np.array([s.get("calibrationSampleWeight", 1.0) for s in all_samples])
+            scs_ = np.clip(wts_ * 30, 5, 50)
+            sc   = _ax2.scatter(us_, vs_, c=ds_, cmap="plasma", s=scs_, alpha=0.75)
+            cb   = _fig2.colorbar(sc, ax=_ax2)
+            cb.set_label("diameter (norm)", color="white")
+            cb.ax.yaxis.set_tick_params(color="white")
+            plt.setp(cb.ax.yaxis.get_ticklabels(), color="white")
+        _ax2.set_xlim(0, 1); _ax2.set_ylim(0, 1)
+        _ax2.invert_yaxis()
+        _ax2.set_xlabel("u (centerX)", color="white")
+        _ax2.set_ylabel("v (centerY)", color="white")
+        _ax2.set_title(
+            f"Ground Calibration Map — {len(all_samples)} samples  {len(source_shot_names)} shots\n"
+            f"(marker size ∝ calibration weight)",
+            color="white", fontsize=10)
+        _ax2.tick_params(colors="white")
+        for sp in _ax2.spines.values(): sp.set_color("#444")
+        _fig2.tight_layout()
+        _fig2.savefig(map_path, dpi=130, facecolor="#111")
+        plt.close(_fig2)
+        print(f"Wrote: {map_path}")
+
+        # ── Coverage CSV ──────────────────────────────────────────────────────
+        cov_cols = ["shot_name","valid_samples","max_center_x","min_center_x",
+                    "max_center_y","min_center_y","near_edge_samples","rescue_samples",
+                    "stop_frame","coverage_warning"]
+        with open(coverage_csv, "w", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=cov_cols, extrasaction="ignore")
+            w.writeheader(); w.writerows(coverage_rows)
+        for sn2, reason2 in skipped:
+            w.writerow({"shot_name": sn2, "coverage_warning": f"SKIPPED: {reason2}"})
+        print(f"Wrote: {coverage_csv}")
+
+        # ── Summary TXT ───────────────────────────────────────────────────────
+        with open(summary_path, "w") as sf:
+            sf.write(f"Ground Calibration Summary (ground-roll mode)\n{'='*62}\n")
+            sf.write(f"Source zip    : {os.path.abspath(outer_zip)}\n")
+            sf.write(f"Shots found   : {n_shots_found}\n")
+            sf.write(f"Shots OK      : {len(source_shot_names)}\n")
+            sf.write(f"Shots skipped : {len(skipped)}\n")
+            sf.write(f"Total samples : {len(all_samples)}\n")
+            if all_samples:
+                us2 = [s["u"] for s in all_samples]
+                vs2 = [s["v"] for s in all_samples]
+                ds2 = [s["diameter"] for s in all_samples]
+                sf.write(f"u range       : {min(us2):.4f} – {max(us2):.4f}\n")
+                sf.write(f"v range       : {min(vs2):.4f} – {max(vs2):.4f}\n")
+                sf.write(f"diam min      : {min(ds2):.5f}\n")
+                sf.write(f"diam median   : {float(np.median(ds2)):.5f}\n")
+                sf.write(f"diam max      : {max(ds2):.5f}\n")
+                near = sum(1 for s in all_samples if s.get("isNearEdge"))
+                rescue = sum(1 for s in all_samples if s.get("groundRollRescue"))
+                sf.write(f"near-edge     : {near}\n")
+                sf.write(f"rescue points : {rescue}\n")
+                sf.write(f"\nSamples by shot:\n")
+                by_shot = {}
+                for s in all_samples:
+                    by_shot.setdefault(s["sourceShotName"], 0)
+                    by_shot[s["sourceShotName"]] += 1
+                for sn2, cnt in sorted(by_shot.items()):
+                    max_x = max(s["u"] for s in all_samples if s["sourceShotName"] == sn2)
+                    sf.write(f"  {sn2}: {cnt} pts  max_cx={max_x:.3f}\n")
+            if skipped:
+                sf.write(f"\nSkipped shots:\n")
+                for sn2, reason2 in skipped:
+                    sf.write(f"  {sn2}: {reason2}\n")
+            if len(all_samples) < 30:
+                sf.write(f"\nWARNING: fewer than 30 samples — coverage may be poor.\n")
+            max_u_all = max((s["u"] for s in all_samples), default=0)
+            if max_u_all < 0.75:
+                sf.write(f"\nWARNING: max centerX = {max_u_all:.3f}. Right-edge coverage may be weak.\n")
+        print(f"Wrote: {summary_path}")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+def cmd_export_ball_points(args):
+    import csv as _csv, math as _math
+    shots_root      = args.shots_root
+    ground_cal_path = args.ground_calibration
+    output_csv      = args.output or os.path.expanduser("~/Downloads/ball_points_for_vla.csv")
+    expanded        = getattr(args, "expanded_features", False) or getattr(args, "use_expanded_features", False)
+    out_dir         = os.path.dirname(os.path.abspath(output_csv))
+    summary_csv     = os.path.join(out_dir, "shot_summary_for_vla.csv")
+    output_json     = output_csv.replace(".csv", ".json")
+
+    # ── ground calibration ────────────────────────────────────────────────────
+    ground_samples = []; k_nn = 12; dist_power = 2.0; max_dist = 0.25
+    if ground_cal_path and os.path.exists(ground_cal_path):
+        with open(ground_cal_path) as f:
+            cal_data = json.load(f)
+        ground_samples = cal_data.get("samples", [])
+        interp = cal_data.get("interpolation", {})
+        k_nn = int(interp.get("kNearest", 12))
+        dist_power = float(interp.get("distancePower", 2.0))
+        max_dist = float(interp.get("maxUsefulDistance", 0.25))
+        print(f"Loaded ground calibration: {len(ground_samples)} samples")
+    else:
+        print("No ground calibration — ground features will be null")
+
+    shot_folders = sorted([p for p in glob.glob(os.path.join(shots_root, "ShotExport_*"))
+                           if not p.endswith(".zip") and os.path.isdir(p)])
+    # Also accept zip files if folder not present
+    for zp in sorted(glob.glob(os.path.join(shots_root, "ShotExport_*.zip"))):
+        sn = os.path.splitext(os.path.basename(zp))[0]
+        if not os.path.isdir(os.path.join(shots_root, sn)):
+            shot_folders.append(zp)
+    shot_folders = sorted(shot_folders)
+    if not shot_folders:
+        print(f"No ShotExport_* found in {shots_root}"); sys.exit(1)
+    print(f"Found {len(shot_folders)} shots\n")
+
+    def _pf(v):
+        try: x = float(v); return x if _math.isfinite(x) else None
+        except: return None
+
+    def _r(v, d=5): return round(v, d) if v is not None else None
+
+    # ── per-point columns ─────────────────────────────────────────────────────
+    BASIC_COLS = [
+        "shot_name","frame_index","relative_time","frame_offset_from_impact",
+        "is_pre_impact","is_impact","is_post_impact",
+        "cx","cy","cx_pixels","cy_pixels",
+        "diameter_norm","radius_norm","diameter_pixels","radius_pixels",
+        "final_diameter_norm","mask_dia_norm","candidate_dia_norm",
+        "confidence","mask_px","mask_fill","mask_aspect","mask_brightness",
+        "expected_ground_diameter","ground_diameter_ratio","ground_diameter_excess",
+        "ground_radius_ratio","ground_calibration_confidence",
+        "ground_calibration_nearest_dist","ground_calibration_k_used",
+        "edge_rejected","prediction_rescued","likely_merged","debug_reason",
+    ]
+    EXP_COLS = [
+        "dx_from_prev","dy_from_prev","dist_from_prev",
+        "diameter_change_from_prev","diameter_change_ratio_from_prev",
+        "ground_ratio_change_from_prev",
+        "x_velocity_per_s","y_velocity_per_s",
+        "diameter_growth_per_s","ground_ratio_growth_per_s",
+    ] if expanded else []
+    POINT_COLS = BASIC_COLS + EXP_COLS
+
+    point_rows = []; all_points_json = []
+
+    # ── summary column pools ──────────────────────────────────────────────────
+    SUM_BASE = [
+        "shot_name","n_valid_post_points","impact_frame","hla_degrees","vla_degrees",
+        "ball_speed_mph","tracked_frames","total_frames",
+        "first_post_cx","first_post_cy","first_post_dia",
+        "last_post_cx","last_post_cy","last_post_dia",
+        "first_post_expected_ground_diameter","first_post_ground_diameter_ratio",
+        "last_post_expected_ground_diameter","last_post_ground_diameter_ratio",
+        "mean_expected_ground_diameter","mean_ground_diameter_ratio",
+        "median_expected_ground_diameter","median_ground_diameter_ratio",
+        "ground_ratio_growth","manual_vla_label",
+    ]
+    SUM_EXP = [
+        # Full-sequence geometry
+        "max_center_x","min_center_x","max_center_y","min_center_y",
+        "center_x_range","center_y_range",
+        "max_diameter_norm","min_diameter_norm","mean_diameter_norm",
+        "median_diameter_norm","std_diameter_norm",
+        "max_ground_ratio","min_ground_ratio","mean_ground_ratio",
+        "median_ground_ratio","std_ground_ratio","ground_ratio_range",
+        "mean_ground_excess","median_ground_excess","max_ground_excess",
+        # Trajectory
+        "dx_first_last","dy_first_last","path_length_norm",
+        "straight_line_slope","straight_line_angle_deg",
+        "path_residual_mean","path_residual_max",
+        "forward_progress_total","lateral_progress_total",
+        "vertical_image_change_total","abs_hla_degrees",
+        # Ground ratio slopes
+        "ground_ratio_slope_over_frame","ground_ratio_slope_over_time",
+        "early_ground_ratio_slope_1to3","early_ground_ratio_slope_1to5",
+        "max_ground_ratio_frame_index","final_minus_initial_ground_ratio",
+        "ratio_at_first_3_mean","ratio_at_first_5_mean",
+        # Diameter slopes
+        "diameter_growth_ratio","diameter_slope_over_frame",
+        "early_diameter_slope_1to3","early_diameter_slope_1to5",
+        # Calibration confidence
+        "mean_ground_calibration_confidence","min_ground_calibration_confidence",
+        # Tracking quality
+        "n_edge_filtered_points","n_prediction_rescued_points",
+        "n_merged_rejected_points","max_center_x_reached",
+        # Speed
+        "x_speed_norm","y_speed_norm",
+        "diameter_growth_per_second","ground_ratio_growth_per_second",
+        # Window features first2/3/5/8/12
+    ] if expanded else []
+
+    WINDOW_NS = [2, 3, 5, 8, 12]
+    WINDOW_LAST_NS = [3, 5, 8]
+    if expanded:
+        for wn in WINDOW_NS:
+            for feat in ["mean_cx","mean_cy","mean_dia","mean_ground_ratio",
+                         "max_ground_ratio","min_ground_ratio","ground_ratio_range",
+                         "diameter_growth_ratio","ground_ratio_growth","x_progress","y_change",
+                         "slope_dia_per_frame","slope_ground_ratio_per_frame"]:
+                SUM_EXP.append(f"first{wn}_{feat}")
+        for wn in WINDOW_LAST_NS:
+            for feat in ["mean_cx","mean_cy","mean_dia","mean_ground_ratio","ground_ratio_growth"]:
+                SUM_EXP.append(f"last{wn}_{feat}")
+
+    # Indexed p1..p10
+    P_FIELDS = ["x","y","diameter","radius","expected_ground_diameter","ground_ratio","ground_excess","confidence"]
+    SUM_P = []
+    if expanded:
+        for pi in range(1, 11):
+            for pf in P_FIELDS:
+                SUM_P.append(f"p{pi}_{pf}")
+
+    # Nonlinear transforms
+    SUM_NL = []
+    if expanded:
+        SUM_NL = [
+            "mean_ground_ratio_squared","mean_ground_ratio_cubed","log_mean_ground_ratio",
+            "max_ground_ratio_squared","ground_excess_squared","diameter_growth_ratio_squared",
+            "mean_cx_times_mean_ground_ratio","mean_cy_times_mean_ground_ratio",
+            "hla_times_mean_ground_ratio","max_cx_times_max_ground_ratio",
+            "p1_ground_ratio_squared","p2_ground_ratio_squared","p3_ground_ratio_squared",
+            "p1_x_times_ground_ratio","p2_x_times_ground_ratio","p3_x_times_ground_ratio",
+        ]
+
+    # Trained VLA model prediction columns (always appended)
+    SUM_VLA = [
+        "vla_trained_model_prediction","vla_model_used","vla_final_degrees",
+        "vla_model_features_used","vla_was_clamped",
+        "carry_yards_using_final_vla","rollout_yards_using_final_vla",
+        "total_yards_using_final_vla","distance_vla_used_source","spin_vla_used_source",
+    ]
+    SUM_COLS = SUM_BASE + SUM_EXP + SUM_P + SUM_NL + SUM_VLA
+    summary_rows = []
+
+    # Load VLA model for batch predictions
+    _exp_vla_model = None
+    _exp_vla_model_path = None
+    _exp_vla_model_arg  = getattr(args, "vla_model", "auto")
+    _exp_vla_file       = getattr(args, "vla_model_file", None)
+    if _exp_vla_model_arg in ("trainedmodel", "auto"):
+        _exp_vla_model, _exp_vla_model_path = _auto_load_vla_model(_exp_vla_file)
+    _exp_ground_cal = _RUNTIME_GROUND_CAL or _auto_load_ground_cal(getattr(args, "ground_calibration", None))
+
+    import tempfile as _tmp, zipfile as _zf, io as _io
+
+    for sf in shot_folders:
+        is_zip = sf.endswith(".zip")
+        shot_name = os.path.splitext(os.path.basename(sf))[0] if is_zip else os.path.basename(sf)
+        print(f"--- {shot_name} ---")
+
+        tmpdir2 = None
+        try:
+            if is_zip:
+                tmpdir2 = _tmp.mkdtemp(prefix="ebp_")
+                with _zf.ZipFile(sf) as iz:
+                    iz.extractall(tmpdir2)
+                actual_dir = tmpdir2
+            else:
+                actual_dir = sf
+
+            loaded = _load_shot_folder(actual_dir)
+            if loaded is None:
+                print(f"  SKIP: no frames"); continue
+            frames_norm_loc, imp, locked, rt_loc = loaded
+            try:
+                results_loc, det_imp, _, det_reason = run_tracker(frames_norm_loc, params, imp, locked)
+                metrics = compute_metrics_and_club(frames_norm_loc, results_loc, det_imp, params)
+            except Exception as e:
+                print(f"  SKIP: error {e}"); continue
+        finally:
+            if tmpdir2:
+                import shutil as _sh; _sh.rmtree(tmpdir2, ignore_errors=True)
+
+        hla = metrics["ball"].get("hla") if metrics else None
+        vla = metrics["ball"].get("vla") if metrics else None
+        spd = metrics["ball"].get("ball_speed") if metrics else None
+        tracked = sum(1 for r in results_loc if r.get("chosen"))
+
+        # ── collect valid post-impact points ──────────────────────────────────
+        post_pts = []  # list of dicts, one per valid post-impact frame
+        prev_cx = prev_cy = prev_fd = prev_gr = prev_rt = None
+
+        n_edge_filt = sum(1 for r in results_loc if r.get("edge_rejected"))
+        n_rescued   = sum(1 for r in results_loc if r.get("prediction_rescued"))
+        n_merged    = sum(1 for r in results_loc if r.get("likely_merged_club_ball"))
+
+        for r in results_loc:
+            ri = r["idx"]
+            c = r.get("chosen")
+            if not c: continue
+            if ri <= det_imp: continue
+            if r.get("likely_merged_club_ball"): continue
+            if r.get("excluded_from_metrics_merged"): continue
+            if r.get("edge_rejected"): continue
+            if r.get("excluded_from_metrics_edge"): continue
+            bad_reasons = ("rejected_partial_offscreen","rejected_edge","rejected_line_like",
+                           "rejected_near_impact","rejected_outside_cone")
+            if any(b in (c.get("reason") or "") for b in bad_reasons): continue
+            fd = r.get("final_dia")
+            if not fd or fd <= 0: continue
+            mc = r.get("mask_center")
+            cx = mc[0] if mc else c["cx"]
+            cy = mc[1] if mc else c["cy"]
+            rt_val = float(rt_loc[ri]) if ri < len(rt_loc) else 0.0
+
+            eg_dia, eg_conf, eg_nd, eg_k = _idw_full(cx, cy, ground_samples, k_nn, dist_power, max_dist)
+            g_ratio  = (float(fd) / eg_dia) if eg_dia else None
+            g_excess = (float(fd) - eg_dia) if eg_dia else None
+
+            # Frame-to-frame deltas
+            dt = (rt_val - prev_rt) if prev_rt is not None else None
+            dx_fp = (cx - prev_cx) if prev_cx is not None else None
+            dy_fp = (cy - prev_cy) if prev_cy is not None else None
+            dist_fp = (math.sqrt(dx_fp**2 + dy_fp**2)) if dx_fp is not None else None
+            dia_chg = (float(fd) - prev_fd) if prev_fd is not None else None
+            dia_chg_ratio = (dia_chg / prev_fd) if (prev_fd and dia_chg is not None) else None
+            gr_chg = (g_ratio - prev_gr) if (g_ratio and prev_gr is not None) else None
+            x_vel = dx_fp / dt if (dx_fp is not None and dt and dt > 0) else None
+            y_vel = dy_fp / dt if (dy_fp is not None and dt and dt > 0) else None
+            dia_gs = dia_chg / dt if (dia_chg is not None and dt and dt > 0) else None
+            gr_gs  = gr_chg / dt if (gr_chg is not None and dt and dt > 0) else None
+
+            row = {
+                "shot_name": shot_name,
+                "frame_index": int(ri),
+                "relative_time": _r(rt_val),
+                "frame_offset_from_impact": ri - det_imp,
+                "is_pre_impact": 0, "is_impact": 0, "is_post_impact": 1,
+                "cx": _r(float(cx)), "cy": _r(float(cy)),
+                "cx_pixels": _r(float(cx) * W, 1), "cy_pixels": _r(float(cy) * H, 1),
+                "diameter_norm": _r(float(fd), 6), "radius_norm": _r(float(fd)/2, 6),
+                "diameter_pixels": _r(float(fd) * W, 2), "radius_pixels": _r(float(fd) * W / 2, 2),
+                "final_diameter_norm": _r(r.get("final_dia"), 6),
+                "mask_dia_norm": _r(r.get("mask_dia"), 6),
+                "candidate_dia_norm": _r(c.get("dia"), 6),
+                "confidence": _r(float(c.get("conf", 1.0)), 4),
+                "mask_px": int(r.get("mask_count", 0)),
+                "mask_fill": _r(r.get("mask_fill_ratio"), 4),
+                "mask_aspect": _r(r.get("mask_aspect_ratio"), 4),
+                "mask_brightness": _r(r.get("mask_brightness_mean"), 2),
+                "expected_ground_diameter": _r(eg_dia, 6),
+                "ground_diameter_ratio": _r(g_ratio, 5),
+                "ground_diameter_excess": _r(g_excess, 6),
+                "ground_radius_ratio": _r(g_ratio, 5),
+                "ground_calibration_confidence": _r(eg_conf, 4),
+                "ground_calibration_nearest_dist": _r(eg_nd, 5),
+                "ground_calibration_k_used": eg_k,
+                "edge_rejected": int(bool(r.get("edge_rejected"))),
+                "prediction_rescued": int(bool(r.get("prediction_rescued"))),
+                "likely_merged": int(bool(r.get("likely_merged_club_ball"))),
+                "debug_reason": (c.get("reason") or ""),
+            }
+            if expanded:
+                row.update({
+                    "dx_from_prev": _r(dx_fp), "dy_from_prev": _r(dy_fp),
+                    "dist_from_prev": _r(dist_fp),
+                    "diameter_change_from_prev": _r(dia_chg, 6),
+                    "diameter_change_ratio_from_prev": _r(dia_chg_ratio, 5),
+                    "ground_ratio_change_from_prev": _r(gr_chg, 5),
+                    "x_velocity_per_s": _r(x_vel), "y_velocity_per_s": _r(y_vel),
+                    "diameter_growth_per_s": _r(dia_gs),
+                    "ground_ratio_growth_per_s": _r(gr_gs),
+                })
+
+            point_rows.append(row); all_points_json.append(row); post_pts.append(row)
+            prev_cx = cx; prev_cy = cy; prev_fd = float(fd)
+            prev_gr = g_ratio; prev_rt = rt_val
+
+            _eg_str = f"{eg_dia:.5f}" if eg_dia else "n/a"
+            _gr_str = f"{g_ratio:.3f}" if g_ratio else "n/a"
+            print(f"  frame {ri}: dia={fd:.5f} egDia={_eg_str} ratio={_gr_str}")
+
+        # ── build summary row ─────────────────────────────────────────────────
+        def _vals(key): return [p[key] for p in post_pts if p.get(key) is not None]
+        def _mean(lst): return float(np.mean(lst)) if lst else None
+        def _med(lst):  return float(np.median(lst)) if lst else None
+        def _std(lst):  return float(np.std(lst)) if lst else None
+
+        gr_vals  = _vals("ground_diameter_ratio")
+        dia_vals = _vals("diameter_norm")
+        cx_vals  = _vals("cx"); cy_vals = _vals("cy")
+        gex_vals = _vals("ground_diameter_excess")
+        gc_conf  = _vals("ground_calibration_confidence")
+
+        srow = {c: None for c in SUM_COLS}
+        srow.update({
+            "shot_name": shot_name,
+            "n_valid_post_points": len(post_pts),
+            "impact_frame": det_imp,
+            "hla_degrees": _r(hla, 2), "vla_degrees": _r(vla, 2),
+            "ball_speed_mph": _r(spd, 1),
+            "tracked_frames": tracked, "total_frames": N,
+            "first_post_cx": _r(post_pts[0]["cx"]) if post_pts else None,
+            "first_post_cy": _r(post_pts[0]["cy"]) if post_pts else None,
+            "first_post_dia": _r(post_pts[0]["diameter_norm"]) if post_pts else None,
+            "last_post_cx": _r(post_pts[-1]["cx"]) if post_pts else None,
+            "last_post_cy": _r(post_pts[-1]["cy"]) if post_pts else None,
+            "last_post_dia": _r(post_pts[-1]["diameter_norm"]) if post_pts else None,
+            "first_post_expected_ground_diameter": _r(post_pts[0]["expected_ground_diameter"]) if post_pts else None,
+            "first_post_ground_diameter_ratio": _r(post_pts[0]["ground_diameter_ratio"]) if post_pts else None,
+            "last_post_expected_ground_diameter": _r(post_pts[-1]["expected_ground_diameter"]) if post_pts else None,
+            "last_post_ground_diameter_ratio": _r(post_pts[-1]["ground_diameter_ratio"]) if post_pts else None,
+            "mean_expected_ground_diameter": _r(_mean(_vals("expected_ground_diameter"))),
+            "mean_ground_diameter_ratio": _r(_mean(gr_vals)),
+            "median_expected_ground_diameter": _r(_med(_vals("expected_ground_diameter"))),
+            "median_ground_diameter_ratio": _r(_med(gr_vals)),
+            "ground_ratio_growth": _r(
+                (post_pts[-1]["ground_diameter_ratio"] or 0) -
+                (post_pts[0]["ground_diameter_ratio"] or 0)
+            ) if len(post_pts) >= 2 else None,
+            "manual_vla_label": "",
+        })
+
+        if expanded and post_pts:
+            # Full-sequence geometry
+            srow["max_center_x"] = _r(max(cx_vals)) if cx_vals else None
+            srow["min_center_x"] = _r(min(cx_vals)) if cx_vals else None
+            srow["max_center_y"] = _r(max(cy_vals)) if cy_vals else None
+            srow["min_center_y"] = _r(min(cy_vals)) if cy_vals else None
+            srow["center_x_range"] = _r(max(cx_vals) - min(cx_vals)) if cx_vals else None
+            srow["center_y_range"] = _r(max(cy_vals) - min(cy_vals)) if cy_vals else None
+            srow["max_diameter_norm"] = _r(max(dia_vals)) if dia_vals else None
+            srow["min_diameter_norm"] = _r(min(dia_vals)) if dia_vals else None
+            srow["mean_diameter_norm"] = _r(_mean(dia_vals))
+            srow["median_diameter_norm"] = _r(_med(dia_vals))
+            srow["std_diameter_norm"] = _r(_std(dia_vals))
+            srow["max_ground_ratio"] = _r(max(gr_vals)) if gr_vals else None
+            srow["min_ground_ratio"] = _r(min(gr_vals)) if gr_vals else None
+            srow["mean_ground_ratio"] = _r(_mean(gr_vals))
+            srow["median_ground_ratio"] = _r(_med(gr_vals))
+            srow["std_ground_ratio"] = _r(_std(gr_vals))
+            srow["ground_ratio_range"] = _r(max(gr_vals) - min(gr_vals)) if gr_vals else None
+            srow["mean_ground_excess"] = _r(_mean(gex_vals))
+            srow["median_ground_excess"] = _r(_med(gex_vals))
+            srow["max_ground_excess"] = _r(max(gex_vals)) if gex_vals else None
+            srow["n_edge_filtered_points"] = n_edge_filt
+            srow["n_prediction_rescued_points"] = n_rescued
+            srow["n_merged_rejected_points"] = n_merged
+            srow["max_center_x_reached"] = _r(max(cx_vals)) if cx_vals else None
+            srow["mean_ground_calibration_confidence"] = _r(_mean(gc_conf))
+            srow["min_ground_calibration_confidence"] = _r(min(gc_conf)) if gc_conf else None
+            srow["abs_hla_degrees"] = _r(abs(hla), 2) if hla is not None else None
+
+            # Trajectory
+            if len(cx_vals) >= 2:
+                dx_fl = cx_vals[-1] - cx_vals[0]
+                dy_fl = cy_vals[-1] - cy_vals[0]
+                srow["dx_first_last"] = _r(dx_fl)
+                srow["dy_first_last"] = _r(dy_fl)
+                srow["forward_progress_total"] = _r(dx_fl)
+                srow["vertical_image_change_total"] = _r(dy_fl)
+                # Path length
+                pl = sum(math.sqrt((cx_vals[i]-cx_vals[i-1])**2 + (cy_vals[i]-cy_vals[i-1])**2)
+                         for i in range(1, len(cx_vals)))
+                srow["path_length_norm"] = _r(pl)
+                # Straight line
+                if len(cx_vals) >= 3:
+                    sl, si = np.polyfit(cx_vals, cy_vals, 1)
+                    resids = [abs(cy_vals[i] - (sl*cx_vals[i]+si)) for i in range(len(cx_vals))]
+                    srow["straight_line_slope"] = _r(float(sl))
+                    srow["straight_line_angle_deg"] = _r(float(math.degrees(math.atan(sl))))
+                    srow["path_residual_mean"] = _r(float(np.mean(resids)))
+                    srow["path_residual_max"] = _r(float(np.max(resids)))
+                    srow["lateral_progress_total"] = _r(float(np.mean(resids)))
+                x_vel_sum = dx_fl / (rt_loc[post_pts[-1]["frame_index"]] - rt_loc[post_pts[0]["frame_index"]])
+                y_vel_sum = dy_fl / (rt_loc[post_pts[-1]["frame_index"]] - rt_loc[post_pts[0]["frame_index"]])
+                srow["x_speed_norm"] = _r(x_vel_sum) if _math.isfinite(x_vel_sum) else None
+                srow["y_speed_norm"] = _r(y_vel_sum) if _math.isfinite(y_vel_sum) else None
+
+            # Ground ratio slopes
+            if len(gr_vals) >= 2:
+                fi_arr = np.array([p["frame_index"] for p in post_pts if p.get("ground_diameter_ratio") is not None])
+                rt_arr = np.array([p["relative_time"] for p in post_pts if p.get("ground_diameter_ratio") is not None])
+                gr_arr = np.array(gr_vals)
+                if len(gr_arr) >= 2:
+                    sl_f = float(np.polyfit(fi_arr, gr_arr, 1)[0])
+                    sl_t = float(np.polyfit(rt_arr, gr_arr, 1)[0]) if rt_arr[-1] != rt_arr[0] else 0
+                    srow["ground_ratio_slope_over_frame"] = _r(sl_f)
+                    srow["ground_ratio_slope_over_time"] = _r(sl_t)
+                srow["early_ground_ratio_slope_1to3"] = _r(float((gr_vals[min(2,len(gr_vals)-1)] - gr_vals[0]) / max(1, min(2,len(gr_vals)-1))))
+                srow["early_ground_ratio_slope_1to5"] = _r(float((gr_vals[min(4,len(gr_vals)-1)] - gr_vals[0]) / max(1, min(4,len(gr_vals)-1))))
+                srow["max_ground_ratio_frame_index"] = int(fi_arr[int(np.argmax(gr_arr))]) if len(gr_arr) else None
+                srow["final_minus_initial_ground_ratio"] = _r(gr_vals[-1] - gr_vals[0])
+                srow["ratio_at_first_3_mean"] = _r(_mean(gr_vals[:3]))
+                srow["ratio_at_first_5_mean"] = _r(_mean(gr_vals[:5]))
+
+            # Diameter slopes
+            if len(dia_vals) >= 2:
+                srow["diameter_growth_ratio"] = _r(dia_vals[-1] / dia_vals[0] if dia_vals[0] else None)
+                fi_d = np.array([p["frame_index"] for p in post_pts if p.get("diameter_norm") is not None])
+                da_d = np.array(dia_vals)
+                sl_d = float(np.polyfit(fi_d, da_d, 1)[0]) if len(fi_d) >= 2 else 0
+                srow["diameter_slope_over_frame"] = _r(sl_d)
+                srow["early_diameter_slope_1to3"] = _r((dia_vals[min(2,len(dia_vals)-1)] - dia_vals[0]) / max(1,min(2,len(dia_vals)-1)))
+                srow["early_diameter_slope_1to5"] = _r((dia_vals[min(4,len(dia_vals)-1)] - dia_vals[0]) / max(1,min(4,len(dia_vals)-1)))
+                dur_s = (rt_loc[post_pts[-1]["frame_index"]] - rt_loc[post_pts[0]["frame_index"]]) if len(post_pts)>=2 else 0
+                srow["diameter_growth_per_second"] = _r((dia_vals[-1]-dia_vals[0])/dur_s) if dur_s > 0 else None
+                if gr_vals:
+                    srow["ground_ratio_growth_per_second"] = _r((gr_vals[-1]-gr_vals[0])/dur_s) if dur_s > 0 else None
+
+            # Window features
+            for wn in WINDOW_NS:
+                pts_w = post_pts[:wn]
+                if not pts_w: continue
+                pf = f"first{wn}_"
+                cxw = [p["cx"] for p in pts_w]; cyw = [p["cy"] for p in pts_w]
+                daw = [p["diameter_norm"] for p in pts_w]
+                grw = [p["ground_diameter_ratio"] for p in pts_w if p.get("ground_diameter_ratio")]
+                srow[pf+"mean_cx"] = _r(_mean(cxw)); srow[pf+"mean_cy"] = _r(_mean(cyw))
+                srow[pf+"mean_dia"] = _r(_mean(daw))
+                srow[pf+"mean_ground_ratio"] = _r(_mean(grw))
+                srow[pf+"max_ground_ratio"] = _r(max(grw)) if grw else None
+                srow[pf+"min_ground_ratio"] = _r(min(grw)) if grw else None
+                srow[pf+"ground_ratio_range"] = _r(max(grw)-min(grw)) if len(grw)>=2 else None
+                srow[pf+"diameter_growth_ratio"] = _r(daw[-1]/daw[0]) if daw and daw[0] else None
+                srow[pf+"ground_ratio_growth"] = _r(grw[-1]-grw[0]) if len(grw)>=2 else None
+                srow[pf+"x_progress"] = _r(cxw[-1]-cxw[0]) if len(cxw)>=2 else None
+                srow[pf+"y_change"] = _r(cyw[-1]-cyw[0]) if len(cyw)>=2 else None
+                if len(pts_w) >= 2:
+                    fi_w = np.array([p["frame_index"] for p in pts_w])
+                    srow[pf+"slope_dia_per_frame"] = _r(float(np.polyfit(fi_w,daw,1)[0]))
+                    if grw and len(grw) == len(pts_w):
+                        srow[pf+"slope_ground_ratio_per_frame"] = _r(float(np.polyfit(fi_w,grw,1)[0]))
+            for wn in WINDOW_LAST_NS:
+                pts_w = post_pts[-wn:] if len(post_pts) >= wn else post_pts
+                if not pts_w: continue
+                pf = f"last{wn}_"
+                grw = [p["ground_diameter_ratio"] for p in pts_w if p.get("ground_diameter_ratio")]
+                srow[pf+"mean_cx"] = _r(_mean([p["cx"] for p in pts_w]))
+                srow[pf+"mean_cy"] = _r(_mean([p["cy"] for p in pts_w]))
+                srow[pf+"mean_dia"] = _r(_mean([p["diameter_norm"] for p in pts_w]))
+                srow[pf+"mean_ground_ratio"] = _r(_mean(grw))
+                srow[pf+"ground_ratio_growth"] = _r(grw[-1]-grw[0]) if len(grw)>=2 else None
+
+            # Indexed p1..p10
+            for pi in range(1, 11):
+                p = post_pts[pi-1] if pi <= len(post_pts) else None
+                pf = f"p{pi}_"
+                srow[pf+"x"] = _r(p["cx"]) if p else None
+                srow[pf+"y"] = _r(p["cy"]) if p else None
+                srow[pf+"diameter"] = _r(p["diameter_norm"]) if p else None
+                srow[pf+"radius"] = _r(p["radius_norm"]) if p else None
+                srow[pf+"expected_ground_diameter"] = _r(p["expected_ground_diameter"]) if p else None
+                srow[pf+"ground_ratio"] = _r(p["ground_diameter_ratio"]) if p else None
+                srow[pf+"ground_excess"] = _r(p["ground_diameter_excess"]) if p else None
+                srow[pf+"confidence"] = _r(p["confidence"]) if p else None
+
+            # Nonlinear transforms
+            mgr = srow.get("mean_ground_ratio")
+            maxgr = srow.get("max_ground_ratio")
+            mcx = srow.get("first_post_cx") or srow.get("max_center_x")
+            mcy = srow.get("first_post_cy") or srow.get("max_center_y")
+            dgr = srow.get("diameter_growth_ratio")
+            gex2 = srow.get("mean_ground_excess")
+            def _sqr(v): return _r(v**2) if v is not None else None
+            def _cube(v): return _r(v**3) if v is not None else None
+            def _log(v): return _r(math.log(v)) if v and v > 0 else None
+            def _mul(a,b): return _r(a*b) if a is not None and b is not None else None
+            srow["mean_ground_ratio_squared"] = _sqr(mgr)
+            srow["mean_ground_ratio_cubed"] = _cube(mgr)
+            srow["log_mean_ground_ratio"] = _log(mgr)
+            srow["max_ground_ratio_squared"] = _sqr(maxgr)
+            srow["ground_excess_squared"] = _sqr(gex2)
+            srow["diameter_growth_ratio_squared"] = _sqr(dgr)
+            srow["mean_cx_times_mean_ground_ratio"] = _mul(mcx, mgr)
+            srow["mean_cy_times_mean_ground_ratio"] = _mul(mcy, mgr)
+            srow["hla_times_mean_ground_ratio"] = _mul(hla, mgr)
+            srow["max_cx_times_max_ground_ratio"] = _mul(srow.get("max_center_x"), maxgr)
+            for pi in range(1, 4):
+                pgr = srow.get(f"p{pi}_ground_ratio"); px = srow.get(f"p{pi}_x")
+                srow[f"p{pi}_ground_ratio_squared"] = _sqr(pgr)
+                srow[f"p{pi}_x_times_ground_ratio"] = _mul(px, pgr)
+
+        # ── Trained VLA prediction for this shot ──────────────────────────────
+        if _exp_vla_model is not None and post_pts:
+            _feats = dict(srow)  # srow already has all feature columns
+            _raw, _clamped, _fvals, _mw = _predict_vla_trained(_feats, _exp_vla_model)
+            _final_vla = _clamped
+            srow["vla_trained_model_prediction"] = round(_clamped, 2)
+            srow["vla_model_used"] = "trainedModel"
+            srow["vla_final_degrees"] = round(_clamped, 2)
+            srow["vla_was_clamped"] = abs(_raw - _clamped) > 0.01
+            top_feats = _exp_vla_model.get("featureSearchTopSubset", [])
+            srow["vla_model_features_used"] = "|".join(top_feats) if top_feats else ""
+            # Recompute carry/rollout using trained VLA
+            _ccf = 0.75
+            _d = estimate_distance(spd, _final_vla, hla, carry_correction_factor=_ccf)
+            srow["carry_yards_using_final_vla"] = round(_d["carry"], 1) if _d.get("carry") else None
+            srow["rollout_yards_using_final_vla"] = round(_d["rollout_yards"], 1) if _d.get("rollout_yards") else None
+            srow["total_yards_using_final_vla"] = round(_d["total"], 1) if _d.get("total") else None
+            srow["distance_vla_used_source"] = "trainedModel"
+            srow["spin_vla_used_source"] = "trainedModel"
+        else:
+            srow["vla_model_used"] = "pinhole2dsize"
+            srow["vla_final_degrees"] = _r(vla, 2) if vla is not None else None
+            srow["spin_vla_used_source"] = "pinhole2dsize"
+            srow["distance_vla_used_source"] = "pinhole2dsize"
+
+        summary_rows.append(srow)
+        print(f"  → {len(post_pts)} valid post-impact points")
+
+    # ── write outputs ─────────────────────────────────────────────────────────
+    with open(output_csv, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=POINT_COLS, extrasaction="ignore")
+        w.writeheader(); w.writerows(point_rows)
+    print(f"\nWrote: {output_csv}  ({len(point_rows)} rows)")
+
+    with open(summary_csv, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=SUM_COLS, extrasaction="ignore")
+        w.writeheader(); w.writerows(summary_rows)
+    print(f"Wrote: {summary_csv}  ({len(summary_rows)} shots)")
+
+    with open(output_json, "w") as f:
+        json.dump({"points": all_points_json, "shots": summary_rows}, f, indent=2, default=str)
+    print(f"Wrote: {output_json}")
+
+def cmd_prepare_vla_training(args):
+    import csv
+    summary_path = args.summary
+    output_path  = args.output or os.path.expanduser("~/Downloads/vla_training_template.csv")
+    if not summary_path or not os.path.exists(summary_path):
+        print(f"ERROR: --summary file not found: {summary_path}"); sys.exit(1)
+    with open(summary_path) as f:
+        rows = list(csv.DictReader(f))
+    out_cols = list(rows[0].keys()) if rows else []
+    if "manual_vla_label" not in out_cols:
+        out_cols.append("manual_vla_label")
+    for r in rows:
+        r["manual_vla_label"] = ""
+    with open(output_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=out_cols)
+        w.writeheader(); w.writerows(rows)
+    print(f"Wrote VLA training template: {output_path}  ({len(rows)} rows)")
+
+# ── VLA interactive labeling + training ───────────────────────────────────────
+
+def _find_shot_folder_for_label(shot_name, shots_root):
+    """Locate a ShotExport folder by name, searching shots_root and common paths."""
+    candidates = []
+    if shots_root:
+        candidates.append(os.path.join(shots_root, shot_name))
+    for base in [os.path.expanduser("~/Downloads"),
+                 os.path.join(os.path.expanduser("~"), "Documents", "ShotExports")]:
+        candidates.append(os.path.join(base, shot_name))
+        candidates.append(os.path.join(base, "ShotExports", shot_name))
+    for c in candidates:
+        if c and os.path.isdir(c):
+            return c
+    return None
+
+
+def _show_labeling_figure(shot_name, frames_norm, results, det_imp, metrics, row,
+                           shot_num, total_shots):
+    """Open a blocking matplotlib window for visual inspection before labeling."""
+    n_frames = len(frames_norm)
+    if n_frames == 0:
+        return
+    H_loc, W_loc = frames_norm[0].shape[:2]
+
+    fig = plt.figure(figsize=(16, 9), facecolor="#111")
+    fig.canvas.manager.set_window_title(
+        f"VLA Label [{shot_num}/{total_shots}]: {shot_name}  —  close when done inspecting")
+
+    ax_fr  = fig.add_axes([0.01, 0.10, 0.70, 0.88])
+    ax_inf = fig.add_axes([0.73, 0.10, 0.26, 0.88])
+    ax_sl  = fig.add_axes([0.05, 0.02, 0.63, 0.05])
+    for ax in (ax_fr, ax_inf):
+        ax.set_facecolor("#111"); ax.axis("off")
+
+    # ── frame display ──────────────────────────────────────────────────────────
+    init_fi = min(det_imp, n_frames - 1)
+    img_disp = ax_fr.imshow(frames_norm[init_fi], origin="upper",
+                             aspect="equal", extent=[0, W_loc, H_loc, 0])
+    ax_fr.set_xlim(0, W_loc); ax_fr.set_ylim(H_loc, 0)
+    title_txt = ax_fr.set_title(
+        f"Frame {init_fi}  |  impact={det_imp}  |  ← → arrow keys to scrub",
+        color="white", fontsize=9)
+
+    # ── ball overlays ──────────────────────────────────────────────────────────
+    pre_pts, post_pts_vis, edge_pts = [], [], []
+    frame_result_map = {}
+    for r in results:
+        frame_result_map[r["idx"]] = r
+        c = r.get("chosen")
+        if not c:
+            continue
+        mc = r.get("mask_center")
+        cx = (mc[0] if mc else c["cx"]) * W_loc
+        cy = (mc[1] if mc else c["cy"]) * H_loc
+        if r.get("edge_rejected"):
+            edge_pts.append((r["idx"], cx, cy))
+        elif r["idx"] > det_imp:
+            post_pts_vis.append((r["idx"], cx, cy))
+        else:
+            pre_pts.append((r["idx"], cx, cy))
+
+    if len(post_pts_vis) >= 2:
+        ax_fr.plot([p[1] for p in post_pts_vis], [p[2] for p in post_pts_vis],
+                   "-", color="cyan", linewidth=1.5, alpha=0.75, zorder=3)
+    for pts, col in [(pre_pts, "limegreen"), (post_pts_vis, "cyan"), (edge_pts, "#8b0000")]:
+        if pts:
+            ax_fr.scatter([p[1] for p in pts], [p[2] for p in pts],
+                          c=col, s=18, zorder=4, alpha=0.85)
+
+    # impact marker ★
+    r_imp = frame_result_map.get(det_imp)
+    if r_imp and r_imp.get("chosen"):
+        c0 = r_imp["chosen"]; mc0 = r_imp.get("mask_center")
+        ax_fr.plot((mc0[0] if mc0 else c0["cx"]) * W_loc,
+                   (mc0[1] if mc0 else c0["cy"]) * H_loc,
+                   "w*", markersize=12, zorder=6)
+
+    # current-frame circle (mutable via list)
+    circ_holder = [None]
+
+    def _draw_circle(fi):
+        if circ_holder[0] is not None:
+            try: circ_holder[0].remove()
+            except Exception: pass
+            circ_holder[0] = None
+        r2 = frame_result_map.get(fi)
+        if r2 and r2.get("chosen"):
+            c2 = r2["chosen"]; mc2 = r2.get("mask_center")
+            cx2 = (mc2[0] if mc2 else c2["cx"]) * W_loc
+            cy2 = (mc2[1] if mc2 else c2["cy"]) * H_loc
+            fd2 = r2.get("final_dia") or c2.get("dia", 0.033)
+            cp = patches.Circle((cx2, cy2), fd2 * W_loc / 2,
+                                 fill=False, edgecolor="yellow", linewidth=2, zorder=5)
+            ax_fr.add_patch(cp)
+            circ_holder[0] = cp
+
+    _draw_circle(init_fi)
+
+    # ── slider ─────────────────────────────────────────────────────────────────
+    from matplotlib.widgets import Slider as _Sl
+    sl = _Sl(ax_sl, "Frame", 0, n_frames - 1, valinit=init_fi, valstep=1, color="#444")
+    sl.label.set_color("white"); sl.valtext.set_color("white")
+
+    def _on_slide(val):
+        fi = int(sl.val)
+        img_disp.set_data(frames_norm[fi])
+        title_txt.set_text(f"Frame {fi}  |  impact={det_imp}  |  ← → arrow keys to scrub")
+        _draw_circle(fi)
+        fig.canvas.draw_idle()
+
+    sl.on_changed(_on_slide)
+
+    def _on_key(event):
+        fi = int(sl.val)
+        if event.key == "right":   sl.set_val(min(fi + 1, n_frames - 1))
+        elif event.key == "left":  sl.set_val(max(fi - 1, 0))
+
+    fig.canvas.mpl_connect("key_press_event", _on_key)
+
+    # ── info panel ─────────────────────────────────────────────────────────────
+    ball = (metrics or {}).get("ball", {})
+    hla_v   = ball.get("hla");  vla_v = ball.get("vla"); spd_v = ball.get("ball_speed")
+    existing = row.get("manual_vla_label", "").strip()
+    info = [
+        (f"[{shot_num}/{total_shots}]",              "white"),
+        (shot_name[-32:],                            "yellow"),
+        ("",                                          "white"),
+        (f"Impact frame:   {det_imp}",               "white"),
+        (f"Pre tracked:    {len(pre_pts)}",          "white"),
+        (f"Post tracked:   {len(post_pts_vis)}",     "cyan"),
+        (f"Edge rejected:  {len(edge_pts)}",         "#8b0000" if edge_pts else "white"),
+        ("",                                          "white"),
+        ("── METRICS ──────",                        "#888"),
+        (f"HLA:       {hla_v:.1f}°" if hla_v is not None else "HLA:       --", "white"),
+        (f"VLA(algo): {vla_v:.1f}°" if vla_v is not None else "VLA(algo): --", "#ff9900"),
+        (f"Speed:     {spd_v:.1f} mph" if spd_v is not None else "Speed:     --", "white"),
+        ("",                                          "white"),
+        ("── GROUND ───────",                        "#888"),
+        (f"Mean G-ratio:  {row.get('mean_ground_diameter_ratio','--')}", "white"),
+        (f"G-ratio growth: {row.get('ground_ratio_growth','--')}",       "white"),
+        (f"Post points:   {row.get('n_valid_post_points','--')}",         "white"),
+        ("",                                          "white"),
+        ("── LABEL ────────",                        "#888"),
+        (f"Existing: {existing or 'none'}",          "limegreen" if existing else "#777"),
+        ("",                                          "white"),
+        ("Close window when done.",                  "#aaa"),
+        ("Then enter VLA in console.",               "#aaa"),
+        ("",                                          "white"),
+        ("● green  = pre-impact",                   "limegreen"),
+        ("● cyan   = post-impact",                  "cyan"),
+        ("● dkred  = edge-rejected",                "#8b0000"),
+        ("★ = impact frame",                        "white"),
+    ]
+    for i, (text, color) in enumerate(info):
+        ax_inf.text(0.04, 0.99 - i * 0.036, text,
+                    transform=ax_inf.transAxes, color=color,
+                    fontsize=7.5, va="top", fontfamily="monospace", clip_on=True)
+
+    plt.show(block=True)
+
+
+def _print_label_summary(row, metrics):
+    ball = (metrics or {}).get("ball", {})
+    hla_v = ball.get("hla"); vla_v = ball.get("vla"); spd_v = ball.get("ball_speed")
+    print(f"  HLA:           {f'{hla_v:.2f}°' if hla_v is not None else '--'}")
+    print(f"  VLA (algo):    {f'{vla_v:.2f}°' if vla_v is not None else '--'}")
+    print(f"  Speed:         {f'{spd_v:.1f} mph' if spd_v is not None else '--'}")
+    print(f"  Post pts:      {row.get('n_valid_post_points','--')}")
+    print(f"  Mean G-ratio:  {row.get('mean_ground_diameter_ratio','--')}")
+    print(f"  G-ratio growth:{row.get('ground_ratio_growth','--')}")
+    existing = row.get("manual_vla_label","").strip()
+    if existing:
+        print(f"  Existing label: {existing}°")
+
+
+def _run_training_from_summary(rows, all_cols, args):
+    """Train model from in-memory labeled rows; called automatically after interactive labeling."""
+    import csv as _csv, tempfile as _tmp
+    tmp = _tmp.NamedTemporaryFile(mode="w", suffix=".csv", delete=False, newline="")
+    w = _csv.DictWriter(tmp, fieldnames=all_cols, extrasaction="ignore")
+    w.writeheader(); w.writerows(rows); tmp.close()
+
+    class _TrainArgs:
+        summary       = tmp.name
+        output_model  = getattr(args, "output_model",  None) or os.path.expanduser("~/Downloads/vla_model.json")
+        output_report = getattr(args, "output_report", None) or os.path.expanduser("~/Downloads/vla_model_report.txt")
+        output_plot   = getattr(args, "output_plot",   None) or os.path.expanduser("~/Downloads/vla_model_fit.png")
+
+    print("\n[Auto-training VLA model from labeled data…]")
+    try:
+        cmd_train_vla_model(_TrainArgs())
+    finally:
+        try: os.unlink(tmp.name)
+        except OSError: pass
+
+
+def cmd_label_vla_interactive(args):
+    """Interactive per-shot VLA labeling with matplotlib viewer."""
+    import csv as _csv, datetime as _dt
+
+    summary_path = getattr(args, "summary", None)
+    points_path  = getattr(args, "points",  None)
+    out_summary  = getattr(args, "output_summary", None) or summary_path
+    shots_root   = getattr(args, "shots_root", None)
+    train_after  = getattr(args, "train_after_labeling", False)
+    relabel      = getattr(args, "relabel", False)
+    start_idx    = getattr(args, "start_index", 0) or 0
+    shot_filter  = getattr(args, "shot_name", None)
+
+    if not summary_path or not os.path.exists(summary_path):
+        print(f"ERROR: --summary not found: {summary_path}"); sys.exit(1)
+
+    with open(summary_path) as f:
+        reader = _csv.DictReader(f)
+        all_cols = list(reader.fieldnames or [])
+        rows = list(reader)
+
+    for extra in ["manual_vla_label", "label_timestamp", "label_method", "label_notes"]:
+        if extra not in all_cols:
+            all_cols.append(extra)
+    for row in rows:
+        for extra in ["manual_vla_label", "label_timestamp", "label_method", "label_notes"]:
+            if extra not in row:
+                row[extra] = ""
+
+    to_label_indices = []
+    for i, row in enumerate(rows):
+        if i < start_idx: continue
+        if shot_filter and row.get("shot_name") != shot_filter: continue
+        if not relabel and row.get("manual_vla_label", "").strip(): continue
+        to_label_indices.append(i)
+
+    print(f"\n{'='*62}")
+    print(f"  VLA INTERACTIVE LABELER")
+    print(f"  Summary : {summary_path}")
+    print(f"  Output  : {out_summary}")
+    print(f"  To label: {len(to_label_indices)} shots")
+    print(f"  Commands: <number>=label  s=skip  b=back  r=replay  q=quit+save")
+    print(f"{'='*62}\n")
+
+    def _save():
+        with open(out_summary, "w", newline="") as f:
+            w = _csv.DictWriter(f, fieldnames=all_cols, extrasaction="ignore")
+            w.writeheader(); w.writerows(rows)
+        print(f"  → Saved: {out_summary}")
+
+    labeled_count = 0
+    pos = 0
+
+    while pos < len(to_label_indices):
+        row_idx = to_label_indices[pos]
+        row = rows[row_idx]
+        shot_name = row.get("shot_name", "?")
+
+        print(f"\n{'─'*62}")
+        print(f"  Shot {pos+1}/{len(to_label_indices)}: {shot_name}")
+        existing = row.get("manual_vla_label", "").strip()
+        if existing:
+            print(f"  [existing label: {existing}°]")
+
+        # Load and track shot
+        folder = _find_shot_folder_for_label(shot_name, shots_root)
+        loaded = None
+        results_loc = []; det_imp_loc = 20; metrics_loc = None
+
+        if folder:
+            print(f"  Folder: {folder}")
+            loaded = _load_shot_folder(folder)
+            if loaded:
+                frames_norm_loc, det_imp_loc, locked_loc, rt_loc = loaded
+                try:
+                    results_loc, det_imp_loc, _, _ = run_tracker(
+                        frames_norm_loc, params, det_imp_loc, locked_loc)
+                    metrics_loc = compute_metrics_and_club(
+                        frames_norm_loc, results_loc, det_imp_loc, params)
+                except Exception as e:
+                    print(f"  Tracking error: {e}")
+                _show_labeling_figure(shot_name, frames_norm_loc, results_loc,
+                                      det_imp_loc, metrics_loc, row, pos + 1,
+                                      len(to_label_indices))
+            else:
+                print("  No frames found in folder.")
+        else:
+            print("  Shot folder not found. Pass --shots-root to enable visual review.")
+
+        _print_label_summary(row, metrics_loc)
+
+        # Input loop
+        action = None
+        while action is None:
+            try:
+                raw = input("\n  VLA (0–65), s=skip, b=back, r=replay, q=quit: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                _save()
+                print("\n  Interrupted — progress saved.")
+                if train_after and labeled_count > 0:
+                    _run_training_from_summary(rows, all_cols, args)
+                return
+
+            rl = raw.lower()
+            if rl == "q":
+                _save()
+                print(f"  Quit. {labeled_count} shots labeled this session.")
+                if train_after and labeled_count > 0:
+                    _run_training_from_summary(rows, all_cols, args)
+                return
+            elif rl == "s":
+                print(f"  Skipped {shot_name}.")
+                action = "next"
+            elif rl == "b":
+                if pos > 0:
+                    pos -= 1; action = "back"
+                else:
+                    print("  Already at first shot.")
+            elif rl == "r":
+                if loaded and folder:
+                    _show_labeling_figure(shot_name, frames_norm_loc, results_loc,
+                                          det_imp_loc, metrics_loc, row, pos + 1,
+                                          len(to_label_indices))
+                else:
+                    print("  No figure available to replay.")
+            else:
+                try:
+                    vla_val = max(0.0, min(65.0, float(raw)))
+                    row["manual_vla_label"] = str(round(vla_val, 2))
+                    row["label_timestamp"]  = _dt.datetime.now().isoformat()
+                    row["label_method"]     = "manual_visual"
+                    try:
+                        notes = input("  Notes (Enter to skip): ").strip()
+                        if notes:
+                            row["label_notes"] = notes
+                    except (EOFError, KeyboardInterrupt):
+                        pass
+                    _save()
+                    labeled_count += 1
+                    print(f"  ✓ VLA = {vla_val:.1f}° saved for {shot_name}")
+                    action = "next"
+                except ValueError:
+                    print(f"  Invalid input '{raw}'. Enter a number 0–65 or a command.")
+
+        if action == "next":
+            pos += 1
+        # "back" leaves pos decremented; anything else is a no-op
+
+    print(f"\n{'='*62}")
+    print(f"  Labeling complete. {labeled_count} shot(s) labeled this session.")
+    _save()
+
+    if train_after:
+        labeled_rows = [r for r in rows if r.get("manual_vla_label", "").strip()]
+        if len(labeled_rows) >= 3:
+            _run_training_from_summary(rows, all_cols, args)
+        else:
+            print("  Not enough labeled shots for training (need ≥3).")
+
+
+def _loo_ridge_numpy(X_std, y, alpha=1.0):
+    """Fast numpy LOO ridge regression. Returns (coef, intercept, loo_preds)."""
+    n, nf = X_std.shape
+    X_aug = np.column_stack([X_std, np.ones(n)])
+    reg = np.eye(nf + 1) * alpha; reg[-1, -1] = 0.0
+    sol = np.linalg.lstsq(X_aug.T @ X_aug + reg, X_aug.T @ y, rcond=None)[0]
+    coef = sol[:-1]; intercept = float(sol[-1])
+    loo = np.zeros(n)
+    for i in range(n):
+        mask = np.ones(n, bool); mask[i] = False
+        Xa = X_aug[mask]; ya = y[mask]
+        si = np.linalg.lstsq(Xa.T @ Xa + reg, Xa.T @ ya, rcond=None)[0]
+        loo[i] = float(np.clip(X_aug[i] @ si, 0, 65))
+    return coef, intercept, loo
+
+
+def _feature_subset_search(X_all, y, feat_names, shot_names, alpha=1.0, max_size=5):
+    """
+    Greedy forward selection + random subset search.
+    Returns sorted list of (loo_mae, loo_rmse, loo_max, train_mae, feat_subset, model_type).
+    """
+    import itertools, random
+    n = len(y)
+    results = []
+
+    def _eval_subset(indices):
+        if not indices: return None
+        Xs = X_all[:, list(indices)]
+        Xm = Xs.mean(0); Xs2 = Xs.std(0); Xs2[Xs2 < 1e-10] = 1.0
+        Xn = (Xs - Xm) / Xs2
+        try:
+            coef, intercept, loo = _loo_ridge_numpy(Xn, y, alpha)
+        except Exception:
+            return None
+        full = np.clip(Xn @ coef + intercept, 0, 65)
+        errs = y - loo
+        return (float(np.mean(np.abs(errs))),
+                float(np.sqrt(np.mean(errs**2))),
+                float(np.max(np.abs(errs))),
+                float(np.mean(np.abs(y - full))))
+
+    nf = len(feat_names)
+    seen = set()
+
+    # Exhaustive sizes 2-3
+    for size in range(2, min(4, max_size + 1)):
+        for combo in itertools.combinations(range(nf), size):
+            key = combo
+            if key in seen: continue
+            seen.add(key)
+            r = _eval_subset(combo)
+            if r: results.append(r + (tuple(feat_names[i] for i in combo), "ridge_loo"))
+
+    # Greedy forward selection up to max_size
+    selected = []
+    remaining = list(range(nf))
+    for _ in range(max_size):
+        best_mae = float("inf"); best_i = None
+        for i in remaining:
+            combo = tuple(sorted(selected + [i]))
+            if combo in seen: continue
+            seen.add(combo)
+            r = _eval_subset(combo)
+            if r and r[0] < best_mae:
+                best_mae = r[0]; best_i = i
+                results.append(r + (tuple(feat_names[j] for j in combo), "ridge_greedy"))
+        if best_i is None: break
+        selected.append(best_i); remaining.remove(best_i)
+
+    # Random size 4-6
+    for size in range(4, max_size + 1):
+        for _ in range(min(500, max(1, 2000 // size))):
+            combo = tuple(sorted(random.sample(range(nf), min(size, nf))))
+            if combo in seen: continue
+            seen.add(combo)
+            r = _eval_subset(combo)
+            if r: results.append(r + (tuple(feat_names[i] for i in combo), "ridge_random"))
+
+    results.sort(key=lambda x: x[0])
+    return results[:50]
+
+
+def cmd_train_vla_model(args):
+    """Fit Ridge regression VLA model with optional feature search."""
+    import csv as _csv, datetime as _dt, math as _math
+
+    summary_path    = getattr(args, "summary", None)
+    out_model       = getattr(args, "output_model",  None) or os.path.expanduser("~/Downloads/vla_model.json")
+    out_report      = getattr(args, "output_report", None) or os.path.expanduser("~/Downloads/vla_model_report.txt")
+    out_plot        = getattr(args, "output_plot",   None) or os.path.expanduser("~/Downloads/vla_model_fit.png")
+    do_feat_search  = getattr(args, "feature_search", False)
+    use_expanded    = getattr(args, "use_expanded_features", False) or getattr(args, "expanded_features", False)
+    allow_high_fc   = getattr(args, "allow_high_feature_count", False)
+    out_dir         = os.path.dirname(os.path.abspath(out_model))
+    out_pred_csv    = os.path.join(out_dir, "vla_predictions.csv")
+    out_diag_csv    = os.path.join(out_dir, "vla_model_diagnostics.csv")
+    out_search_csv  = os.path.join(out_dir, "vla_model_feature_search.csv")
+
+    if not summary_path or not os.path.exists(summary_path):
+        print(f"ERROR: --summary not found: {summary_path}"); sys.exit(1)
+
+    with open(summary_path) as f:
+        rows = list(_csv.DictReader(f))
+
+    def _pf(v):
+        try: x = float(v); return x if _math.isfinite(x) else None
+        except: return None
+
+    labeled = [r for r in rows if r.get("manual_vla_label", "").strip()]
+    n_lab = len(labeled)
+    print(f"\n{'='*62}")
+    print(f"  VLA MODEL TRAINING")
+    print(f"  Labeled: {n_lab}/{len(rows)} shots  |  feature_search={do_feat_search}  expanded={use_expanded}")
+    if n_lab < 3:
+        print("  ERROR: need ≥3 labeled shots."); sys.exit(1)
+
+    # ── feature pool ──────────────────────────────────────────────────────────
+    BASE_FEATURES = [
+        "mean_ground_diameter_ratio","median_ground_diameter_ratio",
+        "ground_ratio_growth","first_post_ground_diameter_ratio","last_post_ground_diameter_ratio",
+        "first_post_cx","first_post_cy","last_post_cx","last_post_cy",
+        "first_post_dia","last_post_dia","hla_degrees","ball_speed_mph","n_valid_post_points",
+    ]
+    EXPANDED_FEATURES = [
+        "mean_ground_ratio","max_ground_ratio","min_ground_ratio","std_ground_ratio",
+        "ground_ratio_range","mean_ground_excess","max_ground_excess",
+        "ground_ratio_slope_over_frame","ground_ratio_slope_over_time",
+        "early_ground_ratio_slope_1to3","early_ground_ratio_slope_1to5",
+        "ratio_at_first_3_mean","ratio_at_first_5_mean","final_minus_initial_ground_ratio",
+        "diameter_growth_ratio","diameter_slope_over_frame",
+        "early_diameter_slope_1to3","mean_diameter_norm","max_diameter_norm",
+        "max_center_x","min_center_x","center_x_range","forward_progress_total",
+        "abs_hla_degrees","x_speed_norm","path_residual_mean",
+        "n_valid_post_points","mean_ground_calibration_confidence",
+        "p1_ground_ratio","p2_ground_ratio","p3_ground_ratio",
+        "p1_x","p2_x","p3_x",
+        "mean_ground_ratio_squared","log_mean_ground_ratio","max_ground_ratio_squared",
+        "diameter_growth_ratio_squared","p1_ground_ratio_squared","p2_ground_ratio_squared",
+        "p1_x_times_ground_ratio","p2_x_times_ground_ratio",
+        "mean_cx_times_mean_ground_ratio","hla_times_mean_ground_ratio",
+        "first3_mean_ground_ratio","first5_mean_ground_ratio",
+        "first3_ground_ratio_growth","first3_slope_ground_ratio_per_frame",
+    ]
+    SEARCH_POOL = [
+        "mean_ground_diameter_ratio","median_ground_diameter_ratio",
+        "max_ground_ratio","ground_ratio_growth","ground_ratio_slope_over_frame",
+        "early_ground_ratio_slope_1to3","early_ground_ratio_slope_1to5",
+        "first_post_ground_diameter_ratio","last_post_ground_diameter_ratio",
+        "max_diameter_norm","diameter_growth_ratio","diameter_slope_over_frame",
+        "hla_degrees","abs_hla_degrees","ball_speed_mph",
+        "forward_progress_total","vertical_image_change_total",
+        "n_valid_post_points","mean_ground_calibration_confidence",
+        "p1_ground_ratio","p2_ground_ratio","p3_ground_ratio",
+        "p1_x","p2_x","p3_x",
+    ]
+
+    all_feat_pool = list(dict.fromkeys(BASE_FEATURES + (EXPANDED_FEATURES if use_expanded else [])))
+
+    data = []
+    for r in labeled:
+        y_raw = _pf(r.get("manual_vla_label", ""))
+        if y_raw is None: continue
+        data.append({"shot": r["shot_name"],
+                     "y": max(0.0, min(65.0, y_raw)),
+                     "feat": {fn: _pf(r.get(fn, "")) for fn in all_feat_pool + SEARCH_POOL},
+                     "row": r})
+    n = len(data)
+
+    cover_thresh = 0.3 if allow_high_fc else 0.5
+    used_feats = []
+    for fn in all_feat_pool:
+        ok = sum(1 for d in data if d["feat"].get(fn) is not None)
+        if ok / n >= cover_thresh:
+            used_feats.append(fn)
+        else:
+            print(f"  Dropping {fn}: {ok}/{n} non-null")
+
+    feat_medians = {}
+    for fn in used_feats:
+        vals = [d["feat"][fn] for d in data if d["feat"].get(fn) is not None]
+        feat_medians[fn] = float(np.median(vals)) if vals else 0.0
+
+    X = np.array([[d["feat"].get(fn) if d["feat"].get(fn) is not None else feat_medians[fn]
+                   for fn in used_feats] for d in data], dtype=float)
+    y = np.array([d["y"] for d in data], dtype=float)
+    shot_names = [d["shot"] for d in data]
+
+    feat_means = X.mean(0); feat_stds = X.std(0); feat_stds[feat_stds < 1e-10] = 1.0
+    X_std = (X - feat_means) / feat_stds
+
+    y_mean = float(np.mean(y))
+    baseline_mae = float(np.mean(np.abs(y - y_mean)))
+    print(f"  Baseline (mean={y_mean:.1f}°) MAE: {baseline_mae:.2f}°")
+    print(f"  Features in pool: {len(used_feats)}")
+
+    # ── fit main model ────────────────────────────────────────────────────────
+    alpha_used = 1.0; model_type = "ridge_regression_numpy"
+    try:
+        from sklearn.linear_model import RidgeCV, Ridge
+        from sklearn.model_selection import LeaveOneOut
+        alphas = [0.05, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0]
+        rcv = RidgeCV(alphas=alphas, cv=LeaveOneOut(), scoring="neg_mean_absolute_error")
+        rcv.fit(X_std, y)
+        alpha_used = float(rcv.alpha_)
+        coef = rcv.coef_; intercept = float(rcv.intercept_)
+        loo_preds = np.zeros(n)
+        for i in range(n):
+            mask = np.ones(n, bool); mask[i] = False
+            mi = Ridge(alpha=alpha_used).fit(X_std[mask], y[mask])
+            loo_preds[i] = float(np.clip(mi.predict(X_std[i:i+1])[0], 0, 65))
+        model_type = "ridge_regression_sklearn"
+        print(f"  sklearn RidgeCV  alpha={alpha_used:.2f}")
+    except ImportError:
+        coef, intercept, loo_preds = _loo_ridge_numpy(X_std, y, alpha_used)
+
+    loo_errs = y - loo_preds
+    mae  = float(np.mean(np.abs(loo_errs)))
+    rmse = float(np.sqrt(np.mean(loo_errs**2)))
+    max_err = float(np.max(np.abs(loo_errs)))
+    ss_tot = float(np.sum((y - np.mean(y))**2))
+    r2 = 1.0 - float(np.sum(loo_errs**2)) / ss_tot if ss_tot > 0 else float("nan")
+
+    print(f"\n  {'Shot':<35} {'Actual':>7} {'PredLOO':>8} {'Error':>7}")
+    print(f"  {'─'*35} {'─'*7} {'─'*8} {'─'*7}")
+    for sn, act, pred in zip(shot_names, y, loo_preds):
+        print(f"  {sn[-35:]:<35} {act:>7.1f} {pred:>8.1f} {act-pred:>+7.1f}")
+    print(f"\n  LOO-CV  MAE={mae:.2f}°  RMSE={rmse:.2f}°  MaxErr={max_err:.2f}°  R²={r2:.3f}")
+
+    coef_dict = {fn: float(c) for fn, c in zip(used_feats, coef)}
+    print(f"\n  Coefficients (standardized):")
+    for fn, cv in sorted(coef_dict.items(), key=lambda x: -abs(x[1])):
+        print(f"    {fn:<44}: {cv:+.4f}")
+
+    # ── feature subset search ─────────────────────────────────────────────────
+    search_results = []
+    if do_feat_search:
+        print(f"\n  Feature subset search (pool={len(SEARCH_POOL)} feats, sizes 2-5)…")
+        search_feats_avail = [fn for fn in SEARCH_POOL
+                              if sum(1 for d in data if d["feat"].get(fn) is not None) / n >= 0.4]
+        search_meds = {}
+        for fn in search_feats_avail:
+            vals = [d["feat"][fn] for d in data if d["feat"].get(fn) is not None]
+            search_meds[fn] = float(np.median(vals)) if vals else 0.0
+        X_s = np.array([[d["feat"].get(fn) if d["feat"].get(fn) is not None else search_meds[fn]
+                         for fn in search_feats_avail] for d in data], dtype=float)
+        search_results = _feature_subset_search(X_s, y, np.array(search_feats_avail),
+                                                 shot_names, alpha=alpha_used, max_size=5)
+        print(f"  Top 5 subsets by LOO MAE:")
+        for i, sr in enumerate(search_results[:5]):
+            print(f"    #{i+1}: MAE={sr[0]:.2f}° RMSE={sr[1]:.2f}° features=({', '.join(str(f) for f in sr[4])})")
+
+        with open(out_search_csv, "w", newline="") as f:
+            w = _csv.writer(f)
+            w.writerow(["rank","model_type","loo_mae","loo_rmse","loo_max_error","train_mae","n_features","features"])
+            for i, sr in enumerate(search_results[:50]):
+                w.writerow([i+1, sr[5], round(sr[0],3), round(sr[1],3), round(sr[2],3),
+                            round(sr[3],3), len(sr[4]), "|".join(sr[4])])
+        print(f"  Wrote feature search: {out_search_csv}")
+
+    # ── model JSON ────────────────────────────────────────────────────────────
+    model_json = {
+        "version": 1,
+        "createdAt": _dt.datetime.now().isoformat(),
+        "modelType": model_type,
+        "target": "manual_vla_label",
+        "features": used_feats,
+        "featureMeans":      {fn: float(m) for fn, m in zip(used_feats, feat_means)},
+        "featureStds":       {fn: float(s) for fn, s in zip(used_feats, feat_stds)},
+        "imputationMedians": {fn: float(feat_medians[fn]) for fn in used_feats},
+        "coefficients":      coef_dict,
+        "intercept":         float(intercept),
+        "alpha":             alpha_used,
+        "predictionClamp":   [0, 65],
+        "trainingShots":     shot_names,
+        "metrics": {
+            "nTraining": n, "mae": round(mae, 3), "rmse": round(rmse, 3),
+            "maxError": round(max_err, 3),
+            "r2": round(r2, 4) if _math.isfinite(r2) else None,
+            "baselineMae": round(baseline_mae, 3),
+            "evaluationMethod": "leave_one_out",
+        },
+        "featureSearchTopSubset": list(search_results[0][4]) if search_results else None,
+    }
+    with open(out_model, "w") as f:
+        json.dump(model_json, f, indent=2)
+    print(f"\n  Wrote model:  {out_model}")
+
+    # ── predictions CSV ───────────────────────────────────────────────────────
+    with open(out_pred_csv, "w", newline="") as f:
+        w = _csv.writer(f)
+        w.writerow(["shot_name","actual_vla","predicted_vla_loo","error"] + used_feats[:10])
+        for sn, act, pred, d in zip(shot_names, y, loo_preds, data):
+            fv = [d["feat"].get(fn, "") for fn in used_feats[:10]]
+            w.writerow([sn, round(float(act),2), round(float(pred),2), round(float(act-pred),2)] + fv)
+    print(f"  Wrote preds:  {out_pred_csv}")
+
+    # ── diagnostics CSV ───────────────────────────────────────────────────────
+    with open(out_diag_csv, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=[
+            "shot_name","actual_vla","pred_loo","error","abs_error",
+            "n_valid_post_points","mean_ground_calibration_confidence",
+            "ground_ratio_growth","hla_degrees","warnings","possible_reason"
+        ], extrasaction="ignore")
+        w.writeheader()
+        for sn, act, pred, d in zip(shot_names, y, loo_preds, data):
+            err = float(act - pred); ae = abs(err)
+            reasons = []
+            gc = d["feat"].get("mean_ground_calibration_confidence")
+            npp = d["feat"].get("n_valid_post_points")
+            if gc is not None and gc < 0.3: reasons.append("low_ground_cal_confidence")
+            if npp is not None and npp < 3:  reasons.append("few_post_points")
+            if ae > 15: reasons.append("large_error")
+            if d["feat"].get("abs_hla_degrees") and d["feat"]["abs_hla_degrees"] > 20:
+                reasons.append("high_hla")
+            w.writerow({
+                "shot_name": sn, "actual_vla": round(float(act),1),
+                "pred_loo": round(float(pred),1), "error": round(err,2), "abs_error": round(ae,2),
+                "n_valid_post_points": npp, "mean_ground_calibration_confidence": gc,
+                "ground_ratio_growth": d["feat"].get("ground_ratio_growth"),
+                "hla_degrees": d["feat"].get("hla_degrees"),
+                "warnings": d["row"].get("warnings",""),
+                "possible_reason": "|".join(reasons) if reasons else "ok",
+            })
+    print(f"  Wrote diag:   {out_diag_csv}")
+
+    # ── report TXT ────────────────────────────────────────────────────────────
+    top_search = search_results[:10] if search_results else []
+    lines = [
+        "VLA MODEL TRAINING REPORT", "=" * 62,
+        f"Date:             {_dt.datetime.now().isoformat()}",
+        f"Training shots:   {n}",
+        f"Model type:       {model_type}",
+        f"Alpha (ridge):    {alpha_used:.2f}",
+        f"Evaluation:       Leave-one-out cross-validation",
+        f"Expanded features:{use_expanded}",
+        f"Feature search:   {do_feat_search}",
+        "", "FEATURES USED:",
+    ] + [f"  {fn}" for fn in used_feats] + [
+        "", "PER-SHOT LOO-CV PREDICTIONS:",
+        f"  {'Shot':<35} {'Actual':>7} {'PredLOO':>8} {'Error':>7}",
+        f"  {'─'*35} {'─'*7} {'─'*8} {'─'*7}",
+    ] + [
+        f"  {sn[-35:]:<35} {float(act):>7.1f} {float(pred):>8.1f} {float(act-pred):>+7.1f}"
+        for sn, act, pred in zip(shot_names, y, loo_preds)
+    ] + [
+        "", "METRICS:",
+        f"  MAE:          {mae:.2f}°",
+        f"  RMSE:         {rmse:.2f}°",
+        f"  Max error:    {max_err:.2f}°",
+        f"  R²:           {r2:.3f}",
+        f"  Baseline MAE: {baseline_mae:.2f}°",
+        "", "COEFFICIENTS (standardized, sorted by |coef|):",
+    ] + [
+        f"  {fn:<44}: {cv:+.4f}"
+        for fn, cv in sorted(coef_dict.items(), key=lambda x: -abs(x[1]))
+    ] + [f"  {'intercept':<44}: {float(intercept):+.4f}", ""]
+    if top_search:
+        lines += ["TOP 10 FEATURE SUBSETS (LOO MAE):",
+                  f"  {'#':<3} {'MAE':>6} {'RMSE':>6} {'MaxErr':>7}  Features"]
+        for i, sr in enumerate(top_search):
+            lines.append(f"  {i+1:<3} {sr[0]:>6.2f} {sr[1]:>6.2f} {sr[2]:>7.2f}  {', '.join(sr[4])}")
+        lines.append("")
+    lines += [
+        "WARNINGS:",
+        f"  ⚠  Only {n} training samples.",
+        "  ⚠  LOO-CV used due to small dataset.",
+        "  ⚠  Validate on held-out shots before production use.",
+    ]
+    with open(out_report, "w") as f:
+        f.write("\n".join(lines))
+    print(f"  Wrote report: {out_report}")
+
+    # ── plot ──────────────────────────────────────────────────────────────────
+    fig_t, axes_t = plt.subplots(1, 2, figsize=(14, 6))
+    fig_t.patch.set_facecolor("#111")
+    ax_t = axes_t[0]; ax_t.set_facecolor("#1a1a1a")
+    lo = max(0, min(float(np.min(y)), float(np.min(loo_preds))) - 3)
+    hi = min(70, max(float(np.max(y)), float(np.max(loo_preds))) + 3)
+    ax_t.plot([lo,hi],[lo,hi],"--",color="#666",lw=1,label="y=x")
+    ax_t.scatter(y, loo_preds, c="cyan", s=70, zorder=5)
+    for sn, act, pred in zip(shot_names, y, loo_preds):
+        ax_t.annotate(sn[-18:], (float(act), float(pred)), fontsize=5.5, color="#ccc",
+                      xytext=(3,2), textcoords="offset points")
+    ax_t.set_xlabel("Actual VLA (°)", color="white"); ax_t.set_ylabel("Predicted LOO (°)", color="white")
+    ax_t.set_title(f"VLA Ridge  n={n}  LOO MAE={mae:.1f}°", color="white")
+    ax_t.tick_params(colors="white")
+    for sp in ax_t.spines.values(): sp.set_color("#444")
+    ax_t.legend(facecolor="#222", labelcolor="white", fontsize=7)
+    ax_t.set_xlim(lo,hi); ax_t.set_ylim(lo,hi)
+    # Residuals
+    ax_r = axes_t[1]; ax_r.set_facecolor("#1a1a1a")
+    ax_r.axhline(0, color="#666", lw=1, ls="--")
+    ax_r.scatter(loo_preds, loo_errs, c="orange", s=60, zorder=5)
+    for sn, pred, err in zip(shot_names, loo_preds, loo_errs):
+        ax_r.annotate(sn[-18:], (float(pred), float(err)), fontsize=5.5, color="#ccc",
+                      xytext=(3,2), textcoords="offset points")
+    ax_r.set_xlabel("Predicted VLA (°)", color="white"); ax_r.set_ylabel("Error (actual-pred)", color="white")
+    ax_r.set_title("Residuals", color="white")
+    ax_r.tick_params(colors="white")
+    for sp in ax_r.spines.values(): sp.set_color("#444")
+    plt.tight_layout()
+    plt.savefig(out_plot, dpi=150, facecolor="#111")
+    plt.close(fig_t)
+    print(f"  Wrote plot:   {out_plot}")
+    print(f"\n{'='*62}")
+
+
+def cmd_fit_flight_model(args):
+    """Fit carry/rollout ridge regression from Flightscope CSV; save flight_model.json."""
+    import csv as _csv, math as _m, datetime as _dt
+
+    csv_path = getattr(args, "flightscope_csv", None)
+    if not csv_path or not os.path.exists(csv_path):
+        print(f"ERROR: --flightscope-csv not found: {csv_path}"); return
+
+    out_model  = getattr(args, "output_model",  None) or os.path.join(os.path.expanduser("~"), "Downloads", "flight_model.json")
+    out_report = getattr(args, "output_report", None) or out_model.replace(".json", "_report.txt")
+    out_plot   = getattr(args, "output_plot",   None) or out_model.replace(".json", "_fit.png")
+
+    def parse_lr(s):
+        s = str(s).strip()
+        if not s or s == "-": return None
+        sign = 1 if s.lower().endswith("r") else (-1 if s.lower().endswith("l") else 1)
+        try: return sign * float(s.rstrip("RrLl").strip())
+        except: return None
+
+    rows = []
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
+        reader = _csv.DictReader(f)
+        for row in reader:
+            try:
+                carry = float(row.get("Carry (yd)", "").strip() or "nan")
+                roll  = float(row.get("Roll (yd)",  "").strip() or "nan")
+                total = float(row.get("Total (yd)", "").strip() or "nan")
+                spd   = float(row.get("Ball (mph)", "").strip() or "nan")
+                spin  = float(row.get("Spin (rpm)", "").strip() or "nan")
+                vla   = float(row.get("Launch V (deg)", "").strip() or "nan")
+                hla   = parse_lr(row.get("Launch H (deg)", ""))
+                if any(_m.isnan(x) for x in [carry, roll, spd, vla]): continue
+                rows.append(dict(carry=carry, roll=roll, total=total, ball_speed=spd,
+                                 spin=spin, vla=vla, hla=hla))
+            except: continue
+
+    if len(rows) < 3:
+        print(f"ERROR: Only {len(rows)} valid rows in CSV — need ≥ 3."); return
+    print(f"[Flight model] {len(rows)} valid rows from {csv_path}")
+
+    def ideal_carry(spd, vla_deg):
+        spd_m = spd / 2.23694
+        vla_r = _m.radians(min(max(vla_deg, 0.5), 65))
+        return (spd_m**2 * _m.sin(2*vla_r) / 9.80665) * 1.09361
+
+    def build_carry_feats(row):
+        v = min(max(row["vla"], 0.5), 65)
+        s = row["ball_speed"]
+        ic = ideal_carry(s, v)
+        return {"ball_speed": s, "vla": v, "ball_speed_sq": s**2, "vla_sq": v**2,
+                "speed_times_vla": s*v, "sin_2vla": _m.sin(2*_m.radians(v)),
+                "ideal_carry_yards": ic}
+
+    def build_roll_feats(row):
+        v = min(max(row["vla"], 0.5), 65)
+        s = row["ball_speed"]
+        ic = ideal_carry(s, v)
+        return {"ball_speed": s, "vla": v, "ball_speed_sq": s**2, "vla_sq": v**2,
+                "speed_times_vla": s*v, "sin_2vla": _m.sin(2*_m.radians(v)),
+                "ideal_carry_yards": ic, "carry_yards": row["carry"],
+                "backspin": row.get("spin", 4000) or 4000}
+
+    def ridge_fit(feat_dicts, targets, alpha=1.0):
+        feats = list(feat_dicts[0].keys())
+        X = np.array([[r[f] for f in feats] for r in feat_dicts], dtype=float)
+        y = np.array(targets, dtype=float)
+        means = X.mean(axis=0); stds = X.std(axis=0, ddof=0)
+        stds[stds < 1e-9] = 1.0
+        Xn = (X - means) / stds
+        n, p = Xn.shape
+        beta = np.linalg.solve(Xn.T @ Xn + alpha * np.eye(p), Xn.T @ y)
+        intercept = y.mean() - (Xn.mean(axis=0) @ beta)
+        preds = Xn @ beta + intercept
+        # LOO-CV MAE
+        loo_errs = []
+        for i in range(n):
+            mask = np.ones(n, dtype=bool); mask[i] = False
+            Xt = Xn[mask]; yt = y[mask]; Xv = Xn[i]
+            b = np.linalg.solve(Xt.T @ Xt + alpha * np.eye(p), Xt.T @ yt)
+            ic = yt.mean() - (Xt.mean(axis=0) @ b)
+            loo_errs.append(abs(float(Xv @ b + ic) - float(y[i])))
+        mae = float(np.mean(np.abs(preds - y)))
+        loo_mae = float(np.mean(loo_errs))
+        rmse = float(np.sqrt(np.mean((preds - y)**2)))
+        return dict(features=feats,
+                    means={f: float(means[i]) for i,f in enumerate(feats)},
+                    stds={f: float(stds[i]) for i,f in enumerate(feats)},
+                    imputationMedians={f: float(np.median(X[:,i])) for i,f in enumerate(feats)},
+                    coefficients={f: float(beta[i]) for i,f in enumerate(feats)},
+                    intercept=float(intercept), type="ridge_regression", alpha=float(alpha),
+                    mae=mae, loo_mae=loo_mae, rmse=rmse, preds=preds.tolist(), targets=y.tolist())
+
+    carry_feats  = [build_carry_feats(r) for r in rows]
+    roll_feats   = [build_roll_feats(r)  for r in rows]
+    carry_targets= [r["carry"] for r in rows]
+    roll_targets = [r["roll"]  for r in rows]
+
+    print("[Flight model] Fitting carry model...")
+    cm = ridge_fit(carry_feats, carry_targets)
+    print(f"  carry  train MAE={cm['mae']:.1f} yd  LOO MAE={cm['loo_mae']:.1f} yd  RMSE={cm['rmse']:.1f} yd")
+
+    print("[Flight model] Fitting roll model...")
+    rm = ridge_fit(roll_feats, roll_targets)
+    print(f"  roll   train MAE={rm['mae']:.1f} yd  LOO MAE={rm['loo_mae']:.1f} yd  RMSE={rm['rmse']:.1f} yd")
+
+    total_preds = [cp+rp for cp,rp in zip(cm["preds"], rm["preds"])]
+    total_mae = float(np.mean(np.abs(np.array(total_preds) - np.array([r["total"] for r in rows]))))
+    print(f"  total  train MAE={total_mae:.1f} yd")
+
+    model = {
+        "version": 1,
+        "createdAt": _dt.datetime.now().isoformat(),
+        "sourceCsv": csv_path,
+        "carryModel": {k: v for k,v in cm.items() if k not in ("preds","targets","mae","loo_mae","rmse")},
+        "rollModel":  {k: v for k,v in rm.items() if k not in ("preds","targets","mae","loo_mae","rmse")},
+        "metrics": {"carry_mae": round(cm["loo_mae"],2), "roll_mae": round(rm["loo_mae"],2),
+                    "total_mae": round(total_mae,2), "n_shots": len(rows)}
+    }
+    with open(out_model, "w") as f: json.dump(model, f, indent=2)
+    print(f"[Flight model] Saved: {out_model}")
+
+    # Report
+    lines = ["FLIGHT MODEL FIT REPORT", "="*60,
+             f"Date:        {_dt.datetime.now().isoformat()}",
+             f"Source CSV:  {csv_path}",
+             f"N shots:     {len(rows)}",
+             "",
+             "CARRY MODEL (LOO-CV):",
+             f"  MAE:  {cm['loo_mae']:.2f} yd   RMSE: {cm['rmse']:.2f} yd   Train MAE: {cm['mae']:.2f} yd",
+             "",
+             "ROLLOUT MODEL (LOO-CV):",
+             f"  MAE:  {rm['loo_mae']:.2f} yd   RMSE: {rm['rmse']:.2f} yd   Train MAE: {rm['mae']:.2f} yd",
+             "",
+             "TOTAL (carry + roll, train MAE):",
+             f"  MAE:  {total_mae:.2f} yd",
+             "",
+             "PER-SHOT PREDICTIONS:",
+             f"  {'Shot':>5}  {'Carry':>7} {'PredC':>7} {'Roll':>6} {'PredR':>6} {'Total':>7} {'PredT':>7}"]
+    for i, row in enumerate(rows):
+        lines.append(f"  {i+1:>5}  {row['carry']:>7.1f} {cm['preds'][i]:>7.1f} "
+                     f"{row['roll']:>6.1f} {rm['preds'][i]:>6.1f} "
+                     f"{row['total']:>7.1f} {total_preds[i]:>7.1f}")
+    with open(out_report, "w") as f: f.write("\n".join(lines))
+    print(f"[Flight model] Report: {out_report}")
+
+    # Plot
+    try:
+        import matplotlib; matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, axes = plt.subplots(1, 3, figsize=(15, 5), facecolor="#111")
+        def scatter_ax(ax, actual, pred, title, unit="yd"):
+            ax.set_facecolor("#1a1a1a")
+            ax.scatter(actual, pred, color="cyan", s=60, zorder=5)
+            lo = min(min(actual), min(pred)); hi = max(max(actual), max(pred))
+            ax.plot([lo,hi],[lo,hi],"--",color="#666",lw=1)
+            ax.set_title(title, color="white"); ax.set_xlabel(f"Actual ({unit})", color="white")
+            ax.set_ylabel(f"Predicted ({unit})", color="white")
+            ax.tick_params(colors="white")
+            for sp in ax.spines.values(): sp.set_color("#444")
+        actC = [r["carry"] for r in rows]; actR = [r["roll"] for r in rows]
+        actT = [r["total"] for r in rows]
+        scatter_ax(axes[0], actC, cm["preds"], f"Carry  LOO MAE={cm['loo_mae']:.1f}yd")
+        scatter_ax(axes[1], actR, rm["preds"], f"Roll   LOO MAE={rm['loo_mae']:.1f}yd")
+        scatter_ax(axes[2], actT, total_preds, f"Total  MAE={total_mae:.1f}yd")
+        fig.suptitle("Flight Model Fit", color="white", fontsize=13)
+        fig.tight_layout()
+        fig.savefig(out_plot, dpi=100, facecolor="#111")
+        plt.close(fig)
+        print(f"[Flight model] Plot: {out_plot}")
+    except Exception as e:
+        print(f"[Flight model] Plot failed: {e}")
+
+
+def cmd_predict_vla_model(args):
+    """Apply a saved VLA model to a shot summary CSV."""
+    import csv as _csv, math as _math
+
+    summary_path = getattr(args, "summary", None)
+    # Accept --model, --vla-model-file, or auto-discover
+    model_path   = (getattr(args, "model", None) or
+                    getattr(args, "vla_model_file", None))
+    if not model_path:
+        _, model_path = _auto_load_vla_model(None)
+    out_path     = getattr(args, "output",  None) or \
+                   os.path.expanduser("~/Downloads/shot_summary_with_vla_predictions.csv")
+
+    if not summary_path or not os.path.exists(summary_path):
+        print(f"ERROR: --summary not found: {summary_path}"); sys.exit(1)
+    if not model_path or not os.path.exists(model_path):
+        print(f"ERROR: model JSON not found: {model_path}\n"
+              f"  Specify with --model or --vla-model-file"); sys.exit(1)
+
+    with open(summary_path) as f:
+        rows = list(_csv.DictReader(f)); all_cols = list(rows[0].keys()) if rows else []
+    with open(model_path) as f:
+        mdl = json.load(f)
+
+    features  = mdl["features"]
+    f_means   = mdl["featureMeans"]
+    f_stds    = mdl["featureStds"]
+    coef_d    = mdl["coefficients"]
+    intercept = float(mdl["intercept"])
+    medians   = mdl.get("imputationMedians", {})
+    clamp     = mdl.get("predictionClamp", [0, 65])
+    coef_arr  = np.array([coef_d[fn] for fn in features])
+
+    def _predict(row):
+        x = []
+        for fn in features:
+            try:
+                v = float(row.get(fn, "") or "")
+                if not _math.isfinite(v): raise ValueError
+            except (ValueError, TypeError):
+                v = medians.get(fn, 0.0)
+            x.append((v - f_means[fn]) / max(f_stds[fn], 1e-10))
+        return float(np.clip(np.array(x) @ coef_arr + intercept, clamp[0], clamp[1]))
+
+    for col in ["predicted_vla_model", "model_version", "model_type"]:
+        if col not in all_cols: all_cols.append(col)
+
+    for row in rows:
+        row["predicted_vla_model"] = round(_predict(row), 2)
+        row["model_version"]       = mdl.get("version", 1)
+        row["model_type"]          = mdl.get("modelType", "?")
+
+    with open(out_path, "w", newline="") as f:
+        w = _csv.DictWriter(f, fieldnames=all_cols, extrasaction="ignore")
+        w.writeheader(); w.writerows(rows)
+    print(f"Predicted VLA for {len(rows)} shots → {out_path}")
+
+
+# ── Runtime initialization (VLA model + ground calibration auto-load) ─────────
+_init_runtime()
+
+# ── Headless mode dispatch ─────────────────────────────────────────────────────
+if _HEADLESS:
+    if _face_args.build_ground_calibration:
+        cmd_build_ground_calibration(_face_args)
+    elif _face_args.export_ball_points:
+        cmd_export_ball_points(_face_args)
+    elif _face_args.prepare_vla_training:
+        cmd_prepare_vla_training(_face_args)
+    elif _face_args.train_vla_model:
+        cmd_train_vla_model(_face_args)
+    elif _face_args.predict_vla_model:
+        cmd_predict_vla_model(_face_args)
+    elif _face_args.fit_flight_model:
+        cmd_fit_flight_model(_face_args)
+    sys.exit(0)
+
+if _LABELING_MODE:
+    cmd_label_vla_interactive(_face_args)
+    sys.exit(0)
 
 # ── Figure ────────────────────────────────────────────────────────────────────
 fig = plt.figure(figsize=(18, 10), facecolor="#111")
@@ -3611,11 +6448,14 @@ def draw_ball_strip():
             likely_merged = track_results[i].get("likely_merged_club_ball", False)
             excluded_merged = track_results[i].get("excluded_from_metrics_merged", False)
             edge_rejected   = track_results[i].get("edge_rejected", False)
-            # Color hierarchy: impact > fallback > merged_stopper > chosen(pred_rescued) > chosen(rescued) > chosen > pred_disabled_miss > terminated > candidate_rejected > miss
+            strict_impact_gate = track_results[i].get("strict_impact_dia_gate_triggered", False)
+            # Color hierarchy: impact > fallback > merged_stopper > strict_impact_gate > chosen(pred_rescued) > chosen(rescued) > chosen > pred_disabled_miss > terminated > candidate_rejected > miss
             if is_det:
                 color = "#ffdd00"
             elif is_fall:
                 color = "#997700"
+            elif strict_impact_gate:
+                color = "#cc6600"   # amber/dark-orange: strict impact diameter gate triggered
             elif likely_merged:
                 color = "#9900cc"   # purple: early merged club-ball (Part B stopper)
             elif excluded_merged:
@@ -3850,13 +6690,14 @@ def draw_metrics_sm():
     rf = dist.get("rollout_fraction")
     rollout_sm = (f"{rf*100:.0f}%  {fmt(dist.get('rollout_yards'),' yd',0)}" if rf is not None
                   else "—")
+    smash_v = metrics_data.get("smash")
+    smash_str = (f"{smash_v:.2f}" if smash_v else "—") + (" ▲" if metrics_data.get("smash_clamped") else "")
     rows_ = [("Ball Speed",  fmt(b["ball_speed"]," mph")),
-             ("HLA (img-ref)",format_lr(b["hla"])),
-             ("VLA",         fmt(b["vla"],"°") + (f" (raw {b.get('vla_raw',b['vla']):.1f}° 3D={b.get('vla_3d',b['vla']):.1f}° diam={b.get('vla_diam_est',0) or 0:.1f}°)" if b.get("vla_diam_est") is not None else
-                              (f" (raw {b.get('vla_raw',b['vla']):.1f}°)" if b.get("vla_raw") is not None and b.get("vla_raw",0) < 0 else ""))),
-             ("VLA Model",   b.get("vla_model", "legacy")),
+             ("HLA",         format_lr(b["hla"])),
+             ("VLA",         fmt(b["vla"],"°")),
+             ("VLA Model",   b.get("vla_model_used", b.get("vla_model", "?"))),
              ("Club Speed",  fmt(cl["club_speed"]," mph")),
-             ("Smash",       fmt(metrics_data["smash"],"",2)),
+             ("Smash",       smash_str),
              ("Est. Carry",  fmt(dist["carry"]," yd",0)),
              ("Rollout",     rollout_sm),
              ("Est. Total",  fmt(dist["total"]," yd",0)),
@@ -4029,22 +6870,25 @@ def draw_metrics_page():
     fwd_lat_txt = (f"fwd={fwd:.3f}  lat={lat:.3f}" if fwd is not None and lat is not None else "—")
     ccf = dist.get("carry_correction_factor", 0.75)
     ideal_carry_txt = (f"{dist['ideal_carry']:.0f} yd" if dist.get("ideal_carry") is not None else "—")
+    smash_v = metrics_data.get("smash")
+    smash_str = (f"{smash_v:.2f}" if smash_v else "—") + (" ▲" if metrics_data.get("smash_clamped") else "")
     rows_ = [
         ("Ball Speed",       fmt(b["ball_speed"]," mph"),   "= |v_ball| × 2.23694"),
         ("HLA (img-ref)",    format_lr(b["hla"]),           fwd_lat_txt),
-        ("HLA 3D raw",       fmt(b.get("hla_3d_raw"),"°"), "= atan2(vx,vz)  [debug]"),
+        # HLA 3D raw removed — always wrong due to flat-ground assumption; see hla_3d_raw in JSON for debug
         ("VLA",              fmt(b["vla"],"°"),              "= atan2(vy, √(vx²+vz²))"),
         ("Club Speed",       fmt(cl["club_speed"]," mph"),  "= |v_club| × 2.23694"),
-        ("Smash Factor",     fmt(metrics_data["smash"],"",2), "= ball_speed / club_speed"),
+        ("Smash Factor",     smash_str,                     "= ball_speed / club_speed  max 1.50"),
         ("Ideal Carry",      ideal_carry_txt,               "= v²·sin(2θ)/g (no drag)"),
-        ("Est. Carry",       fmt(dist["carry"]," yd",0),    f"= idealCarry × cf={ccf:.2f}"),
-        ("Rollout",          rollout_txt,                   f"VLA bucket: {dist.get('vla_bucket','?')}"),
+        ("Est. Carry",       fmt(dist["carry"]," yd",0),    dist.get("carry_model_used","physics")),
+        ("Rollout",          rollout_txt,                   dist.get("rollout_model_used","vla_bucket")),
         ("Est. Total",       fmt(dist["total"]," yd",0),    "= carry + rollout yards"),
-        ("Backspin (Est)",   fmt(spin.get("backspin")," rpm",0), "= (800+90s+120v)×mult  ESTIMATED"),
+        ("Backspin (Est)",   fmt(spin.get("backspin")," rpm",0),
+                             f"base={fmt(spin.get('backspin_base'),'rpm',0)} s×{spin.get('backspin_smash_adj',1):.2f} v×{spin.get('backspin_speed_adj',1):.2f}"),
         ("Sidespin (Est)",   spin.get("sidespin_display","—"), f"method: {spin.get('method','')}"),
         ("Spin Axis (Est)",  spin.get("spin_axis_display","—"), "= atan2(sidespin,backspin)  ESTIMATED"),
         ("Club Path (Est)",  cp.get("display","—"),         f"img-space 2D fit  conf={cp.get('confidence',0):.2f}"),
-        ("Face Angle (Est)", fa.get("display","—"),         f"bbox heuristic  {fa.get('confidence','')}"),
+        ("Face Angle (Est)", fa.get("display","—"),         f"prior={fmt(fa.get('prior'),'°')} {fa.get('confidence','')}"),
         ("Face-to-Path (E)", fa.get("ftp_display","—"),     "= face − club path"),
         ("Ball pts",         str(b["points"]),               f"method: {b['method']}"),
         ("Club pts",         str(cl["points"]),              f"method: {cl['method']}"),
@@ -4115,21 +6959,24 @@ def draw_metrics_page():
         "idealCarry = v²·sin(2θ)/g (ballistic, m)\n"
         "carry = idealCarry × corrFactor × 1.09361 yd\n"
         "corrFactor default 0.75 (tune with slider)\n"
-        "Rollout VLA buckets:\n"
-        "  <1°:85%  1-3°:65%  3-6°:45%  6-10°:30%\n"
-        "  10-15°:20%  15-22°:12%  22-30°:7%  ≥30°:3%\n"
-        "speedAdj: <40×0.45  40-80×0.75  ≥130×1.1", y)
-    y = formula_block("Est. Spin (Model-Based)",
-        "backspin=(800+90×spd+120×vla)×vlaMultiplier\n"
-        "  <5°:×0.60  5-10°:×0.80  10-20°:×1.00\n"
-        "  20-30°:×1.20  ≥30°:×1.35  clamp 300-9000\n"
+        "Rollout VLA buckets (improved):\n"
+        "  <1°:65%  1-3°:45%  3-6°:30%  6-10°:18%\n"
+        "  10-15°:12%  15-22°:7%  22-35°:3%  35-50°:1%  ≥50°:0%\n"
+        "spinRollFactor=clamp(1-(spin-3000)/10000, 0.25-1.15)\n"
+        "If flight_model.json present → fitted carry+roll models", y)
+    y = formula_block("Est. Backspin (Piecewise VLA/Speed/Smash)",
+        "base=piecewise(vla): 5°→2200 15°→3200 30°→5800 60°→10500\n"
+        "smashAdj=clamp(1+(1.30-smash)×0.35, 0.75-1.25)\n"
+        "speedAdj: vla<20°: clamp(1-(spd-70)×0.003, 0.75-1.15)\n"
+        "          vla≥20°: clamp(1-(spd-80)×0.0015, 0.85-1.15)\n"
+        "backspin=base×smashAdj×speedAdj  clamp 1200-11500\n"
         "sidespin=(HLA-path)×200×(spd/100)\n"
-        "spinAxis=atan2(sidespin,backspin)\n"
         "ESTIMATED — not measured", y)
     y = formula_block("Club Path & Face (Estimated)",
         "clubPath: centroid 2D regression → projected\n"
         "  onto 0° ref → atan2  (image-space)\n"
-        "faceAngle: bbox longest-axis heuristic\n"
+        "faceAngle: ball HLA prior (0.85×HLA + 0.15×path)\n"
+        "  bbox heuristic clamped ±25° from prior\n"
         "face-to-path = face − clubPath\n"
         "ESTIMATED — low confidence", y)
     y = formula_block("Club Modes",
@@ -4410,11 +7257,11 @@ def draw_clubface_page():
 # _face_refresh ONLY touches face detection state. It never calls the ball/club
 # tracker, never writes to params, and never modifies metrics_data.
 def _face_refresh(_=None):
-    global face_debug_data
-    # Hard guard: bail immediately if not on face page or no tracker data yet.
-    # This ensures sliders on other pages can never accidentally trigger this.
-    if current_page != "face" or not metrics_data:
+    global face_debug_data, _is_updating
+    # Hard guard: bail immediately if not on face page, no tracker data, or re-entering.
+    if current_page != "face" or not metrics_data or _is_updating:
         return
+    _is_updating = True
     for key, sl in face_sliders.items():
         val = sl.val
         if key in ("face_frame_offset", "face_min_edge_pixels", "face_angle_flip"):
@@ -4424,6 +7271,7 @@ def _face_refresh(_=None):
     face_debug_data = _run_face_analysis()
     draw_clubface_page()
     fig.canvas.draw_idle()
+    _is_updating = False
 
 def _on_fd_nmode(label):
     if current_page != "face": return
@@ -4480,8 +7328,10 @@ def set_page(page):
 
 # ── Event handlers ────────────────────────────────────────────────────────────
 def on_run(_):
-    global track_results, club_results, metrics_data, face_debug_data
+    global track_results, club_results, metrics_data, face_debug_data, _is_updating
     global detected_impact, fallback_impact_disp, det_reason_disp
+    if _is_updating: return
+    _is_updating = True
     for key, sl in sliders.items():
         params[key] = sl.val
     params["club_mode"] = club_mode_val
@@ -4532,7 +7382,9 @@ def on_run(_):
                               detected_impact, fallback_impact_disp, det_reason_disp)
     if _face_args.save_face_debug:
         generate_clubface_debug(track_results, club_results, metrics_data,
-                                detected_impact, _face_args, params)
+                                detected_impact, _face_args, params,
+                                fallback_impact=fallback_impact_disp)
+    _is_updating = False
     refresh()
 
 def on_frame_slide(val):

@@ -7,6 +7,8 @@ enum VLAEstimationMode: String {
     case legacy        = "legacy"
     case pinhole2DSize = "pinhole2DSize"
     case blended       = "blended"
+    case groundCalibrated = "groundCalibrated"
+    case trainedModel  = "trainedModel"
 }
 
 struct ExperimentalShotMetricsCalculator {
@@ -31,8 +33,9 @@ struct ExperimentalShotMetricsCalculator {
         var slowHorizontalVLABoostMultiplier: Double = 1.4
         var significantDiamGrowthThreshold: Double = 0.10
         var veryHighLaunchDiamGrowthThreshold: Double = 0.25
-        // New VLA model (pinhole2DSize)
-        var vlaEstimationMode: VLAEstimationMode = .pinhole2DSize
+        // New VLA model (pinhole2DSize / trainedModel)
+        var vlaEstimationMode: VLAEstimationMode = .trainedModel
+        var vlaModelFilePath: String? = nil           // path to vla_model.json
         var vlaImageYWeight: Double = 0.45
         var vlaDiameterDepthWeight: Double = 0.55
         var vlaDepthSign: Double = 1.0
@@ -100,6 +103,53 @@ struct ExperimentalShotMetricsCalculator {
             zeroDegreeAngleDegrees: zeroDegreeAngleDegrees,
             calibration: calibration
         )
+
+        // Apply trained VLA model if mode is .trainedModel
+        var finalBallLaunch = ballLaunch
+        if configuration.vlaEstimationMode == .trainedModel {
+            let modelData = ExperimentalVLAModelPredictor.autoLoad(
+                overridePath: configuration.vlaModelFilePath
+            )
+            if let model = modelData {
+                let featureDict = ExperimentalVLAModelPredictor.extractFeatures(
+                    from: ball3D.filter { $0.frameIndex > ballResult.detectedImpactFrameIndex }
+                                .sorted { $0.frameIndex < $1.frameIndex }
+                                .prefix(configuration.preferredBallPointLimit)
+                                .map { $0 },
+                    hlaDegrees: ballLaunch.hlaDegrees,
+                    ballSpeedMph: ballLaunch.ballSpeedMph,
+                    impactFrameIndex: ballResult.detectedImpactFrameIndex,
+                    totalFrames: sequence.frames.count
+                )
+                let (rawPred, clampedPred, featVals, mdlWarns) = ExperimentalVLAModelPredictor.predict(
+                    features: featureDict, model: model
+                )
+                finalBallLaunch.vlaLegacyDegrees       = ballLaunch.vlaDegrees
+                finalBallLaunch.vlaPinhole2DSizeDegrees = ballLaunch.vlaDegrees
+                finalBallLaunch.vlaTrainedModelDegrees  = clampedPred
+                finalBallLaunch.vlaFinalDegrees         = clampedPred
+                finalBallLaunch.vlaDegrees              = clampedPred  // override primary
+                finalBallLaunch.vlaModelUsed            = "trainedModel"
+                finalBallLaunch.vlaModelFile            = model.filePath
+                finalBallLaunch.vlaModelFeaturesUsed    = model.featureSearchTopSubset.isEmpty
+                    ? model.features : model.featureSearchTopSubset
+                finalBallLaunch.vlaModelFeatureValues   = featVals
+                finalBallLaunch.vlaModelWarnings        = mdlWarns
+                finalBallLaunch.vlaWasClamped           = abs(rawPred - clampedPred) > 0.01
+                print(String(format: "[TrainedVLA] prediction=%.1f° (raw=%.1f°) file=%@",
+                             clampedPred, rawPred, model.filePath))
+            } else {
+                finalBallLaunch.vlaModelUsed    = "trainedModel_unavailable_fallback_pinhole2DSize"
+                finalBallLaunch.vlaModelWarnings = ["vla_model.json not found — falling back to pinhole2DSize VLA."]
+                finalBallLaunch.vlaFinalDegrees  = ballLaunch.vlaDegrees
+                finalBallLaunch.vlaLegacyDegrees = ballLaunch.vlaDegrees
+            }
+        } else {
+            finalBallLaunch.vlaLegacyDegrees  = ballLaunch.vlaDegrees
+            finalBallLaunch.vlaFinalDegrees   = ballLaunch.vlaDegrees
+            finalBallLaunch.vlaModelUsed      = configuration.vlaEstimationMode.rawValue
+        }
+
         let clubMetrics = calculateClubMetrics(
             clubObservations: clubObservations,
             ball3DObservations: ball3D,
@@ -107,14 +157,19 @@ struct ExperimentalShotMetricsCalculator {
             impactFrameIndex: ballResult.detectedImpactFrameIndex
         )
 
-        let smashFactor: Double?
-        if let ballSpeed = ballLaunch.ballSpeedMph,
+        let rawSmash: Double?
+        if let ballSpeed = finalBallLaunch.ballSpeedMph,
            let clubSpeed = clubMetrics.clubSpeedMph,
            clubSpeed > 0 {
-            smashFactor = ballSpeed / clubSpeed
+            rawSmash = ballSpeed / clubSpeed
         } else {
-            smashFactor = nil
+            rawSmash = nil
         }
+        let smashFactor = rawSmash.map { min(1.50, $0) }
+        let smashFactorClamped = rawSmash.map { $0 > 1.50 } ?? false
+        let smashClampWarning: String? = smashFactorClamped
+            ? String(format: "Smash factor clamped to 1.50 (raw: %.2f).", rawSmash!)
+            : nil
 
         // Club path + face angle
         let clubPath = clubPathFaceEstimator.estimateClubPath(
@@ -124,36 +179,45 @@ struct ExperimentalShotMetricsCalculator {
             impactFrameIndex: ballResult.detectedImpactFrameIndex
         )
 
-        let impactFrame = frameMap[ballResult.detectedImpactFrameIndex]?.image
+        let faceFrameIndex = ballResult.detectedImpactFrameIndex + 1
+        print("[ExperimentalMetrics] Clubface detection frame: \(faceFrameIndex)  reason: detectedImpactFrameIndex_plus_one")
+        print("[ExperimentalMetrics]   detectedImpactFrameIndex: \(ballResult.detectedImpactFrameIndex)  fallbackImpactFrameIndex: \(ballResult.fallbackImpactFrameIndex)")
+        let impactFrame = frameMap[faceFrameIndex]?.image
         let faceAngle = clubPathFaceEstimator.estimateFaceAngle(
             clubObservations: clubObservations,
             impactFrame: impactFrame,
             zeroDegreeAngleDegrees: zeroDegreeAngleDegrees,
             calibration: calibration,
-            impactFrameIndex: ballResult.detectedImpactFrameIndex,
-            clubPathDegrees: clubPath.clubPathDegreesSigned
+            impactFrameIndex: faceFrameIndex,
+            clubPathDegrees: clubPath.clubPathDegreesSigned,
+            ballHLADegrees: finalBallLaunch.hlaDegrees
         )
 
         // Spin
-        let spin = spinEstimator.estimate(
-            ballSpeedMph: ballLaunch.ballSpeedMph,
-            vlaDegrees: ballLaunch.vlaDegrees,
-            hlaDegrees: ballLaunch.hlaDegrees,
-            clubPathDegrees: clubPath.clubPathDegreesSigned
+        var spin = spinEstimator.estimate(
+            ballSpeedMph: finalBallLaunch.ballSpeedMph,
+            vlaDegrees: finalBallLaunch.vlaDegrees,
+            hlaDegrees: finalBallLaunch.hlaDegrees,
+            clubPathDegrees: clubPath.clubPathDegreesSigned,
+            smashFactor: smashFactor
         )
+        spin.spinVLAUsedSource = finalBallLaunch.vlaModelUsed
 
         // Distance
-        let distance = distanceEstimator.estimate(
-            ballSpeedMph: ballLaunch.ballSpeedMph,
-            vlaDegrees: ballLaunch.vlaDegrees,
-            hlaDegrees: ballLaunch.hlaDegrees,
+        var distance = distanceEstimator.estimate(
+            ballSpeedMph: finalBallLaunch.ballSpeedMph,
+            vlaDegrees: finalBallLaunch.vlaDegrees,
+            hlaDegrees: finalBallLaunch.hlaDegrees,
             carryCorrectionFactor: carryCorrectionFactor
         )
+        distance.distanceVLAUsedSource = finalBallLaunch.vlaModelUsed
 
         var warnings = [
             "Experimental FOV calibration is estimated; tune calibration before trusting metrics."
         ]
-        warnings.append(contentsOf: ballLaunch.warnings)
+        if let w = smashClampWarning { warnings.append(w) }
+        warnings.append(contentsOf: finalBallLaunch.warnings)
+        warnings.append(contentsOf: finalBallLaunch.vlaModelWarnings)
         warnings.append(contentsOf: clubMetrics.warnings)
         warnings.append(contentsOf: distance.warnings)
         warnings.append(contentsOf: spin.warnings)
@@ -166,11 +230,14 @@ struct ExperimentalShotMetricsCalculator {
         let result = ExperimentalShotMetricsResult(
             detectedImpactFrameIndex: ballResult.detectedImpactFrameIndex,
             fallbackImpactFrameIndex: ballResult.fallbackImpactFrameIndex,
+            faceFrameIndex: faceFrameIndex,
             calibration: calibration,
             zeroDegreeReferenceAngleDegrees: zeroDegreeAngleDegrees,
-            ballLaunch: ballLaunch,
+            ballLaunch: finalBallLaunch,
             club: clubMetrics,
             smashFactor: smashFactor,
+            rawSmashFactor: rawSmash,
+            smashFactorClamped: smashFactorClamped,
             distance: distance,
             spin: spin,
             clubPath: clubPath,
@@ -291,7 +358,9 @@ struct ExperimentalShotMetricsCalculator {
         }
         let vla: Double
         switch configuration.vlaEstimationMode {
-        case .pinhole2DSize:
+        case .pinhole2DSize, .groundCalibrated, .trainedModel:
+            // For trainedModel, pinhole2DSize is used here as the pre-model base;
+            // the trained model override is applied in calculate() after this returns.
             let pinhole = calculatePinhole2DVla(
                 selected: selected, calibration: calibration, warnings: &warnings)
             if let p = pinhole {

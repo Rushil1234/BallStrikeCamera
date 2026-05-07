@@ -9,8 +9,8 @@ struct ExperimentalClubTracker {
         var approachDirectionX: CGFloat = -1
         var approachDirectionY: CGFloat = 0
         var ballExclusionRadiusScale: CGFloat = 1.8
-        var clubSearchROIScaleX: CGFloat = 6.0
-        var clubSearchROIScaleY: CGFloat = 4.0
+        var clubSearchROIScaleX: CGFloat = 8.0
+        var clubSearchROIScaleY: CGFloat = 5.0
         var minClubDarknessOrEdgeThreshold: Int = 85
         var useFrameDifference: Bool = true
         var frameDifferenceThreshold: Int = 34
@@ -156,8 +156,8 @@ struct ExperimentalClubTracker {
         var centerX = ballCenter.x
         var centerY = ballCenter.y
         if configuration.searchBehindBallEnabled {
-            centerX += configuration.approachDirectionX * width * 0.22
-            centerY += configuration.approachDirectionY * height * 0.22
+            centerX += configuration.approachDirectionX * width * 0.32
+            centerY += configuration.approachDirectionY * height * 0.32
         }
         return CGRect(x: centerX - width / 2, y: centerY - height / 2, width: width, height: height)
             .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))

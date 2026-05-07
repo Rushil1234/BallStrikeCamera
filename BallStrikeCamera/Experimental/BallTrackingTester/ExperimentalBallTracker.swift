@@ -144,6 +144,10 @@ final class ExperimentalBallTracker {
         // Part A: Impact frame merged spike (separate from post-impact)
         var maxImpactDiameterSpikeRatio:     CGFloat = 1.75
 
+        // Strict impact frame diameter gate
+        var enableStrictImpactDiameterGate:    Bool    = true
+        var impactFrameMaxDiameterGrowthRatio: CGFloat = 1.25
+
         // Part C: Cone search
         var useConeSearchRegion:                  Bool    = true
         var coneHalfAngleDegrees:                 CGFloat = 18.0
@@ -530,7 +534,17 @@ final class ExperimentalBallTracker {
                                           initialBallCenter: lockedRect.center, missCount: 0, isPostImpact: false,
                                           launchDirectionVector: nil, previousProgress: nil,
                                           maxProgress: nil, ballHasLaunched: false)
-                let (cands, chosen, _) = findCandidates(pd, roi: roi, config: preConfig, context: ctx)
+                let (cands, _chosenRaw, _) = findCandidates(pd, roi: roi, config: preConfig, context: ctx)
+                // Strict impact diameter gate
+                var chosen = _chosenRaw
+                if sc.enableStrictImpactDiameterGate, let c = chosen,
+                   let refDiam = preImpactMedianDiameter, refDiam > 1e-6 {
+                    let ratio = c.diameter / refDiam
+                    if ratio > sc.impactFrameMaxDiameterGrowthRatio {
+                        print("[ExperimentalBallTracker] Strict impact diameter gate: frame=\(idx) diameterRatio=\(String(format:"%.2f",ratio)) > \(sc.impactFrameMaxDiameterGrowthRatio), rejecting likely club+ball merged candidate")
+                        chosen = nil
+                    }
+                }
                 let dbg = BallTrackingFrameDebug(
                     frameIndex: idx, searchROI: roi,
                     searchCenterSource: "lockedBall", searchScale: cfg.impactSearchScale,

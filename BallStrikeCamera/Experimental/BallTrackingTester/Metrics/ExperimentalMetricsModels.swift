@@ -23,8 +23,8 @@ struct ExperimentalBallLaunchMetrics {
     let hlaDisplay: String
     /// 3D raw atan2(vx, vz) — kept for reference/debugging
     let hla3DRawDegrees: Double?
-    /// VLA clamped to ≥ 0 (Part E)
-    let vlaDegrees: Double?
+    /// VLA clamped to ≥ 0 (Part E) — authoritative VLA used for all metrics
+    var vlaDegrees: Double?
     /// Raw VLA before clamping (Part E) — nil if not clamped
     let vlaRawDegrees: Double?
     /// VLA estimated from ball diameter growth (Part D-new) — nil if not used
@@ -40,6 +40,17 @@ struct ExperimentalBallLaunchMetrics {
     let quality: Double
     let method: String
     let warnings: [String]
+    // VLA variants (all optional, filled based on mode)
+    var vlaLegacyDegrees: Double? = nil
+    var vlaPinhole2DSizeDegrees: Double? = nil
+    var vlaTrainedModelDegrees: Double? = nil
+    var vlaFinalDegrees: Double? = nil          // authoritative VLA used for all metrics
+    var vlaModelUsed: String = "pinhole2DSize"
+    var vlaModelFile: String? = nil
+    var vlaModelFeaturesUsed: [String] = []
+    var vlaModelFeatureValues: [String: Double] = [:]
+    var vlaModelWarnings: [String] = []
+    var vlaWasClamped: Bool = false
 }
 
 struct ExperimentalClubObservation {
@@ -83,6 +94,7 @@ struct ExperimentalDistanceEstimate {
     let vlaBucket: String
     let method: String
     let warnings: [String]
+    var distanceVLAUsedSource: String = "unknown"
 }
 
 // MARK: - New estimated metrics
@@ -97,6 +109,7 @@ struct ExperimentalSpinEstimate {
     let estimatedSpinAxisDisplay: String
     let spinEstimateMethod: String
     let warnings: [String]
+    var spinVLAUsedSource: String = "unknown"
 }
 
 struct ExperimentalClubPathEstimate {
@@ -126,11 +139,14 @@ struct ExperimentalFaceAngleEstimate {
 struct ExperimentalShotMetricsResult {
     let detectedImpactFrameIndex: Int
     let fallbackImpactFrameIndex: Int
+    let faceFrameIndex: Int
     let calibration: ExperimentalCameraCalibration
     let zeroDegreeReferenceAngleDegrees: Double
     let ballLaunch: ExperimentalBallLaunchMetrics
     let club: ExperimentalClubMetrics
     let smashFactor: Double?
+    let rawSmashFactor: Double?
+    let smashFactorClamped: Bool
     let distance: ExperimentalDistanceEstimate
     let spin: ExperimentalSpinEstimate
     let clubPath: ExperimentalClubPathEstimate

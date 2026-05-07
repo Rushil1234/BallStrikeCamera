@@ -1789,8 +1789,10 @@ struct BallTrackingTestView: View {
                 TunerSection(title: "VLA Model (new session)") {
                     Picker("VLA Mode", selection: $settings.vlaEstimationMode) {
                         Text("Legacy").tag(VLAEstimationMode.legacy)
-                        Text("Pinhole2DSize").tag(VLAEstimationMode.pinhole2DSize)
+                        Text("Pinhole2D").tag(VLAEstimationMode.pinhole2DSize)
                         Text("Blended").tag(VLAEstimationMode.blended)
+                        Text("Ground").tag(VLAEstimationMode.groundCalibrated)
+                        Text("Trained").tag(VLAEstimationMode.trainedModel)
                     }
                     .pickerStyle(.segmented)
                     .padding(.vertical, 4)
