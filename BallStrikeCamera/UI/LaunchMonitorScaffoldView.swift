@@ -5,6 +5,7 @@ struct LaunchMonitorScaffoldView: View {
     let modeTitle: String
     @Binding var selectedClub: String
     let shotCount: Int
+    var onDismiss: () -> Void = {}
 
     var body: some View {
         GeometryReader { geo in
@@ -25,7 +26,7 @@ struct LaunchMonitorScaffoldView: View {
                                 TopOverlayBarView(
                                     title: modeTitle,
                                     subtitle: "\(camera.phase.rawValue.uppercased()) · 240 FPS",
-                                    onBack: {}
+                                    onBack: onDismiss
                                 )
 
                                 Spacer(minLength: 8)

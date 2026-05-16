@@ -67,9 +67,9 @@ struct HomeDashboardView: View {
         .fullScreenCover(isPresented: $showCamera) {
             RangeCameraScreen().ignoresSafeArea().statusBarHidden(true)
         }
-        .sheet(isPresented: $showRange)  { RangeModeView()  }
-        .sheet(isPresented: $showSim)    { SimModeView()    }
-        .sheet(isPresented: $showCourse) { CourseModeView() }
+        .fullScreenCover(isPresented: $showRange)  { RangeModeView()  }
+        .sheet(isPresented: $showSim)              { SimModeView()    }
+        .sheet(isPresented: $showCourse)           { CourseModeView() }
     }
 
     // MARK: Header

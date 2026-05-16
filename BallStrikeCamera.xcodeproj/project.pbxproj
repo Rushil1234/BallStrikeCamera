@@ -113,6 +113,7 @@
 		BF000003000000000000001D /* CourseRoundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001D /* CourseRoundView.swift */; };
 		BF000003000000000000001E /* HoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001E /* HoleView.swift */; };
 		BF000003000000000000001F /* ScorecardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001F /* ScorecardView.swift */; };
+				BF0000050000000000000002 /* OrientationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000050000000000000001 /* OrientationManager.swift */; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -224,6 +225,7 @@
 		BF000002000000000000001D /* CourseRoundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseRoundView.swift; sourceTree = "<group>"; };
 		BF000002000000000000001E /* HoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoleView.swift; sourceTree = "<group>"; };
 		BF000002000000000000001F /* ScorecardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScorecardView.swift; sourceTree = "<group>"; };
+				BF0000050000000000000001 /* OrientationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationManager.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -277,6 +279,7 @@
 			children = (
 				BF0000020000000000000001 /* AppDelegate.swift */,
 				BF0000010000000000000101 /* BallStrikeCameraApp.swift */,
+				BF0000050000000000000001 /* OrientationManager.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -701,6 +704,7 @@
 				BF000003000000000000001D /* CourseRoundView.swift in Sources */,
 				BF000003000000000000001E /* HoleView.swift in Sources */,
 				BF000003000000000000001F /* ScorecardView.swift in Sources */,
+				BF0000050000000000000002 /* OrientationManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

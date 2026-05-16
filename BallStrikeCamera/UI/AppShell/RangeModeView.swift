@@ -28,6 +28,7 @@ struct RangeModeView: View {
             ZStack {
                 BallStrikeBackgroundView()
                 ScrollView(showsIndicators: false) {
+
                     VStack(spacing: BSTheme.sectionGap) {
                         clubPickerSection
                         actionSection
@@ -60,6 +61,10 @@ struct RangeModeView: View {
                     }
                     .preferredColorScheme(.dark)
                 }
+            }
+            .onAppear {
+                print("Navigating to RangeModeView")
+                OrientationManager.shared.lockPortrait()
             }
         }
         .preferredColorScheme(.dark)
