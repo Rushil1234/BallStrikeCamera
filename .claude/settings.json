@@ -97,7 +97,9 @@
       "Bash(xcodebuild -project BallStrikeCamera.xcodeproj -scheme BallStrikeCamera -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build)",
       "Bash(grep -v \"^$\")",
       "Bash(swift -typecheck /Users/noahtobias/Downloads/BallStrikeCamera/BallStrikeCamera/Analysis/ShotCompositeRenderer.swift)",
-      "Bash(swiftc -parse /Users/noahtobias/Downloads/BallStrikeCamera/BallStrikeCamera/Analysis/ShotCompositeRenderer.swift)"
+      "Bash(swiftc -parse /Users/noahtobias/Downloads/BallStrikeCamera/BallStrikeCamera/Analysis/ShotCompositeRenderer.swift)",
+      "Bash(xcodebuild -project BallStrikeCamera.xcodeproj -scheme BallStrikeCamera -destination 'generic/platform=iOS Simulator' -configuration Debug build)",
+      "Bash(xcodebuild -project BallStrikeCamera.xcodeproj -scheme BallStrikeCamera -destination \"generic/platform=iOS Simulator\" build)"
     ],
     "additionalDirectories": [
       "/tmp",

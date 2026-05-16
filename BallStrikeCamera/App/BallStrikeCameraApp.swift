@@ -2,14 +2,15 @@ import SwiftUI
 
 @main
 struct BallStrikeCameraApp: App {
-    @StateObject private var camera = CameraController()
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @StateObject private var session = AuthSessionStore()
+    @StateObject private var camera  = CameraController()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(session)
                 .environmentObject(camera)
-                .onAppear { camera.start() }
-                .onDisappear { camera.stop() }
         }
     }
 }

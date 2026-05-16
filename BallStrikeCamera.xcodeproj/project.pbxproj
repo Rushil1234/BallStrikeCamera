@@ -69,7 +69,51 @@
 		BF0000010000000000000043 /* TopDownShotGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000143 /* TopDownShotGridView.swift */; };
 		BF0000010000000000000044 /* AnimatedShotFlightView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000144 /* AnimatedShotFlightView.swift */; };
 		BF0000010000000000000045 /* CinematicBallFlightView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000145 /* CinematicBallFlightView.swift */; };
-/* End PBXBuildFile section */
+		BF0000010000000000000046 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000146 /* MainTabView.swift */; };
+		BF0000010000000000000047 /* HomeDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000147 /* HomeDashboardView.swift */; };
+		BF0000010000000000000048 /* ModeSelectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000148 /* ModeSelectionView.swift */; };
+		BF0000010000000000000049 /* RangeModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000149 /* RangeModeView.swift */; };
+		BF000001000000000000004A /* SimModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000014A /* SimModeView.swift */; };
+		BF000001000000000000004B /* CourseModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000014B /* CourseModeView.swift */; };
+		BF000001000000000000004C /* SessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000014C /* SessionsView.swift */; };
+		BF000001000000000000004D /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000014D /* AnalyticsView.swift */; };
+		BF000001000000000000004E /* FeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000014E /* FeedView.swift */; };
+		BF000001000000000000004F /* ProfileSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000014F /* ProfileSettingsView.swift */; };
+		BF0000010000000000000050 /* AppShellComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000150 /* AppShellComponents.swift */; };
+		BF0000010000000000000051 /* BallStrikeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000151 /* BallStrikeTheme.swift */; };
+		BF0000010000000000000052 /* BallStrikeBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000152 /* BallStrikeBackgroundView.swift */; };
+		BF0000030000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000001 /* AppDelegate.swift */; };
+		BF0000030000000000000002 /* AppBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000002 /* AppBackend.swift */; };
+		BF0000030000000000000003 /* AppStorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000003 /* AppStorageManager.swift */; };
+		BF0000030000000000000004 /* AuthSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000004 /* AuthSessionStore.swift */; };
+		BF0000030000000000000005 /* LocalBackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000005 /* LocalBackendService.swift */; };
+		BF0000030000000000000006 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000006 /* LocationService.swift */; };
+		BF0000030000000000000007 /* ShotPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000007 /* ShotPersistenceService.swift */; };
+		BF0000030000000000000008 /* SimOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000008 /* SimOutputService.swift */; };
+		BF0000030000000000000009 /* GolfCourseAPIConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000009 /* GolfCourseAPIConfig.swift */; };
+		BF000003000000000000000A /* CourseProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000A /* CourseProvider.swift */; };
+		BF000003000000000000000B /* MockCourseProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000B /* MockCourseProvider.swift */; };
+		BF000003000000000000000C /* GolfCourseAPIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000C /* GolfCourseAPIProvider.swift */; };
+		BF000003000000000000000D /* AppModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000D /* AppModels.swift */; };
+		BF000003000000000000000E /* CourseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000E /* CourseModels.swift */; };
+		BF000003000000000000000F /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000F /* FeatureFlags.swift */; };
+		BF0000030000000000000010 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000010 /* AppRootView.swift */; };
+		BF0000030000000000000011 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000011 /* AuthViewModel.swift */; };
+		BF0000030000000000000012 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000012 /* LoginView.swift */; };
+		BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000013 /* ClubBagViewModel.swift */; };
+		BF0000030000000000000014 /* RangeSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000014 /* RangeSessionViewModel.swift */; };
+		BF0000030000000000000015 /* SimSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000015 /* SimSessionViewModel.swift */; };
+		BF0000030000000000000016 /* CourseRoundViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000016 /* CourseRoundViewModel.swift */; };
+		BF0000030000000000000017 /* AnalyticsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000017 /* AnalyticsViewModel.swift */; };
+		BF0000030000000000000018 /* FeedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000018 /* FeedViewModel.swift */; };
+		BF0000030000000000000019 /* ClubsInBagView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000019 /* ClubsInBagView.swift */; };
+		BF000003000000000000001A /* EditClubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001A /* EditClubView.swift */; };
+		BF000003000000000000001B /* RangeSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001B /* RangeSessionView.swift */; };
+		BF000003000000000000001C /* CourseSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001C /* CourseSearchView.swift */; };
+		BF000003000000000000001D /* CourseRoundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001D /* CourseRoundView.swift */; };
+		BF000003000000000000001E /* HoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001E /* HoleView.swift */; };
+		BF000003000000000000001F /* ScorecardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001F /* ScorecardView.swift */; };
+		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImpactDetector.swift; sourceTree = "<group>"; };
@@ -136,7 +180,51 @@
 		BF0000010000000000000143 /* TopDownShotGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopDownShotGridView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000144 /* AnimatedShotFlightView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedShotFlightView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000145 /* CinematicBallFlightView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CinematicBallFlightView.swift; sourceTree = "<group>"; };
-/* End PBXFileReference section */
+		BF0000010000000000000146 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		BF0000010000000000000147 /* HomeDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeDashboardView.swift; sourceTree = "<group>"; };
+		BF0000010000000000000148 /* ModeSelectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelectionView.swift; sourceTree = "<group>"; };
+		BF0000010000000000000149 /* RangeModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RangeModeView.swift; sourceTree = "<group>"; };
+		BF000001000000000000014A /* SimModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimModeView.swift; sourceTree = "<group>"; };
+		BF000001000000000000014B /* CourseModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseModeView.swift; sourceTree = "<group>"; };
+		BF000001000000000000014C /* SessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionsView.swift; sourceTree = "<group>"; };
+		BF000001000000000000014D /* AnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsView.swift; sourceTree = "<group>"; };
+		BF000001000000000000014E /* FeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedView.swift; sourceTree = "<group>"; };
+		BF000001000000000000014F /* ProfileSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSettingsView.swift; sourceTree = "<group>"; };
+		BF0000010000000000000150 /* AppShellComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellComponents.swift; sourceTree = "<group>"; };
+		BF0000010000000000000151 /* BallStrikeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallStrikeTheme.swift; sourceTree = "<group>"; };
+		BF0000010000000000000152 /* BallStrikeBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallStrikeBackgroundView.swift; sourceTree = "<group>"; };
+		BF0000020000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		BF0000020000000000000002 /* AppBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBackend.swift; sourceTree = "<group>"; };
+		BF0000020000000000000003 /* AppStorageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorageManager.swift; sourceTree = "<group>"; };
+		BF0000020000000000000004 /* AuthSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSessionStore.swift; sourceTree = "<group>"; };
+		BF0000020000000000000005 /* LocalBackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBackendService.swift; sourceTree = "<group>"; };
+		BF0000020000000000000006 /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
+		BF0000020000000000000007 /* ShotPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotPersistenceService.swift; sourceTree = "<group>"; };
+		BF0000020000000000000008 /* SimOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimOutputService.swift; sourceTree = "<group>"; };
+		BF0000020000000000000009 /* GolfCourseAPIConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfCourseAPIConfig.swift; sourceTree = "<group>"; };
+		BF000002000000000000000A /* CourseProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseProvider.swift; sourceTree = "<group>"; };
+		BF000002000000000000000B /* MockCourseProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockCourseProvider.swift; sourceTree = "<group>"; };
+		BF000002000000000000000C /* GolfCourseAPIProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfCourseAPIProvider.swift; sourceTree = "<group>"; };
+		BF000002000000000000000D /* AppModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModels.swift; sourceTree = "<group>"; };
+		BF000002000000000000000E /* CourseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseModels.swift; sourceTree = "<group>"; };
+		BF000002000000000000000F /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
+		BF0000020000000000000010 /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
+		BF0000020000000000000011 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
+		BF0000020000000000000012 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		BF0000020000000000000013 /* ClubBagViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubBagViewModel.swift; sourceTree = "<group>"; };
+		BF0000020000000000000014 /* RangeSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RangeSessionViewModel.swift; sourceTree = "<group>"; };
+		BF0000020000000000000015 /* SimSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimSessionViewModel.swift; sourceTree = "<group>"; };
+		BF0000020000000000000016 /* CourseRoundViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseRoundViewModel.swift; sourceTree = "<group>"; };
+		BF0000020000000000000017 /* AnalyticsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsViewModel.swift; sourceTree = "<group>"; };
+		BF0000020000000000000018 /* FeedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedViewModel.swift; sourceTree = "<group>"; };
+		BF0000020000000000000019 /* ClubsInBagView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubsInBagView.swift; sourceTree = "<group>"; };
+		BF000002000000000000001A /* EditClubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditClubView.swift; sourceTree = "<group>"; };
+		BF000002000000000000001B /* RangeSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RangeSessionView.swift; sourceTree = "<group>"; };
+		BF000002000000000000001C /* CourseSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseSearchView.swift; sourceTree = "<group>"; };
+		BF000002000000000000001D /* CourseRoundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseRoundView.swift; sourceTree = "<group>"; };
+		BF000002000000000000001E /* HoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoleView.swift; sourceTree = "<group>"; };
+		BF000002000000000000001F /* ScorecardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScorecardView.swift; sourceTree = "<group>"; };
+		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		BF0000010000000000000201 /* Frameworks */ = {
@@ -160,6 +248,8 @@
 		BF0000010000000000000302 /* BallStrikeCamera */ = {
 			isa = PBXGroup;
 			children = (
+				BF0000040000000000000002 /* ViewModels */,
+				BF0000040000000000000001 /* Data */,
 				BF0000010000000000000304 /* App */,
 				BF0000010000000000000305 /* Camera */,
 				BF0000010000000000000306 /* Detection */,
@@ -185,6 +275,7 @@
 		BF0000010000000000000304 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				BF0000020000000000000001 /* AppDelegate.swift */,
 				BF0000010000000000000101 /* BallStrikeCameraApp.swift */,
 			);
 			path = App;
@@ -231,6 +322,9 @@
 		BF0000010000000000000307 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				BF0000040000000000000003 /* Auth */,
+				BF0000040000000000000004 /* Profile */,
+				BF0000040000000000000005 /* Modes */,
 				BF0000010000000000000107 /* ContentView.swift */,
 				BF0000010000000000000108 /* CameraPreview.swift */,
 				BF0000010000000000000112 /* RangeCameraScreen.swift */,
@@ -250,13 +344,37 @@
 				BF0000010000000000000143 /* TopDownShotGridView.swift */,
 				BF0000010000000000000144 /* AnimatedShotFlightView.swift */,
 				BF0000010000000000000145 /* CinematicBallFlightView.swift */,
+				BF0000010000000000000351 /* AppShell */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		BF0000010000000000000351 /* AppShell */ = {
+			isa = PBXGroup;
+			children = (
+				BF000002000000000000000F /* FeatureFlags.swift */,
+				BF0000010000000000000146 /* MainTabView.swift */,
+				BF0000010000000000000150 /* AppShellComponents.swift */,
+				BF0000010000000000000147 /* HomeDashboardView.swift */,
+				BF0000010000000000000148 /* ModeSelectionView.swift */,
+				BF0000010000000000000149 /* RangeModeView.swift */,
+				BF000001000000000000014A /* SimModeView.swift */,
+				BF000001000000000000014B /* CourseModeView.swift */,
+				BF000001000000000000014C /* SessionsView.swift */,
+				BF000001000000000000014D /* AnalyticsView.swift */,
+				BF000001000000000000014E /* FeedView.swift */,
+				BF000001000000000000014F /* ProfileSettingsView.swift */,
+				BF0000010000000000000151 /* BallStrikeTheme.swift */,
+				BF0000010000000000000152 /* BallStrikeBackgroundView.swift */,
+			);
+			path = AppShell;
 			sourceTree = "<group>";
 		};
 		BF0000010000000000000308 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				BF000002000000000000000D /* AppModels.swift */,
+				BF000002000000000000000E /* CourseModels.swift */,
 				BF0000010000000000000102 /* CameraPhase.swift */,
 				BF0000010000000000000103 /* PlatformImage.swift */,
 				BF000001000000000000011C /* ShotAnalysisModels.swift */,
@@ -331,7 +449,85 @@
 			path = Experimental;
 			sourceTree = "<group>";
 		};
-/* End PBXGroup section */
+		BF0000040000000000000001 /* Data */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000020000000000000002 /* AppBackend.swift */,
+				BF0000020000000000000003 /* AppStorageManager.swift */,
+				BF0000020000000000000004 /* AuthSessionStore.swift */,
+				BF0000020000000000000005 /* LocalBackendService.swift */,
+				BF0000020000000000000006 /* LocationService.swift */,
+				BF0000020000000000000007 /* ShotPersistenceService.swift */,
+				BF0000020000000000000008 /* SimOutputService.swift */,
+				BF0000020000000000000009 /* GolfCourseAPIConfig.swift */,
+				BF000002000000000000000A /* CourseProvider.swift */,
+				BF000002000000000000000B /* MockCourseProvider.swift */,
+				BF000002000000000000000C /* GolfCourseAPIProvider.swift */,
+			);
+			path = Data;
+			sourceTree = "<group>";
+		};
+		BF0000040000000000000002 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000020000000000000013 /* ClubBagViewModel.swift */,
+				BF0000020000000000000014 /* RangeSessionViewModel.swift */,
+				BF0000020000000000000015 /* SimSessionViewModel.swift */,
+				BF0000020000000000000016 /* CourseRoundViewModel.swift */,
+				BF0000020000000000000017 /* AnalyticsViewModel.swift */,
+				BF0000020000000000000018 /* FeedViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		BF0000040000000000000003 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000020000000000000010 /* AppRootView.swift */,
+				BF0000020000000000000011 /* AuthViewModel.swift */,
+				BF0000020000000000000012 /* LoginView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		BF0000040000000000000004 /* Profile */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000020000000000000019 /* ClubsInBagView.swift */,
+				BF000002000000000000001A /* EditClubView.swift */,
+			);
+			path = Profile;
+			sourceTree = "<group>";
+		};
+		BF0000040000000000000005 /* Modes */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000040000000000000006 /* Range */,
+				BF0000040000000000000007 /* Course */,
+			);
+			path = Modes;
+			sourceTree = "<group>";
+		};
+		BF0000040000000000000006 /* Range */ = {
+			isa = PBXGroup;
+			children = (
+				BF000002000000000000001B /* RangeSessionView.swift */,
+			);
+			path = Range;
+			sourceTree = "<group>";
+		};
+		BF0000040000000000000007 /* Course */ = {
+			isa = PBXGroup;
+			children = (
+				BF000002000000000000001C /* CourseSearchView.swift */,
+				BF000002000000000000001D /* CourseRoundView.swift */,
+				BF000002000000000000001E /* HoleView.swift */,
+				BF000002000000000000001F /* ScorecardView.swift */,
+			);
+			path = Course;
+			sourceTree = "<group>";
+		};
+		/* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
 		BF0000010000000000000401 /* BallStrikeCamera */ = {
@@ -461,6 +657,50 @@
 				BF0000010000000000000043 /* TopDownShotGridView.swift in Sources */,
 				BF0000010000000000000044 /* AnimatedShotFlightView.swift in Sources */,
 				BF0000010000000000000045 /* CinematicBallFlightView.swift in Sources */,
+		BF0000010000000000000046 /* MainTabView.swift in Sources */,
+		BF0000010000000000000047 /* HomeDashboardView.swift in Sources */,
+		BF0000010000000000000048 /* ModeSelectionView.swift in Sources */,
+		BF0000010000000000000049 /* RangeModeView.swift in Sources */,
+		BF000001000000000000004A /* SimModeView.swift in Sources */,
+		BF000001000000000000004B /* CourseModeView.swift in Sources */,
+		BF000001000000000000004C /* SessionsView.swift in Sources */,
+		BF000001000000000000004D /* AnalyticsView.swift in Sources */,
+		BF000001000000000000004E /* FeedView.swift in Sources */,
+		BF000001000000000000004F /* ProfileSettingsView.swift in Sources */,
+		BF0000010000000000000050 /* AppShellComponents.swift in Sources */,
+		BF0000010000000000000051 /* BallStrikeTheme.swift in Sources */,
+		BF0000010000000000000052 /* BallStrikeBackgroundView.swift in Sources */,
+				BF0000030000000000000001 /* AppDelegate.swift in Sources */,
+				BF0000030000000000000002 /* AppBackend.swift in Sources */,
+				BF0000030000000000000003 /* AppStorageManager.swift in Sources */,
+				BF0000030000000000000004 /* AuthSessionStore.swift in Sources */,
+				BF0000030000000000000005 /* LocalBackendService.swift in Sources */,
+				BF0000030000000000000006 /* LocationService.swift in Sources */,
+				BF0000030000000000000007 /* ShotPersistenceService.swift in Sources */,
+				BF0000030000000000000008 /* SimOutputService.swift in Sources */,
+				BF0000030000000000000009 /* GolfCourseAPIConfig.swift in Sources */,
+				BF000003000000000000000A /* CourseProvider.swift in Sources */,
+				BF000003000000000000000B /* MockCourseProvider.swift in Sources */,
+				BF000003000000000000000C /* GolfCourseAPIProvider.swift in Sources */,
+				BF000003000000000000000D /* AppModels.swift in Sources */,
+				BF000003000000000000000E /* CourseModels.swift in Sources */,
+				BF000003000000000000000F /* FeatureFlags.swift in Sources */,
+				BF0000030000000000000010 /* AppRootView.swift in Sources */,
+				BF0000030000000000000011 /* AuthViewModel.swift in Sources */,
+				BF0000030000000000000012 /* LoginView.swift in Sources */,
+				BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */,
+				BF0000030000000000000014 /* RangeSessionViewModel.swift in Sources */,
+				BF0000030000000000000015 /* SimSessionViewModel.swift in Sources */,
+				BF0000030000000000000016 /* CourseRoundViewModel.swift in Sources */,
+				BF0000030000000000000017 /* AnalyticsViewModel.swift in Sources */,
+				BF0000030000000000000018 /* FeedViewModel.swift in Sources */,
+				BF0000030000000000000019 /* ClubsInBagView.swift in Sources */,
+				BF000003000000000000001A /* EditClubView.swift in Sources */,
+				BF000003000000000000001B /* RangeSessionView.swift in Sources */,
+				BF000003000000000000001C /* CourseSearchView.swift in Sources */,
+				BF000003000000000000001D /* CourseRoundView.swift in Sources */,
+				BF000003000000000000001E /* HoleView.swift in Sources */,
+				BF000003000000000000001F /* ScorecardView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

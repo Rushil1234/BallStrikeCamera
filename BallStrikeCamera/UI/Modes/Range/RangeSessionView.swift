@@ -1,0 +1,243 @@
+import SwiftUI
+
+struct RangeSessionView: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var vm: RangeSessionViewModel
+    @State private var showCamera = false
+    @State private var showEndAlert = false
+
+    init(userId: UUID, backend: AppBackend) {
+        _vm = StateObject(wrappedValue: RangeSessionViewModel(userId: userId, backend: backend))
+    }
+
+    var body: some View {
+        ZStack {
+            BallStrikeBackgroundView()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: BSTheme.sectionGap) {
+                    sessionHeader
+                    if vm.sessionActive {
+                        liveStatsGrid
+                        clubPickerCard
+                        hitButton
+                        shotHistorySection
+                        endSessionButton
+                    } else {
+                        startCard
+                    }
+                    Spacer(minLength: 32)
+                }
+                .padding(.horizontal, BSTheme.hPad)
+                .padding(.top, 4)
+            }
+        }
+        .navigationTitle("Range Session")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(.clear, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Done") {
+                    if vm.sessionActive { showEndAlert = true }
+                    else { dismiss() }
+                }
+                .foregroundColor(BSTheme.textMuted)
+            }
+        }
+        .alert("End Session?", isPresented: $showEndAlert) {
+            Button("End & Save", role: .destructive) {
+                Task {
+                    await vm.endSession()
+                    dismiss()
+                }
+            }
+            Button("Discard", role: .destructive) {
+                Task {
+                    await vm.discardSession()
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Save this session or discard it?")
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            RangeCameraScreen()
+        }
+        .task {
+            await vm.loadClubs()
+        }
+    }
+
+    // MARK: - Sub-views
+
+    private var sessionHeader: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(vm.sessionActive ? "Session Active" : "Start Session")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(BSTheme.textPrimary)
+                Text(vm.sessionActive
+                     ? "\(vm.shots.count) shot\(vm.shots.count == 1 ? "" : "s")"
+                     : "Select a club and start hitting")
+                    .font(.system(size: 14))
+                    .foregroundColor(BSTheme.textMuted)
+            }
+            Spacer()
+            if vm.sessionActive {
+                StatusPill(text: "LIVE", color: BSTheme.fairwayGreen)
+            }
+        }
+    }
+
+    private var startCard: some View {
+        VStack(spacing: 20) {
+            clubPickerCard
+
+            Toggle(isOn: $vm.saveOriginalFrames) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Save Original Frames")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(BSTheme.textPrimary)
+                    Text("41 raw frames per shot (~12 MB each)")
+                        .font(.system(size: 12))
+                        .foregroundColor(BSTheme.textMuted)
+                }
+            }
+            .tint(BSTheme.electricCyan)
+            .premiumCard(padding: 16)
+
+            PremiumActionButton(
+                title: "Start Session",
+                icon: "play.fill",
+                style: .gradient(BSTheme.rangeGradient),
+                action: { Task { await vm.startSession() } }
+            )
+        }
+    }
+
+    private var clubPickerCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Club")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(BSTheme.textMuted)
+            if vm.clubs.isEmpty {
+                Text("No clubs — add some in Profile > Clubs")
+                    .font(.system(size: 13))
+                    .foregroundColor(BSTheme.textMuted)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(vm.clubs) { club in
+                            Button {
+                                vm.selectedClub = club
+                            } label: {
+                                Text(club.name)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(vm.selectedClub?.id == club.id ? .black : BSTheme.textMuted)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .background(vm.selectedClub?.id == club.id ? BSTheme.fairwayGreen : BSTheme.panel)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+        .premiumCard()
+    }
+
+    private var hitButton: some View {
+        PremiumActionButton(
+            title: "Hit Shot",
+            icon: "camera.fill",
+            style: .gradient(BSTheme.rangeGradient),
+            action: { showCamera = true }
+        )
+    }
+
+    private var liveStatsGrid: some View {
+        let s = vm.summary
+        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()),
+                                   GridItem(.flexible()), GridItem(.flexible())],
+                         spacing: 10) {
+            StatTile(label: "Shots",      value: "\(s.shotCount)",              accent: BSTheme.electricCyan)
+            StatTile(label: "Avg Carry",  value: s.shotCount > 0 ? "\(Int(s.avgCarry)) yd" : "—", accent: BSTheme.fairwayGreen)
+            StatTile(label: "Best",       value: s.shotCount > 0 ? "\(Int(s.bestCarry)) yd" : "—", accent: BSTheme.gold)
+            StatTile(label: "Ball Spd",   value: s.shotCount > 0 ? "\(Int(s.avgBallSpeed)) mph" : "—", accent: BSTheme.electricCyan)
+        }
+    }
+
+    private var shotHistorySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BSectionHeader(title: "Shot History")
+            if vm.shots.isEmpty {
+                Text("No shots yet.")
+                    .font(.system(size: 13))
+                    .foregroundColor(BSTheme.textMuted)
+                    .padding(.leading, 4)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(vm.shots.reversed()) { shot in
+                        ShotHistoryRow(shot: shot)
+                    }
+                }
+            }
+        }
+    }
+
+    private var endSessionButton: some View {
+        Button {
+            showEndAlert = true
+        } label: {
+            Text("End Session")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(BSTheme.dangerRed)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(BSTheme.dangerRed.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(BSTheme.dangerRed.opacity(0.35), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Shot History Row
+
+private struct ShotHistoryRow: View {
+    let shot: SavedShot
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(shot.clubName ?? "—")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(BSTheme.electricCyan)
+                .frame(width: 64, alignment: .leading)
+            Spacer()
+            metricPill("\(Int(shot.metrics.carryYards)) yd", label: "carry")
+            metricPill("\(Int(shot.metrics.ballSpeedMph)) mph", label: "spd")
+            metricPill(String(format: "%.2f", shot.metrics.smashFactor), label: "smash")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(BSTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func metricPill(_ value: String, label: String) -> some View {
+        VStack(spacing: 1) {
+            Text(value)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(BSTheme.textPrimary)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundColor(BSTheme.textMuted)
+        }
+        .frame(minWidth: 52)
+    }
+}
