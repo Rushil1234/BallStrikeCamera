@@ -5,6 +5,7 @@ final class AnalyticsViewModel: ObservableObject {
 
     @Published var allShots: [SavedShot] = []
     @Published var filteredShots: [SavedShot] = []
+    @Published var clubs: [UserClub] = []
     @Published var clubFilter: String = "All"
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -21,7 +22,10 @@ final class AnalyticsViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            allShots = try await backend.loadShots(userId: userId)
+            async let shots = backend.loadShots(userId: userId)
+            async let bag = backend.loadClubs(userId: userId)
+            allShots = try await shots
+            clubs = try await bag
             applyFilter()
         } catch {
             errorMessage = error.localizedDescription
@@ -36,7 +40,8 @@ final class AnalyticsViewModel: ObservableObject {
     // MARK: - Computed stats
 
     var availableClubs: [String] {
-        let names = Set(allShots.compactMap { $0.clubName })
+        var names = Set(clubs.map(\.name))
+        allShots.compactMap { $0.clubName }.forEach { names.insert($0) }
         return ["All"] + names.sorted()
     }
 
@@ -73,10 +78,12 @@ final class AnalyticsViewModel: ObservableObject {
     }
 
     var clubStats: [ClubStat] {
-        let named = allShots.filter { $0.clubName != nil }
-        let grouped = Dictionary(grouping: named) { $0.clubName! }
-        return grouped.map { name, shots in
-            ClubStat(
+        let grouped = Dictionary(grouping: availableClubs.dropFirst().flatMap { club in
+            shotsFor(club).map { (club, $0) }
+        }) { $0.0 }
+        return grouped.map { name, values in
+            let shots = values.map(\.1)
+            return ClubStat(
                 clubName: name,
                 avgCarry:     average(shots.map { $0.metrics.carryYards }),
                 avgBallSpeed: average(shots.map { $0.metrics.ballSpeedMph }),
@@ -93,7 +100,16 @@ final class AnalyticsViewModel: ObservableObject {
         if clubFilter == "All" {
             filteredShots = allShots
         } else {
-            filteredShots = allShots.filter { $0.clubName == clubFilter }
+            filteredShots = shotsFor(clubFilter)
+        }
+    }
+
+    private func shotsFor(_ club: String) -> [SavedShot] {
+        let clubIds = Set(clubs.filter { $0.name == club }.map(\.id))
+        return allShots.filter { shot in
+            if shot.clubName == club { return true }
+            guard let clubId = shot.clubId else { return false }
+            return clubIds.contains(clubId)
         }
     }
 

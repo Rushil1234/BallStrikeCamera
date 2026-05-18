@@ -5,6 +5,8 @@ struct TrueCarryLockerView: View {
     @State private var showClubs    = false
     @State private var showSessions = false
     @State private var showProfile  = false
+    @State private var showNotesEditor = false
+    @AppStorage("tc_locker_notes") private var lockerNotes = ""
     @State private var clubs: [UserClub]     = []
     @State private var shots: [SavedShot]    = []
     @State private var rounds: [CourseRound] = []
@@ -92,6 +94,29 @@ struct TrueCarryLockerView: View {
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
                 .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showNotesEditor) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 12) {
+                    TextEditor(text: $lockerNotes)
+                        .scrollContentBackground(.hidden)
+                        .foregroundColor(.white)
+                        .padding(12)
+                        .background(TCTheme.panelRaised)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    Spacer()
+                }
+                .padding(TCTheme.hPad)
+                .background(TrueCarryBackground())
+                .navigationTitle("Notes")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Done") { showNotesEditor = false }
+                    }
+                }
+            }
+            .preferredColorScheme(.dark)
         }
         .task {
             if let uid = user?.id {
@@ -230,14 +255,14 @@ struct TrueCarryLockerView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(TCTheme.textPrimary)
                 Spacer()
-                Button {} label: {
+                Button { showNotesEditor = true } label: {
                     Image(systemName: "pencil")
                         .font(.system(size: 14))
                         .foregroundColor(TCTheme.textMuted)
                 }
                 .buttonStyle(.plain)
             }
-            Text("Tap the pencil to add notes about your game.")
+            Text(lockerNotes.isEmpty ? "Tap the pencil to add notes about your game." : lockerNotes)
                 .font(.system(size: 13))
                 .foregroundColor(TCTheme.textMuted)
                 .lineSpacing(3)
@@ -278,7 +303,7 @@ struct TrueCarryLockerView: View {
     // MARK: - Settings Row Card
 
     private var settingsRowCard: some View {
-        Button {} label: {
+        Button { showProfile = true } label: {
             TCSettingsRow(
                 icon: "gearshape.fill",
                 title: "Settings",

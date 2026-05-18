@@ -110,6 +110,7 @@ struct TrueCarryAppShell: View {
                         .environment(\.safeAreaInsets, geo.safeAreaInsets)
                 }
                 .ignoresSafeArea(.keyboard)
+                .ignoresSafeArea(edges: .bottom)
             }
         }
         .background(TCTheme.background.ignoresSafeArea())
