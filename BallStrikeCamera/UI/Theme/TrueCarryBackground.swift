@@ -1,25 +1,10 @@
 import SwiftUI
 
-// MARK: - True Carry Background (full-screen dark with topo lines + radial glow)
+// MARK: - True Carry Background
 
 struct TrueCarryBackground: View {
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [TCTheme.background, TCTheme.backgroundMid, TCTheme.backgroundBot],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
-            TopoLinesCanvas()
-                .ignoresSafeArea()
-                .opacity(0.055)
-            RadialGradient(
-                colors: [TCTheme.sage.opacity(0.06), Color.clear],
-                center: .init(x: 0.5, y: 0.05),
-                startRadius: 0, endRadius: 280
-            )
-            .ignoresSafeArea()
-        }
+        TCTheme.background.ignoresSafeArea()
     }
 }
 
@@ -69,44 +54,10 @@ struct TrueCarryLogo: View {
     var size: CGFloat = 24
 
     var body: some View {
-        VStack(spacing: -1) {
-            ArcLogoView(size: size)
-                .frame(width: size * 4.6, height: size * 0.65)
-                .offset(y: 2)
-            VStack(spacing: -3) {
-                Text("TRUE")
-                    .font(.system(size: size, weight: .black, design: .serif))
-                    .tracking(size * 0.20)
-                    .foregroundColor(TCTheme.textPrimary)
-                Text("CARRY")
-                    .font(.system(size: size * 0.98, weight: .black, design: .serif))
-                    .tracking(size * 0.14)
-                    .foregroundColor(TCTheme.textPrimary)
-            }
-        }
-    }
-}
-
-private struct ArcLogoView: View {
-    let size: CGFloat
-    var body: some View {
-        Canvas { ctx, sz in
-            let w = sz.width; let h = sz.height; let midX = w / 2
-            var arc = Path()
-            arc.move(to: CGPoint(x: w * 0.05, y: h * 0.90))
-            arc.addCurve(
-                to: CGPoint(x: w * 0.95, y: h * 0.90),
-                control1: CGPoint(x: midX - w * 0.07, y: -h * 0.18),
-                control2: CGPoint(x: midX + w * 0.14, y: -h * 0.18)
-            )
-            ctx.stroke(arc, with: .color(TCTheme.sage.opacity(0.82)),
-                       style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-            let ax = midX + w * 0.02; let ay = h * -0.04
-            ctx.fill(Path(ellipseIn: CGRect(x: ax - 3.5, y: ay - 3.5, width: 7, height: 7)),
-                     with: .color(TCTheme.gold))
-            ctx.fill(Path(ellipseIn: CGRect(x: ax - 2, y: ay - 2, width: 4, height: 4)),
-                     with: .color(TCTheme.goldLight))
-        }
+        Text("TRUE CARRY")
+            .font(.system(size: size * 0.78, weight: .semibold))
+            .tracking(1.2)
+            .foregroundColor(TCTheme.textPrimary)
     }
 }
 
@@ -118,7 +69,7 @@ struct TCHeaderBar<RightContent: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
-            avatarCircle.frame(width: 44)
+            Color.clear.frame(width: 44)
             Spacer(minLength: 6)
             TrueCarryLogo(size: 20)
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -129,17 +80,28 @@ struct TCHeaderBar<RightContent: View>: View {
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
+}
 
-    private var avatarCircle: some View {
-        ZStack {
-            Circle().fill(TCTheme.panelRaised)
-            Circle().strokeBorder(TCTheme.goldGradient, lineWidth: 2)
-            Text(String(initials.prefix(2)).uppercased())
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(TCTheme.gold)
+// MARK: - Profile Avatar Button (top-right header tap → profile sheet)
+
+struct TCProfileAvatarButton: View {
+    let initials: String
+    var action: () -> Void = {}
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(TCTheme.panelRaised)
+                Circle()
+                    .strokeBorder(TCTheme.gold.opacity(0.55), lineWidth: 1.5)
+                Text(String(initials.prefix(2)).uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(TCTheme.gold)
+            }
+            .frame(width: 32, height: 32)
         }
-        .frame(width: 38, height: 38)
-        .shadow(color: TCTheme.gold.opacity(0.20), radius: 6, x: 0, y: 0)
+        .buttonStyle(.plain)
     }
 }
 
@@ -155,14 +117,10 @@ struct TCBellButton: View {
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(TCTheme.textSecondary)
                 if badgeCount > 0 {
-                    ZStack {
-                        Circle().fill(TCTheme.gold)
-                        Text("\(min(badgeCount, 9))")
-                            .font(.system(size: 8, weight: .black))
-                            .foregroundColor(.black)
-                    }
-                    .frame(width: 13, height: 13)
-                    .offset(x: 2, y: -2)
+                    Text("\(min(badgeCount, 9))")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .offset(x: 6, y: -5)
                 }
             }
             .frame(width: 32, height: 32)

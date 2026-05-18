@@ -4,6 +4,7 @@ struct TrueCarryLockerView: View {
     @EnvironmentObject var session: AuthSessionStore
     @State private var showClubs    = false
     @State private var showSessions = false
+    @State private var showProfile  = false
     @State private var clubs: [UserClub]     = []
     @State private var shots: [SavedShot]    = []
     @State private var rounds: [CourseRound] = []
@@ -58,8 +59,7 @@ struct TrueCarryLockerView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
-                        TCBellButton(badgeCount: 2) {}
-                        TCIconButton(icon: "gearshape.fill") {}
+                        TCProfileAvatarButton(initials: userInitials) { showProfile = true }
                     }
                     VStack(spacing: TCTheme.sectionGap) {
                         profileCard
@@ -89,6 +89,10 @@ struct TrueCarryLockerView: View {
             NavigationStack { PastSessionsView() }
                 .preferredColorScheme(.dark)
         }
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { TrueCarryProfileView() }
+                .preferredColorScheme(.dark)
+        }
         .task {
             if let uid = user?.id {
                 async let c = try? await session.backend.loadClubs(userId: uid)
@@ -105,23 +109,14 @@ struct TrueCarryLockerView: View {
 
     private var profileCard: some View {
         HStack(spacing: 16) {
-            // Avatar with premium gold ring
-            ZStack {
-                Circle()
-                    .fill(TCTheme.panelRaised)
-                    .frame(width: 76, height: 76)
-                Circle()
-                    .strokeBorder(TCTheme.goldGradient, lineWidth: 3)
-                    .frame(width: 76, height: 76)
-                Text(String(userInitials.prefix(2)).uppercased())
-                    .font(.system(size: 28, weight: .black))
-                    .foregroundColor(TCTheme.gold)
-            }
-            .shadow(color: TCTheme.gold.opacity(0.35), radius: 14)
+            Text(String(userInitials.prefix(2)).uppercased())
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(TCTheme.textSecondary)
+                .frame(width: 48, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(displayName)
-                    .font(.system(size: 26, weight: .bold, design: .serif))
+                    .font(.system(size: 26, weight: .semibold))
                     .foregroundColor(TCTheme.textPrimary)
 
                 HStack(spacing: 4) {
@@ -157,20 +152,13 @@ struct TrueCarryLockerView: View {
                 .foregroundColor(TCTheme.textMuted)
                 .tracking(0.8)
             Text(value)
-                .font(.system(size: 16, weight: .black, design: .rounded))
-                .foregroundColor(color)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(TCTheme.textPrimary)
             Text(sub)
                 .font(.system(size: 9))
                 .foregroundColor(TCTheme.textMuted)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(color.opacity(0.25), lineWidth: 1)
-        )
+        .padding(.vertical, 4)
     }
 
     // MARK: - Clubs in Bag Card
@@ -185,11 +173,7 @@ struct TrueCarryLockerView: View {
                     Text("Manage Bag ›")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(TCTheme.gold)
-                        .padding(.horizontal, 12)
                         .padding(.vertical, 6)
-                        .background(TCTheme.gold.opacity(0.10))
-                        .clipShape(Capsule())
-                        .overlay(Capsule().strokeBorder(TCTheme.gold.opacity(0.30), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
             }
@@ -198,15 +182,6 @@ struct TrueCarryLockerView: View {
                 .padding(.top, 8)
 
             HStack(spacing: 16) {
-                // Premium golf bag illustration
-                TCGolfBagIllustration()
-                    .frame(width: 72, height: 108)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(TCTheme.border, lineWidth: 1)
-                    )
-
                 VStack(alignment: .leading, spacing: 2) {
                     let driverName  = clubs.first(where: { $0.type == .driver })?.name ?? "Not set"
                     let fwName      = clubs.first(where: { $0.type == .fairwayWood })?.name ?? "Not set"
@@ -326,12 +301,7 @@ struct TrueCarryLockerView: View {
                 .foregroundColor(TCTheme.danger)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(TCTheme.danger.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(TCTheme.danger.opacity(0.30), lineWidth: 1.5)
-                )
+                .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .bottom)
         }
         .buttonStyle(.plain)
     }

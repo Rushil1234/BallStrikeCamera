@@ -130,6 +130,7 @@
 		BF000006000000000000001C /* RoundSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000001B /* RoundSetupView.swift */; };
 		BF000006000000000000001E /* TCVisuals.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000001D /* TCVisuals.swift */; };
 		BF0000060000000000000020 /* CourseImageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000001F /* CourseImageService.swift */; };
+		BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000090000000000000001 /* TrueCarryProfileView.swift */; };
 		BF0000080000000000000001 /* SubscriptionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000001 /* SubscriptionModels.swift */; };
 		BF0000080000000000000002 /* SocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000002 /* SocialModels.swift */; };
 		BF0000080000000000000003 /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000003 /* BackendFactory.swift */; };
@@ -266,6 +267,7 @@
 			BF000006000000000000001B /* RoundSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundSetupView.swift; sourceTree = "<group>"; };
 			BF000006000000000000001D /* TCVisuals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCVisuals.swift; sourceTree = "<group>"; };
 			BF000006000000000000001F /* CourseImageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseImageService.swift; sourceTree = "<group>"; };
+			BF0000090000000000000001 /* TrueCarryProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryProfileView.swift; sourceTree = "<group>"; };
 		BF0000070000000000000001 /* SubscriptionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionModels.swift; sourceTree = "<group>"; };
 		BF0000070000000000000002 /* SocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialModels.swift; sourceTree = "<group>"; };
 		BF0000070000000000000003 /* BackendFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendFactory.swift; sourceTree = "<group>"; };
@@ -571,6 +573,7 @@
 			children = (
 				BF0000020000000000000019 /* ClubsInBagView.swift */,
 				BF000002000000000000001A /* EditClubView.swift */,
+				BF0000090000000000000001 /* TrueCarryProfileView.swift */,
 			);
 			path = Profile;
 			sourceTree = "<group>";
@@ -866,6 +869,7 @@
 				BF0000080000000000000006 /* SupabaseDTOs.swift in Sources */,
 				BF0000080000000000000007 /* EntitlementService.swift in Sources */,
 				BF0000080000000000000008 /* EntitlementViewModel.swift in Sources */,
+				BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

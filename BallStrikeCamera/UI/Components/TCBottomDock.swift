@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Tab Enum
 
 enum TCTab: Int, CaseIterable {
-    case home = 0, insights = 1, play = 2, locker = 3, courses = 4
+    case home = 0, insights = 1, play = 2, locker = 3, profile = 4
 
     var label: String {
         switch self {
@@ -11,7 +11,7 @@ enum TCTab: Int, CaseIterable {
         case .insights: return "Insights"
         case .play:     return "Play"
         case .locker:   return "Locker"
-        case .courses:  return "Courses"
+        case .profile:  return "Profile"
         }
     }
     var icon: String {
@@ -20,7 +20,7 @@ enum TCTab: Int, CaseIterable {
         case .insights: return "chart.bar.xaxis"
         case .play:     return "flag.fill"
         case .locker:   return "folder.fill"
-        case .courses:  return "map.fill"
+        case .profile:  return "person.fill"
         }
     }
     var isCenter: Bool { self == .play }
@@ -67,7 +67,7 @@ struct TCBottomDock: View {
                 Rectangle()
                     .fill(selected ? TCTheme.gold : Color.clear)
                     .frame(width: selected ? 18 : 0, height: 1.5)
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     .animation(.easeInOut(duration: 0.20), value: selected)
             }
             .frame(maxWidth: .infinity)
@@ -127,8 +127,8 @@ struct TrueCarryAppShell: View {
             NavigationStack { TrueCarryPlayView() }
         case .locker:
             NavigationStack { TrueCarryLockerView() }
-        case .courses:
-            NavigationStack { TrueCarryCoursesView() }
+        case .profile:
+            NavigationStack { TrueCarryProfileView() }
         }
     }
 }

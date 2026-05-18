@@ -5,6 +5,7 @@ struct TrueCarryInsightsView: View {
     @State private var shots: [SavedShot] = []
     @State private var clubs: [UserClub]  = []
     @State private var selectedClub: String? = nil
+    @State private var showProfile = false
 
     // MARK: - Club list
 
@@ -16,7 +17,12 @@ struct TrueCarryInsightsView: View {
     }
 
     private func shotsFor(_ club: String) -> [SavedShot] {
-        shots.filter { $0.clubName == club }
+        let clubIds = Set(clubs.filter { $0.name == club }.map(\.id))
+        return shots.filter { shot in
+            if shot.clubName == club { return true }
+            guard let clubId = shot.clubId else { return false }
+            return clubIds.contains(clubId)
+        }
     }
 
     private var selectedShots: [SavedShot] {
@@ -76,7 +82,7 @@ struct TrueCarryInsightsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
-                        TCIconButton(icon: "slider.horizontal.3") {}
+                        TCProfileAvatarButton(initials: userInitials) { showProfile = true }
                     }
                     VStack(spacing: 0) {
                         clubPicker
@@ -93,13 +99,19 @@ struct TrueCarryInsightsView: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { TrueCarryProfileView() }
+                .preferredColorScheme(.dark)
+        }
         .task {
             guard let uid = session.currentUser?.id else { return }
             async let s = try? await session.backend.loadShots(userId: uid)
             async let c = try? await session.backend.loadClubs(userId: uid)
             shots = await s ?? []
             clubs = await c ?? []
-            if selectedClub == nil { selectedClub = availableClubs.first }
+            if selectedClub == nil || !availableClubs.contains(selectedClub ?? "") {
+                selectedClub = availableClubs.first
+            }
         }
     }
 

@@ -7,6 +7,7 @@ struct TrueCarryHomeView: View {
     @State private var rounds: [CourseRound] = []
     @State private var rangeSessions: [PracticeSession] = []
     @State private var showSessions = false
+    @State private var showProfile = false
 
     // MARK: Derived helpers
 
@@ -51,7 +52,7 @@ struct TrueCarryHomeView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
-                        TCBellButton(badgeCount: 3) {}
+                        TCProfileAvatarButton(initials: userInitials) { showProfile = true }
                     }
                     VStack(spacing: TCTheme.sectionGap) {
                         greetingCard
@@ -65,10 +66,12 @@ struct TrueCarryHomeView: View {
         }
         .navigationBarHidden(true)
         .sheet(isPresented: $showSessions) {
-            NavigationStack {
-                PastSessionsView()
-            }
-            .preferredColorScheme(.dark)
+            NavigationStack { PastSessionsView() }
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { TrueCarryProfileView() }
+                .preferredColorScheme(.dark)
         }
         .task {
             if let uid = session.currentUser?.id {
@@ -165,12 +168,7 @@ struct TrueCarryHomeView: View {
                         secondaryStat: "\(latestRound.scoreSummary.fairwaysHit)",
                         secondaryLabel: "FAIRWAYS",
                         tertiaryStat: "\(latestRound.scoreSummary.totalPutts)",
-                        tertiaryLabel: "PUTTS",
-                        thumbnailView: AnyView(
-                            TCRoundThumbnail(seed: 1)
-                                .frame(width: 80, height: 80)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        )
+                        tertiaryLabel: "PUTTS"
                     )
                 }
 
@@ -186,12 +184,7 @@ struct TrueCarryHomeView: View {
                         secondaryStat: "\(Int(latestRange.summary.avgBallSpeed)) mph",
                         secondaryLabel: "BALL SPEED",
                         tertiaryStat: "\(latestRange.summary.shotCount) shots",
-                        tertiaryLabel: "SHOTS HIT",
-                        thumbnailView: AnyView(
-                            TCDispersionFairwayGraphic(showRings: false)
-                                .frame(width: 80, height: 80)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        )
+                        tertiaryLabel: "SHOTS HIT"
                     )
                 }
             }
