@@ -7,3 +7,24 @@ DerivedData/
 *.dSYM.zip
 *.dSYM
 build/
+
+# Secrets — never commit real keys
+BallStrikeCamera/Secrets.plist
+Config/Secrets.plist
+*.secret
+.env
+.env.local
+.env.production
+.env.development.local
+.env.test.local
+.env.production.local
+Backend/.env
+Backend/supabase/.env
+Website/.env.local
+Website/.env.production.local
+
+# Node / website
+Website/node_modules/
+Website/.next/
+Website/out/
+

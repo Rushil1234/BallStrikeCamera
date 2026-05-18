@@ -130,6 +130,14 @@
 		BF000006000000000000001C /* RoundSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000001B /* RoundSetupView.swift */; };
 		BF000006000000000000001E /* TCVisuals.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000001D /* TCVisuals.swift */; };
 		BF0000060000000000000020 /* CourseImageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000001F /* CourseImageService.swift */; };
+		BF0000080000000000000001 /* SubscriptionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000001 /* SubscriptionModels.swift */; };
+		BF0000080000000000000002 /* SocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000002 /* SocialModels.swift */; };
+		BF0000080000000000000003 /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000003 /* BackendFactory.swift */; };
+		BF0000080000000000000004 /* SupabaseConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000004 /* SupabaseConfig.swift */; };
+		BF0000080000000000000005 /* SupabaseBackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000005 /* SupabaseBackendService.swift */; };
+		BF0000080000000000000006 /* SupabaseDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000006 /* SupabaseDTOs.swift */; };
+		BF0000080000000000000007 /* EntitlementService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000007 /* EntitlementService.swift */; };
+		BF0000080000000000000008 /* EntitlementViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000008 /* EntitlementViewModel.swift */; };
 		/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -258,6 +266,14 @@
 			BF000006000000000000001B /* RoundSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundSetupView.swift; sourceTree = "<group>"; };
 			BF000006000000000000001D /* TCVisuals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCVisuals.swift; sourceTree = "<group>"; };
 			BF000006000000000000001F /* CourseImageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseImageService.swift; sourceTree = "<group>"; };
+		BF0000070000000000000001 /* SubscriptionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionModels.swift; sourceTree = "<group>"; };
+		BF0000070000000000000002 /* SocialModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialModels.swift; sourceTree = "<group>"; };
+		BF0000070000000000000003 /* BackendFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendFactory.swift; sourceTree = "<group>"; };
+		BF0000070000000000000004 /* SupabaseConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseConfig.swift; sourceTree = "<group>"; };
+		BF0000070000000000000005 /* SupabaseBackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseBackendService.swift; sourceTree = "<group>"; };
+		BF0000070000000000000006 /* SupabaseDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseDTOs.swift; sourceTree = "<group>"; };
+		BF0000070000000000000007 /* EntitlementService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementService.swift; sourceTree = "<group>"; };
+		BF0000070000000000000008 /* EntitlementViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EntitlementViewModel.swift; sourceTree = "<group>"; };
 		/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -284,6 +300,7 @@
 			children = (
 				BF0000040000000000000002 /* ViewModels */,
 				BF0000040000000000000001 /* Data */,
+				BF0000070000000000000009 /* Services */,
 				BF0000010000000000000304 /* App */,
 				BF0000010000000000000305 /* Camera */,
 				BF0000010000000000000306 /* Detection */,
@@ -421,6 +438,8 @@
 				BF0000010000000000000103 /* PlatformImage.swift */,
 				BF000001000000000000011C /* ShotAnalysisModels.swift */,
 				BF0000060000000000000011 /* ShotContext.swift */,
+				BF0000070000000000000001 /* SubscriptionModels.swift */,
+				BF0000070000000000000002 /* SocialModels.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -507,6 +526,10 @@
 				BF000002000000000000000A /* CourseProvider.swift */,
 				BF000002000000000000000B /* MockCourseProvider.swift */,
 				BF000002000000000000000C /* GolfCourseAPIProvider.swift */,
+				BF0000070000000000000003 /* BackendFactory.swift */,
+				BF0000070000000000000004 /* SupabaseConfig.swift */,
+				BF0000070000000000000005 /* SupabaseBackendService.swift */,
+				BF0000070000000000000006 /* SupabaseDTOs.swift */,
 			);
 			path = Data;
 			sourceTree = "<group>";
@@ -520,8 +543,17 @@
 				BF0000020000000000000016 /* CourseRoundViewModel.swift */,
 				BF0000020000000000000017 /* AnalyticsViewModel.swift */,
 				BF0000020000000000000018 /* FeedViewModel.swift */,
+				BF0000070000000000000008 /* EntitlementViewModel.swift */,
 			);
 			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		BF0000070000000000000009 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				BF0000070000000000000007 /* EntitlementService.swift */,
+			);
+			path = Services;
 			sourceTree = "<group>";
 		};
 		BF0000040000000000000003 /* Auth */ = {
@@ -826,6 +858,14 @@
 				BF000006000000000000001C /* RoundSetupView.swift in Sources */,
 				BF000006000000000000001E /* TCVisuals.swift in Sources */,
 				BF0000060000000000000020 /* CourseImageService.swift in Sources */,
+				BF0000080000000000000001 /* SubscriptionModels.swift in Sources */,
+				BF0000080000000000000002 /* SocialModels.swift in Sources */,
+				BF0000080000000000000003 /* BackendFactory.swift in Sources */,
+				BF0000080000000000000004 /* SupabaseConfig.swift in Sources */,
+				BF0000080000000000000005 /* SupabaseBackendService.swift in Sources */,
+				BF0000080000000000000006 /* SupabaseDTOs.swift in Sources */,
+				BF0000080000000000000007 /* EntitlementService.swift in Sources */,
+				BF0000080000000000000008 /* EntitlementViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

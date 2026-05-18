@@ -7,9 +7,27 @@ final class AuthSessionStore: ObservableObject {
     @Published var userProfile: UserProfile?
     @Published var isLoading = true
 
-    let backend: AppBackend = LocalBackendService()
+    let backend: AppBackend
+    @Published var entitlementVM: EntitlementViewModel
+
+    /// Stable device identifier stored in UserDefaults.
+    /// Used for device registration / validation with Supabase.
+    static var deviceId: String {
+        let key = "tc_device_id"
+        if let existing = UserDefaults.standard.string(forKey: key) { return existing }
+        let new = UUID().uuidString
+        UserDefaults.standard.set(new, forKey: key)
+        return new
+    }
+
+    /// Pricing URL from AppConfig (reads Secrets.plist).
+    static var pricingURL: URL { AppConfig.pricingURL }
 
     init() {
+        let b = BackendFactory.make()
+        self.backend = b
+        self._entitlementVM = Published(initialValue: EntitlementViewModel(backend: b))
+        print("[TrueCarry] DeviceID: \(AuthSessionStore.deviceId)")
         Task { await restoreSession() }
     }
 
@@ -23,6 +41,7 @@ final class AuthSessionStore: ObservableObject {
         if let user = try? await backend.currentUser() {
             currentUser = user
             userProfile = try? await backend.loadUserProfile(userId: user.id)
+            await entitlementVM.load(userId: user.id)
         }
         isLoading = false
     }
@@ -33,18 +52,21 @@ final class AuthSessionStore: ObservableObject {
         let user = try await backend.signIn(email: email, password: password)
         currentUser = user
         userProfile = try? await backend.loadUserProfile(userId: user.id)
+        await entitlementVM.load(userId: user.id)
     }
 
     func createAccount(name: String, email: String, password: String) async throws {
         let user = try await backend.createAccount(name: name, email: email, password: password)
         currentUser = user
         userProfile = try? await backend.loadUserProfile(userId: user.id)
+        await entitlementVM.load(userId: user.id)
     }
 
     func continueAsGuest() async throws {
         let user = try await backend.continueAsGuest()
         currentUser = user
         userProfile = try? await backend.loadUserProfile(userId: user.id)
+        await entitlementVM.load(userId: user.id)
     }
 
     func signOut() async {

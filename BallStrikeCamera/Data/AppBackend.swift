@@ -42,6 +42,25 @@ protocol AppBackend {
     func saveFeedPost(_ post: FeedPost) async throws
     func deleteFeedPost(postId: UUID, userId: UUID) async throws
     func loadFeed(userId: UUID) async throws -> [FeedPost]
+
+    // Entitlements & usage
+    func loadEntitlement(userId: UUID) async throws -> UserEntitlement
+    func loadUsageCounter(userId: UUID, date: String) async throws -> UsageCounter?
+    func incrementUsage(userId: UUID, action: EntitlementAction) async throws
+}
+
+// MARK: - Default implementations (local fallback)
+
+extension AppBackend {
+    func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
+        UserEntitlement.freeTier(userId: userId)
+    }
+    func loadUsageCounter(userId: UUID, date: String) async throws -> UsageCounter? {
+        nil
+    }
+    func incrementUsage(userId: UUID, action: EntitlementAction) async throws {
+        // no-op for local
+    }
 }
 
 // MARK: - Backend Errors

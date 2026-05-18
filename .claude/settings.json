@@ -102,11 +102,12 @@
       "Bash(xcodebuild -project BallStrikeCamera.xcodeproj -scheme BallStrikeCamera -destination \"generic/platform=iOS Simulator\" build)",
       "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 16' build)",
       "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build)",
-      "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 16' -configuration Debug build)",
-      "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,OS=latest,name=iPhone 16' -configuration Debug build)",
-      "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,id=43599AB4-284E-4087-89A6-D25FB8B50E23' -configuration Debug build)",
-      "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -configuration Debug build)",
-      "Bash(xcodebuild -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -configuration Debug build)"
+      "Bash(git reset *)",
+      "Bash(xcodebuild -project BallStrikeCamera.xcodeproj -scheme BallStrikeCamera -destination 'platform=iOS Simulator,name=iPhone 17' -configuration Debug build)",
+      "Bash(unzip -q /Users/noahtobias/Downloads/TrueCarry_UI_Package.zip -d TrueCarry_UI_Package)",
+      "Bash(npm install *)",
+      "Bash(npm audit *)",
+      "Bash(npm run *)"
     ],
     "additionalDirectories": [
       "/tmp",

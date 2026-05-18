@@ -1,0 +1,15 @@
+{
+  "images": [
+    {
+      "filename": "tc_golf_bag.pdf",
+      "idiom": "universal"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  },
+  "properties": {
+    "preserves-vector-representation": true
+  }
+}
