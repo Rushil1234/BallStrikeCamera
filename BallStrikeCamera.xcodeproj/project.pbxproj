@@ -40,6 +40,7 @@
 		BF0000010000000000000007 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000107 /* ContentView.swift */; };
 		BF0000010000000000000008 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000108 /* CameraPreview.swift */; };
 		BF0000010000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000109 /* Assets.xcassets */; };
+		BF00SECRETS00000000000002 /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = BF00SECRETS00000000000001 /* Secrets.plist */; };
 		BF000001000000000000000A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011B /* LaunchScreen.storyboard */; };
 		BF0000010000000000000012 /* RangeCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000112 /* RangeCameraScreen.swift */; };
 		BF0000010000000000000013 /* LaunchMonitorScaffoldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000113 /* LaunchMonitorScaffoldView.swift */; };
@@ -176,6 +177,7 @@
 		BF0000010000000000000108 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
 		BF0000010000000000000109 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BF0000010000000000000110 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BF00SECRETS00000000000001 /* Secrets.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Secrets.plist; sourceTree = "<group>"; };
 		BF0000010000000000000111 /* BallStrikeCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BallStrikeCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF0000010000000000000112 /* RangeCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RangeCameraScreen.swift; sourceTree = "<group>"; };
 		BF0000010000000000000113 /* LaunchMonitorScaffoldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchMonitorScaffoldView.swift; sourceTree = "<group>"; };
@@ -451,6 +453,7 @@
 			children = (
 				BF0000010000000000000109 /* Assets.xcassets */,
 				BF0000010000000000000110 /* Info.plist */,
+				BF00SECRETS00000000000001 /* Secrets.plist */,
 				BF000001000000000000011B /* LaunchScreen.storyboard */,
 				BF000001000000000000013B /* SampleShots */,
 				BF000001000000000000013F /* Models */,
@@ -729,6 +732,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BF0000010000000000000009 /* Assets.xcassets in Resources */,
+				BF00SECRETS00000000000002 /* Secrets.plist in Resources */,
 				BF000001000000000000000A /* LaunchScreen.storyboard in Resources */,
 				BF000001000000000000003B /* SampleShots in Resources */,
 				BF000001000000000000003F /* Models in Resources */,
