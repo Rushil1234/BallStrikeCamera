@@ -27,6 +27,19 @@ struct TrueCarryCoursesView: View {
         return name.components(separatedBy: " ").first ?? name
     }
 
+    private var uniqueCoursesCount: Int { Set(rounds.map { $0.courseId }).count }
+
+    private var courseRankings: [(id: String, name: String, count: Int, seed: Int)] {
+        var counts: [String: (name: String, count: Int)] = [:]
+        for round in rounds {
+            let existing = counts[round.courseId] ?? (name: round.courseName, count: 0)
+            counts[round.courseId] = (name: existing.name, count: existing.count + 1)
+        }
+        return counts.sorted { $0.value.count > $1.value.count }
+            .enumerated()
+            .map { i, pair in (id: pair.key, name: pair.value.name, count: pair.value.count, seed: i % 4) }
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -103,25 +116,25 @@ struct TrueCarryCoursesView: View {
             HStack(spacing: 0) {
                 TCStatGroup(
                     icon: "flag.fill",
-                    value: "37",
+                    value: "\(uniqueCoursesCount)",
                     label: "Courses\nPlayed",
                     color: TCTheme.sage
                 )
                 TCStatGroup(
-                    icon: "star.fill",
-                    value: "16",
-                    label: "Course\nReviews",
+                    icon: "number",
+                    value: "\(rounds.count)",
+                    label: "Total\nRounds",
                     color: TCTheme.gold
                 )
                 TCStatGroup(
-                    icon: "location.fill",
-                    value: "24",
-                    label: "Local\nRounds",
+                    icon: "scope",
+                    value: rounds.isEmpty ? "—" : "\(rounds.reduce(0) { $0 + $1.scoreSummary.totalPutts })",
+                    label: "Total\nPutts",
                     color: TCTheme.cyan
                 )
                 TCStatGroup(
                     icon: "chart.bar",
-                    value: "6.2",
+                    value: "—",
                     label: "Current\nHandicap",
                     color: TCTheme.gold
                 )
@@ -157,39 +170,27 @@ struct TrueCarryCoursesView: View {
                 .buttonStyle(.plain)
             }
 
-            VStack(spacing: 8) {
-                TCRankingRow(
-                    rank: 1,
-                    courseName: "Augusta National Golf Club",
-                    location: "Augusta, GA",
-                    playedCount: 4,
-                    rating: 9.8,
-                    thumbnailSeed: 0
-                )
-                TCRankingRow(
-                    rank: 2,
-                    courseName: "Pebble Beach Golf Links",
-                    location: "Pebble Beach, CA",
-                    playedCount: 3,
-                    rating: 9.3,
-                    thumbnailSeed: 1
-                )
-                TCRankingRow(
-                    rank: 3,
-                    courseName: "Bandon Dunes Golf Resort",
-                    location: "Bandon, OR",
-                    playedCount: 2,
-                    rating: 9.1,
-                    thumbnailSeed: 2
-                )
-                TCRankingRow(
-                    rank: 4,
-                    courseName: "Pine Valley Golf Club",
-                    location: "Pine Valley, NJ",
-                    playedCount: 2,
-                    rating: 8.9,
-                    thumbnailSeed: 3
-                )
+            if courseRankings.isEmpty {
+                Text("No courses played yet. Tap \"Add Course\" to log your first round.")
+                    .font(.system(size: 13))
+                    .foregroundColor(TCTheme.textMuted)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 20)
+                    .tcCard()
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(courseRankings.prefix(5).enumerated()), id: \.element.id) { i, entry in
+                        TCRankingRow(
+                            rank: i + 1,
+                            courseName: entry.name,
+                            location: "—",
+                            playedCount: entry.count,
+                            rating: 0,
+                            thumbnailSeed: entry.seed
+                        )
+                    }
+                }
             }
         }
     }

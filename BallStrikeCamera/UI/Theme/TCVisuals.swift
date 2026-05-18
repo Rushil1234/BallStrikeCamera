@@ -390,15 +390,8 @@ struct TCDispersionFairwayGraphic: View {
     var dots: [(x: CGFloat, y: CGFloat)] = []
     var showRings: Bool = true
 
-    static let sampleDots: [(x:CGFloat, y:CGFloat)] = [
-        (0.48,0.48),(0.52,0.44),(0.54,0.52),(0.46,0.55),(0.50,0.42),(0.56,0.48),
-        (0.44,0.52),(0.53,0.57),(0.47,0.46),(0.57,0.51),(0.43,0.58),(0.51,0.40),
-        (0.58,0.46),(0.49,0.62),(0.42,0.50),(0.55,0.42),(0.60,0.54),(0.40,0.44),
-        (0.52,0.65),(0.45,0.38),(0.62,0.48),(0.38,0.56),(0.50,0.36),(0.55,0.60)
-    ]
-
     var body: some View {
-        let useDots = dots.isEmpty ? Self.sampleDots : dots
+        let useDots = dots
         Canvas { ctx, size in
             let w = size.width, h = size.height, mx = w/2
 
@@ -481,20 +474,23 @@ struct TCDispersionFairwayGraphic: View {
             ctx.stroke(cl, with:.color(TCTheme.sage.opacity(0.20)),
                        style:StrokeStyle(lineWidth:0.8,dash:[5,4]))
 
-            // ── Ball dots ─────────────────────────────────────────────────
+            // ── Ball dots (real shot data) ────────────────────────────────
             for d in useDots {
                 ctx.fill(Path(ellipseIn:CGRect(x:d.x*w-4.5,y:d.y*h-4.5,width:9,height:9)),
-                         with:.color(TCTheme.gold.opacity(0.82)))
-                // Subtle glow
+                         with:.color(Color.white.opacity(0.88)))
                 ctx.fill(Path(ellipseIn:CGRect(x:d.x*w-8,y:d.y*h-8,width:16,height:16)),
-                         with:.color(TCTheme.gold.opacity(0.14)))
+                         with:.color(TCTheme.cyan.opacity(0.18)))
             }
 
-            // Mean dot (center cluster)
-            ctx.fill(Path(ellipseIn:CGRect(x:mx-7,y:h*0.51-7,width:14,height:14)),
-                     with:.color(TCTheme.sage))
-            ctx.stroke(Path(ellipseIn:CGRect(x:mx-7,y:h*0.51-7,width:14,height:14)),
-                       with:.color(.white.opacity(0.60)), lineWidth:1.5)
+            // Mean dot — only when real data present
+            if !useDots.isEmpty {
+                let meanX = useDots.map { $0.x }.reduce(0, +) / CGFloat(useDots.count)
+                let meanY = useDots.map { $0.y }.reduce(0, +) / CGFloat(useDots.count)
+                ctx.fill(Path(ellipseIn:CGRect(x:w*meanX-7,y:h*meanY-7,width:14,height:14)),
+                         with:.color(TCTheme.sage))
+                ctx.stroke(Path(ellipseIn:CGRect(x:w*meanX-7,y:h*meanY-7,width:14,height:14)),
+                           with:.color(.white.opacity(0.60)), lineWidth:1.5)
+            }
 
             // ── Distance labels (as lines) ────────────────────────────────
             for (labelY, labelLen) in [(CGFloat(0.28),CGFloat(0.08)),(0.50,0.08),(0.72,0.08)] {

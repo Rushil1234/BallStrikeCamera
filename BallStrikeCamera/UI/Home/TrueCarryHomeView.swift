@@ -2,13 +2,10 @@ import SwiftUI
 
 struct TrueCarryHomeView: View {
     @EnvironmentObject var session: AuthSessionStore
-    @EnvironmentObject var camera: CameraController
-    var selectTab: (TCTab) -> Void
 
     @State private var shots: [SavedShot] = []
     @State private var rounds: [CourseRound] = []
     @State private var rangeSessions: [PracticeSession] = []
-    @State private var showCamera = false
     @State private var showSessions = false
 
     // MARK: Derived helpers
@@ -38,6 +35,14 @@ struct TrueCarryHomeView: View {
         }
     }
 
+    private var fairwayAccuracyStr: String {
+        guard !rounds.isEmpty else { return "—" }
+        let hit = rounds.reduce(0) { $0 + $1.scoreSummary.fairwaysHit }
+        let total = rounds.count * 14
+        guard total > 0 else { return "—" }
+        return "\(Int(Double(hit) / Double(total) * 100))%"
+    }
+
     // MARK: Body
 
     var body: some View {
@@ -50,7 +55,6 @@ struct TrueCarryHomeView: View {
                     }
                     VStack(spacing: TCTheme.sectionGap) {
                         greetingCard
-                        heroStartCard
                         activitySection
                         Spacer(minLength: 140)
                     }
@@ -60,9 +64,6 @@ struct TrueCarryHomeView: View {
             }
         }
         .navigationBarHidden(true)
-        .fullScreenCover(isPresented: $showCamera) {
-            RangeCameraScreen().ignoresSafeArea().statusBarHidden(true)
-        }
         .sheet(isPresented: $showSessions) {
             NavigationStack {
                 PastSessionsView()
@@ -90,7 +91,7 @@ struct TrueCarryHomeView: View {
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(TCTheme.textMuted)
                 Text(firstName)
-                    .font(.system(size: 42, weight: .black, design: .serif))
+                    .font(.system(size: 42, weight: .bold))
                     .foregroundColor(TCTheme.textPrimary)
             }
 
@@ -99,92 +100,27 @@ struct TrueCarryHomeView: View {
             HStack(spacing: 0) {
                 TCStatGroup(
                     icon: "chart.line.uptrend.xyaxis",
-                    value: "6.2",
+                    value: "—",
                     label: "HANDICAP",
                     color: TCTheme.gold
                 )
                 Spacer()
                 TCStatGroup(
                     icon: "flag.fill",
-                    value: "\(rounds.isEmpty ? 28 : rounds.count)",
+                    value: "\(rounds.count)",
                     label: "ROUNDS YTD",
                     color: TCTheme.sage
                 )
                 Spacer()
                 TCStatGroup(
                     icon: "scope",
-                    value: "67%",
+                    value: fairwayAccuracyStr,
                     label: "ACCURACY",
                     color: TCTheme.cyan
                 )
             }
         }
-        .tcGlassCard()
-    }
-
-    // MARK: Hero Start Card
-
-    private var heroStartCard: some View {
-        ZStack(alignment: .bottom) {
-            TCHeroRangeScene()
-                .frame(maxWidth: .infinity)
-                .frame(height: 240)
-
-            // Dark gradient overlay — bottom-heavy for readability
-            LinearGradient(
-                gradient: Gradient(stops: [
-                    .init(color: Color.clear, location: 0.0),
-                    .init(color: TCTheme.background.opacity(0.45), location: 0.40),
-                    .init(color: TCTheme.background.opacity(0.84), location: 1.0)
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Start a Session")
-                        .font(.system(size: 30, weight: .black, design: .serif))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text("Track every shot.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(TCTheme.textSecondary)
-                    Text("Know every yard.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(TCTheme.textSecondary)
-                    Text("Play your best.")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(TCTheme.gold)
-                }
-
-                Spacer()
-
-                // Gold circular arrow button
-                Button {
-                    selectTab(.play)
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(TCTheme.goldGradient)
-                            .frame(width: 48, height: 48)
-                            .shadow(color: TCTheme.gold.opacity(0.45), radius: 10, x: 0, y: 4)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(TCTheme.background)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
-        }
-        .frame(height: 240)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .contentShape(Rectangle())
-        .onTapGesture {
-            selectTab(.play)
-        }
+        .padding(.vertical, 8)
     }
 
     // MARK: Activity Feed
@@ -193,7 +129,7 @@ struct TrueCarryHomeView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("Activity Feed")
-                    .font(.system(size: 22, weight: .bold, design: .serif))
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundColor(TCTheme.textPrimary)
                 Spacer()
                 Button("View All") { showSessions = true }
@@ -201,86 +137,63 @@ struct TrueCarryHomeView: View {
                     .foregroundColor(TCTheme.sage)
             }
 
-            // Round card
-            if let latestRound = rounds.first {
-                TCFeedCard(
-                    avatarInitials: userInitials,
-                    name: session.userProfile?.displayName ?? session.currentUser?.name ?? "You",
-                    mode: "Round",
-                    courseName: latestRound.courseName,
-                    dateStr: formattedDate(latestRound.startedAt),
-                    primaryStat: scoreStr(latestRound),
-                    primaryLabel: "SCORE",
-                    secondaryStat: "\(latestRound.scoreSummary.fairwaysHit)",
-                    secondaryLabel: "FAIRWAYS",
-                    tertiaryStat: "\(latestRound.scoreSummary.totalPutts)",
-                    tertiaryLabel: "PUTTS",
-                    thumbnailView: AnyView(
-                        TCRoundThumbnail(seed: 1)
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    )
-                )
+            if rounds.isEmpty && rangeSessions.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "figure.golf")
+                        .font(.system(size: 30))
+                        .foregroundColor(TCTheme.textMuted)
+                    Text("No activity yet")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(TCTheme.textSecondary)
+                    Text("Start a round or range session to see your stats here.")
+                        .font(.system(size: 12))
+                        .foregroundColor(TCTheme.textMuted)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 28)
             } else {
-                TCFeedCard(
-                    avatarInitials: userInitials,
-                    name: session.userProfile?.displayName ?? session.currentUser?.name ?? "Noah T.",
-                    mode: "Round",
-                    courseName: "Pebble Beach GL",
-                    dateStr: "May 14",
-                    primaryStat: "78 (+6)",
-                    primaryLabel: "SCORE",
-                    secondaryStat: "7/14",
-                    secondaryLabel: "FAIRWAYS",
-                    tertiaryStat: "32",
-                    tertiaryLabel: "PUTTS",
-                    thumbnailView: AnyView(
-                        TCRoundThumbnail(seed: 1)
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                if let latestRound = rounds.first {
+                    TCFeedCard(
+                        avatarInitials: userInitials,
+                        name: session.userProfile?.displayName ?? session.currentUser?.name ?? "You",
+                        mode: "Round",
+                        courseName: latestRound.courseName,
+                        dateStr: formattedDate(latestRound.startedAt),
+                        primaryStat: scoreStr(latestRound),
+                        primaryLabel: "SCORE",
+                        secondaryStat: "\(latestRound.scoreSummary.fairwaysHit)",
+                        secondaryLabel: "FAIRWAYS",
+                        tertiaryStat: "\(latestRound.scoreSummary.totalPutts)",
+                        tertiaryLabel: "PUTTS",
+                        thumbnailView: AnyView(
+                            TCRoundThumbnail(seed: 1)
+                                .frame(width: 80, height: 80)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        )
                     )
-                )
-            }
+                }
 
-            // Range session card
-            if let latestRange = rangeSessions.first {
-                TCFeedCard(
-                    avatarInitials: userInitials,
-                    name: session.userProfile?.displayName ?? session.currentUser?.name ?? "You",
-                    mode: "Practice",
-                    courseName: latestRange.selectedClubName ?? "True Carry Range",
-                    dateStr: formattedDate(latestRange.startedAt),
-                    primaryStat: "\(Int(latestRange.summary.bestCarry)) yds",
-                    primaryLabel: "BEST CARRY",
-                    secondaryStat: "\(Int(latestRange.summary.avgBallSpeed)) mph",
-                    secondaryLabel: "BALL SPEED",
-                    tertiaryStat: "\(latestRange.summary.shotCount) shots",
-                    tertiaryLabel: "SHOTS HIT",
-                    thumbnailView: AnyView(
-                        TCDispersionFairwayGraphic(showRings: false)
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                if let latestRange = rangeSessions.first {
+                    TCFeedCard(
+                        avatarInitials: userInitials,
+                        name: session.userProfile?.displayName ?? session.currentUser?.name ?? "You",
+                        mode: "Practice",
+                        courseName: latestRange.selectedClubName ?? "True Carry Range",
+                        dateStr: formattedDate(latestRange.startedAt),
+                        primaryStat: "\(Int(latestRange.summary.bestCarry)) yds",
+                        primaryLabel: "BEST CARRY",
+                        secondaryStat: "\(Int(latestRange.summary.avgBallSpeed)) mph",
+                        secondaryLabel: "BALL SPEED",
+                        tertiaryStat: "\(latestRange.summary.shotCount) shots",
+                        tertiaryLabel: "SHOTS HIT",
+                        thumbnailView: AnyView(
+                            TCDispersionFairwayGraphic(showRings: false)
+                                .frame(width: 80, height: 80)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        )
                     )
-                )
-            } else {
-                TCFeedCard(
-                    avatarInitials: userInitials,
-                    name: session.userProfile?.displayName ?? session.currentUser?.name ?? "Noah T.",
-                    mode: "Practice",
-                    courseName: "True Carry Range",
-                    dateStr: "May 12",
-                    primaryStat: "245 yds",
-                    primaryLabel: "BEST CARRY",
-                    secondaryStat: "154 mph",
-                    secondaryLabel: "BALL SPEED",
-                    tertiaryStat: "13.2°",
-                    tertiaryLabel: "LAUNCH ANGLE",
-                    thumbnailView: AnyView(
-                        TCDispersionFairwayGraphic(showRings: false)
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    )
-                )
+                }
             }
         }
     }

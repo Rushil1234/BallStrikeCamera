@@ -63,21 +63,29 @@ struct PastSessionsView: View {
 
     // MARK: - Summary Strip
 
+    private var totalSessions: Int { rangeSessions.count + simSessions.count + rounds.count }
+
+    private var avgBallSpeedStr: String {
+        let vals = shots.map { $0.metrics.ballSpeedMph }.filter { $0 > 0 }
+        guard !vals.isEmpty else { return "—" }
+        return "\(Int(vals.reduce(0, +) / Double(vals.count)))"
+    }
+
     private var summaryStrip: some View {
         HStack(spacing: 0) {
-            summaryItem("42", "Total Sessions")
+            summaryItem("\(totalSessions)", "Total Sessions")
 
             Rectangle()
                 .fill(TCTheme.border)
                 .frame(width: 1, height: 24)
 
-            summaryItem(shots.count > 0 ? "\(shots.count)" : "356", "Saved Shots")
+            summaryItem("\(shots.count)", "Saved Shots")
 
             Rectangle()
                 .fill(TCTheme.border)
                 .frame(width: 1, height: 24)
 
-            summaryItem("152", "Avg Ball Speed")
+            summaryItem(avgBallSpeedStr, "Avg Ball Speed")
         }
         .tcCard(padding: 14)
     }
@@ -104,33 +112,27 @@ struct PastSessionsView: View {
             // Range sessions
             if selectedFilter == "All" || selectedFilter == "Range" {
                 if rangeSessions.isEmpty {
-                    mockRangeCard
+                    emptySessionCard(icon: "scope", message: "No range sessions yet.")
                 } else {
-                    ForEach(rangeSessions) { rs in
-                        rangeSessionCard(rs)
-                    }
+                    ForEach(rangeSessions) { rs in rangeSessionCard(rs) }
                 }
             }
 
             // Sim sessions
             if selectedFilter == "All" || selectedFilter == "Sim" {
                 if simSessions.isEmpty {
-                    mockSimCard
+                    emptySessionCard(icon: "display", message: "No sim sessions yet.")
                 } else {
-                    ForEach(simSessions) { ss in
-                        simSessionCard(ss)
-                    }
+                    ForEach(simSessions) { ss in simSessionCard(ss) }
                 }
             }
 
             // Course rounds
             if selectedFilter == "All" || selectedFilter == "Course" {
                 if rounds.isEmpty {
-                    mockCourseCard
+                    emptySessionCard(icon: "flag.fill", message: "No rounds yet.")
                 } else {
-                    ForEach(rounds) { r in
-                        courseRoundCard(r)
-                    }
+                    ForEach(rounds) { r in courseRoundCard(r) }
                 }
             }
 
@@ -141,162 +143,19 @@ struct PastSessionsView: View {
         }
     }
 
-    // MARK: - Mock Range Card
+    // MARK: - Empty Session Card
 
-    private var mockRangeCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                // Dispersion thumbnail
-                TCDispersionFairwayGraphic(showRings: false)
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(TCTheme.border, lineWidth: 1)
-                    )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Range Session · May 18")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text("True Carry Range")
-                        .font(.system(size: 12))
-                        .foregroundColor(TCTheme.textMuted)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("76")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundColor(TCTheme.sage)
-                    Text("SHOTS")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(TCTheme.textMuted)
-                        .tracking(1)
-                }
-            }
-
-            TCDivider()
-
-            HStack(spacing: 0) {
-                sessionStat("Ball Speed", "154 mph")
-                sessionStat("Carry",      "236 yds")
-                sessionStat("Launch",     "13.2°")
-            }
-
-            // Saved shots inside range card
-            HStack {
-                Text("SAVED SHOTS")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(TCTheme.gold)
-                    .tracking(1.5)
-                Spacer()
-                Text("View All (24)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(TCTheme.sage)
-            }
-
-            HStack(spacing: 8) {
-                TCShotThumb(clubName: "Driver",    yards: 236, isBest: true)
-                TCShotThumb(clubName: "7 Iron",    yards: 172)
-                TCShotThumb(clubName: "58° Wedge", yards: 78)
-            }
+    private func emptySessionCard(icon: String, message: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(TCTheme.textMuted)
+            Text(message)
+                .font(.system(size: 14))
+                .foregroundColor(TCTheme.textMuted)
+            Spacer()
         }
-        .tcCard()
-    }
-
-    // MARK: - Mock Sim Card
-
-    private var mockSimCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                // Sim illustration thumbnail
-                TCModeSimIllustration()
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(TCTheme.borderGold, lineWidth: 1)
-                    )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Sim Session · May 17")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text("Oakmont CC · GSPro")
-                        .font(.system(size: 12))
-                        .foregroundColor(TCTheme.textMuted)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("64")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundColor(TCTheme.gold)
-                    Text("SHOTS")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(TCTheme.textMuted)
-                        .tracking(1)
-                }
-            }
-
-            TCDivider()
-
-            HStack(spacing: 0) {
-                sessionStat("Ball Speed", "158 mph")
-                sessionStat("Carry",      "241 yds")
-                sessionStat("Launch",     "11.8°")
-            }
-        }
-        .tcCard()
-    }
-
-    // MARK: - Mock Course Card
-
-    private var mockCourseCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                // Course aerial thumbnail
-                TCCourseAerialThumbnail(seed: 2)
-                    .frame(width: 60, height: 60)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(TCTheme.border, lineWidth: 1)
-                    )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Round · May 16")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text("Stone Ridge Golf Club")
-                        .font(.system(size: 12))
-                        .foregroundColor(TCTheme.textMuted)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("+4")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundColor(TCTheme.gold)
-                    Text("SCORE")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(TCTheme.textMuted)
-                        .tracking(1)
-                }
-            }
-
-            TCDivider()
-
-            HStack(spacing: 0) {
-                sessionStat("Score",     "+4")
-                sessionStat("Fairways",  "8/14")
-                sessionStat("Putts",     "32")
-            }
-        }
+        .padding(.vertical, 20)
         .tcCard()
     }
 
@@ -414,9 +273,11 @@ struct PastSessionsView: View {
             spacing: 10
         ) {
             if displayShots.isEmpty {
-                TCShotThumb(clubName: "Driver",    yards: 238, isBest: true)
-                TCShotThumb(clubName: "7 Iron",    yards: 175)
-                TCShotThumb(clubName: "58° Wedge", yards: 82)
+                Text("No shots saved yet.")
+                    .font(.system(size: 13))
+                    .foregroundColor(TCTheme.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
             } else {
                 ForEach(displayShots) { shot in
                     TCShotThumb(

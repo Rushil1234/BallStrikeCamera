@@ -331,17 +331,15 @@ struct TCStatGroup: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            ZStack {
-                Circle().fill(color.opacity(0.14)).frame(width: 36, height: 36)
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(color)
-            }
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundColor(color)
+                .frame(height: 22)
             Text(value)
-                .font(.system(size: 20, weight: .black, design: .rounded))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(TCTheme.textPrimary)
             Text(label)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 9, weight: .semibold))
                 .foregroundColor(TCTheme.textMuted)
                 .tracking(0.8)
                 .multilineTextAlignment(.center)
@@ -523,7 +521,7 @@ struct TCMilestoneBadge: View {
 // MARK: - Trend Line Chart (simple sparkline)
 
 struct TCTrendLine: View {
-    var values: [Double] = [232, 238, 241, 235, 243, 245, 239, 247]
+    var values: [Double] = []
     var color: Color = TCTheme.sage
 
     var body: some View {
@@ -670,14 +668,10 @@ struct TCFeedCard: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header row
             HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(TCTheme.panelRaised)
-                    Circle().strokeBorder(accent.opacity(0.50), lineWidth: 1.5)
-                    Text(String(avatarInitials.prefix(2)).uppercased())
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(accent)
-                }
-                .frame(width: 36, height: 36)
+                Text(String(avatarInitials.prefix(2)).uppercased())
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(accent)
+                    .frame(width: 36, alignment: .leading)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name).font(.system(size: 14, weight: .bold)).foregroundColor(TCTheme.textPrimary)
                     HStack(spacing: 4) {
@@ -690,7 +684,9 @@ struct TCFeedCard: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text(dateStr).font(.system(size: 11)).foregroundColor(TCTheme.textMuted)
-                    TCPill(text: mode, color: accent)
+                    Text(mode)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(accent)
                 }
             }
 
@@ -727,7 +723,7 @@ struct TCFeedCard: View {
                 .tracking(0.8)
                 .frame(width: 80, alignment: .leading)
             Text(value)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(TCTheme.textPrimary)
         }
     }

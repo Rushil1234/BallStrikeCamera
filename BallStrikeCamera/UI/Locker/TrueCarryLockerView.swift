@@ -31,6 +31,25 @@ struct TrueCarryLockerView: View {
         return name.isEmpty ? "No home course set" : name
     }
 
+    private var avgScoreStr: String {
+        let completed = rounds.filter { $0.scoreSummary.totalScore > 0 }
+        guard !completed.isEmpty else { return "—" }
+        let total = completed.reduce(0) { $0 + $1.scoreSummary.totalScore }
+        return String(format: "%.1f", Double(total) / Double(completed.count))
+    }
+
+    private var subEightyCount: Int {
+        rounds.filter { $0.scoreSummary.totalScore > 0 && $0.scoreSummary.totalScore < 80 }.count
+    }
+
+    private var bestRoundStr: String {
+        let scores = rounds.compactMap { $0.scoreSummary.totalScore > 0 ? $0.scoreSummary.totalScore : nil }
+        guard let best = scores.min() else { return "—" }
+        let diff = best - 72
+        if diff == 0 { return "E" }
+        return diff > 0 ? "+\(diff)" : "\(diff)"
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -118,9 +137,9 @@ struct TrueCarryLockerView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
-                        statBadge("HANDICAP", "6.2", "Index", TCTheme.gold)
-                        statBadge("ROUNDS", rounds.isEmpty ? "28" : "\(rounds.count)", "This Year", TCTheme.sage)
-                        statBadge("AVG SCORE", "75.4", "Last 20", TCTheme.cyan)
+                        statBadge("HANDICAP", "—", "Index", TCTheme.gold)
+                        statBadge("ROUNDS", "\(rounds.count)", "This Year", TCTheme.sage)
+                        statBadge("AVG SCORE", avgScoreStr, "Last 20", TCTheme.cyan)
                     }
                     .padding(.horizontal, 2)
                 }
@@ -189,11 +208,11 @@ struct TrueCarryLockerView: View {
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    let driverName  = clubs.first(where: { $0.type == .driver })?.name ?? "Titleist TSR3 10°"
-                    let fwName      = clubs.first(where: { $0.type == .fairwayWood })?.name ?? "TaylorMade Qi10 15°"
-                    let ironName    = clubs.filter({ $0.type == .iron }).isEmpty ? "Titleist T200" : "Irons"
-                    let wedgeName   = clubs.first(where: { $0.type == .wedge })?.name ?? "Vokey SM9 48/54/58"
-                    let putterName  = clubs.first(where: { $0.type == .putter })?.name ?? "Scotty Cameron Phantom"
+                    let driverName  = clubs.first(where: { $0.type == .driver })?.name ?? "Not set"
+                    let fwName      = clubs.first(where: { $0.type == .fairwayWood })?.name ?? "Not set"
+                    let ironName    = clubs.filter({ $0.type == .iron }).isEmpty ? "Not set" : "Irons"
+                    let wedgeName   = clubs.first(where: { $0.type == .wedge })?.name ?? "Not set"
+                    let putterName  = clubs.first(where: { $0.type == .putter })?.name ?? "Not set"
 
                     TCClubRow(category: "DRIVER", name: driverName)
                     TCClubRow(category: "3 WOOD",  name: fwName)
@@ -218,10 +237,10 @@ struct TrueCarryLockerView: View {
                 columns: [GridItem(.flexible()), GridItem(.flexible())],
                 spacing: 10
             ) {
-                TCMilestoneBadge(icon: "checkmark.seal.fill", value: "28",  label: "Rounds\nCompleted")
-                TCMilestoneBadge(icon: "flame.fill",          value: "5",   label: "Sub-80\nRounds")
-                TCMilestoneBadge(icon: "star.fill",           value: "74",  label: "Best\nRound")
-                TCMilestoneBadge(icon: "arrow.up.right",      value: "3",   label: "Par or Better\nStreak")
+                TCMilestoneBadge(icon: "checkmark.seal.fill", value: "\(rounds.count)",  label: "Rounds\nCompleted")
+                TCMilestoneBadge(icon: "flame.fill",          value: "\(subEightyCount)", label: "Sub-80\nRounds")
+                TCMilestoneBadge(icon: "star.fill",           value: bestRoundStr,        label: "Best\nRound")
+                TCMilestoneBadge(icon: "scope",               value: "\(shots.count)",    label: "Shots\nTracked")
             }
         }
         .tcCard()
@@ -243,13 +262,10 @@ struct TrueCarryLockerView: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text("Working on a more consistent draw with driver. Focus on tempo and release.")
+            Text("Tap the pencil to add notes about your game.")
                 .font(.system(size: 13))
-                .foregroundColor(TCTheme.textSecondary)
-                .lineSpacing(3)
-            Text("Updated May 14")
-                .font(.system(size: 11))
                 .foregroundColor(TCTheme.textMuted)
+                .lineSpacing(3)
         }
         .tcCard()
     }
@@ -262,9 +278,11 @@ struct TrueCarryLockerView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     if shots.isEmpty {
-                        TCShotThumb(clubName: "Driver", yards: 285, isBest: true)
-                        TCShotThumb(clubName: "7 Iron", yards: 172)
-                        TCShotThumb(clubName: "58°",    yards: 78)
+                        Text("No shots saved yet. Start a session to track your shots.")
+                            .font(.system(size: 13))
+                            .foregroundColor(TCTheme.textMuted)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 16)
                     } else {
                         let displayShots = Array(shots.prefix(3))
                         ForEach(Array(displayShots.enumerated()), id: \.offset) { index, shot in
