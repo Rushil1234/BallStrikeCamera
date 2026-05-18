@@ -8,6 +8,8 @@ final class EntitlementViewModel: ObservableObject {
     @Published var usage: UsageCounter?
     @Published var isLoading = false
 
+    @AppStorage("tc_dev_mode") var isDeveloperMode: Bool = false
+
     private let backend: AppBackend
 
     init(backend: AppBackend) {
@@ -30,7 +32,8 @@ final class EntitlementViewModel: ObservableObject {
     // MARK: - Decision helpers
 
     func canPerform(_ action: EntitlementAction) -> EntitlementDecision {
-        EntitlementService.decide(action: action, entitlement: entitlement, usage: usage)
+        if isDeveloperMode { return .allow }
+        return EntitlementService.decide(action: action, entitlement: entitlement, usage: usage)
     }
 
     var canStartRangeSession: Bool {
@@ -54,15 +57,18 @@ final class EntitlementViewModel: ObservableObject {
     }
 
     var remainingDailyShots: Int {
-        EntitlementService.remainingDailyShots(entitlement: entitlement, usage: usage)
+        if isDeveloperMode { return Int.max }
+        return EntitlementService.remainingDailyShots(entitlement: entitlement, usage: usage)
     }
 
     var tierDisplayName: String {
-        entitlement.effectiveTier.displayName
+        if isDeveloperMode { return "Developer" }
+        return entitlement.effectiveTier.displayName
     }
 
     var isFreeTier: Bool {
-        entitlement.effectiveTier == .free
+        if isDeveloperMode { return false }
+        return entitlement.effectiveTier == .free
     }
 
     var upgradeURL: URL { AppConfig.pricingURL }

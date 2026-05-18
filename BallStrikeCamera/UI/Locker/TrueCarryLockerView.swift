@@ -61,7 +61,7 @@ struct TrueCarryLockerView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
-                        TCProfileAvatarButton(initials: userInitials) { showProfile = true }
+                        TCProfileAvatarButton(initials: userInitials, devMode: session.entitlementVM.isDeveloperMode) { showProfile = true }
                     }
                     VStack(spacing: TCTheme.sectionGap) {
                         profileCard

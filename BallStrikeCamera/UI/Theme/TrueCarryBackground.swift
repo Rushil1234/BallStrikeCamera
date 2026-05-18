@@ -86,20 +86,32 @@ struct TCHeaderBar<RightContent: View>: View {
 
 struct TCProfileAvatarButton: View {
     let initials: String
+    var devMode: Bool = false
     var action: () -> Void = {}
+
+    private let devOrange = Color(red: 1, green: 0.6, blue: 0)
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(TCTheme.panelRaised)
-                Circle()
-                    .strokeBorder(TCTheme.gold.opacity(0.55), lineWidth: 1.5)
-                Text(String(initials.prefix(2)).uppercased())
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(TCTheme.gold)
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    Circle()
+                        .fill(TCTheme.panelRaised)
+                    Circle()
+                        .strokeBorder(devMode ? devOrange.opacity(0.85) : TCTheme.gold.opacity(0.55), lineWidth: 1.5)
+                    Text(String(initials.prefix(2)).uppercased())
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(devMode ? devOrange : TCTheme.gold)
+                }
+                .frame(width: 32, height: 32)
+
+                if devMode {
+                    Circle()
+                        .fill(devOrange)
+                        .frame(width: 8, height: 8)
+                        .offset(x: 1, y: -1)
+                }
             }
-            .frame(width: 32, height: 32)
         }
         .buttonStyle(.plain)
     }

@@ -25,6 +25,8 @@ struct TrueCarryProfileView: View {
         return n.isEmpty ? "No home course set" : n
     }
 
+    private var devMode: Bool { session.entitlementVM.isDeveloperMode }
+
     // MARK: - Body
 
     var body: some View {
@@ -33,6 +35,11 @@ struct TrueCarryProfileView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) { EmptyView() }
+
+                    if devMode {
+                        devModeBanner
+                    }
+
                     VStack(spacing: TCTheme.sectionGap) {
                         profileHeader
                         preferencesCard
@@ -40,6 +47,7 @@ struct TrueCarryProfileView: View {
                         cameraCard
                         accountCard
                         appCard
+                        developerCard
                         signOutButton
                         Spacer(minLength: 140)
                     }
@@ -89,9 +97,9 @@ struct TrueCarryProfileView: View {
                         .foregroundColor(.white.opacity(0.50))
                 }
 
-                Text(user?.subscriptionStatus == .pro ? "Pro Member" : "Free Plan")
+                Text(session.entitlementVM.tierDisplayName + (devMode ? " Mode" : " Plan"))
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(user?.subscriptionStatus == .pro ? TCTheme.gold : .white.opacity(0.35))
+                    .foregroundColor(devMode ? Color(red: 1, green: 0.6, blue: 0) : .white.opacity(0.35))
                     .tracking(0.5)
             }
 
@@ -208,6 +216,58 @@ struct TrueCarryProfileView: View {
                 settingRow(icon: "doc.text.fill", title: "Privacy Policy")
                 rowDivider
                 settingRow(icon: "doc.text.fill", title: "Terms of Service")
+            }
+            .tcCard()
+        }
+    }
+
+    // MARK: - Developer Mode Banner
+
+    private var devModeBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "hammer.fill")
+                .font(.system(size: 11))
+            Text("DEVELOPER MODE — All features unlocked")
+                .font(.system(size: 11, weight: .semibold))
+                .tracking(0.3)
+        }
+        .foregroundColor(.black.opacity(0.85))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(Color(red: 1, green: 0.75, blue: 0))
+    }
+
+    // MARK: - Developer Card
+
+    private var developerCard: some View {
+        VStack(spacing: 0) {
+            sectionLabel("DEVELOPER")
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    Image(systemName: "hammer.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                        .frame(width: 24, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Developer Mode")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.white)
+                        Text("Unlocks all features and bypasses limits")
+                            .font(.system(size: 11))
+                            .foregroundColor(.white.opacity(0.40))
+                    }
+                    Spacer()
+                    Toggle("", isOn: $session.entitlementVM.isDeveloperMode)
+                        .tint(Color(red: 1, green: 0.6, blue: 0))
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+
+                rowDivider
+
+                settingRow(icon: "person.badge.key.fill", title: "Account",
+                           value: "dev@truecarry.app", showChevron: false)
             }
             .tcCard()
         }
