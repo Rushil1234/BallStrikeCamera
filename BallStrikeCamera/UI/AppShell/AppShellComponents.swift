@@ -35,20 +35,8 @@ struct StatusPill: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(filled ? .black : color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                filled
-                    ? color.opacity(1)
-                    : color.opacity(0.16)
-            )
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .strokeBorder(color.opacity(filled ? 0 : 0.40), lineWidth: 1)
-            )
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(BSTheme.textSecondary)
     }
 }
 
@@ -74,33 +62,27 @@ struct PremiumActionButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 15)
             .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: shadowColor, radius: 14, x: 0, y: 6)
+            .clipShape(RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous)
+                    .strokeBorder(BSTheme.border, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
     }
 
     @ViewBuilder private var background: some View {
         switch style {
-        case .gradient(let g): g
-        case .accent(let c):   c.opacity(0.18)
+        case .gradient:        BSTheme.panelRaised
+        case .accent:          BSTheme.panelRaised
         case .ghost:           BSTheme.panel
         }
     }
     private var foregroundColor: Color {
         switch style {
-        case .gradient: return .black
-        case .accent(let c): return c
+        case .gradient: return BSTheme.textPrimary
+        case .accent: return BSTheme.textPrimary
         case .ghost: return BSTheme.textPrimary
-        }
-    }
-    private var shadowColor: Color {
-        switch style {
-        case .gradient(let g):
-            _ = g
-            return BSTheme.electricCyan.opacity(0.30)
-        case .accent(let c): return c.opacity(0.25)
-        case .ghost: return Color.black.opacity(0.20)
         }
     }
 }
@@ -158,16 +140,10 @@ struct BSModeCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 14) {
-                    // Icon circle with gradient glow
-                    ZStack {
-                        Circle()
-                            .fill(gradient)
-                            .frame(width: 52, height: 52)
-                            .shadow(color: Color.black.opacity(0.30), radius: 8, x: 0, y: 4)
-                        Image(systemName: icon)
-                            .font(.system(size: 22, weight: .bold))
-                            .foregroundColor(.black)
-                    }
+                    Image(systemName: icon)
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundColor(BSTheme.textMuted)
+                        .frame(width: 28, alignment: .leading)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title)
                             .font(.system(size: 18, weight: .bold))
@@ -187,11 +163,7 @@ struct BSModeCard: View {
                         ForEach(chips, id: \.self) { chip in
                             Text(chip)
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(BSTheme.textSecondary)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(BSTheme.panelRaised)
-                                .clipShape(Capsule())
+                                .foregroundColor(BSTheme.textMuted)
                         }
                         Spacer()
                     }
@@ -203,12 +175,9 @@ struct BSModeCard: View {
                     RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous)
                         .fill(BSTheme.panel)
                     RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous)
-                        .fill(BSTheme.cardHighlight)
-                    RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous)
                         .strokeBorder(BSTheme.border, lineWidth: 1)
                 }
             )
-            .shadow(color: Color.black.opacity(0.30), radius: 12, x: 0, y: 5)
         }
         .buttonStyle(.plain)
     }
@@ -227,14 +196,10 @@ struct ActivityRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(accent.opacity(0.14))
-                    .frame(width: 40, height: 40)
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(accent)
-            }
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .regular))
+                .foregroundColor(BSTheme.textMuted)
+                .frame(width: 24, alignment: .leading)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
@@ -265,7 +230,7 @@ struct ActivityRow: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
         .background(BSTheme.panel)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(BSTheme.border, lineWidth: 1)
@@ -360,15 +325,12 @@ struct FeedPostCard: View {
     }
 
     private func feedAction(icon: String, label: String) -> some View {
-        Button {} label: {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                Text(label)
-            }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundColor(BSTheme.textMuted)
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+            Text(label)
         }
-        .buttonStyle(.plain)
+        .font(.system(size: 12, weight: .medium))
+        .foregroundColor(BSTheme.textMuted)
     }
 }
 

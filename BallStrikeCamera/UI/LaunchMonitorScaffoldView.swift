@@ -4,10 +4,16 @@ struct LaunchMonitorScaffoldView: View {
     @ObservedObject var camera: CameraController
     let modeTitle: String
     @Binding var selectedClub: String
+    let selectedClubId: UUID?
     let shotCount: Int
     var context: ShotContext? = nil
+    var onChooseClub: (() -> Void)? = nil
     var onDismiss: () -> Void = {}
+    var onShotSaved: ((SavedShot) -> Void)? = nil
     var onShotComplete: (() -> Void)? = nil
+    @State private var exportedURL: URL?
+    @State private var showShareSheet = false
+    @State private var exportError: String?
 
     var body: some View {
         GeometryReader { geo in
@@ -45,20 +51,14 @@ struct LaunchMonitorScaffoldView: View {
                                 Spacer()
 
                                 HStack {
-                                    Button(action: {}) {
-                                        RangeOverlayPill {
-                                            HStack(spacing: 4) {
-                                                Text("Club")
-                                                    .font(.system(size: 10, weight: .semibold))
-                                                    .foregroundColor(.white.opacity(0.6))
-
-                                                Text(selectedClub)
-                                                    .font(.system(size: 12, weight: .bold))
-                                                    .foregroundColor(.white)
-                                            }
+                                    if let onChooseClub {
+                                        Button(action: onChooseClub) {
+                                            clubPill
                                         }
+                                        .buttonStyle(.plain)
+                                    } else {
+                                        clubPill
                                     }
-                                    .buttonStyle(.plain)
 
                                     RangeOverlayPill {
                                         HStack(spacing: 4) {
@@ -91,7 +91,7 @@ struct LaunchMonitorScaffoldView: View {
                                     .buttonStyle(.plain)
                                     .disabled(camera.isAnalyzingShot || camera.showShotResult)
 
-                                    Button(action: {}) {
+                                    Button(action: exportFrames) {
                                         RangeOverlayPill {
                                             HStack(spacing: 6) {
                                                 Image(systemName: "square.and.arrow.up")
@@ -105,7 +105,7 @@ struct LaunchMonitorScaffoldView: View {
                                         }
                                     }
                                     .buttonStyle(.plain)
-                                    .disabled(camera.capturedFrames.isEmpty)
+                                    .disabled(camera.latestShotAnalysis == nil)
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 10)
@@ -134,11 +134,54 @@ struct LaunchMonitorScaffoldView: View {
         .persistentSystemOverlays(.hidden)
         .fullScreenCover(isPresented: $camera.showShotResult) {
             if let analysis = camera.latestShotAnalysis {
-                ShotResultView(analysis: analysis, context: context) {
+                ShotResultView(
+                    analysis: analysis,
+                    context: context,
+                    selectedClubId: selectedClubId,
+                    selectedClubName: selectedClub,
+                    onShotSaved: onShotSaved
+                ) {
                     camera.dismissShotPresentation()
                     onShotComplete?()
                 }
             }
+        }
+        .sheet(isPresented: $showShareSheet) {
+            if let exportedURL {
+                ActivityViewController(activityItems: [exportedURL])
+            }
+        }
+        .alert("Export failed", isPresented: Binding(
+            get: { exportError != nil },
+            set: { if !$0 { exportError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(exportError ?? "")
+        }
+    }
+
+    private var clubPill: some View {
+        RangeOverlayPill {
+            HStack(spacing: 4) {
+                Text("Club")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.6))
+
+                Text(selectedClub)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white)
+            }
+        }
+    }
+
+    private func exportFrames() {
+        guard let analysis = camera.latestShotAnalysis else { return }
+        do {
+            exportedURL = try ShotExportService().export(from: analysis).zipURL
+            showShareSheet = true
+        } catch {
+            exportError = error.localizedDescription
         }
     }
 }
@@ -151,6 +194,6 @@ struct RangeOverlayPill<Content: View>: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(Color.black.opacity(0.6))
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 }

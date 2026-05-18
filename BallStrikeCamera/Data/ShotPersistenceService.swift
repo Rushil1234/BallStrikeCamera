@@ -32,7 +32,13 @@ final class ShotPersistenceService {
                   clubId: UUID? = nil,
                   clubName: String? = nil,
                   mode: ShotMode = .range,
-                  saveOriginalFrames: Bool = false) async throws -> SavedShot {
+                  saveOriginalFrames: Bool = false,
+                  sessionId: UUID? = nil,
+                  roundId: UUID? = nil,
+                  holeNumber: Int? = nil,
+                  isBadShot: Bool = false,
+                  badShotReason: String? = nil,
+                  notes: String? = nil) async throws -> SavedShot {
 
         let shotId = UUID()
         let mediaDir = AppStorageManager.shotFramesDir(userId: userId, shotId: shotId)
@@ -85,7 +91,13 @@ final class ShotPersistenceService {
             clubId: clubId,
             clubName: clubName,
             metrics: metrics,
-            media: media
+            media: media,
+            isBadShot: isBadShot,
+            badShotReason: badShotReason,
+            notes: notes,
+            sessionId: sessionId,
+            roundId: roundId,
+            holeNumber: holeNumber
         )
 
         try await backend.saveShot(shot)

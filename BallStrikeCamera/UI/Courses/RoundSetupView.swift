@@ -3,6 +3,8 @@ import SwiftUI
 struct RoundSetupView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var session: AuthSessionStore
+    @State private var leaderboardEnabled = false
+    @State private var showSettingsInfo = false
 
     let course: GolfCourse
     let teeBox: TeeBox
@@ -36,7 +38,7 @@ struct RoundSetupView: View {
                     // MARK: Title Area
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Round Setup")
-                            .font(.system(size: 28, weight: .black, design: .serif))
+                            .font(.system(size: 28, weight: .black))
                             .foregroundColor(TCTheme.textPrimary)
                         Text("Review your settings and start your round.")
                             .font(.system(size: 14))
@@ -96,7 +98,7 @@ struct RoundSetupView: View {
                                 .frame(width: 40, height: 40)
                             Image(systemName: "trophy.fill")
                                 .font(.system(size: 16))
-                                .foregroundColor(.black)
+                                .foregroundColor(.white)
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
@@ -110,7 +112,7 @@ struct RoundSetupView: View {
 
                         Spacer()
 
-                        Toggle("", isOn: .constant(false))
+                        Toggle("", isOn: $leaderboardEnabled)
                             .tint(TCTheme.sage)
                             .labelsHidden()
                     }
@@ -171,7 +173,9 @@ struct RoundSetupView: View {
                     .padding(.horizontal, TCTheme.hPad)
 
                     // MARK: Edit Settings Button
-                    TCOutlineButton(title: "Edit Settings", color: TCTheme.textMuted) {}
+                    TCOutlineButton(title: "Edit Settings", color: TCTheme.textMuted) {
+                        showSettingsInfo = true
+                    }
                         .padding(.horizontal, TCTheme.hPad)
 
                     Spacer(minLength: 60)
@@ -180,5 +184,10 @@ struct RoundSetupView: View {
             }
         }
         .navigationBarHidden(true)
+        .alert("Round Settings", isPresented: $showSettingsInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Tracking, rangefinder, and event settings are shown above. Leaderboard is \(leaderboardEnabled ? "on" : "off") for this setup.")
+        }
     }
 }

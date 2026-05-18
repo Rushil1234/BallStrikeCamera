@@ -27,6 +27,7 @@ struct HomeDashboardView: View {
     @State private var showRange   = false
     @State private var showSim     = false
     @State private var showCourse  = false
+    @State private var showProfile = false
 
     private var firstName: String {
         let name = session.userProfile?.displayName ?? session.currentUser?.name ?? "Golfer"
@@ -70,6 +71,10 @@ struct HomeDashboardView: View {
         .fullScreenCover(isPresented: $showRange)  { RangeModeView()  }
         .sheet(isPresented: $showSim)              { SimModeView()    }
         .sheet(isPresented: $showCourse)           { CourseModeView() }
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { TrueCarryProfileView() }
+                .preferredColorScheme(.dark)
+        }
     }
 
     // MARK: Header
@@ -85,7 +90,7 @@ struct HomeDashboardView: View {
                     .foregroundColor(BSTheme.textMuted)
             }
             Spacer()
-            Button {} label: {
+            Button { showProfile = true } label: {
                 Circle()
                     .fill(BSTheme.panel)
                     .frame(width: 40, height: 40)
@@ -113,7 +118,7 @@ struct HomeDashboardView: View {
                         startPoint: .leading, endPoint: .trailing
                     )
                     .frame(height: 3)
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
 
                 Text("Ready to capture?")
@@ -175,7 +180,7 @@ struct HomeDashboardView: View {
                         .frame(width: 48, height: 48)
                     Image(systemName: icon)
                         .font(.system(size: 19, weight: .bold))
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                 }
                 Text(label)
                     .font(.system(size: 12, weight: .semibold))
@@ -300,7 +305,7 @@ struct HomeDashboardView: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(BSTheme.fairwayGreen.opacity(0.12))
-                            .clipShape(Capsule())
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 14)

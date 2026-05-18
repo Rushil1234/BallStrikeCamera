@@ -50,7 +50,7 @@ struct ProfileSettingsView: View {
                     .frame(width: 72, height: 72)
                 Text(String((profile?.displayName ?? user?.name ?? "?").prefix(1)))
                     .font(.system(size: 30, weight: .black))
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
             }
             .shadow(color: BSTheme.electricCyan.opacity(0.30), radius: 12, x: 0, y: 0)
 
@@ -98,11 +98,11 @@ struct ProfileSettingsView: View {
             Spacer()
             Text("Upgrade")
                 .font(.system(size: 13, weight: .bold))
-                .foregroundColor(.black)
+                .foregroundColor(.white)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(BSTheme.gold)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
         }
         .premiumCard(padding: 14)
         .overlay(

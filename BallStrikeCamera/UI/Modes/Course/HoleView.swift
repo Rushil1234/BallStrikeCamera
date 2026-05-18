@@ -212,7 +212,7 @@ struct HoleView: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 8)
                 .background(binding.wrappedValue == value ? color : BSTheme.panel)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
         }
         .buttonStyle(.plain)
     }

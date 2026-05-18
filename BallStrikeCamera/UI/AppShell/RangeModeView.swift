@@ -83,7 +83,7 @@ struct RangeModeView: View {
                         .frame(width: 52, height: 52)
                     Image(systemName: "figure.golf")
                         .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text(selectedClub)
@@ -110,10 +110,10 @@ struct RangeModeView: View {
                                 .padding(.vertical, 8)
                                 .background(
                                     selectedClub == fullName(c)
-                                        ? AnyView(Capsule().fill(BSTheme.rangeGradient))
-                                        : AnyView(Capsule().fill(BSTheme.panel))
+                                        ? AnyView(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(BSTheme.rangeGradient))
+                                        : AnyView(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(BSTheme.panel))
                                 )
-                                .overlay(Capsule().strokeBorder(BSTheme.border, lineWidth: 1))
+                                .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(BSTheme.border, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }

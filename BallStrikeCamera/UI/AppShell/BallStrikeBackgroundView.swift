@@ -2,42 +2,7 @@ import SwiftUI
 
 struct BallStrikeBackgroundView: View {
     var body: some View {
-        ZStack {
-            // Base gradient
-            BSTheme.mainBackground
-                .ignoresSafeArea()
-
-            // Top-right cyan glow
-            RadialGradient(
-                colors: [BSTheme.electricCyan.opacity(0.18), Color.clear],
-                center: .init(x: 1.1, y: -0.1),
-                startRadius: 0,
-                endRadius: 480
-            )
-            .ignoresSafeArea()
-
-            // Bottom-left green glow
-            RadialGradient(
-                colors: [BSTheme.fairwayGreen.opacity(0.12), Color.clear],
-                center: .init(x: -0.1, y: 1.15),
-                startRadius: 0,
-                endRadius: 420
-            )
-            .ignoresSafeArea()
-
-            // Centre ambient
-            RadialGradient(
-                colors: [BSTheme.electricCyan.opacity(0.05), Color.clear],
-                center: .center,
-                startRadius: 0,
-                endRadius: 380
-            )
-            .ignoresSafeArea()
-
-            // Flowing arc lines
-            FlowingArcsView()
-                .ignoresSafeArea()
-        }
+        BSTheme.backgroundTop.ignoresSafeArea()
     }
 }
 

@@ -47,21 +47,21 @@ struct CompactMetricsBarView: View {
     private func compactMetric(label: String, value: String, unit: String) -> some View {
         VStack(spacing: 4) {
             Text(label)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundColor(.white.opacity(0.5))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.white)
                     .minimumScaleFactor(0.7)
                     .lineLimit(1)
 
                 if !unit.isEmpty {
                     Text(unit)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white.opacity(0.4))
                 }
             }

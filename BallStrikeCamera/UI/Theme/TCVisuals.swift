@@ -395,109 +395,66 @@ struct TCDispersionFairwayGraphic: View {
         Canvas { ctx, size in
             let w = size.width, h = size.height, mx = w/2
 
-            // Background rough
-            ctx.fill(Path(CGRect(origin:.zero,size:size)),
-                     with:.linearGradient(
-                        Gradient(colors:[Color(red:0.06,green:0.14,blue:0.08),
-                                          Color(red:0.04,green:0.10,blue:0.05)]),
-                        startPoint:.zero, endPoint:CGPoint(x:0,y:h)))
+            ctx.fill(
+                Path(CGRect(origin: .zero, size: size)),
+                with: .linearGradient(
+                    Gradient(colors: [
+                        Color(red: 0.16, green: 0.46, blue: 0.20),
+                        Color(red: 0.10, green: 0.36, blue: 0.16),
+                        Color(red: 0.06, green: 0.25, blue: 0.11)
+                    ]),
+                    startPoint: CGPoint(x: 0, y: 0),
+                    endPoint: CGPoint(x: w, y: h)
+                )
+            )
 
-            // Rough side bands
-            let fw: CGFloat = w*0.34
-            var roughL = Path(); roughL.addRect(CGRect(x:0,y:0,width:mx-fw,height:h))
-            var roughR = Path(); roughR.addRect(CGRect(x:mx+fw,y:0,width:mx-fw,height:h))
-            ctx.fill(roughL, with:.color(Color(red:0.05,green:0.11,blue:0.06)))
-            ctx.fill(roughR, with:.color(Color(red:0.05,green:0.11,blue:0.06)))
-
-            // Fairway
-            var fairway = Path()
-            fairway.addRect(CGRect(x:mx-fw,y:0,width:fw*2,height:h))
-            ctx.fill(fairway, with:.linearGradient(
-                Gradient(colors:[Color(red:0.16,green:0.36,blue:0.18),
-                                  Color(red:0.13,green:0.28,blue:0.14)]),
-                startPoint:.zero, endPoint:CGPoint(x:0,y:h)))
-
-            // Tree clusters
-            let treeClumps: [(CGFloat,CGFloat,CGFloat,CGFloat)] = [
-                (0.01,0.05,0.18,0.25),(0.80,0.05,0.19,0.22),
-                (0.00,0.35,0.16,0.28),(0.84,0.38,0.16,0.25),
-                (0.02,0.68,0.17,0.30),(0.81,0.70,0.17,0.28)
-            ]
-            for (tx,ty,tw,th) in treeClumps {
-                var t = Path(); t.addEllipse(in:CGRect(x:w*tx,y:h*ty,width:w*tw,height:h*th))
-                ctx.fill(t, with:.color(Color(red:0.04,green:0.10,blue:0.05)))
+            for i in 0..<7 {
+                let y = h * CGFloat(i) / 7
+                let stripe = Path(CGRect(x: 0, y: y, width: w, height: h / 7))
+                ctx.fill(stripe, with: .color(Color.white.opacity(i.isMultiple(of: 2) ? 0.035 : 0.015)))
             }
 
-            // Sand bunkers in rough
-            let bunkers: [(CGFloat,CGFloat,CGFloat,CGFloat)] = [
-                (0.06,0.25,0.12,0.08),(0.82,0.28,0.11,0.07),
-                (0.05,0.60,0.13,0.07),(0.83,0.62,0.10,0.07)
-            ]
-            for (bx,by,bw,bh) in bunkers {
-                var b = Path(); b.addEllipse(in:CGRect(x:w*bx,y:h*by,width:w*bw,height:h*bh))
-                ctx.fill(b, with:.color(Color(red:0.50,green:0.44,blue:0.30).opacity(0.55)))
-            }
-
-            // Green at top
-            let gR: CGFloat = w*0.10
-            ctx.fill(Path(ellipseIn:CGRect(x:mx-gR,y:h*0.04-gR*0.65,width:gR*2,height:gR*1.30)),
-                     with:.color(Color(red:0.22,green:0.54,blue:0.24)))
-            // Pin
-            var pin = Path()
-            pin.move(to:CGPoint(x:mx,y:h*0.04-gR*0.58)); pin.addLine(to:CGPoint(x:mx,y:h*0.04+gR*0.38))
-            ctx.stroke(pin, with:.color(Color.white.opacity(0.80)), lineWidth:1)
-            var flag = Path()
-            flag.move(to:CGPoint(x:mx,y:h*0.04-gR*0.58))
-            flag.addLine(to:CGPoint(x:mx+gR*0.55,y:h*0.04-gR*0.34))
-            flag.addLine(to:CGPoint(x:mx,y:h*0.04-gR*0.10))
-            flag.closeSubpath()
-            ctx.fill(flag, with:.color(TCTheme.gold))
-
-            // Tee area at bottom
-            ctx.fill(Path(ellipseIn:CGRect(x:mx-w*0.06,y:h*0.91,width:w*0.12,height:h*0.06)),
-                     with:.color(Color(red:0.22,green:0.50,blue:0.24)))
-
-            // ── Dispersion rings ──────────────────────────────────────────
             if showRings {
                 let ringCenter = CGPoint(x:mx, y:h*0.52)
+                let ringColors = [
+                    Color(red: 0.40, green: 1.00, blue: 0.18),
+                    Color(red: 0.75, green: 1.00, blue: 0.20),
+                    Color(red: 1.00, green: 0.86, blue: 0.16),
+                    Color(red: 1.00, green: 0.55, blue: 0.12),
+                    Color(red: 1.00, green: 0.22, blue: 0.16)
+                ]
                 for (ri, r) in [CGFloat(0.08),0.16,0.24,0.32,0.40].enumerated() {
                     let rx = w*r, ry = h*r*0.55
-                    let alpha: CGFloat = ri == 2 ? 0.22 : 0.12
                     ctx.stroke(Path(ellipseIn:CGRect(x:ringCenter.x-rx,y:ringCenter.y-ry,width:rx*2,height:ry*2)),
-                               with:.color(Color.white.opacity(alpha)), lineWidth: ri==2 ? 1.5 : 0.8)
+                               with:.color(ringColors[ri].opacity(ri == 2 ? 0.78 : 0.62)),
+                               lineWidth: ri == 2 ? 2.2 : 1.6)
                 }
             }
 
-            // Centerline
             var cl = Path()
             cl.move(to:CGPoint(x:mx,y:h*0.04)); cl.addLine(to:CGPoint(x:mx,y:h*0.97))
-            ctx.stroke(cl, with:.color(TCTheme.sage.opacity(0.20)),
+            ctx.stroke(cl, with:.color(Color.white.opacity(0.28)),
                        style:StrokeStyle(lineWidth:0.8,dash:[5,4]))
 
-            // ── Ball dots (real shot data) ────────────────────────────────
             for d in useDots {
                 ctx.fill(Path(ellipseIn:CGRect(x:d.x*w-4.5,y:d.y*h-4.5,width:9,height:9)),
-                         with:.color(Color.white.opacity(0.88)))
-                ctx.fill(Path(ellipseIn:CGRect(x:d.x*w-8,y:d.y*h-8,width:16,height:16)),
-                         with:.color(TCTheme.cyan.opacity(0.18)))
+                         with:.color(Color.white.opacity(0.82)))
             }
 
-            // Mean dot — only when real data present
             if !useDots.isEmpty {
                 let meanX = useDots.map { $0.x }.reduce(0, +) / CGFloat(useDots.count)
                 let meanY = useDots.map { $0.y }.reduce(0, +) / CGFloat(useDots.count)
                 ctx.fill(Path(ellipseIn:CGRect(x:w*meanX-7,y:h*meanY-7,width:14,height:14)),
-                         with:.color(TCTheme.sage))
+                         with:.color(Color.white))
                 ctx.stroke(Path(ellipseIn:CGRect(x:w*meanX-7,y:h*meanY-7,width:14,height:14)),
-                           with:.color(.white.opacity(0.60)), lineWidth:1.5)
+                           with:.color(.black.opacity(0.40)), lineWidth:1.5)
             }
 
-            // ── Distance labels (as lines) ────────────────────────────────
             for (labelY, labelLen) in [(CGFloat(0.28),CGFloat(0.08)),(0.50,0.08),(0.72,0.08)] {
                 var lLine = Path()
-                lLine.move(to:CGPoint(x:mx-fw+8,y:h*labelY))
-                lLine.addLine(to:CGPoint(x:mx-fw+8+w*labelLen,y:h*labelY))
-                ctx.stroke(lLine, with:.color(TCTheme.gold.opacity(0.30)), lineWidth:0.8)
+                lLine.move(to:CGPoint(x:w*0.12,y:h*labelY))
+                lLine.addLine(to:CGPoint(x:w*(0.12+labelLen),y:h*labelY))
+                ctx.stroke(lLine, with:.color(Color.white.opacity(0.18)), lineWidth:0.8)
             }
         }
     }

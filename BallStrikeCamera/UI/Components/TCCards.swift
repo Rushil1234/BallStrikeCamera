@@ -47,13 +47,8 @@ struct TCPill: View {
     var color: Color = TCTheme.gold
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.14))
-            .clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(color.opacity(0.30), lineWidth: 1))
+            .font(.system(size: 11, weight: .medium))
+            .foregroundColor(TCTheme.textSecondary)
     }
 }
 
@@ -68,8 +63,8 @@ struct TCMetricTile: View {
     var body: some View {
         VStack(spacing: 5) {
             Text(value + (unit.isEmpty ? "" : " " + unit))
-                .font(.system(size: 26, weight: .black, design: .rounded))
-                .foregroundColor(accent)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundColor(TCTheme.textPrimary)
                 .minimumScaleFactor(0.55)
                 .lineLimit(1)
             Text(label)
@@ -79,11 +74,7 @@ struct TCMetricTile: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(TCTheme.panel)
-        .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous)
-                    .strokeBorder(accent.opacity(0.22), lineWidth: 1))
+        .padding(.vertical, 12)
     }
 }
 
@@ -98,14 +89,10 @@ struct TCSettingsRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(accent.opacity(0.14))
-                    .frame(width: 32, height: 32)
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(accent)
-            }
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(TCTheme.textMuted)
+                .frame(width: 24, alignment: .leading)
             Text(title)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundColor(TCTheme.textPrimary)
@@ -139,13 +126,10 @@ struct TCSessionCard: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle().fill(accent.opacity(0.14))
-                    .frame(width: 44, height: 44)
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(accent)
-            }
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .regular))
+                .foregroundColor(TCTheme.textMuted)
+                .frame(width: 28, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 Text(mode)
                     .font(.system(size: 14, weight: .bold))
@@ -162,8 +146,8 @@ struct TCSessionCard: View {
             }
             VStack(alignment: .trailing, spacing: 2) {
                 Text(stat)
-                    .font(.system(size: 18, weight: .black, design: .rounded))
-                    .foregroundColor(accent)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(TCTheme.textPrimary)
                 Text(statLabel)
                     .font(.system(size: 10))
                     .foregroundColor(TCTheme.textMuted)
@@ -188,32 +172,15 @@ struct TCModeCard: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 10) {
                 ZStack(alignment: .topTrailing) {
-                    if let illus = illustration {
-                        illus
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(accent.opacity(0.25), lineWidth: 1)
-                            )
-                    } else {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(accent.opacity(0.12))
-                                .frame(width: 56, height: 56)
-                            Image(systemName: icon)
-                                .font(.system(size: 22, weight: .semibold))
-                                .foregroundColor(accent)
-                        }
-                    }
+                    Image(systemName: icon)
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundColor(isSelected ? TCTheme.textPrimary : TCTheme.textMuted)
+                        .frame(width: 28, height: 28, alignment: .leading)
                     if isSelected {
-                        ZStack {
-                            Circle().fill(accent).frame(width: 20, height: 20)
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 10, weight: .black))
-                                .foregroundColor(.black)
-                        }
-                        .offset(x: 8, y: -8)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .offset(x: 10, y: -4)
                     }
                 }
                 Text(title)
@@ -228,14 +195,13 @@ struct TCModeCard: View {
             }
             .padding(14)
             .frame(maxWidth: .infinity, minHeight: 148, alignment: .topLeading)
-            .background(isSelected ? accent.opacity(0.07) : TCTheme.panel)
+            .background(isSelected ? TCTheme.panelRaised : TCTheme.panel)
             .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
-                    .strokeBorder(isSelected ? accent.opacity(0.60) : TCTheme.border,
-                                  lineWidth: isSelected ? 1.8 : 1)
+                    .strokeBorder(isSelected ? TCTheme.textSecondary.opacity(0.45) : TCTheme.border,
+                                  lineWidth: 1)
             )
-            .shadow(color: isSelected ? accent.opacity(0.12) : Color.clear, radius: 10, x: 0, y: 4)
         }
         .buttonStyle(.plain)
     }
@@ -253,20 +219,23 @@ struct TCPrimaryGoldButton: View {
             HStack(spacing: 10) {
                 Text(title)
                     .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.black)
+                    .foregroundColor(TCTheme.textPrimary)
                 if let ic = icon {
                     Image(systemName: ic)
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.black)
+                        .foregroundColor(TCTheme.textPrimary)
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(TCTheme.goldGradient)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(TCTheme.panelRaised)
+            .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
+                    .strokeBorder(TCTheme.borderMedium, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
-        .shadow(color: TCTheme.goldShadow, radius: 10, x: 0, y: 4)
     }
 }
 
@@ -284,12 +253,7 @@ struct TCOutlineButton: View {
                 .foregroundColor(color)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(color.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(color.opacity(0.35), lineWidth: 1.5)
-                )
+                .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .bottom)
         }
         .buttonStyle(.plain)
     }
@@ -311,11 +275,7 @@ struct TCChipButton: View {
                 Text(title).font(.system(size: 12, weight: .semibold))
             }
             .foregroundColor(TCTheme.textSecondary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 9)
-            .background(TCTheme.panel)
-            .clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(TCTheme.border, lineWidth: 1))
+            .padding(.vertical, 8)
         }
         .buttonStyle(.plain)
     }
@@ -387,24 +347,9 @@ struct TCRankingRow: View {
     var body: some View {
         HStack(spacing: 14) {
             Text("\(rank)")
-                .font(.system(size: 22, weight: .black, design: .rounded))
-                .foregroundColor(rank == 1 ? TCTheme.gold : rank <= 3 ? TCTheme.textSecondary : TCTheme.textMuted)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(TCTheme.textSecondary)
                 .frame(width: 26, alignment: .center)
-
-            // Course thumbnail — MapKit or generated aerial
-            Group {
-                if let c = course {
-                    CourseImageView(course: c, seed: thumbnailSeed, cornerRadius: 10)
-                } else {
-                    TCCourseAerialThumbnail(seed: thumbnailSeed)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-            }
-            .frame(width: 56, height: 44)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(TCTheme.border, lineWidth: 0.8)
-            )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(courseName)
@@ -419,20 +364,16 @@ struct TCRankingRow: View {
                         .font(.system(size: 11))
                         .foregroundColor(TCTheme.textMuted)
                 }
-                TCPill(text: "Played \(playedCount)×", color: TCTheme.sage)
+                Text("Played \(playedCount)x")
+                    .font(.system(size: 11))
+                    .foregroundColor(TCTheme.textMuted)
             }
 
             Spacer(minLength: 6)
 
-            // Rating badge
-            ZStack {
-                Circle()
-                    .strokeBorder(TCTheme.goldGradient, lineWidth: 1.8)
-                    .frame(width: 42, height: 42)
-                Text(String(format: "%.1f", rating))
-                    .font(.system(size: 12, weight: .black, design: .rounded))
-                    .foregroundColor(TCTheme.gold)
-            }
+            Text(String(format: "%.1f", rating))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(TCTheme.textMuted)
         }
         .tcCard()
     }
@@ -448,37 +389,21 @@ struct TCShotThumb: View {
     private var isDriver: Bool { clubName.lowercased().hasPrefix("dr") }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ZStack(alignment: .topLeading) {
-                // Premium shot arc background
-                TCShotArcThumbPremium(yards: yards, isDriver: isDriver)
-                if isBest {
-                    Text("BEST")
-                        .font(.system(size: 8, weight: .black))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(TCTheme.goldGradient)
-                        .clipShape(Capsule())
-                        .padding(6)
-                }
+        VStack(alignment: .leading, spacing: 4) {
+            if isBest {
+                Text("Best")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(TCTheme.textMuted)
             }
-            .frame(height: 60)
-
-            VStack(spacing: 2) {
-                Text(clubName)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(TCTheme.textPrimary)
-                Text("\(yards) yds")
-                    .font(.system(size: 12, weight: .black, design: .rounded))
-                    .foregroundColor(TCTheme.gold)
-            }
-            .padding(.vertical, 8)
-            .background(TCTheme.panelRaised)
+            Text(clubName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(TCTheme.textPrimary)
+            Text("\(yards) yds")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(TCTheme.textSecondary)
         }
-        .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous)
-                    .strokeBorder(TCTheme.border, lineWidth: 1))
+        .frame(width: 94, alignment: .leading)
+        .padding(.vertical, 8)
     }
 }
 
@@ -491,16 +416,11 @@ struct TCMilestoneBadge: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .strokeBorder(TCTheme.goldGradient, lineWidth: 2)
-                    .frame(width: 44, height: 44)
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(TCTheme.gold)
-            }
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .regular))
+                .foregroundColor(TCTheme.textMuted)
             Text(value)
-                .font(.system(size: 16, weight: .black, design: .rounded))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(TCTheme.textPrimary)
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
@@ -511,10 +431,6 @@ struct TCMilestoneBadge: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .padding(.horizontal, 8)
-        .background(TCTheme.panelRaised)
-        .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous)
-                    .strokeBorder(TCTheme.border, lineWidth: 1))
     }
 }
 
@@ -582,7 +498,7 @@ struct TCBarRow: View {
             }
             .frame(height: 7)
             Text("\(value)")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .font(.system(size: 12, weight: .bold))
                 .foregroundColor(TCTheme.textPrimary)
                 .frame(width: 32, alignment: .trailing)
         }
@@ -602,12 +518,10 @@ struct TCFilterTabBar: View {
                     Button { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { selected = tab } } label: {
                         Text(tab)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(selected == tab ? .black : TCTheme.textMuted)
-                            .padding(.horizontal, 16)
+                            .foregroundColor(selected == tab ? TCTheme.textPrimary : TCTheme.textMuted)
+                            .padding(.horizontal, 8)
                             .padding(.vertical, 8)
-                            .background(selected == tab ? TCTheme.goldGradient :
-                                            LinearGradient(colors: [TCTheme.panel], startPoint: .leading, endPoint: .trailing))
-                            .clipShape(Capsule())
+                            .overlay(Rectangle().fill(selected == tab ? TCTheme.textPrimary : Color.clear).frame(height: 1), alignment: .bottom)
                     }
                     .buttonStyle(.plain)
                 }

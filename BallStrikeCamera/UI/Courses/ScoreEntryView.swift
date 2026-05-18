@@ -8,6 +8,8 @@ struct ScoreEntryView: View {
     let par: Int
     var existingScore: Int?
     var existingPutts: Int?
+    var holeYardage: Int?
+    var handicap: Int?
     let onSave: (Int, Int?, Bool?, Bool?) -> Void
 
     @State private var score: Int
@@ -19,11 +21,14 @@ struct ScoreEntryView: View {
 
     init(holeNumber: Int, par: Int,
          existingScore: Int? = nil, existingPutts: Int? = nil,
+         holeYardage: Int? = nil, handicap: Int? = nil,
          onSave: @escaping (Int, Int?, Bool?, Bool?) -> Void) {
         self.holeNumber    = holeNumber
         self.par           = par
         self.existingScore = existingScore
         self.existingPutts = existingPutts
+        self.holeYardage   = holeYardage
+        self.handicap      = handicap
         self.onSave        = onSave
         _score = State(initialValue: existingScore ?? par)
         _putts = State(initialValue: existingPutts ?? 2)
@@ -49,10 +54,15 @@ struct ScoreEntryView: View {
                 // Hole info overlay on map
                 VStack(spacing: 6) {
                     holeSelectorPill
-                    Text("\(par * 85) yds  ·  HCP 17")
-                        .font(.system(size: 12))
-                        .foregroundColor(TCTheme.textMuted)
-                        .shadow(color: .black.opacity(0.6), radius: 3)
+                    let yardStr = holeYardage.map { "\($0) yds  ·  " } ?? ""
+                    let hcpStr  = handicap.map    { "HCP \($0)"       } ?? ""
+                    let infoStr = yardStr + hcpStr
+                    if !infoStr.isEmpty {
+                        Text(infoStr)
+                            .font(.system(size: 12))
+                            .foregroundColor(TCTheme.textMuted)
+                            .shadow(color: .black.opacity(0.6), radius: 3)
+                    }
                 }
                 .padding(.top, 52)
 
@@ -60,7 +70,7 @@ struct ScoreEntryView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
                         // Drag handle
-                        Capsule()
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(TCTheme.borderMedium)
                             .frame(width: 36, height: 4)
                             .padding(.top, 12)
@@ -103,7 +113,7 @@ struct ScoreEntryView: View {
                             } label: {
                                 Text("Save Score")
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.white)
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 10)
                                     .background(TCTheme.goldGradient)
@@ -123,7 +133,7 @@ struct ScoreEntryView: View {
                             HStack(spacing: 20) {
                                 stepperButton(icon: "minus") { if score > 1 { score -= 1 } }
                                 Text("\(score)")
-                                    .font(.system(size: 44, weight: .black, design: .rounded))
+                                    .font(.system(size: 44, weight: .black))
                                     .foregroundColor(TCTheme.textPrimary)
                                     .frame(minWidth: 60, alignment: .center)
                                 stepperButton(icon: "plus") { score += 1 }
@@ -148,7 +158,7 @@ struct ScoreEntryView: View {
                             HStack(spacing: 20) {
                                 stepperButton(icon: "minus") { if putts > 0 { putts -= 1 } }
                                 Text("\(putts)")
-                                    .font(.system(size: 44, weight: .black, design: .rounded))
+                                    .font(.system(size: 44, weight: .black))
                                     .foregroundColor(TCTheme.cyan)
                                     .frame(minWidth: 60, alignment: .center)
                                 stepperButton(icon: "plus") { putts += 1 }
@@ -282,8 +292,8 @@ struct ScoreEntryView: View {
         .padding(.vertical, 8)
         .background(.ultraThinMaterial.opacity(0.4))
         .background(TCTheme.panel.opacity(0.75))
-        .clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(TCTheme.borderMedium, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(TCTheme.borderMedium, lineWidth: 1))
         .padding(.horizontal, 24)
         .shadow(color: .black.opacity(0.4), radius: 6)
     }
@@ -313,8 +323,8 @@ struct ScoreEntryView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
                 .background(selected ? color : TCTheme.panelRaised)
-                .clipShape(Capsule())
-                .overlay(Capsule().strokeBorder(selected ? color : TCTheme.border, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(selected ? color : TCTheme.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }

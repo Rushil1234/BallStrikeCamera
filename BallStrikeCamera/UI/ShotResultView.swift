@@ -24,8 +24,11 @@ private func drawGolfBall(ctx: GraphicsContext, center: CGPoint, radius r: CGFlo
 
 struct ShotResultView: View {
     let analysis: ShotAnalysisResult
-    let onDone: () -> Void
     var context: ShotContext? = nil
+    var selectedClubId: UUID? = nil
+    var selectedClubName: String? = nil
+    var onShotSaved: ((SavedShot) -> Void)? = nil
+    let onDone: () -> Void
 
     @State private var animationStartDate: Date? = nil
     @State private var animationFinished: Bool   = false
@@ -33,9 +36,25 @@ struct ShotResultView: View {
 
     private var m: ShotMetricsResult? { analysis.metrics }
 
-    static let airborneColor = Color(red: 0.0,  green: 0.85, blue: 1.0)
-    static let rolloutColor  = Color(red: 1.0,  green: 0.60, blue: 0.10)
-    static let totalColor    = Color(red: 0.30, green: 0.95, blue: 0.45)
+    static let airborneColor = Color(red: 0.02, green: 0.16, blue: 0.42)
+    static let rolloutColor  = Color(red: 0.02, green: 0.34, blue: 0.14)
+    static let totalColor    = Color(red: 0.62, green: 1.00, blue: 0.48)
+    static let metricValueColor = Color.white
+    static let metricLabelColor = Color.white.opacity(0.55)
+
+    init(analysis: ShotAnalysisResult,
+         context: ShotContext? = nil,
+         selectedClubId: UUID? = nil,
+         selectedClubName: String? = nil,
+         onShotSaved: ((SavedShot) -> Void)? = nil,
+         onDone: @escaping () -> Void) {
+        self.analysis = analysis
+        self.context = context
+        self.selectedClubId = selectedClubId
+        self.selectedClubName = selectedClubName
+        self.onShotSaved = onShotSaved
+        self.onDone = onDone
+    }
 
     // MARK: - Timing
 
@@ -131,7 +150,13 @@ struct ShotResultView: View {
         .onTapGesture { guard animationFinished else { return }; openReplay() }
         .onAppear { startAnimation() }
         .fullScreenCover(isPresented: $showReplay) {
-            ShotTrackingReviewView(analysis: analysis) {
+            ShotTrackingReviewView(
+                analysis: analysis,
+                context: context,
+                selectedClubId: selectedClubId,
+                selectedClubName: selectedClubName,
+                onShotSaved: onShotSaved
+            ) {
                 showReplay = false
                 onDone()
             }
@@ -200,21 +225,21 @@ struct ShotResultView: View {
                     let remaining = max(0, yd - Int(carry))
                     VStack(spacing: 2) {
                         Text("\(remaining)")
-                            .font(.system(size: 26, weight: .black, design: .rounded))
-                            .foregroundColor(Color(red: 0.0, green: 0.85, blue: 1.0))
+                            .font(.system(size: 26, weight: .black))
+                            .foregroundColor(Self.metricValueColor)
                         Text("yd left")
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.45))
+                            .foregroundColor(Self.metricLabelColor)
                     }
                 }
 
                 VStack(spacing: 2) {
                     Text(yds(m?.distance.carryYards))
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundColor(Self.airborneColor)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(Self.metricValueColor)
                     Text("carry")
                         .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.40))
+                        .foregroundColor(Self.metricLabelColor)
                 }
             }
             .padding(.top, 10)
@@ -227,10 +252,10 @@ struct ShotResultView: View {
                     Image(systemName: hla < -1 ? "arrow.up.left" :
                                       hla > 1  ? "arrow.up.right" : "arrow.up")
                         .font(.system(size: 18))
-                        .foregroundColor(Self.rolloutColor)
+                        .foregroundColor(Self.metricValueColor)
                     Text(m?.ballLaunch.hlaDisplay ?? "")
                         .font(.system(size: 9))
-                        .foregroundColor(.white.opacity(0.50))
+                        .foregroundColor(Self.metricLabelColor)
                 }
                 .padding(.bottom, 10)
             }
@@ -252,7 +277,7 @@ struct ShotResultView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.white.opacity(0.60))
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.white.opacity(0.10)).clipShape(Capsule())
+                    .background(Color.white.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             } else {
                 Text("Skip →").font(.system(size: 12, weight: .semibold)).opacity(0)
                     .padding(.horizontal, 10).padding(.vertical, 5)
@@ -271,7 +296,7 @@ struct ShotResultView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.white.opacity(0.85))
                     .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(.ultraThinMaterial).clipShape(Capsule())
+                    .background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     .transition(.opacity.combined(with: .scale(scale: 0.93)))
             } else {
                 Text("Shot in flight…")
@@ -294,24 +319,24 @@ struct ShotResultView: View {
 
     private var metricsOverlay: some View {
         VStack(alignment: .leading, spacing: 3) {
-            metricRow("Carry",   yds(m?.distance.carryYards), Self.airborneColor)
-            metricRow("Rollout", rolloutYds,                  Self.rolloutColor)
-            metricRow("Total",   yds(m?.distance.totalYards), Self.totalColor)
+            metricRow("Carry",   yds(m?.distance.carryYards))
+            metricRow("Rollout", rolloutYds)
+            metricRow("Total",   yds(m?.distance.totalYards))
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(Color.black.opacity(0.48))
+        .background(Color.black.opacity(0.62))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private func metricRow(_ label: String, _ value: String, _ color: Color) -> some View {
+    private func metricRow(_ label: String, _ value: String) -> some View {
         HStack(spacing: 5) {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.50))
+                .foregroundColor(Self.metricLabelColor)
                 .frame(width: 42, alignment: .leading)
             Text(value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundColor(color)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(Self.metricValueColor)
         }
     }
 
@@ -319,27 +344,27 @@ struct ShotResultView: View {
 
     private var metricsBar: some View {
         HStack(spacing: 0) {
-            metricCard("Carry",      yds(m?.distance.carryYards),           Self.airborneColor)
-            metricCard("Total",      yds(m?.distance.totalYards),           Self.totalColor)
-            metricCard("Ball Speed", spd(m?.ballLaunch.ballSpeedMph),       .white)
-            metricCard("Club Speed", spd(m?.club.clubSpeedMph),             .white)
-            metricCard("HLA",        m?.ballLaunch.hlaDisplay ?? "--",      Self.rolloutColor)
-            metricCard("VLA",        vlaDeg(m?.ballLaunch.vlaDegrees),      .white)
+            metricCard("Carry",      yds(m?.distance.carryYards))
+            metricCard("Total",      yds(m?.distance.totalYards))
+            metricCard("Ball Speed", spd(m?.ballLaunch.ballSpeedMph))
+            metricCard("Club Speed", spd(m?.club.clubSpeedMph))
+            metricCard("HLA",        m?.ballLaunch.hlaDisplay ?? "--")
+            metricCard("VLA",        vlaDeg(m?.ballLaunch.vlaDegrees))
         }
         .padding(.vertical, 8)
-        .background(Color(white: 0.10))
+        .background(Color.black)
     }
 
-    private func metricCard(_ label: String, _ value: String, _ color: Color) -> some View {
+    private func metricCard(_ label: String, _ value: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(color)
+                .font(.system(size: 22, weight: .bold))
+                .foregroundColor(Self.metricValueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.60)
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.45))
+                .foregroundColor(Self.metricLabelColor)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)

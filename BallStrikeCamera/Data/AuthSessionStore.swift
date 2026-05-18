@@ -40,7 +40,7 @@ final class AuthSessionStore: ObservableObject {
         isLoading = true
         if let user = try? await backend.currentUser() {
             currentUser = user
-            userProfile = try? await backend.loadUserProfile(userId: user.id)
+            userProfile = await ensureProfileAndBag(for: user)
             await entitlementVM.load(userId: user.id)
         }
         isLoading = false
@@ -51,21 +51,21 @@ final class AuthSessionStore: ObservableObject {
     func signIn(email: String, password: String) async throws {
         let user = try await backend.signIn(email: email, password: password)
         currentUser = user
-        userProfile = try? await backend.loadUserProfile(userId: user.id)
+        userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
     }
 
     func createAccount(name: String, email: String, password: String) async throws {
         let user = try await backend.createAccount(name: name, email: email, password: password)
         currentUser = user
-        userProfile = try? await backend.loadUserProfile(userId: user.id)
+        userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
     }
 
     func continueAsGuest() async throws {
         let user = try await backend.continueAsGuest()
         currentUser = user
-        userProfile = try? await backend.loadUserProfile(userId: user.id)
+        userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
     }
 
@@ -95,5 +95,25 @@ final class AuthSessionStore: ObservableObject {
         guard var p = userProfile else { return }
         p.homeCourseName = name
         await saveProfile(p)
+    }
+
+    private func ensureProfileAndBag(for user: AppUser) async -> UserProfile {
+        let profile: UserProfile
+        if let existing = try? await backend.loadUserProfile(userId: user.id) {
+            profile = existing
+        } else {
+            let created = UserProfile(userId: user.id, displayName: user.name)
+            try? await backend.saveUserProfile(created)
+            profile = created
+        }
+
+        let clubs = (try? await backend.loadClubs(userId: user.id)) ?? []
+        if clubs.isEmpty {
+            for club in UserClub.defaultBag(userId: user.id) {
+                try? await backend.saveClub(club)
+            }
+        }
+
+        return profile
     }
 }

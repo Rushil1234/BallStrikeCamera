@@ -1,7 +1,13 @@
 import SwiftUI
 
 struct ShotTrackingReviewView: View {
+    @EnvironmentObject private var session: AuthSessionStore
+
     let analysis: ShotAnalysisResult
+    let context: ShotContext?
+    let selectedClubId: UUID?
+    let selectedClubName: String?
+    let onShotSaved: ((SavedShot) -> Void)?
     let onDismiss: () -> Void
 
     @State private var currentIndex: Int
@@ -12,12 +18,24 @@ struct ShotTrackingReviewView: View {
     @State private var exportedURL:      URL? = nil
     @State private var exportError:      String? = nil
     @State private var showMarkBadAlert: Bool = false
+    @State private var isSavingShot:     Bool = false
+    @State private var savedShot:        SavedShot? = nil
+    @State private var saveError:        String? = nil
     #if DEBUG
     @State private var showTester: Bool = false
     #endif
 
-    init(analysis: ShotAnalysisResult, onDismiss: @escaping () -> Void) {
+    init(analysis: ShotAnalysisResult,
+         context: ShotContext? = nil,
+         selectedClubId: UUID? = nil,
+         selectedClubName: String? = nil,
+         onShotSaved: ((SavedShot) -> Void)? = nil,
+         onDismiss: @escaping () -> Void) {
         self.analysis = analysis
+        self.context = context
+        self.selectedClubId = selectedClubId
+        self.selectedClubName = selectedClubName
+        self.onShotSaved = onShotSaved
         self.onDismiss = onDismiss
         // Start at the impact frame so the user immediately sees the interesting moment.
         let maxIndex = max(0, analysis.frames.count - 1)
@@ -48,6 +66,14 @@ struct ShotTrackingReviewView: View {
         }
         .alert("Marked as bad shot", isPresented: $showMarkBadAlert) {
             Button("OK") { }
+        }
+        .alert("Save failed", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
         }
         #if DEBUG
         .fullScreenCover(isPresented: $showTester) {
@@ -95,15 +121,17 @@ struct ShotTrackingReviewView: View {
 
     private var actionBar: some View {
         HStack(spacing: 8) {
-            Button(action: { print("Save shot") }) {
-                Label("Save Shot", systemImage: "square.and.arrow.down")
+            Button(action: { Task { await saveShot(markBad: false) } }) {
+                Label(saveButtonTitle, systemImage: savedShot == nil ? "square.and.arrow.down" : "checkmark.circle")
                     .font(.system(size: 11, weight: .semibold))
                     .frame(maxWidth: .infinity, minHeight: 32)
                     .background(Color.white.opacity(0.08))
                     .foregroundColor(.white.opacity(0.75))
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
-            Button(action: { showMarkBadAlert = true }) {
+            .disabled(saveButtonDisabled)
+
+            Button(action: { Task { await saveShot(markBad: true) } }) {
                 Label("Bad Shot", systemImage: "xmark.circle")
                     .font(.system(size: 11, weight: .semibold))
                     .frame(maxWidth: .infinity, minHeight: 32)
@@ -111,10 +139,52 @@ struct ShotTrackingReviewView: View {
                     .foregroundColor(.orange.opacity(0.90))
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
+            .disabled(saveButtonDisabled)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
         .background(Color(white: 0.065))
+    }
+
+    private var saveButtonTitle: String {
+        if isSavingShot { return "Saving…" }
+        if savedShot != nil { return "Saved" }
+        return "Save Shot"
+    }
+
+    private var saveButtonDisabled: Bool {
+        isSavingShot || savedShot != nil || analysis.metrics == nil || session.currentUser?.id == nil
+    }
+
+    @MainActor
+    private func saveShot(markBad: Bool) async {
+        guard !saveButtonDisabled,
+              let uid = session.currentUser?.id,
+              let metrics = analysis.metrics else { return }
+
+        isSavingShot = true
+        defer { isSavingShot = false }
+
+        do {
+            let service = ShotPersistenceService(userId: uid, backend: session.backend)
+            let shot = try await service.saveShot(
+                metrics: SavedShotMetrics(metrics),
+                compositeImage: nil,
+                clubId: selectedClubId,
+                clubName: selectedClubName,
+                mode: context?.shotMode ?? .range,
+                saveOriginalFrames: false,
+                roundId: context?.courseRoundId,
+                holeNumber: context?.holeNumber,
+                isBadShot: markBad,
+                badShotReason: markBad ? "Marked from review" : nil
+            )
+            savedShot = shot
+            onShotSaved?(shot)
+            if markBad { showMarkBadAlert = true }
+        } catch {
+            saveError = error.localizedDescription
+        }
     }
 
     private var displayedImage: UIImage? {
@@ -156,11 +226,11 @@ struct ShotTrackingReviewView: View {
                             if currentFrame.frameIndex == analysis.detectedImpactFrameIndex {
                                 Text("IMPACT FRAME")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.white)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(Color.yellow.opacity(0.90))
-                                    .clipShape(Capsule())
+                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                                     .padding(.trailing, 12)
                                     .padding(.top, 10)
                             }
@@ -190,7 +260,7 @@ struct ShotTrackingReviewView: View {
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
                                         .background(Color.indigo.opacity(0.7))
-                                        .clipShape(Capsule())
+                                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                                 }
 
                                 Button(action: doExport) {
@@ -200,7 +270,7 @@ struct ShotTrackingReviewView: View {
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
                                         .background(isExporting ? Color.gray.opacity(0.5) : Color.green.opacity(0.7))
-                                        .clipShape(Capsule())
+                                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                                 }
                                 .disabled(isExporting)
 
@@ -212,7 +282,7 @@ struct ShotTrackingReviewView: View {
                                         .padding(.horizontal, 8)
                                         .padding(.vertical, 4)
                                         .background(Color.purple.opacity(0.7))
-                                        .clipShape(Capsule())
+                                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                                 }
                                 #endif
                             }
@@ -246,11 +316,11 @@ struct ShotTrackingReviewView: View {
             if isImpact {
                 Text("IMPACT")
                     .font(.system(size: 9, weight: .bold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
                     .background(Color.yellow)
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             } else if isPost {
                 Text("post")
                     .font(.system(size: 9, weight: .bold))

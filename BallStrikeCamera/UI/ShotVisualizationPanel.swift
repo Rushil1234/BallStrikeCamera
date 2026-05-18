@@ -186,11 +186,11 @@ private struct BallCircleOverlayView: View {
 
                 VStack(spacing: -6) {
                     Text("Set")
-                        .font(.system(size: max(18, placementRadius * 0.55), weight: .heavy, design: .rounded))
+                        .font(.system(size: max(18, placementRadius * 0.55), weight: .heavy))
                         .foregroundColor(.white.opacity(0.88))
 
                     Text("into")
-                        .font(.system(size: max(12, placementRadius * 0.25), weight: .semibold, design: .rounded))
+                        .font(.system(size: max(12, placementRadius * 0.25), weight: .semibold))
                         .foregroundColor(.white.opacity(0.82))
                 }
                 .position(placementCenter)

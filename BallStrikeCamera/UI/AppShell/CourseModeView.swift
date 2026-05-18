@@ -12,6 +12,7 @@ struct CourseModeView: View {
     @EnvironmentObject var session: AuthSessionStore
     @Environment(\.dismiss) private var dismiss
     @State private var showRound = false
+    @State private var showCamera = false
 
     private let holes: [MockHole] = [
         MockHole(number: 1, par: 4, yards: 382, score: nil),
@@ -64,6 +65,11 @@ struct CourseModeView: View {
                 .preferredColorScheme(.dark)
             }
         }
+        .fullScreenCover(isPresented: $showCamera) {
+            RangeCameraScreen(context: ShotContext(sourceMode: .course))
+                .ignoresSafeArea()
+                .statusBarHidden(true)
+        }
     }
 
     private var subheader: some View {
@@ -81,7 +87,7 @@ struct CourseModeView: View {
                     .frame(width: 46, height: 46)
                 Image(systemName: "map.fill")
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text("Pebble Beach Golf Links")
@@ -180,8 +186,8 @@ struct CourseModeView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(accent.opacity(0.12))
-            .clipShape(Capsule())
-            .overlay(Capsule().strokeBorder(accent.opacity(0.35), lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(accent.opacity(0.35), lineWidth: 1))
     }
 
     private func scoreStat(label: String, value: String) -> some View {
@@ -264,7 +270,7 @@ struct CourseModeView: View {
                 title: "Track Shot",
                 icon: "camera.fill",
                 style: .ghost,
-                action: {}
+                action: { showCamera = true }
             )
         }
     }

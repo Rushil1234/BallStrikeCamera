@@ -11,20 +11,20 @@ struct ShotSummaryPanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Total")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.green.opacity(0.8))
                 Spacer()
             }
 
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(totalText)
-                    .font(.system(size: 56, weight: .heavy, design: .rounded))
+                    .font(.system(size: 56, weight: .heavy))
                     .foregroundColor(Color.green)
                     .lineLimit(1)
                     .minimumScaleFactor(0.62)
 
                 Text("yd")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.white.opacity(0.6))
             }
 
@@ -61,18 +61,18 @@ struct ShotSummaryPanelView: View {
     private func summaryMetric(label: String, value: String, unit: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.white.opacity(0.5))
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
                 Text(unit)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.white.opacity(0.4))
             }
         }

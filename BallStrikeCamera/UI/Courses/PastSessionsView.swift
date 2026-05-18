@@ -4,6 +4,8 @@ struct PastSessionsView: View {
     @EnvironmentObject var session: AuthSessionStore
 
     @State private var selectedFilter = "All"
+    @State private var showSearch = false
+    @State private var searchText = ""
     @State private var shots:         [SavedShot]       = []
     @State private var rangeSessions: [PracticeSession] = []
     @State private var simSessions:   [SimSession]      = []
@@ -21,16 +23,29 @@ struct PastSessionsView: View {
                 VStack(spacing: TCTheme.sectionGap) {
                     // Header
                     TCHeaderBar(initials: userInitials) {
-                        TCIconButton(icon: "magnifyingglass") {}
-                        TCIconButton(icon: "slider.horizontal.3") {}
+                        TCIconButton(icon: "magnifyingglass") { showSearch.toggle() }
+                        TCIconButton(icon: "slider.horizontal.3") { cycleFilter() }
                     }
 
                     // Section label
                     Text("PAST SESSIONS")
-                        .font(.system(size: 32, weight: .black, design: .serif))
+                        .font(.system(size: 30, weight: .semibold))
                         .foregroundColor(TCTheme.textPrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, TCTheme.hPad)
+
+                    // Filter tabs
+                    if showSearch {
+                        TextField("Search sessions", text: $searchText)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .foregroundColor(TCTheme.textPrimary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(TCTheme.panelRaised)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .padding(.horizontal, TCTheme.hPad)
+                    }
 
                     // Filter tabs
                     TCFilterTabBar(tabs: filters, selected: $selectedFilter)
@@ -93,7 +108,7 @@ struct PastSessionsView: View {
     private func summaryItem(_ value: String, _ label: String) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 20, weight: .black, design: .rounded))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(TCTheme.textPrimary)
             Text(label)
                 .font(.system(size: 10, weight: .bold))
@@ -111,28 +126,28 @@ struct PastSessionsView: View {
         VStack(spacing: 14) {
             // Range sessions
             if selectedFilter == "All" || selectedFilter == "Range" {
-                if rangeSessions.isEmpty {
+                if filteredRangeSessions.isEmpty {
                     emptySessionCard(icon: "scope", message: "No range sessions yet.")
                 } else {
-                    ForEach(rangeSessions) { rs in rangeSessionCard(rs) }
+                    ForEach(filteredRangeSessions) { rs in rangeSessionCard(rs) }
                 }
             }
 
             // Sim sessions
             if selectedFilter == "All" || selectedFilter == "Sim" {
-                if simSessions.isEmpty {
+                if filteredSimSessions.isEmpty {
                     emptySessionCard(icon: "display", message: "No sim sessions yet.")
                 } else {
-                    ForEach(simSessions) { ss in simSessionCard(ss) }
+                    ForEach(filteredSimSessions) { ss in simSessionCard(ss) }
                 }
             }
 
             // Course rounds
             if selectedFilter == "All" || selectedFilter == "Course" {
-                if rounds.isEmpty {
+                if filteredRounds.isEmpty {
                     emptySessionCard(icon: "flag.fill", message: "No rounds yet.")
                 } else {
-                    ForEach(rounds) { r in courseRoundCard(r) }
+                    ForEach(filteredRounds) { r in courseRoundCard(r) }
                 }
             }
 
@@ -164,13 +179,10 @@ struct PastSessionsView: View {
     private func rangeSessionCard(_ rs: PracticeSession) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 14) {
-                TCDispersionFairwayGraphic(showRings: false)
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(TCTheme.border, lineWidth: 1)
-                    )
+                Image(systemName: "scope")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(TCTheme.textMuted)
+                    .frame(width: 28, alignment: .leading)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Range Session · \(shortDate(rs.startedAt))")
                         .font(.system(size: 14, weight: .bold))
@@ -182,8 +194,8 @@ struct PastSessionsView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(rs.shotIds.count)")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundColor(TCTheme.sage)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
                     Text("SHOTS")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(TCTheme.textMuted)
@@ -203,13 +215,10 @@ struct PastSessionsView: View {
     private func simSessionCard(_ ss: SimSession) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 14) {
-                TCModeSimIllustration()
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(TCTheme.borderGold, lineWidth: 1)
-                    )
+                Image(systemName: "display")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(TCTheme.textMuted)
+                    .frame(width: 28, alignment: .leading)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Sim Session · \(shortDate(ss.startedAt))")
                         .font(.system(size: 14, weight: .bold))
@@ -221,8 +230,8 @@ struct PastSessionsView: View {
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(ss.shotIds.count)")
-                        .font(.system(size: 22, weight: .black, design: .rounded))
-                        .foregroundColor(TCTheme.gold)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
                     Text("SHOTS")
                         .font(.system(size: 9, weight: .bold))
                         .foregroundColor(TCTheme.textMuted)
@@ -236,13 +245,10 @@ struct PastSessionsView: View {
     private func courseRoundCard(_ r: CourseRound) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 14) {
-                TCCourseAerialThumbnail(seed: abs(r.courseName.hashValue) % 4)
-                    .frame(width: 60, height: 60)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(TCTheme.border, lineWidth: 1)
-                    )
+                Image(systemName: "flag")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundColor(TCTheme.textMuted)
+                    .frame(width: 28, alignment: .leading)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Round · \(shortDate(r.startedAt))")
                         .font(.system(size: 14, weight: .bold))
@@ -267,7 +273,7 @@ struct PastSessionsView: View {
     // MARK: - Saved Shots Grid
 
     private var savedShotsGrid: some View {
-        let displayShots = Array(shots.prefix(9))
+        let displayShots = Array(filteredShots.prefix(9))
         return LazyVGrid(
             columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
             spacing: 10
@@ -293,14 +299,10 @@ struct PastSessionsView: View {
 
     private var exportCard: some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(TCTheme.gold.opacity(0.14))
-                    .frame(width: 44, height: 44)
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(TCTheme.gold)
-            }
+            Image(systemName: "square.and.arrow.up")
+                .font(.system(size: 18, weight: .regular))
+                .foregroundColor(TCTheme.textMuted)
+                .frame(width: 28, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Export Session")
@@ -325,7 +327,7 @@ struct PastSessionsView: View {
     private func sessionStat(_ label: String, _ value: String) -> some View {
         VStack(spacing: 3) {
             Text(value)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundColor(TCTheme.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -351,6 +353,45 @@ struct PastSessionsView: View {
                  + String((parts[1].first ?? "L")).uppercased()
         }
         return String(name.prefix(2)).uppercased()
+    }
+
+    private var filteredRangeSessions: [PracticeSession] {
+        guard hasSearch else { return rangeSessions }
+        return rangeSessions.filter {
+            matches($0.selectedClubName) || matches(shortDate($0.startedAt)) || matches("Range Session")
+        }
+    }
+
+    private var filteredSimSessions: [SimSession] {
+        guard hasSearch else { return simSessions }
+        return simSessions.filter { matches($0.provider.rawValue) || matches(shortDate($0.startedAt)) || matches("Sim Session") }
+    }
+
+    private var filteredRounds: [CourseRound] {
+        guard hasSearch else { return rounds }
+        return rounds.filter { matches($0.courseName) || matches($0.teeBoxName) || matches(shortDate($0.startedAt)) }
+    }
+
+    private var filteredShots: [SavedShot] {
+        guard hasSearch else { return shots }
+        return shots.filter { matches($0.clubName) || matches(shortDate($0.timestamp)) || matches("\(Int($0.metrics.carryYards))") }
+    }
+
+    private var hasSearch: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func matches(_ value: String?) -> Bool {
+        guard let value else { return false }
+        return value.localizedCaseInsensitiveContains(searchText.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func cycleFilter() {
+        guard let index = filters.firstIndex(of: selectedFilter) else {
+            selectedFilter = filters[0]
+            return
+        }
+        selectedFilter = filters[(index + 1) % filters.count]
     }
 
     // MARK: - Data Loading

@@ -62,7 +62,15 @@ struct RangeSessionView: View {
             Text("Save this session or discard it?")
         }
         .fullScreenCover(isPresented: $showCamera) {
-            RangeCameraScreen()
+            RangeCameraScreen(
+                initialClubId: vm.selectedClub?.id,
+                initialClubName: vm.selectedClub?.name,
+                shotCount: vm.shots.count,
+                context: ShotContext(sourceMode: .range),
+                onShotSaved: { shot in
+                    Task { await vm.addShot(shot) }
+                }
+            )
         }
         .task {
             await vm.loadClubs()
@@ -138,7 +146,7 @@ struct RangeSessionView: View {
                                     .padding(.horizontal, 14)
                                     .padding(.vertical, 8)
                                     .background(vm.selectedClub?.id == club.id ? BSTheme.fairwayGreen : BSTheme.panel)
-                                    .clipShape(Capsule())
+                                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                             }
                             .buttonStyle(.plain)
                         }

@@ -67,6 +67,10 @@ final class RangeSessionViewModel: ObservableObject {
     func addShot(_ shot: SavedShot) async {
         shots.append(shot)
         guard var session = activeSession else { return }
+        if session.selectedClubId == nil {
+            session.selectedClubId = shot.clubId
+            session.selectedClubName = shot.clubName
+        }
         session.shotIds.append(shot.id)
         session.summary = summary
         activeSession = session

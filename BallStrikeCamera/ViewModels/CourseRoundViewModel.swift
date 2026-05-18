@@ -70,6 +70,19 @@ final class CourseRoundViewModel: ObservableObject {
         try? await backend.saveRound(round)
     }
 
+    func addShot(_ shot: SavedShot) async {
+        guard var round = activeRound else { return }
+        if !round.shotIds.contains(shot.id) {
+            round.shotIds.append(shot.id)
+        }
+        if currentHoleIndex < round.holes.count,
+           !round.holes[currentHoleIndex].shotIds.contains(shot.id) {
+            round.holes[currentHoleIndex].shotIds.append(shot.id)
+        }
+        activeRound = round
+        try? await backend.saveRound(round)
+    }
+
     func advanceHole() {
         guard let round = activeRound else { return }
         if currentHoleIndex < round.holes.count - 1 {

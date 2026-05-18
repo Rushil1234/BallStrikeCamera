@@ -9,6 +9,8 @@ struct TrueCarryPlayView: View {
     @State private var showSim = false
     @State private var showCourseSearch = false
     @State private var showCourseMode = false
+    @State private var showRoundSetup = false
+    @State private var showUpgradeAlert = false
     @State private var selectedCourse: GolfCourse?
     @State private var selectedTeeBox: TeeBox?
     @State private var showSessions = false
@@ -52,7 +54,7 @@ struct TrueCarryPlayView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: TCTheme.sectionGap) {
                     TCHeaderBar(initials: userInitials) {
-                        TCBellButton(badgeCount: 0) {}
+                        TCBellButton(badgeCount: 0) { showSessions = true }
                     }
                     pageTitleSection
                     modeCardsSection
@@ -81,12 +83,35 @@ struct TrueCarryPlayView: View {
                         selectedTeeBox = tee
                         showCourseSearch = false
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                            showRoundSetup = true
+                        }
+                    }
+                }
+                .preferredColorScheme(.dark)
+            }
+        }
+        .sheet(isPresented: $showRoundSetup) {
+            if let course = selectedCourse, let tee = selectedTeeBox {
+                NavigationStack {
+                    RoundSetupView(course: course, teeBox: tee) {
+                        showRoundSetup = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                             showCourseMode = true
                         }
                     }
                 }
                 .preferredColorScheme(.dark)
             }
+        }
+        .alert("Course Mode", isPresented: $showUpgradeAlert) {
+            Button("Upgrade") {
+                if let url = URL(string: "https://truecarry.app/pricing") {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Course Mode is available with Basic, Pro, or Unlimited plans.")
         }
         .fullScreenCover(isPresented: $showCourseMode) {
             if let uid = session.currentUser?.id,
@@ -113,7 +138,7 @@ struct TrueCarryPlayView: View {
     private var pageTitleSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Play")
-                .font(.system(size: 48, weight: .black, design: .serif))
+                .font(.system(size: 42, weight: .semibold))
                 .foregroundColor(TCTheme.textPrimary)
             Text("Choose a mode and set up your session.")
                 .font(.system(size: 14))
@@ -131,8 +156,7 @@ struct TrueCarryPlayView: View {
                 title: "Range Mode",
                 subtitle: "Dial in your game. Track every shot.",
                 accent: TCTheme.cyan,
-                isSelected: selectedMode == .range,
-                illustration: AnyView(TCModeRangeIllustration())
+                isSelected: selectedMode == .range
             ) {
                 selectedMode = .range
             }
@@ -142,8 +166,7 @@ struct TrueCarryPlayView: View {
                 title: "Sim Mode",
                 subtitle: "Play virtual courses indoors.",
                 accent: TCTheme.gold,
-                isSelected: selectedMode == .sim,
-                illustration: AnyView(TCModeSimIllustration())
+                isSelected: selectedMode == .sim
             ) {
                 selectedMode = .sim
             }
@@ -153,8 +176,7 @@ struct TrueCarryPlayView: View {
                 title: "Course Mode",
                 subtitle: "Play real courses. On the course.",
                 accent: TCTheme.sage,
-                isSelected: selectedMode == .course,
-                illustration: AnyView(TCModeCourseIllustration())
+                isSelected: selectedMode == .course
             ) {
                 selectedMode = .course
             }
@@ -227,7 +249,13 @@ struct TrueCarryPlayView: View {
         switch selectedMode {
         case .range:  showCamera = true
         case .sim:    showSim = true
-        case .course: showCourseSearch = true
+        case .course:
+            let decision = session.entitlementVM.canPerform(.courseMode)
+            if decision.allowed {
+                showCourseSearch = true
+            } else {
+                showUpgradeAlert = true
+            }
         }
     }
 
@@ -236,12 +264,20 @@ struct TrueCarryPlayView: View {
     private var chipsRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
-                TCChipButton(title: "Use Last Setup", icon: "arrow.clockwise") {}
-                TCChipButton(title: "Choose Club", icon: "figure.golf") {}
+                TCChipButton(title: "Use Last Setup", icon: "arrow.clockwise") {
+                    handleStart()
+                }
+                TCChipButton(title: "Choose Club", icon: "figure.golf") {
+                    selectedMode = .range
+                    showCamera = true
+                }
                 TCChipButton(title: "Saved Sessions", icon: "list.bullet") {
                     showSessions = true
                 }
-                TCChipButton(title: "Sim History", icon: "clock") {}
+                TCChipButton(title: "Sim History", icon: "clock") {
+                    selectedMode = .sim
+                    showSim = true
+                }
             }
             .padding(.horizontal, 2)
         }
@@ -257,21 +293,15 @@ struct TrueCarryPlayView: View {
                 .foregroundColor(TCTheme.gold)
 
             HStack(spacing: 14) {
-                // Course aerial thumbnail
-                TCCourseAerialThumbnail(seed: 0)
-                    .frame(width: 70, height: 80)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                Image(systemName: "flag")
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundColor(TCTheme.textMuted)
+                    .frame(width: 34, alignment: .leading)
 
-                // Hole info
                 VStack(alignment: .leading, spacing: 6) {
-                    ZStack {
-                        Circle()
-                            .fill(TCTheme.goldGradient)
-                            .frame(width: 28, height: 28)
-                        Text("1")
-                            .font(.system(size: 13, weight: .black))
-                            .foregroundColor(TCTheme.background)
-                    }
+                    Text("Hole 1")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(TCTheme.textSecondary)
 
                     Text("Par 4  ·  392 yds")
                         .font(.system(size: 12, weight: .medium))
@@ -289,7 +319,7 @@ struct TrueCarryPlayView: View {
                     .foregroundColor(TCTheme.textMuted)
             }
         }
-        .tcGlassCard()
+        .tcCard()
         .contentShape(Rectangle())
         .onTapGesture {
             showCourseSearch = true

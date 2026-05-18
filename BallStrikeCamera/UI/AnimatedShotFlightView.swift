@@ -53,7 +53,7 @@ struct AnimatedShotFlightView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
                 .padding(12)
                 .transition(.opacity)

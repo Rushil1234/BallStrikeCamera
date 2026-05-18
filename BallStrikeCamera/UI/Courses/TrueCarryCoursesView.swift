@@ -6,6 +6,7 @@ struct TrueCarryCoursesView: View {
     @State private var selectedCoursesTab = "My Courses"
     @State private var showCourseSearch  = false
     @State private var showCourseMode    = false
+    @State private var showProfile       = false
     @State private var selectedCourse: GolfCourse?
     @State private var selectedTeeBox: TeeBox?
     @State private var rounds: [CourseRound] = []
@@ -48,8 +49,8 @@ struct TrueCarryCoursesView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
-                        TCIconButton(icon: "magnifyingglass") {}
-                        TCBellButton(badgeCount: 0) {}
+                        TCIconButton(icon: "magnifyingglass") { showCourseSearch = true }
+                        TCProfileAvatarButton(initials: userInitials) { showProfile = true }
                     }
                     VStack(spacing: TCTheme.sectionGap) {
                         TCUnderlineTabs(tabs: coursesTabs, selected: $selectedCoursesTab)
@@ -91,6 +92,10 @@ struct TrueCarryCoursesView: View {
                 )
             }
         }
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { TrueCarryProfileView() }
+                .preferredColorScheme(.dark)
+        }
         .task {
             rounds = (try? await session.backend.loadCourseRounds(
                 userId: session.currentUser?.id ?? UUID()
@@ -104,7 +109,7 @@ struct TrueCarryCoursesView: View {
         VStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(firstName)'s Journey")
-                    .font(.system(size: 28, weight: .bold, design: .serif))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(TCTheme.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text("Your complete golfing history in one place.")
@@ -160,12 +165,7 @@ struct TrueCarryCoursesView: View {
                             .font(.system(size: 12, weight: .semibold))
                     }
                     .foregroundColor(TCTheme.gold)
-                    .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .overlay(
-                        Capsule()
-                            .strokeBorder(TCTheme.gold.opacity(0.45), lineWidth: 1)
-                    )
                 }
                 .buttonStyle(.plain)
             }
@@ -201,58 +201,26 @@ struct TrueCarryCoursesView: View {
         Button {
             showCourseSearch = true
         } label: {
-            ZStack(alignment: .bottomLeading) {
-                // Background fairway gradient
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.04, green: 0.14, blue: 0.08),
-                        Color(red: 0.02, green: 0.08, blue: 0.04)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                // Subtle topo texture
-                TopoLinesCanvas()
-                    .opacity(0.06)
-
-                // Content overlay
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("DISCOVER")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(TCTheme.gold)
-                            .tracking(2)
-                        Text("Top Courses")
-                            .font(.system(size: 22, weight: .black, design: .serif))
-                            .foregroundColor(TCTheme.textPrimary)
-                        Text("Explore highly rated courses curated by golfers like you.")
-                            .font(.system(size: 12))
-                            .foregroundColor(TCTheme.textSecondary)
-                            .lineLimit(2)
-                        Spacer(minLength: 8)
-                    }
-                    Spacer()
-                    // Arrow circle
-                    ZStack {
-                        Circle()
-                            .fill(TCTheme.goldGradient)
-                            .frame(width: 36, height: 36)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.black)
-                    }
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Discover")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(TCTheme.textMuted)
+                        .tracking(1.4)
+                    Text("Top Courses")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text("Explore highly rated courses curated by golfers like you.")
+                        .font(.system(size: 12))
+                        .foregroundColor(TCTheme.textSecondary)
+                        .lineLimit(2)
                 }
-                .padding(20)
+                Spacer()
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(TCTheme.textMuted)
             }
-            .frame(height: 140)
-            .clipShape(
-                RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
-                    .strokeBorder(TCTheme.borderSage, lineWidth: 1)
-            )
+            .tcCard()
         }
         .buttonStyle(.plain)
     }

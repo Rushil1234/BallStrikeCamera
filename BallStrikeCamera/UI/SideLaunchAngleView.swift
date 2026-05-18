@@ -160,7 +160,7 @@ struct SideLaunchAngleView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(Self.pathColor.opacity(0.70))
                 Text(vlaDegrees.map { String(format: "%.1f°", $0) } ?? "--")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundColor(Self.pathColor)
             }
 

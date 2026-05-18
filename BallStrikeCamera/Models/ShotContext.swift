@@ -18,4 +18,12 @@ struct ShotContext {
     var holeYardage: Int?          = nil
     var courseName: String?        = nil
     var holeHandicap: Int?         = nil
+
+    var shotMode: ShotMode {
+        switch sourceMode {
+        case .range:  return .range
+        case .sim:    return .sim
+        case .course: return .course
+        }
+    }
 }

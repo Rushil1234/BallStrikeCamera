@@ -1,13 +1,16 @@
 import SwiftUI
 
 struct ClubsInBagView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var session: AuthSessionStore
     @StateObject private var vm: ClubBagViewModel
     @State private var showAddClub = false
     @State private var editingClub: UserClub? = nil
     @State private var isEditMode = false
+    private let userId: UUID
 
     init(userId: UUID, backend: AppBackend) {
+        self.userId = userId
         _vm = StateObject(wrappedValue: ClubBagViewModel(userId: userId, backend: backend))
     }
 
@@ -30,6 +33,18 @@ struct ClubsInBagView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text("Back")
+                    }
+                }
+                .foregroundColor(BSTheme.textMuted)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
                     Button(isEditMode ? "Done" : "Edit") {
@@ -44,7 +59,7 @@ struct ClubsInBagView: View {
             }
         }
         .sheet(isPresented: $showAddClub) {
-            EditClubView(mode: .add(userId: vm.clubs.first?.userId ?? UUID())) { newClub in
+            EditClubView(mode: .add(userId: userId)) { newClub in
                 Task { await vm.addClub(newClub) }
             }
         }
@@ -90,11 +105,11 @@ struct ClubsInBagView: View {
             Button { showAddClub = true } label: {
                 Text("Add Clubs")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.black)
+                    .foregroundColor(.white)
                     .padding(.horizontal, 28)
                     .padding(.vertical, 12)
                     .background(BSTheme.electricCyan)
-                    .clipShape(Capsule())
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             }
             .buttonStyle(.plain)
         }
@@ -120,7 +135,13 @@ private struct ClubRow: View {
                 Text(club.name)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(BSTheme.textPrimary)
-                Text("\(club.type.rawValue) · \(club.expectedCarryYards) yd carry")
+                if let brand = club.brand?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !brand.isEmpty {
+                    Text(brand)
+                        .font(.system(size: 12))
+                        .foregroundColor(BSTheme.textSecondary)
+                }
+                Text(detailText)
                     .font(.system(size: 12))
                     .foregroundColor(BSTheme.textMuted)
             }
@@ -138,5 +159,15 @@ private struct ClubRow: View {
                 .strokeBorder(BSTheme.border, lineWidth: 1)
         )
         .padding(.vertical, 3)
+    }
+
+    private var detailText: String {
+        var parts = [club.type.rawValue]
+        if let loft = club.loftDegrees {
+            parts.append(String(format: "%.1f° loft", loft))
+        }
+        parts.append("\(club.expectedCarryYards) yd carry")
+        parts.append("\(club.expectedTotalYards) yd total")
+        return parts.joined(separator: " · ")
     }
 }

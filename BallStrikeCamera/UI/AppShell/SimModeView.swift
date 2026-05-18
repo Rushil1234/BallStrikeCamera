@@ -10,6 +10,7 @@ private struct SimProviderOption: Identifiable {
 struct SimModeView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedProvider = "GSPro"
+    @State private var scanMessage: String?
 
     private let providers: [SimProviderOption] = [
         SimProviderOption(name: "GSPro",          subtitle: "Most popular — full feature set",   icon: "display"),
@@ -57,6 +58,14 @@ struct SimModeView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .alert("Simulator Scan", isPresented: Binding(
+            get: { scanMessage != nil },
+            set: { if !$0 { scanMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(scanMessage ?? "")
+        }
     }
 
     private var subheader: some View {
@@ -86,15 +95,17 @@ struct SimModeView: View {
                     .lineLimit(2)
             }
             Spacer()
-            Button {} label: {
+            Button {
+                scanMessage = "\(selectedProvider) network discovery is not connected yet. Local JSON export is available once shots are saved."
+            } label: {
                 Text("Scan")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(BSTheme.electricCyan)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .background(BSTheme.electricCyan.opacity(0.12))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().strokeBorder(BSTheme.electricCyan.opacity(0.35), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(BSTheme.electricCyan.opacity(0.35), lineWidth: 1))
             }
             .buttonStyle(.plain)
         }

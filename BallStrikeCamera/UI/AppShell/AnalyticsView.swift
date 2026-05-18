@@ -79,10 +79,10 @@ struct AnalyticsView: View {
                             .padding(.vertical, 8)
                             .background(
                                 selectedClub == c
-                                    ? AnyView(Capsule().fill(BSTheme.rangeGradient))
-                                    : AnyView(Capsule().fill(BSTheme.panel))
+                                    ? AnyView(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(BSTheme.rangeGradient))
+                                    : AnyView(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(BSTheme.panel))
                             )
-                            .overlay(Capsule().strokeBorder(BSTheme.border, lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(BSTheme.border, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -151,8 +151,8 @@ struct AnalyticsView: View {
                 // Mini progress bar
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(BSTheme.panelRaised).frame(height: 4)
-                        Capsule()
+                        RoundedRectangle(cornerRadius: 4, style: .continuous).fill(BSTheme.panelRaised).frame(height: 4)
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .fill(BSTheme.rangeGradient)
                             .frame(width: geo.size.width * club.barFraction, height: 4)
                     }

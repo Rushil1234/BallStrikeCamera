@@ -58,6 +58,8 @@ struct UserClub: Codable, Identifiable {
     var createdAt: Date = Date()
     var shotCount: Int = 0
     var sortOrder: Int = 0
+    var brand: String? = nil
+    var loftDegrees: Double? = nil
 }
 
 enum ClubType: String, Codable, CaseIterable {
@@ -83,25 +85,26 @@ enum ClubType: String, Codable, CaseIterable {
 // Default starter bag for a right-handed golfer (carry/total in yards)
 extension UserClub {
     static func defaultBag(userId: UUID) -> [UserClub] {
-        let clubs: [(String, ClubType, Int, Int, Int)] = [
-            ("Driver",   .driver,      235, 255, 0),
-            ("3 Wood",   .fairwayWood, 210, 228, 1),
-            ("Hybrid",   .hybrid,      195, 210, 2),
-            ("4 Iron",   .iron,        185, 198, 3),
-            ("5 Iron",   .iron,        175, 188, 4),
-            ("6 Iron",   .iron,        165, 178, 5),
-            ("7 Iron",   .iron,        155, 167, 6),
-            ("8 Iron",   .iron,        144, 155, 7),
-            ("9 Iron",   .iron,        132, 142, 8),
-            ("PW",       .wedge,       118, 126, 9),
-            ("50°",      .wedge,       105, 112, 10),
-            ("54°",      .wedge,       90,  96,  11),
-            ("58°",      .wedge,       75,  80,  12),
-            ("Putter",   .putter,      0,   0,   13),
+        let clubs: [(String, ClubType, Int, Int, Int, Double?)] = [
+            ("Driver",   .driver,      235, 255, 0,  10.5),
+            ("3 Wood",   .fairwayWood, 210, 228, 1,  15.0),
+            ("Hybrid",   .hybrid,      195, 210, 2,  19.0),
+            ("4 Iron",   .iron,        185, 198, 3,  22.0),
+            ("5 Iron",   .iron,        175, 188, 4,  25.0),
+            ("6 Iron",   .iron,        165, 178, 5,  28.0),
+            ("7 Iron",   .iron,        155, 167, 6,  32.0),
+            ("8 Iron",   .iron,        144, 155, 7,  36.0),
+            ("9 Iron",   .iron,        132, 142, 8,  40.0),
+            ("PW",       .wedge,       118, 126, 9,  45.0),
+            ("50°",      .wedge,       105, 112, 10, 50.0),
+            ("54°",      .wedge,       90,  96,  11, 54.0),
+            ("58°",      .wedge,       75,  80,  12, 58.0),
+            ("Putter",   .putter,      0,   0,   13, nil),
         ]
-        return clubs.map { name, type, carry, total, order in
+        return clubs.map { name, type, carry, total, order, loft in
             UserClub(userId: userId, name: name, type: type,
-                     expectedCarryYards: carry, expectedTotalYards: total, sortOrder: order)
+                     expectedCarryYards: carry, expectedTotalYards: total, sortOrder: order,
+                     loftDegrees: loft)
         }
     }
 }
@@ -150,6 +153,29 @@ struct SavedShotMetrics: Codable {
     var clubPathDegrees: Double = 0
     var faceAngleDegrees: Double = 0
     var faceToPathDegrees: Double = 0
+}
+
+extension SavedShotMetrics {
+    init(_ metrics: ShotMetricsResult) {
+        let hla = metrics.ballLaunch.hlaDegrees ?? 0
+        self.init(
+            carryYards: metrics.distance.carryYards ?? 0,
+            totalYards: metrics.distance.totalYards ?? 0,
+            rolloutYards: metrics.distance.rolloutYards ?? 0,
+            ballSpeedMph: metrics.ballLaunch.ballSpeedMph ?? 0,
+            clubSpeedMph: metrics.club.clubSpeedMph ?? 0,
+            smashFactor: metrics.smashFactor ?? 0,
+            hlaDegrees: abs(hla),
+            hlaDirection: hla < 0 ? "left" : hla > 0 ? "right" : "",
+            vlaDegrees: metrics.ballLaunch.vlaDegrees ?? 0,
+            backspinRpm: metrics.spin.estimatedBackspinRpm ?? 0,
+            sidespinRpm: metrics.spin.estimatedSidespinRpmSigned ?? 0,
+            spinAxisDegrees: metrics.spin.estimatedSpinAxisDegreesSigned ?? 0,
+            clubPathDegrees: metrics.clubPath.clubPathDegreesSigned ?? 0,
+            faceAngleDegrees: metrics.faceAngle.faceAngleDegreesSigned ?? 0,
+            faceToPathDegrees: metrics.faceAngle.faceToPathDegreesSigned ?? 0
+        )
+    }
 }
 
 struct SavedShotMedia: Codable {

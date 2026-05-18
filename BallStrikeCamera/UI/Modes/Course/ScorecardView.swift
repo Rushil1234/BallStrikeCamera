@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ScorecardView: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var showRoundSummary = false
 
     let round: CourseRound
     let course: GolfCourse?
@@ -63,7 +64,9 @@ struct ScorecardView: View {
                             TCPrimaryGoldButton(title: "Back to Hole", icon: "arrow.left") {
                                 dismiss()
                             }
-                            TCOutlineButton(title: "Round Summary", color: TCTheme.sage) {}
+                            TCOutlineButton(title: "Round Summary", color: TCTheme.sage) {
+                                showRoundSummary = true
+                            }
                         }
                         .padding(.horizontal, TCTheme.hPad)
 
@@ -75,6 +78,11 @@ struct ScorecardView: View {
             }
         }
         .navigationBarHidden(true)
+        .alert("Round Summary", isPresented: $showRoundSummary) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(roundSummaryText)
+        }
     }
 
     // MARK: - Header Bar
@@ -96,8 +104,13 @@ struct ScorecardView: View {
             TrueCarryLogo(size: 16)
             Spacer()
 
-            TCIconButton(icon: "square.and.arrow.up") {}
-                .frame(width: 44)
+            ShareLink(item: roundSummaryText) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(TCTheme.textMuted)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, TCTheme.hPad)
         .padding(.vertical, 12)
@@ -105,17 +118,19 @@ struct ScorecardView: View {
         .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .bottom)
     }
 
+    private var roundSummaryText: String {
+        let diff = scoreDiff == 0 ? "E" : scoreDiff > 0 ? "+\(scoreDiff)" : "\(scoreDiff)"
+        return "\(round.courseName)\nScore: \(totalScore) (\(diff))\nFairways: \(round.scoreSummary.fairwaysHit)\nGIR: \(round.scoreSummary.greensInReg)\nPutts: \(round.scoreSummary.totalPutts)"
+    }
+
     // MARK: - Course Card
 
     private var courseCard: some View {
         HStack(spacing: 14) {
-            TCCourseAerialThumbnail(seed: abs(round.courseName.hashValue) % 4)
-                .frame(width: 60, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(TCTheme.borderSage, lineWidth: 1)
-                )
+            Image(systemName: "flag")
+                .font(.system(size: 18, weight: .regular))
+                .foregroundColor(TCTheme.textMuted)
+                .frame(width: 28, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(round.courseName)
@@ -136,7 +151,7 @@ struct ScorecardView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text(scoreDiff == 0 ? "E" : scoreDiff > 0 ? "+\(scoreDiff)" : "\(scoreDiff)")
-                    .font(.system(size: 28, weight: .black, design: .rounded))
+                    .font(.system(size: 28, weight: .black))
                     .foregroundColor(scoreDiff < 0 ? TCTheme.sage : scoreDiff == 0 ? TCTheme.cyan : TCTheme.textPrimary)
                 Text("Total")
                     .font(.system(size: 10))
@@ -356,7 +371,7 @@ struct ScorecardView: View {
                 : "\(value)"
 
             Text(display)
-                .font(.system(size: 18, weight: .black, design: .rounded))
+                .font(.system(size: 18, weight: .black))
                 .foregroundColor(color)
             Text(label)
                 .font(.system(size: 9, weight: .bold))

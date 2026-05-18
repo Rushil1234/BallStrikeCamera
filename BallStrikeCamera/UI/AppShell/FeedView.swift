@@ -19,6 +19,7 @@ private struct FeedPostMock: Identifiable {
 
 struct FeedView: View {
     @EnvironmentObject var session: AuthSessionStore
+    @State private var feedMessage: String?
 
     private let posts: [FeedPostMock] = [
         FeedPostMock(
@@ -112,6 +113,14 @@ struct FeedView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
+        .alert("Feed", isPresented: Binding(
+            get: { feedMessage != nil },
+            set: { if !$0 { feedMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(feedMessage ?? "")
+        }
     }
 
     private var headerRow: some View {
@@ -120,7 +129,7 @@ struct FeedView: View {
                 .font(.system(size: 14))
                 .foregroundColor(BSTheme.textMuted)
             Spacer()
-            Button {} label: {
+            Button { feedMessage = "Friend discovery will use the feed backend once social profiles are added." } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "person.badge.plus")
                     Text("Find Friends")

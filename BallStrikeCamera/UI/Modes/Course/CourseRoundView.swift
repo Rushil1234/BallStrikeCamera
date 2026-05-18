@@ -175,11 +175,11 @@ struct CourseRoundView: View {
                 } label: {
                     Text("Next Hole")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                         .padding(.horizontal, 24)
                         .padding(.vertical, 10)
                         .background(BSTheme.fairwayGreen)
-                        .clipShape(Capsule())
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
                 .buttonStyle(.plain)
             } else {
@@ -188,11 +188,11 @@ struct CourseRoundView: View {
                 } label: {
                     Text("Finish Round")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.black)
+                        .foregroundColor(.white)
                         .padding(.horizontal, 24)
                         .padding(.vertical, 10)
                         .background(BSTheme.gold)
-                        .clipShape(Capsule())
+                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
