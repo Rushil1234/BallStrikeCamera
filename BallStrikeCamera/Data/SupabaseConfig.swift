@@ -36,8 +36,13 @@ struct SupabaseConfig {
             return nil
         }
 
-        guard !anonKey.hasPrefix("YOUR_") else {
+        guard !anonKey.hasPrefix("YOUR_"), !anonKey.hasSuffix("...") else {
             print("[TrueCarry] Supabase anon key is a placeholder — using LocalBackendService")
+            return nil
+        }
+
+        guard !normalized.contains("YOUR_") else {
+            print("[TrueCarry] Supabase URL is a placeholder — using LocalBackendService")
             return nil
         }
 
