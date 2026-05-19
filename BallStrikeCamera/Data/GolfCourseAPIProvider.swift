@@ -95,12 +95,19 @@ final class GolfCourseAPIProvider: CourseProvider {
     // TODO: Adjust key names to match actual GolfCourseAPI JSON schema.
 
     private func decodeSearchResponse(_ data: Data) throws -> [GolfCourse] {
-        // Try wrapping object first, then plain array
-        if let wrapper = try? AppStorageManager.decoder.decode(CourseSearchWrapper.self, from: data) {
+        do {
+            let wrapper = try AppStorageManager.decoder.decode(CourseSearchWrapper.self, from: data)
+            #if DEBUG
+            print("[GolfCourseAPI] decoded \(wrapper.courses.count) courses from wrapper")
+            #endif
             return wrapper.courses.map { mapToCourse($0) }
+        } catch {
+            #if DEBUG
+            print("[GolfCourseAPI] wrapper decode failed: \(error)")
+            #endif
+            let raw = try AppStorageManager.decoder.decode([RawCourse].self, from: data)
+            return raw.map { mapToCourse($0) }
         }
-        let raw = try AppStorageManager.decoder.decode([RawCourse].self, from: data)
-        return raw.map { mapToCourse($0) }
     }
 
     private func decodeCourseDetail(_ data: Data) throws -> GolfCourse {
@@ -119,17 +126,17 @@ final class GolfCourseAPIProvider: CourseProvider {
         var course: RawCourse
     }
     private struct RawCourse: Codable {
-        var id: String?
-        var club_name: String?      // or "name"
-        var name: String?
-        var city: String?
-        var state: String?
-        var country: String?
+        var id: Int?
+        var club_name: String?
+        var course_name: String?
         var location: RawLocation?
         var tees: RawTees?
         var holes: [RawHole]?
     }
     private struct RawLocation: Codable {
+        var city: String?
+        var state: String?
+        var country: String?
         var latitude: Double?
         var longitude: Double?
     }
@@ -155,21 +162,22 @@ final class GolfCourseAPIProvider: CourseProvider {
         var number: Int?
         var par: Int?
         var handicap: Int?
+        var yardage: Int?
         var yards: Int?
         var distance: Int?
     }
 
     private func mapToCourse(_ raw: RawCourse) -> GolfCourse {
-        let id   = raw.id ?? UUID().uuidString
-        let name = raw.club_name ?? raw.name ?? "Unknown Course"
+        let id   = raw.id.map { String($0) } ?? UUID().uuidString
+        let name = raw.club_name ?? raw.course_name ?? "Unknown Course"
         let teeBoxes = buildTeeBoxes(raw: raw, courseId: id)
         let holes    = buildHoles(raw: raw, courseId: id, teeBoxes: teeBoxes)
         return GolfCourse(
             id: id,
             name: name,
-            city: raw.city ?? "",
-            state: raw.state ?? "",
-            country: raw.country ?? "US",
+            city: raw.location?.city ?? "",
+            state: raw.location?.state ?? "",
+            country: raw.location?.country ?? "US",
             latitude: raw.location?.latitude,
             longitude: raw.location?.longitude,
             holes: holes,
@@ -203,7 +211,7 @@ final class GolfCourseAPIProvider: CourseProvider {
             for rawHole in tee.holes ?? [] {
                 let num = rawHole.hole_number ?? rawHole.number ?? 0
                 var hole = holesMap[num] ?? GolfHole(id: "\(courseId)-hole-\(num)", courseId: courseId, number: num, par: rawHole.par ?? 4, handicap: rawHole.handicap)
-                let yds = rawHole.yards ?? rawHole.distance ?? 0
+                let yds = rawHole.yardage ?? rawHole.yards ?? rawHole.distance ?? 0
                 hole.teeYardsByTeeBox[teeBox.id] = yds
                 holesMap[num] = hole
             }
