@@ -4,7 +4,25 @@ import SwiftUI
 
 struct TrueCarryBackground: View {
     var body: some View {
-        TCTheme.background.ignoresSafeArea()
+        ZStack {
+            TCTheme.background
+            RadialGradient(
+                colors: [TCTheme.sage.opacity(0.20), .clear],
+                center: .topLeading,
+                startRadius: 20,
+                endRadius: 460
+            )
+            RadialGradient(
+                colors: [TCTheme.gold.opacity(0.12), .clear],
+                center: .bottomTrailing,
+                startRadius: 30,
+                endRadius: 420
+            )
+            TopoLinesCanvas()
+                .opacity(0.055)
+                .blendMode(.screen)
+        }
+        .ignoresSafeArea()
     }
 }
 
