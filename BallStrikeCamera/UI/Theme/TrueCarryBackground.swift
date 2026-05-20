@@ -3,24 +3,41 @@ import SwiftUI
 // MARK: - True Carry Background
 
 struct TrueCarryBackground: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         ZStack {
             TCTheme.background
             RadialGradient(
-                colors: [TCTheme.sage.opacity(0.20), .clear],
+                colors: [Color.white.opacity(0.025), .clear],
+                center: .top,
+                startRadius: 20,
+                endRadius: 520
+            )
+            RadialGradient(
+                colors: [TCTheme.gold.opacity(0.040), .clear],
                 center: .topLeading,
                 startRadius: 20,
                 endRadius: 460
             )
             RadialGradient(
-                colors: [TCTheme.gold.opacity(0.12), .clear],
-                center: .bottomTrailing,
+                colors: [TCTheme.sage.opacity(0.030), .clear],
+                center: .bottomLeading,
                 startRadius: 30,
                 endRadius: 420
             )
-            TopoLinesCanvas()
-                .opacity(0.055)
-                .blendMode(.screen)
+            if reduceMotion {
+                TopoLinesCanvas(phase: 0)
+                    .opacity(0.06)
+                    .blendMode(.screen)
+            } else {
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                    let phase = timeline.date.timeIntervalSinceReferenceDate
+                    TopoLinesCanvas(phase: phase)
+                        .opacity(0.06)
+                        .blendMode(.screen)
+                }
+            }
         }
         .ignoresSafeArea()
     }
@@ -29,10 +46,13 @@ struct TrueCarryBackground: View {
 // MARK: - Topographic Canvas
 
 struct TopoLinesCanvas: View {
+    var phase: TimeInterval = 0
+
     var body: some View {
         Canvas { ctx, size in
             let w = size.width
             let h = size.height
+            let flow = CGFloat(phase.truncatingRemainder(dividingBy: 8)) / 8
             var path = Path()
             let groups: [(y: CGFloat, n: Int, amp: CGFloat)] = [
                 (h * 0.15, 7, h * 0.048),
@@ -41,27 +61,20 @@ struct TopoLinesCanvas: View {
             ]
             for g in groups {
                 for i in 0..<g.n {
-                    let y = g.y + CGFloat(i) * 22
+                    let wave = sin((flow * .pi * 2) + CGFloat(i) * 0.45)
+                    let y = g.y + CGFloat(i) * 22 + wave * 5
                     let amp = g.amp * (1 - CGFloat(i) * 0.07)
-                    path.move(to: CGPoint(x: -20, y: y))
+                    let drift = (flow * 44) - 22
+                    path.move(to: CGPoint(x: -64 + drift, y: y))
                     path.addCurve(
-                        to: CGPoint(x: w + 20, y: y + amp * 0.3),
-                        control1: CGPoint(x: w * 0.25, y: y - amp),
-                        control2: CGPoint(x: w * 0.75, y: y + amp * 0.8)
+                        to: CGPoint(x: w + 64 + drift, y: y + amp * 0.3),
+                        control1: CGPoint(x: w * 0.25 + drift, y: y - amp),
+                        control2: CGPoint(x: w * 0.75 + drift, y: y + amp * 0.8)
                     )
                 }
             }
-            ctx.stroke(path, with: .color(Color.white),
-                       style: StrokeStyle(lineWidth: 0.75, lineCap: .round))
-            var dots = Path()
-            let sp: CGFloat = 38
-            var dx: CGFloat = sp / 2
-            while dx < w { var dy: CGFloat = sp / 2
-                while dy < h {
-                    dots.addEllipse(in: CGRect(x: dx - 0.9, y: dy - 0.9, width: 1.8, height: 1.8))
-                    dy += sp
-                }; dx += sp }
-            ctx.fill(dots, with: .color(Color.white.opacity(0.45)))
+            ctx.stroke(path, with: .color(TCTheme.cream),
+                       style: StrokeStyle(lineWidth: 0.65, lineCap: .round))
         }
     }
 }
@@ -72,10 +85,10 @@ struct TrueCarryLogo: View {
     var size: CGFloat = 24
 
     var body: some View {
-        Text("TRUE CARRY")
-            .font(.system(size: size * 0.78, weight: .semibold))
-            .tracking(1.2)
-            .foregroundColor(TCTheme.textPrimary)
+        Text("True Carry")
+            .font(.system(size: size, weight: .medium, design: .serif))
+            .tracking(-0.25)
+            .foregroundColor(TCTheme.cream)
     }
 }
 

@@ -4,6 +4,7 @@ struct LoginView: View {
     @EnvironmentObject var session: AuthSessionStore
     @StateObject private var vm = AuthViewModel()
     @State private var showCreate = false
+    @State private var hasAppeared = false
 
     var body: some View {
         ZStack {
@@ -24,6 +25,13 @@ struct LoginView: View {
                     Spacer(minLength: 48)
                 }
                 .padding(.horizontal, TCTheme.hPad)
+                .opacity(hasAppeared ? 1 : 0)
+                .offset(y: hasAppeared ? 0 : 18)
+            }
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.65)) {
+                hasAppeared = true
             }
         }
         .sheet(isPresented: $showCreate) {
@@ -38,34 +46,37 @@ struct LoginView: View {
     private var logoSection: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(TCTheme.panelRaised)
-                        .frame(width: 58, height: 58)
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(TCTheme.borderGold, lineWidth: 1)
-                        .frame(width: 58, height: 58)
-                    Image(systemName: "flag.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(TCTheme.gold)
+                VStack(alignment: .leading, spacing: 5) {
+                    TrueCarryLogo(size: 25)
+                    Text("THE CAMERA LAUNCH MONITOR")
+                        .font(.system(size: 10, weight: .medium))
+                        .tracking(3.0)
+                        .foregroundColor(TCTheme.textMuted)
                 }
                 Spacer()
-                Text("01")
-                    .font(.system(size: 11, weight: .semibold))
+                Text("SIGN IN")
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundColor(TCTheme.textUltraMuted)
-                    .tracking(1.2)
+                    .tracking(2.0)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                TrueCarryLogo(size: 28)
-                Text("Track smarter rounds with launch monitor speed and course-ready GPS.")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundColor(TCTheme.textPrimary)
-                    .lineSpacing(1)
+            VStack(alignment: .leading, spacing: 12) {
+                (Text("Know every\n")
+                    .foregroundColor(TCTheme.cream)
+                 + Text("yard")
+                    .italic()
+                    .foregroundColor(TCTheme.goldLight)
+                 + Text(" you carry.")
+                    .foregroundColor(TCTheme.cream))
+                    .font(.system(size: 48, weight: .regular, design: .serif))
+                    .tracking(-1.2)
+                    .lineSpacing(-4)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Minimal setup. Clean data. No fake course maps.")
+
+                Text("Sign in to sync your bag, sessions, rounds, and course-ready GPS maps.")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(TCTheme.textMuted)
+                    .lineSpacing(4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -78,7 +89,7 @@ struct LoginView: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Welcome back")
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.system(size: 19, weight: .medium, design: .serif))
                         .foregroundColor(TCTheme.textPrimary)
                     Text("Sign in to sync your bag, sessions, and rounds.")
                         .font(.system(size: 12))
@@ -144,16 +155,16 @@ struct LoginView: View {
         Button {
             Task { await vm.continueAsGuest(store: session) }
         } label: {
-            Text("Continue as Guest")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(TCTheme.textSecondary)
+            Text("Continue as guest")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(TCTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(TCTheme.panelRaised)
+                .background(TCTheme.background)
                 .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
-                        .strokeBorder(TCTheme.border, lineWidth: 1)
+                        .strokeBorder(TCTheme.borderMedium, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -173,7 +184,7 @@ struct LoginView: View {
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(TCTheme.gold)
             Text(title)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 10, weight: .medium))
                 .foregroundColor(TCTheme.textMuted)
                 .lineLimit(1)
         }
@@ -204,7 +215,7 @@ struct CreateAccountView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         VStack(alignment: .leading, spacing: 7) {
                             Text("Create Account")
-                                .font(.system(size: 30, weight: .semibold))
+                                .font(.system(size: 34, weight: .regular, design: .serif))
                                 .foregroundColor(TCTheme.textPrimary)
                             Text("Build your True Carry profile and keep your bag, shots, and rounds in sync.")
                                 .font(.system(size: 14))

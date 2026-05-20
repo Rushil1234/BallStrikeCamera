@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AppRootView: View {
     @EnvironmentObject var session: AuthSessionStore
+    @State private var splashVisible = false
 
     var body: some View {
         Group {
@@ -14,30 +15,26 @@ struct AppRootView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.7)) {
+                splashVisible = true
+            }
+        }
     }
 
     private var splashView: some View {
         ZStack {
             TrueCarryBackground()
             VStack(spacing: 18) {
-                ZStack {
-                    Circle()
-                        .fill(TCTheme.panelRaised)
-                        .frame(width: 74, height: 74)
-                    Circle()
-                        .strokeBorder(TCTheme.borderGold, lineWidth: 1.5)
-                        .frame(width: 74, height: 74)
-                    Image(systemName: "flag.fill")
-                        .font(.system(size: 28, weight: .semibold))
-                        .foregroundColor(TCTheme.gold)
-                }
                 VStack(spacing: 6) {
-                    TrueCarryLogo(size: 28)
+                    TrueCarryLogo(size: 32)
                     Text("Loading your game")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(TCTheme.textMuted)
                 }
             }
+            .opacity(splashVisible ? 1 : 0)
+            .offset(y: splashVisible ? 0 : 12)
         }
     }
 }
