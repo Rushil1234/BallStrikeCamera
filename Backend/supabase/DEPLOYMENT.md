@@ -18,6 +18,9 @@ Dashboard: https://supabase.com/dashboard/project/aoxturoezgecwceudeef
    Backend/supabase/migrations/004_storage_policies.sql
    Backend/supabase/migrations/005_course_geometries.sql
    Backend/supabase/migrations/006_geometry_backfill_pipeline.sql
+   Backend/supabase/migrations/007_storage_buckets.sql
+   Backend/supabase/migrations/008_geometry_backfill_upsert_policy.sql
+   Backend/supabase/migrations/009_geometry_backfill_policy_hardening.sql
    ```
 
 3. Verify in Table Editor that these tables exist:
@@ -39,11 +42,10 @@ Dashboard: https://supabase.com/dashboard/project/aoxturoezgecwceudeef
 4. Verify RLS is enabled on each table:
    Dashboard → Authentication → Policies → confirm each table has policies.
 
-5. Create Storage buckets:
-   Dashboard → Storage → New bucket
-   - `avatars` — private
-   - `shot-media` — private
-   - `course-cache` — private
+5. Verify Storage buckets exist:
+   - `profile-images` — private
+   - `shot-videos` — private
+   - `shot-frames` — private
 
 ---
 

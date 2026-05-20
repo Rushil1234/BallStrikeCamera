@@ -36,6 +36,9 @@ Never commit `Secrets.plist`. It is in `.gitignore`.
    supabase/migrations/004_storage_policies.sql
    supabase/migrations/005_course_geometries.sql
    supabase/migrations/006_geometry_backfill_pipeline.sql
+   supabase/migrations/007_storage_buckets.sql
+   supabase/migrations/008_geometry_backfill_upsert_policy.sql
+   supabase/migrations/009_geometry_backfill_policy_hardening.sql
    ```
 3. Create storage buckets: `profile-images`, `shot-videos`, `shot-frames`
 4. Deploy Stripe webhook edge function (see `stripe/README.md`)
