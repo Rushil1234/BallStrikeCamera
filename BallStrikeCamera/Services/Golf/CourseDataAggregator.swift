@@ -60,9 +60,10 @@ final class CourseDataAggregator {
         let merged = merge(base: course, osm: geometry, scorecard: scorecard)
         OSMGolfService.shared.cacheMergedCourse(merged)
         if merged.hasTrustedGeometry {
-            try? await backend?.saveCourseGeometry(merged)
+            try? await sharedGeometryBackend(preferred: backend)?.saveCourseGeometry(merged)
         } else if isUsableCachedCourse(merged) {
-            try? await backend?.requestCourseGeometryBackfill(merged, reason: "missing_geometry")
+            try? await sharedGeometryBackend(preferred: backend)?
+                .requestCourseGeometryBackfill(merged, reason: "missing_geometry")
         }
         return merged
     }
@@ -88,7 +89,7 @@ final class CourseDataAggregator {
     }
 
     private func loadSharedGeometry(courseId: String, backend: AppBackend?) async -> GolfCourse? {
-        guard let backend else { return nil }
+        guard let backend = sharedGeometryBackend(preferred: backend) else { return nil }
         do {
             let course = try await backend.loadCourseGeometry(courseId: courseId)
             return course?.hasTrustedGeometry == true ? course : nil
@@ -98,6 +99,19 @@ final class CourseDataAggregator {
             #endif
             return nil
         }
+    }
+
+    /// Public course geometry should still use Supabase when the signed-in/session backend is
+    /// local guest storage because Supabase anonymous auth is disabled. These course endpoints
+    /// are RLS-safe with the publishable key and do not require a user session.
+    private func sharedGeometryBackend(preferred backend: AppBackend?) -> AppBackend? {
+        if let backend, backend is SupabaseBackendService {
+            return backend
+        }
+        if let config = SupabaseConfig.load() {
+            return SupabaseBackendService(config: config)
+        }
+        return backend
     }
 
     // MARK: - GolfCourseAPI scorecard

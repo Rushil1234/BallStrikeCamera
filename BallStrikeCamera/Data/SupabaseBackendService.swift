@@ -351,7 +351,6 @@ final class SupabaseBackendService: AppBackend {
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
-        req.setValue("Bearer \(config.anonKey)", forHTTPHeaderField: "Authorization")
         return req
     }
 
