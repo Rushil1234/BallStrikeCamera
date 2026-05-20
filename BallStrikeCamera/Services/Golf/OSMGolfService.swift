@@ -192,6 +192,14 @@ final class OSMGolfService {
                 return enriched
             } catch is CancellationError {
                 throw OSMGolfError.cancelled
+            } catch OSMGolfError.noGreensFound {
+                // A mirror answered successfully but OSM simply has no golf geometry here.
+                // Every mirror queries the same OSM dataset, so trying the others is pointless
+                // (and wastes time hanging on the slow/dead mirror). Fail fast.
+                #if DEBUG
+                print("[OSMGolf] \(mirror.name): no golf geometry in OSM for this course — not a mirror fault, stopping")
+                #endif
+                throw OSMGolfError.noGreensFound
             } catch {
                 let msg = "\(mirror.name): \(error.localizedDescription)"
                 failures.append(msg)

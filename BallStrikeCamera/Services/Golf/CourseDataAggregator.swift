@@ -32,12 +32,14 @@ final class CourseDataAggregator {
             return cached
         }
 
-        // Fetch geometry + scorecard concurrently.
-        async let osmTask: GolfCourse  = OSMGolfService.shared.enrichBestEffort(course)
-        async let apiTask: GolfCourse? = fetchScorecard(for: course)
-
-        let osm        = await osmTask
-        let scorecard  = await apiTask
+        // GolfCourseAPI scorecard is the reliable source (par/yardage/handicap) and is the
+        // ONLY accurate data for courses OSM hasn't mapped. Run it in a detached task so a
+        // spurious SwiftUI `.task` cancellation can't drop it. Geometry is best-effort.
+        async let osmTask: GolfCourse = OSMGolfService.shared.enrichBestEffort(course)
+        let scorecard = await Task.detached(priority: .userInitiated) { [self] in
+            await fetchScorecard(for: course)
+        }.value
+        let osm = await osmTask
 
         let merged = merge(base: course, osm: osm, scorecard: scorecard)
         OSMGolfService.shared.cacheMergedCourse(merged)
