@@ -235,6 +235,7 @@ private final class ShotEndAnnotationView: MKAnnotationView {
 
 private struct SatelliteMapBackground: UIViewRepresentable {
     var greenCoord:  CLLocationCoordinate2D?
+    var teeCoord:    CLLocationCoordinate2D?
     var userCoord:   CLLocationCoordinate2D?
     var courseCoord: CLLocationCoordinate2D?
     var frontCoord:  CLLocationCoordinate2D?
@@ -263,6 +264,32 @@ private struct SatelliteMapBackground: UIViewRepresentable {
     var onFlightCompleted: ((CLLocationCoordinate2D) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
+
+    // MARK: - Camera geometry helpers
+
+    private func coordsEqual(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Bool {
+        abs(a.latitude - b.latitude) < 1e-6 && abs(a.longitude - b.longitude) < 1e-6
+    }
+
+    static func midpoint(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: (a.latitude + b.latitude) / 2,
+                               longitude: (a.longitude + b.longitude) / 2)
+    }
+
+    /// Linear interpolation between two coordinates (t in 0...1).
+    static func interpolate(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D, t: Double) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: a.latitude + (b.latitude - a.latitude) * t,
+                               longitude: a.longitude + (b.longitude - a.longitude) * t)
+    }
+
+    /// Initial bearing in degrees (0 = north) from `a` to `b`.
+    static func bearing(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) -> Double {
+        let lat1 = a.latitude * .pi / 180, lat2 = b.latitude * .pi / 180
+        let dLon = (b.longitude - a.longitude) * .pi / 180
+        let y = sin(dLon) * cos(lat2)
+        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
+        return atan2(y, x) * 180 / .pi
+    }
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
@@ -300,33 +327,38 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         let shouldRecenter = context.coordinator.shouldRecenter(for: focusId,
                                                                 recenterToken: recenterToken)
 
-        // Region
-        if let green = greenCoord, let user = userCoord {
+        // Region / camera
+        // Preferred: 18Birdies-style "down the hole" view — frame the whole hole from the
+        // tee (bottom) to the green (top), rotated so you look straight down the fairway.
+        let lineStart = teeCoord ?? userCoord            // bottom of the hole
+        if let green = greenCoord, let start = lineStart, !coordsEqual(start, green) {
             if shouldRecenter {
-                let midLat  = (green.latitude  + user.latitude)  / 2
-                let midLon  = (green.longitude + user.longitude) / 2
-                let spanLat = max(abs(green.latitude  - user.latitude)  * 1.55, 0.0019)
-                let spanLon = max(abs(green.longitude - user.longitude) * 1.55, 0.0019)
+                let mid = Self.midpoint(start, green)
+                let holeMeters = MKMapPoint(start).distance(to: MKMapPoint(green))
+                let heading = Self.bearing(from: start, to: green)   // green points "up"
+                // Bias the center slightly toward the green so the forward hole fills more
+                // of the (taller) portrait view, with the tee near the bottom edge.
+                let biasedCenter = Self.interpolate(start, green, t: 0.55)
+                let camDistance = max(holeMeters * 1.55 + 120, 280)
+                let cam = MKMapCamera(lookingAtCenter: biasedCenter,
+                                      fromDistance: camDistance,
+                                      pitch: 0,
+                                      heading: heading)
+                _ = mid
                 context.coordinator.setProgrammaticRegionChange(true)
-                map.setRegion(
-                    MKCoordinateRegion(
-                        center: CLLocationCoordinate2D(latitude: midLat, longitude: midLon),
-                        span:   MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)
-                    ),
-                    animated: context.coordinator.hasInitializedRegion
-                )
+                map.setCamera(cam, animated: context.coordinator.hasInitializedRegion)
                 context.coordinator.completeRecenter(focusId: focusId, recenterToken: recenterToken)
             }
-            // Line from user to green
-            var pts = [user, green]
+            // The hole reference line: tee → pin.
+            var pts = [start, green]
             map.addOverlay(MKPolyline(coordinates: &pts, count: 2))
         } else if let green = greenCoord {
             if shouldRecenter {
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setRegion(
                     MKCoordinateRegion(center: green,
-                                       latitudinalMeters: 400,
-                                       longitudinalMeters: 400),
+                                       latitudinalMeters: 350,
+                                       longitudinalMeters: 350),
                     animated: context.coordinator.hasInitializedRegion
                 )
                 context.coordinator.completeRecenter(focusId: focusId, recenterToken: recenterToken)
@@ -451,16 +483,18 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             if let b = flightBall { map.removeAnnotation(b) }
             if let t = flightTrail { map.removeOverlay(t) }
 
-            // Frame both endpoints with padding.
-            let midLat = (start.latitude + end.latitude) / 2
-            let midLon = (start.longitude + end.longitude) / 2
-            let spanLat = max(abs(start.latitude - end.latitude) * 1.8, 0.0016)
-            let spanLon = max(abs(start.longitude - end.longitude) * 1.8, 0.0016)
+            // Frame the flight keeping the "down the hole" orientation (ball flies upward).
+            let mid = SatelliteMapBackground.midpoint(start, end)
+            let biased = SatelliteMapBackground.interpolate(start, end, t: 0.55)
+            let flightMeters = MKMapPoint(start).distance(to: MKMapPoint(end))
+            let heading = SatelliteMapBackground.bearing(from: start, to: end)
+            _ = mid
             setProgrammaticRegionChange(true)
-            map.setRegion(MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: midLat, longitude: midLon),
-                span: MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)),
-                animated: true)
+            map.setCamera(MKMapCamera(lookingAtCenter: biased,
+                                      fromDistance: max(flightMeters * 1.7 + 120, 280),
+                                      pitch: 0,
+                                      heading: heading),
+                          animated: true)
 
             let ball = FlightBallAnnotation(coordinate: start)
             map.addAnnotation(ball)
@@ -742,7 +776,10 @@ struct CourseModeGPSHoleView: View {
         let hole = vm.currentHole?.holeNumber ?? -1
         let greenLat = currentCourseHole?.greenCenterCoordinate?.latitude ?? 0
         let greenLon = currentCourseHole?.greenCenterCoordinate?.longitude ?? 0
-        return "\(hole)-\(greenLat)-\(greenLon)-\(gpsOn)"
+        // Include the tee so the camera re-frames "down the hole" the moment geometry loads.
+        let teeLat = currentCourseHole?.teeCoordinate?.latitude ?? 0
+        let teeLon = currentCourseHole?.teeCoordinate?.longitude ?? 0
+        return "\(hole)-\(greenLat)-\(greenLon)-\(teeLat)-\(teeLon)-\(gpsOn)"
     }
 
     // MARK: - Init
@@ -765,6 +802,7 @@ struct CourseModeGPSHoleView: View {
             // Full-screen satellite map
             SatelliteMapBackground(
                 greenCoord:  currentCourseHole?.greenCenterCoordinate?.clCoordinate,
+                teeCoord:    currentCourseHole?.teeCoordinate?.clCoordinate,
                 userCoord:   gpsOn ? vm.location.currentLocation : nil,
                 courseCoord: vm.selectedCourse?.coordinate ?? initialCourse?.coordinate,
                 frontCoord:  currentCourseHole?.greenFrontCoordinate?.clCoordinate,
