@@ -32,10 +32,12 @@ protocol AppBackend {
 
     // Sim sessions — userId embedded in model
     func saveSimSession(_ session: SimSession) async throws
+    func deleteSimSession(sessionId: UUID, userId: UUID) async throws
     func loadSimSessions(userId: UUID) async throws -> [SimSession]
 
     // Course rounds — userId embedded in model
     func saveRound(_ round: CourseRound) async throws
+    func deleteCourseRound(roundId: UUID, userId: UUID) async throws
     func loadCourseRounds(userId: UUID) async throws -> [CourseRound]
 
     // Shared course geometry — keyed by provider/course id, shared across users
@@ -76,6 +78,9 @@ protocol AppBackend {
 // MARK: - Default implementations (local fallback)
 
 extension AppBackend {
+    func deleteSimSession(sessionId: UUID, userId: UUID) async throws {}
+    func deleteCourseRound(roundId: UUID, userId: UUID) async throws {}
+
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)
     }

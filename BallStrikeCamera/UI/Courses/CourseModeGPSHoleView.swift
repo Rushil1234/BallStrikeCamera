@@ -1273,20 +1273,21 @@ struct CourseModeGPSHoleView: View {
         }
         // Sheets
         .fullScreenCover(isPresented: $showCamera) {
-            RangeCameraScreen(
-                shotCount: vm.activeRound?.shotIds.count ?? 0,
-                context:   buildContext(),
-                onShotSaved: { shot in
-                    Task {
-                        await vm.addShot(shot)
-                        await MainActor.run {
-                            beginHudFlight(for: shot)
+            if let uid = session.currentUser?.id {
+                RangeCameraScreen(
+                    userId:   uid,
+                    backend:  session.backend,
+                    context:  buildContext(),
+                    onShotSaved: { shot in
+                        Task {
+                            await vm.addShot(shot)
+                            await MainActor.run { beginHudFlight(for: shot) }
                         }
                     }
-                }
-            )
-            .ignoresSafeArea()
-            .statusBarHidden(true)
+                )
+                .ignoresSafeArea()
+                .statusBarHidden(true)
+            }
         }
         .sheet(isPresented: $showScoreEntry) {
             if let hole = vm.currentHole {

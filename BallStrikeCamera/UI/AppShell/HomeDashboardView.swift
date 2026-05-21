@@ -66,10 +66,17 @@ struct HomeDashboardView: View {
         }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showCamera) {
-            RangeCameraScreen().ignoresSafeArea().statusBarHidden(true)
+            if let uid = session.currentUser?.id {
+                RangeCameraScreen(userId: uid, backend: session.backend)
+                    .ignoresSafeArea().statusBarHidden(true)
+            }
         }
         .fullScreenCover(isPresented: $showRange)  { RangeModeView()  }
-        .sheet(isPresented: $showSim)              { SimModeView()    }
+        .sheet(isPresented: $showSim) {
+            if let uid = session.currentUser?.id {
+                SimModeView(userId: uid, backend: session.backend)
+            }
+        }
         .sheet(isPresented: $showCourse)           { EmptyView() } // Course flow lives in TrueCarryPlayView
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }

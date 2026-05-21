@@ -183,6 +183,7 @@ struct SavedShotMedia: Codable {
     var compositePath: String?             = nil
     var originalFramesFolderPath: String?  = nil
     var metricsJsonPath: String?           = nil
+    var gifPath: String?                   = nil   // animated GIF of original frames
     var frameCount: Int                    = 41
     var saveOriginalFrames: Bool           = false
 }
@@ -192,6 +193,8 @@ struct SavedShotMedia: Codable {
 struct PracticeSession: Codable, Identifiable {
     var id: UUID = UUID()
     var userId: UUID
+    var name: String = ""
+    var sessionDescription: String? = nil
     var startedAt: Date = Date()
     var endedAt: Date?
     var selectedClubId: UUID?
@@ -215,12 +218,15 @@ struct SessionSummary: Codable {
 struct SimSession: Codable, Identifiable {
     var id: UUID = UUID()
     var userId: UUID
+    var name: String = ""
+    var sessionDescription: String? = nil
     var provider: SimProvider = .notConnected
     var startedAt: Date = Date()
     var endedAt: Date?
     var shotIds: [UUID] = []
     var outputLog: [String] = []
     var saveOriginalFrames: Bool = false
+    var usedOpenGolfSim: Bool = false
 }
 
 enum SimProvider: String, Codable, CaseIterable {
@@ -235,6 +241,8 @@ enum SimProvider: String, Codable, CaseIterable {
 struct CourseRound: Codable, Identifiable {
     var id: UUID = UUID()
     var userId: UUID
+    var name: String = ""
+    var sessionDescription: String? = nil
     var courseId: String
     var courseName: String
     var teeBoxName: String
@@ -260,7 +268,7 @@ struct RoundHole: Codable, Identifiable {
 
 struct RoundScoreSummary: Codable {
     var totalScore: Int  = 0
-    var totalPar: Int    = 72
+    var totalPar: Int    = 0   // 0 until holes are actually scored; avoids showing -72 at round start
     var fairwaysHit: Int = 0
     var greensInReg: Int = 0
     var totalPutts: Int  = 0

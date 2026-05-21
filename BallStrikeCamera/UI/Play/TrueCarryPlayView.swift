@@ -13,7 +13,6 @@ struct TrueCarryPlayView: View {
     @State private var showUpgradeAlert = false
     @State private var selectedCourse: GolfCourse?
     @State private var selectedTeeBox: TeeBox?
-    @State private var showSessions = false
     @State private var unfinishedRound: CourseRound?
     @State private var resumeRound: CourseRound?
     @StateObject private var prewarmer = NearbyCoursePrewarmer()
@@ -57,16 +56,11 @@ struct TrueCarryPlayView: View {
             TrueCarryBackground()
             ScrollView(showsIndicators: false) {
                 VStack(spacing: TCTheme.sectionGap) {
-                    TCHeaderBar(initials: userInitials) {
-                        TCBellButton(badgeCount: 0) { showSessions = true }
-                    }
+                    TCHeaderBar(initials: userInitials) { EmptyView() }
                     pageTitleSection
                     if let r = unfinishedRound { resumeRoundCard(r) }
                     modeCardsSection
-                    sessionSetupSection
                     startButtonSection
-                    chipsRow
-                    upNextCard
                     Spacer(minLength: 140)
                 }
                 .padding(.horizontal, TCTheme.hPad)
@@ -75,10 +69,15 @@ struct TrueCarryPlayView: View {
         }
         .navigationBarHidden(true)
         .fullScreenCover(isPresented: $showCamera) {
-            RangeCameraScreen().ignoresSafeArea().statusBarHidden(true)
+            if let uid = session.currentUser?.id {
+                RangeCameraScreen(userId: uid, backend: session.backend)
+                    .ignoresSafeArea().statusBarHidden(true)
+            }
         }
         .sheet(isPresented: $showSim) {
-            SimModeView()
+            if let uid = session.currentUser?.id {
+                SimModeView(userId: uid, backend: session.backend)
+            }
         }
         .sheet(isPresented: $showCourseSearch) {
             if let uid = session.currentUser?.id {
@@ -129,12 +128,6 @@ struct TrueCarryPlayView: View {
                     initialTeeBox: tee
                 )
             }
-        }
-        .sheet(isPresented: $showSessions) {
-            NavigationStack {
-                PastSessionsView()
-            }
-            .tcAppearance()
         }
         .fullScreenCover(item: $resumeRound) { round in
             if let uid = session.currentUser?.id {
@@ -212,7 +205,7 @@ struct TrueCarryPlayView: View {
             Text("Play")
                 .font(.system(size: 42, weight: .semibold))
                 .foregroundColor(TCTheme.textPrimary)
-            Text("Choose a mode and set up your session.")
+            Text("Choose a mode to start.")
                 .font(.system(size: 14))
                 .foregroundColor(TCTheme.textMuted)
         }
@@ -255,60 +248,6 @@ struct TrueCarryPlayView: View {
         }
     }
 
-    // MARK: Session Setup Card
-
-    private var sessionSetupSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            TCSectionHeader(title: "Session Setup")
-                .padding(.bottom, 12)
-
-            VStack(spacing: 0) {
-                TCSettingsRow(
-                    icon: "flag.fill",
-                    title: "Course",
-                    value: "Stone Ridge GC",
-                    accent: TCTheme.sage
-                )
-                TCDivider()
-                TCSettingsRow(
-                    icon: "tshirt",
-                    title: "Tee Box",
-                    value: "Blue – 6,412 yds",
-                    accent: TCTheme.cyan
-                )
-                TCDivider()
-                TCSettingsRow(
-                    icon: "list.bullet",
-                    title: "Session Type",
-                    value: sessionTypeValue,
-                    accent: TCTheme.gold
-                )
-                TCDivider()
-                TCSettingsRow(
-                    icon: "hand.raised.fill",
-                    title: "Handedness",
-                    value: session.userProfile?.handedness.rawValue ?? "Right",
-                    accent: TCTheme.textMuted,
-                    showChevron: false
-                )
-            }
-            .background(TCTheme.panel)
-            .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
-                    .strokeBorder(TCTheme.border, lineWidth: 1)
-            )
-        }
-    }
-
-    private var sessionTypeValue: String {
-        switch selectedMode {
-        case .sim:    return "Sim Session"
-        case .course: return "Full Round"
-        case .range:  return "Practice"
-        }
-    }
-
     // MARK: Start Button
 
     private var startButtonSection: some View {
@@ -331,70 +270,4 @@ struct TrueCarryPlayView: View {
         }
     }
 
-    // MARK: Quick Chips Row
-
-    private var chipsRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                TCChipButton(title: "Use Last Setup", icon: "arrow.clockwise") {
-                    handleStart()
-                }
-                TCChipButton(title: "Choose Club", icon: "figure.golf") {
-                    selectedMode = .range
-                    showCamera = true
-                }
-                TCChipButton(title: "Saved Sessions", icon: "list.bullet") {
-                    showSessions = true
-                }
-                TCChipButton(title: "Sim History", icon: "clock") {
-                    selectedMode = .sim
-                    showSim = true
-                }
-            }
-            .padding(.horizontal, 2)
-        }
-    }
-
-    // MARK: Up Next Card
-
-    private var upNextCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("UP NEXT")
-                .font(.system(size: 10, weight: .bold))
-                .kerning(1.4)
-                .foregroundColor(TCTheme.gold)
-
-            HStack(spacing: 14) {
-                Image(systemName: "flag")
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundColor(TCTheme.textMuted)
-                    .frame(width: 34, alignment: .leading)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Hole 1")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(TCTheme.textSecondary)
-
-                    Text("Par 4  ·  392 yds")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(TCTheme.textMuted)
-
-                    Text("Stone Ridge GC")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(TCTheme.textMuted)
-            }
-        }
-        .tcCard()
-        .contentShape(Rectangle())
-        .onTapGesture {
-            showCourseSearch = true
-        }
-    }
 }

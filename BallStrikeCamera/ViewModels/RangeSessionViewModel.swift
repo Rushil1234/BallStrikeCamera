@@ -86,7 +86,21 @@ final class RangeSessionViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        // Auto-share the completed session to the social feed (opt-out in settings).
+        await FeedAutoPoster.share(session: session, backend: backend)
+        activeSession = nil
+    }
+
+    func endSessionWithDetails(name: String, description: String?) async {
+        guard var session = activeSession else { return }
+        session.name = name
+        session.sessionDescription = description
+        session.endedAt = Date()
+        session.summary = summary
+        do {
+            try await backend.saveRangeSession(session)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
         await FeedAutoPoster.share(session: session, backend: backend)
         activeSession = nil
     }
@@ -97,5 +111,10 @@ final class RangeSessionViewModel: ObservableObject {
         }
         activeSession = nil
         shots = []
+    }
+
+    func computeDefaultName() async -> String {
+        let existing = (try? await backend.loadRangeSessions(userId: userId)) ?? []
+        return "Range Session \(existing.count + 1)"
     }
 }

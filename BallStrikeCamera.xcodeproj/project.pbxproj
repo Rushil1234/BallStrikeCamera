@@ -134,6 +134,15 @@
 		BF0000060000000000000022 /* OSMAttributionBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000021 /* OSMAttributionBadge.swift */; };
 		BF0000060000000000000024 /* DiagnosticsOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000023 /* DiagnosticsOverlay.swift */; };
 		BF0000060000000000000026 /* ShotEntryConfirmSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000025 /* ShotEntryConfirmSheet.swift */; };
+		CAFE000000000000000000A1 /* TrueCarryHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000A0 /* TrueCarryHistoryView.swift */; };
+		CAFE000000000000000000B1 /* OpenGolfSimModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B0 /* OpenGolfSimModels.swift */; };
+		CAFE000000000000000000B3 /* OpenGolfSimClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B2 /* OpenGolfSimClient.swift */; };
+		CAFE000000000000000000B5 /* OpenGolfSimViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */; };
+		CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C0 /* SessionSaveSheet.swift */; };
+		CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C2 /* SimCameraScreen.swift */; };
+		CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C4 /* SessionDetailView.swift */; };
+		CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C6 /* ShotDetailView.swift */; };
+		CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C8 /* ShotGIFExporter.swift */; };
 		BF0000080000000000000001 /* SubscriptionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000001 /* SubscriptionModels.swift */; };
 		BF0000080000000000000002 /* SocialModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000002 /* SocialModels.swift */; };
 		BF0000080000000000000003 /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000003 /* BackendFactory.swift */; };
@@ -267,6 +276,15 @@
 		BF000002000000000000001F /* ScorecardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScorecardView.swift; sourceTree = "<group>"; };
 		BF0000050000000000000001 /* OrientationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationManager.swift; sourceTree = "<group>"; };
 		BF0000060000000000000001 /* TCTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCTheme.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000A0 /* TrueCarryHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryHistoryView.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000B0 /* OpenGolfSimModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimModels.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000B2 /* OpenGolfSimClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimClient.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimViewModel.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000C0 /* SessionSaveSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSaveSheet.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000C2 /* SimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimCameraScreen.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000C4 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000C6 /* ShotDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotDetailView.swift; sourceTree = "<group>"; };
+		CAFE000000000000000000C8 /* ShotGIFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotGIFExporter.swift; sourceTree = "<group>"; };
 		BF0000060000000000000003 /* TrueCarryBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryBackground.swift; sourceTree = "<group>"; };
 		BF0000060000000000000005 /* TCCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCCards.swift; sourceTree = "<group>"; };
 		BF0000060000000000000007 /* TCBottomDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCBottomDock.swift; sourceTree = "<group>"; };
@@ -417,6 +435,7 @@
 				BF000004000000000000000B /* Insights */,
 				BF000004000000000000000C /* Play */,
 				BF000004000000000000000D /* Locker */,
+				CAFE000000000000000000A2 /* History */,
 				BF000004000000000000000E /* Courses */,
 			);
 			path = UI;
@@ -522,6 +541,8 @@
 			isa = PBXGroup;
 			children = (
 				BF000001000000000000013C /* SampleShotLoader.swift */,
+				CAFE000000000000000000B0 /* OpenGolfSimModels.swift */,
+				CAFE000000000000000000B2 /* OpenGolfSimClient.swift */,
 			);
 			path = Simulation;
 			sourceTree = "<group>";
@@ -543,6 +564,7 @@
 				BF0000010000000000000151 /* BallStrikeTheme.swift */,
 				BF0000010000000000000152 /* BallStrikeBackgroundView.swift */,
 				E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */,
+				CAFE000000000000000000C2 /* SimCameraScreen.swift */,
 			);
 			path = AppShell;
 			sourceTree = "<group>";
@@ -577,6 +599,7 @@
 				BF0000020000000000000013 /* ClubBagViewModel.swift */,
 				BF0000020000000000000014 /* RangeSessionViewModel.swift */,
 				BF0000020000000000000015 /* SimSessionViewModel.swift */,
+				CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */,
 				BF0000020000000000000016 /* CourseRoundViewModel.swift */,
 				BF0000020000000000000017 /* AnalyticsViewModel.swift */,
 				BF0000020000000000000018 /* FeedViewModel.swift */,
@@ -649,6 +672,7 @@
 				BF0000060000000000000005 /* TCCards.swift */,
 				BF0000060000000000000007 /* TCBottomDock.swift */,
 				BF000006000000000000002F /* SpinningGolfBallView.swift */,
+				CAFE000000000000000000C0 /* SessionSaveSheet.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -683,6 +707,17 @@
 				BF000006000000000000000F /* TrueCarryLockerView.swift */,
 			);
 			path = Locker;
+			sourceTree = "<group>";
+		};
+		CAFE000000000000000000A2 /* History */ = {
+			isa = PBXGroup;
+			children = (
+				CAFE000000000000000000A0 /* TrueCarryHistoryView.swift */,
+				CAFE000000000000000000C4 /* SessionDetailView.swift */,
+				CAFE000000000000000000C6 /* ShotDetailView.swift */,
+				CAFE000000000000000000C8 /* ShotGIFExporter.swift */,
+			);
+			path = History;
 			sourceTree = "<group>";
 		};
 		BF000004000000000000000E /* Courses */ = {
@@ -931,6 +966,15 @@
 				BF0000060000000000000024 /* DiagnosticsOverlay.swift in Sources */,
 				BF000008000000000000000E /* TrackedShotModels.swift in Sources */,
 				BF0000060000000000000026 /* ShotEntryConfirmSheet.swift in Sources */,
+				CAFE000000000000000000A1 /* TrueCarryHistoryView.swift in Sources */,
+				CAFE000000000000000000B1 /* OpenGolfSimModels.swift in Sources */,
+				CAFE000000000000000000B3 /* OpenGolfSimClient.swift in Sources */,
+				CAFE000000000000000000B5 /* OpenGolfSimViewModel.swift in Sources */,
+					CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */,
+					CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */,
+					CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */,
+					CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */,
+					CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */,
 				BF000008000000000000000F /* ClubAnalyticsService.swift in Sources */,
 				BF0000080000000000000010 /* StrokesGained.swift in Sources */,
 				BF0000080000000000000012 /* SyncQueue.swift in Sources */,

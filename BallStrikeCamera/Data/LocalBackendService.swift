@@ -145,6 +145,11 @@ final class LocalBackendService: AppBackend {
         try AppStorageManager.save(session, to: dir.appendingPathComponent("\(session.id.uuidString).json"))
     }
 
+    func deleteSimSession(sessionId: UUID, userId: UUID) async throws {
+        let url = AppStorageManager.simSessionsDir(userId: userId).appendingPathComponent("\(sessionId.uuidString).json")
+        try? FileManager.default.removeItem(at: url)
+    }
+
     func loadSimSessions(userId: UUID) async throws -> [SimSession] {
         let sessions = try AppStorageManager.loadAll(SimSession.self, from: AppStorageManager.simSessionsDir(userId: userId))
         return sessions.sorted { $0.startedAt > $1.startedAt }
@@ -156,6 +161,11 @@ final class LocalBackendService: AppBackend {
         let dir = AppStorageManager.roundsDir(userId: round.userId)
         AppStorageManager.ensureDirectory(dir)
         try AppStorageManager.save(round, to: dir.appendingPathComponent("\(round.id.uuidString).json"))
+    }
+
+    func deleteCourseRound(roundId: UUID, userId: UUID) async throws {
+        let url = AppStorageManager.roundsDir(userId: userId).appendingPathComponent("\(roundId.uuidString).json")
+        try? FileManager.default.removeItem(at: url)
     }
 
     func loadCourseRounds(userId: UUID) async throws -> [CourseRound] {

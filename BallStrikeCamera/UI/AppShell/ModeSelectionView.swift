@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ModeSelectionView: View {
+    @EnvironmentObject var session: AuthSessionStore
     @State private var showRange  = false
     @State private var showSim    = false
     @State private var showCourse = false
@@ -51,7 +52,11 @@ struct ModeSelectionView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
         .fullScreenCover(isPresented: $showRange)  { RangeModeView()  }
-        .sheet(isPresented: $showSim)              { SimModeView()    }
+        .sheet(isPresented: $showSim) {
+            if let uid = session.currentUser?.id {
+                SimModeView(userId: uid, backend: session.backend)
+            }
+        }
         .sheet(isPresented: $showCourse)           { EmptyView() } // Course flow lives in TrueCarryPlayView
     }
 

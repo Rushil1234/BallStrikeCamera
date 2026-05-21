@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - Provider option model
+
 private struct SimProviderOption: Identifiable {
     let id = UUID()
     let name: String
@@ -7,26 +9,34 @@ private struct SimProviderOption: Identifiable {
     let icon: String
 }
 
+// MARK: - Main view
+
 struct SimModeView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedProvider = "GSPro"
-    @State private var scanMessage: String?
+    @StateObject private var simVM: SimSessionViewModel
+    @StateObject private var ogsVM = OpenGolfSimViewModel()
+
+    @State private var selectedProvider = "OGS"
+    @State private var showCamera = false
+    @State private var showEndConfirmation = false
+    @State private var showSaveSheet = false
+    @State private var saveSheetDefaultName = "Sim Session"
+    @State private var simulateFeedback: String?
+
+    private let userId: UUID
+    private let backend: AppBackend
 
     private let providers: [SimProviderOption] = [
-        SimProviderOption(name: "GSPro",          subtitle: "Most popular — full feature set",   icon: "display"),
-        SimProviderOption(name: "OGS",            subtitle: "Official GSP OpenAPI protocol",     icon: "antenna.radiowaves.left.and.right"),
-        SimProviderOption(name: "Local JSON",     subtitle: "Export shot data to JSON file",     icon: "doc.text"),
+        SimProviderOption(name: "OGS",       subtitle: "OpenGolfSim — TCP connection",  icon: "antenna.radiowaves.left.and.right"),
+        SimProviderOption(name: "GSPro",      subtitle: "GSPro — full feature set",      icon: "display"),
+        SimProviderOption(name: "Local JSON", subtitle: "Export shot data to JSON file", icon: "doc.text"),
     ]
 
-    private let jsonPreview = """
-{
-  "ballSpeedMph":       145.2,
-  "launchAngleDeg":      13.1,
-  "horizontalAngleDeg":  -2.4,
-  "spinRatePrm":       3820.0,
-  "carryYards":          252.0
-}
-"""
+    init(userId: UUID, backend: AppBackend) {
+        self.userId  = userId
+        self.backend = backend
+        _simVM = StateObject(wrappedValue: SimSessionViewModel(userId: userId, backend: backend))
+    }
 
     var body: some View {
         NavigationStack {
@@ -35,10 +45,10 @@ struct SimModeView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: BSTheme.sectionGap) {
                         subheader
-                        connectionCard
                         providerSection
-                        lastShotSection
-                        jsonPreviewSection
+                        if selectedProvider == "OGS" { ogsConnectionSection }
+                        sessionSection
+                        if simVM.sessionActive { activeSessionSection }
                         Spacer(minLength: 32)
                     }
                     .padding(.horizontal, BSTheme.hPad)
@@ -50,66 +60,84 @@ struct SimModeView: View {
             .toolbarBackground(.clear, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(BSTheme.electricCyan)
-                        .fontWeight(.semibold)
+                    Button("Done") {
+                        if simVM.sessionActive {
+                            showEndConfirmation = true
+                        } else {
+                            dismiss()
+                        }
+                    }
+                    .foregroundColor(BSTheme.electricCyan)
+                    .fontWeight(.semibold)
+                }
+                if simVM.sessionActive {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("End") { showEndConfirmation = true }
+                            .foregroundColor(BSTheme.dangerRed)
+                            .fontWeight(.semibold)
+                    }
                 }
             }
         }
         .tcAppearance()
-        .alert("Simulator Scan", isPresented: Binding(
-            get: { scanMessage != nil },
-            set: { if !$0 { scanMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(scanMessage ?? "")
+        // Camera screen for real shots
+        .fullScreenCover(isPresented: $showCamera) {
+            SimCameraScreen(simVM: simVM, ogsVM: ogsVM)
+                .ignoresSafeArea()
+                .statusBarHidden(true)
         }
+        // Phase 1: Save / Delete / Continue
+        .confirmationDialog("End Sim Session?", isPresented: $showEndConfirmation, titleVisibility: .visible) {
+            Button("Save Sim Session") {
+                Task {
+                    saveSheetDefaultName = await simVM.computeDefaultName()
+                    showSaveSheet = true
+                }
+            }
+            Button("Delete Sim Session", role: .destructive) {
+                Task {
+                    await simVM.discardSession()
+                    dismiss()
+                }
+            }
+            Button("Continue Session", role: .cancel) {}
+        } message: {
+            Text(simVM.shots.isEmpty
+                 ? "Save this sim session to History or delete it?"
+                 : "Save this sim session to History or delete it? You have \(simVM.shots.count) shot\(simVM.shots.count == 1 ? "" : "s").")
+        }
+        // Phase 2: Name + description
+        .sheet(isPresented: $showSaveSheet) {
+            SessionSaveSheet(
+                config: SessionSaveConfig(
+                    type: .sim,
+                    defaultName: saveSheetDefaultName,
+                    date: simVM.activeSession?.startedAt ?? Date()
+                )
+            ) { name, desc in
+                Task {
+                    await simVM.endSessionWithDetails(
+                        name: name,
+                        description: desc,
+                        usedOGS: ogsVM.connectionState.isConnected
+                    )
+                    dismiss()
+                }
+            }
+        }
+        .task { await simVM.loadClubs() }
     }
 
+    // MARK: - Subheader
+
     private var subheader: some View {
-        Text("Connect BallStrike to your simulator setup over WiFi.")
+        Text("Connect True Carry to your simulator over Wi-Fi.")
             .font(.system(size: 14))
             .foregroundColor(BSTheme.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var connectionCard: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(BSTheme.dangerRed.opacity(0.16))
-                    .frame(width: 44, height: 44)
-                Circle()
-                    .fill(BSTheme.dangerRed)
-                    .frame(width: 10, height: 10)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Not Connected")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(BSTheme.textPrimary)
-                Text("Open \(selectedProvider) on your PC and ensure you're on the same WiFi network.")
-                    .font(.system(size: 12))
-                    .foregroundColor(BSTheme.textMuted)
-                    .lineLimit(2)
-            }
-            Spacer()
-            Button {
-                scanMessage = "\(selectedProvider) network discovery is not connected yet. Local JSON export is available once shots are saved."
-            } label: {
-                Text("Scan")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(BSTheme.electricCyan)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(BSTheme.electricCyan.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(BSTheme.electricCyan.opacity(0.35), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-        }
-        .premiumCard(padding: 16)
-    }
+    // MARK: - Provider picker
 
     private var providerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -120,11 +148,15 @@ struct SimModeView: View {
                         HStack(spacing: 14) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(selectedProvider == p.name ? BSTheme.simBlue.opacity(0.25) : BSTheme.panel)
+                                    .fill(selectedProvider == p.name
+                                          ? BSTheme.simBlue.opacity(0.25)
+                                          : BSTheme.panel)
                                     .frame(width: 38, height: 38)
                                 Image(systemName: p.icon)
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(selectedProvider == p.name ? BSTheme.electricCyan : BSTheme.textMuted)
+                                    .foregroundColor(selectedProvider == p.name
+                                                     ? BSTheme.electricCyan
+                                                     : BSTheme.textMuted)
                             }
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(p.name)
@@ -149,7 +181,12 @@ struct SimModeView: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(selectedProvider == p.name ? BSTheme.electricCyan.opacity(0.40) : BSTheme.border, lineWidth: 1)
+                                .strokeBorder(
+                                    selectedProvider == p.name
+                                        ? BSTheme.electricCyan.opacity(0.40)
+                                        : BSTheme.border,
+                                    lineWidth: 1
+                                )
                         )
                     }
                     .buttonStyle(.plain)
@@ -158,48 +195,242 @@ struct SimModeView: View {
         }
     }
 
-    private var lastShotSection: some View {
+    // MARK: - OGS Connection section (only when OGS selected)
+
+    private var ogsConnectionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            BSectionHeader(title: "Last Shot Sent")
-            HStack(spacing: 10) {
-                StatTile(label: "Ball Speed", value: "145", unit: "mph", accent: BSTheme.electricCyan)
-                StatTile(label: "Carry",      value: "252", unit: "yd",  accent: BSTheme.fairwayGreen)
-                StatTile(label: "Launch",     value: "13.1",unit: "°",   accent: BSTheme.gold)
+            BSectionHeader(title: "OpenGolfSim Connection")
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Make sure your iPhone and computer are on the same Wi-Fi, then enter your computer's local IP address.")
+                    .font(.system(size: 12))
+                    .foregroundColor(BSTheme.textMuted)
+                    .lineSpacing(2)
+
+                VStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        Text("Host").font(.system(size: 13, weight: .semibold)).foregroundColor(BSTheme.textMuted).frame(width: 42, alignment: .leading)
+                        TextField("192.168.1.x", text: $ogsVM.host)
+                            .font(.system(size: 15, design: .monospaced))
+                            .foregroundColor(BSTheme.textPrimary)
+                            .keyboardType(.decimalPad)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                    Divider().background(BSTheme.border)
+                    HStack(spacing: 12) {
+                        Text("Port").font(.system(size: 13, weight: .semibold)).foregroundColor(BSTheme.textMuted).frame(width: 42, alignment: .leading)
+                        TextField("3111", text: $ogsVM.portString)
+                            .font(.system(size: 15, design: .monospaced))
+                            .foregroundColor(BSTheme.textPrimary)
+                            .keyboardType(.numberPad)
+                    }
+                }
+                .premiumCard(padding: 14)
+
+                ogsStatusRow
+
+                HStack(spacing: 10) {
+                    PremiumActionButton(
+                        title: ogsVM.connectionState.isConnecting ? "Connecting…" : "Connect",
+                        icon: "antenna.radiowaves.left.and.right",
+                        style: .gradient(BSTheme.simGradient),
+                        action: { ogsVM.connect() }
+                    )
+                    .disabled(!ogsVM.canConnect || ogsVM.connectionState.isConnecting || ogsVM.connectionState.isConnected)
+                    .opacity(!ogsVM.canConnect || ogsVM.connectionState.isConnecting || ogsVM.connectionState.isConnected ? 0.45 : 1)
+
+                    if ogsVM.connectionState.isConnected || ogsVM.connectionState.isConnecting {
+                        PremiumActionButton(title: "Disconnect", icon: "xmark.circle", style: .ghost, action: { ogsVM.disconnect() })
+                    }
+                }
+
+                if ogsVM.connectionState.isConnected {
+                    PremiumActionButton(
+                        title: ogsVM.isSending ? "Sending…" : "Send Test Shot",
+                        icon: "paperplane.fill",
+                        style: .ghost,
+                        action: { Task { await ogsVM.sendTestShot() } }
+                    )
+                    .disabled(ogsVM.isSending)
+                    .opacity(ogsVM.isSending ? 0.5 : 1)
+                }
+
+                if let feedback = ogsVM.lastSendFeedback {
+                    Text(feedback)
+                        .font(.system(size: 12))
+                        .foregroundColor(feedback.hasSuffix("sent.") ? BSTheme.fairwayGreen : BSTheme.dangerRed)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let result = ogsVM.lastResult {
+                    ogsResultRow(result)
+                }
             }
         }
     }
 
-    private var jsonPreviewSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            BSectionHeader(title: "Shot JSON Preview")
-            VStack(alignment: .leading, spacing: 0) {
-                // Terminal title bar
-                HStack(spacing: 6) {
-                    ForEach([BSTheme.dangerRed, BSTheme.gold, BSTheme.fairwayGreen], id: \.self) { c in
-                        Circle().fill(c).frame(width: 10, height: 10)
-                    }
-                    Spacer()
-                    Text("shot_output.json")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(BSTheme.textMuted)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color.white.opacity(0.04))
-
-                // Code
-                Text(jsonPreview)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(BSTheme.electricCyan)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+    private var ogsStatusRow: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(ogsStatusColor.opacity(0.18)).frame(width: 34, height: 34)
+                Circle().fill(ogsStatusColor).frame(width: 9, height: 9)
             }
-            .background(Color(red: 0.03, green: 0.05, blue: 0.09))
-            .clipShape(RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous)
-                    .strokeBorder(BSTheme.border, lineWidth: 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(ogsVM.connectionState.label).font(.system(size: 14, weight: .semibold)).foregroundColor(BSTheme.textPrimary)
+                if let status = ogsVM.simStatus { Text("Simulator: \(status)").font(.system(size: 11)).foregroundColor(BSTheme.textMuted) }
+            }
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func ogsResultRow(_ result: OpenGolfSimShotResult) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("OGS Last Result").font(.system(size: 12, weight: .semibold)).foregroundColor(BSTheme.textMuted)
+            HStack(spacing: 10) {
+                if let v = result.carry { StatTile(label: "Carry", value: "\(Int(v))", unit: "yd", accent: BSTheme.electricCyan) }
+                if let v = result.total { StatTile(label: "Total", value: "\(Int(v))", unit: "yd", accent: BSTheme.fairwayGreen) }
+                if let v = result.roll  { StatTile(label: "Roll",  value: "\(Int(v))", unit: "yd", accent: BSTheme.gold) }
+            }
+        }
+    }
+
+    private var ogsStatusColor: Color {
+        switch ogsVM.connectionState {
+        case .connected:    return BSTheme.fairwayGreen
+        case .connecting:   return BSTheme.gold
+        case .disconnected: return BSTheme.textMuted
+        case .failed:       return BSTheme.dangerRed
+        }
+    }
+
+    // MARK: - Session section (start / stats)
+
+    private var sessionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BSectionHeader(title: simVM.sessionActive ? "Active Session" : "Session")
+
+            if simVM.sessionActive {
+                // Live stats row
+                HStack(spacing: 10) {
+                    StatTile(label: "Shots",    value: "\(simVM.shots.count)",                          accent: BSTheme.electricCyan)
+                    StatTile(label: "Avg Carry",
+                             value: simVM.shots.isEmpty ? "—" : "\(Int(simVM.summary.avgCarry))",
+                             unit: simVM.shots.isEmpty ? "" : "yd",
+                             accent: BSTheme.fairwayGreen)
+                    StatTile(label: "Best",
+                             value: simVM.shots.isEmpty ? "—" : "\(Int(simVM.summary.bestCarry))",
+                             unit: simVM.shots.isEmpty ? "" : "yd",
+                             accent: BSTheme.gold)
+                }
+            } else {
+                PremiumActionButton(
+                    title: "Start Session",
+                    icon: "play.fill",
+                    style: .gradient(BSTheme.simGradient),
+                    action: {
+                        Task { await simVM.startSession(provider: providerEnum, usedOGS: ogsVM.connectionState.isConnected) }
+                    }
+                )
+            }
+        }
+    }
+
+    // MARK: - Active session controls
+
+    @ViewBuilder
+    private var activeSessionSection: some View {
+        VStack(spacing: 10) {
+            // Hit real shot
+            PremiumActionButton(
+                title: "Hit Shot",
+                icon: "camera.fill",
+                style: .gradient(BSTheme.rangeGradient),
+                action: { showCamera = true }
             )
+            .glowingAccent(BSTheme.electricCyan)
+
+            // Simulate shot
+            PremiumActionButton(
+                title: "Simulate Shot",
+                icon: "sparkles",
+                style: .ghost,
+                action: {
+                    Task {
+                        let shot = await simVM.addSimulatedShot()
+                        // Send sim shot to OGS if connected
+                        if ogsVM.connectionState.isConnected {
+                            await ogsVM.sendMetrics(shot.metrics)
+                            simulateFeedback = "Shot sent to OpenGolfSim."
+                        } else {
+                            simulateFeedback = "Simulated locally — connect to OpenGolfSim to send shots."
+                        }
+                    }
+                }
+            )
+
+            if let feedback = simulateFeedback {
+                Text(feedback)
+                    .font(.system(size: 12))
+                    .foregroundColor(feedback.contains("sent") ? BSTheme.fairwayGreen : BSTheme.textMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { simulateFeedback = nil }
+                    }
+            }
+        }
+
+        // Shot history
+        if !simVM.shots.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                BSectionHeader(title: "Shots This Session")
+                VStack(spacing: 8) {
+                    ForEach(Array(simVM.shots.reversed().enumerated()), id: \.element.id) { idx, shot in
+                        simShotRow(shot, number: simVM.shots.count - idx)
+                    }
+                }
+            }
+        }
+    }
+
+    private func simShotRow(_ shot: SavedShot, number: Int) -> some View {
+        HStack(spacing: 12) {
+            Text("#\(number)")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundColor(BSTheme.textMuted)
+                .frame(width: 28, alignment: .center)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(shot.clubName ?? "Unknown club")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(BSTheme.textPrimary)
+                Text(shot.source == .simulated ? "Simulated" : "Live shot")
+                    .font(.system(size: 11))
+                    .foregroundColor(BSTheme.textMuted)
+            }
+            Spacer()
+            if shot.metrics.carryYards > 0 {
+                Text("\(Int(shot.metrics.carryYards)) yd")
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundColor(BSTheme.electricCyan)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .background(BSTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(BSTheme.border, lineWidth: 1))
+    }
+
+    // MARK: - Helpers
+
+    private var providerEnum: SimProvider {
+        switch selectedProvider {
+        case "GSPro":      return .gspro
+        case "OGS":        return .ogs
+        case "Local JSON": return .localJson
+        default:           return .notConnected
         }
     }
 }

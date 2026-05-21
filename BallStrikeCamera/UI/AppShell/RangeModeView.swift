@@ -51,7 +51,10 @@ struct RangeModeView: View {
                 }
             }
             .fullScreenCover(isPresented: $showCamera) {
-                RangeCameraScreen().ignoresSafeArea().statusBarHidden(true)
+                if let uid = session.currentUser?.id {
+                    RangeCameraScreen(userId: uid, backend: session.backend)
+                        .ignoresSafeArea().statusBarHidden(true)
+                }
             }
             .sheet(isPresented: $showSession) {
                 if let uid = session.currentUser?.id {

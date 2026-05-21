@@ -3,13 +3,14 @@ import SwiftUI
 // MARK: - Tab Enum
 
 enum TCTab: Int, CaseIterable {
-    case home = 0, insights = 1, play = 2, locker = 3
+    case home = 0, insights = 1, play = 2, history = 3, locker = 4
 
     var label: String {
         switch self {
         case .home:     return "Feed"
         case .insights: return "Insights"
         case .play:     return "Play"
+        case .history:  return "History"
         case .locker:   return "Locker"
         }
     }
@@ -18,6 +19,7 @@ enum TCTab: Int, CaseIterable {
         case .home:     return "newspaper.fill"
         case .insights: return "chart.bar.xaxis"
         case .play:     return "flag.fill"
+        case .history:  return "clock.fill"
         case .locker:   return "person.crop.circle.fill"
         }
     }
@@ -33,9 +35,13 @@ struct TCBottomDock: View {
     private var bottomPadding: CGFloat { max(safeInsets.bottom, 6) }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 0) {
+        HStack(alignment: .bottom, spacing: 0) {
             ForEach(TCTab.allCases, id: \.rawValue) { tab in
-                dockItem(tab)
+                if tab.isCenter {
+                    centerPlayButton(tab)
+                } else {
+                    dockItem(tab)
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -50,6 +56,8 @@ struct TCBottomDock: View {
         .shadow(color: Color.black.opacity(0.45), radius: 14, x: 0, y: -3)
     }
 
+    // MARK: Standard tab item
+
     private func dockItem(_ tab: TCTab) -> some View {
         let selected = selectedTab == tab
         return Button {
@@ -57,7 +65,7 @@ struct TCBottomDock: View {
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: tab.icon)
-                    .font(.system(size: tab == .play ? 18 : 17, weight: selected ? .semibold : .regular))
+                    .font(.system(size: 17, weight: selected ? .semibold : .regular))
                     .foregroundColor(selected ? TCTheme.gold : TCTheme.textSecondary.opacity(0.75))
                 Text(tab.label)
                     .font(.system(size: 9.5, weight: selected ? .semibold : .regular))
@@ -70,6 +78,48 @@ struct TCBottomDock: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 44)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Centered Play button
+
+    private func centerPlayButton(_ tab: TCTab) -> some View {
+        let selected = selectedTab == tab
+        return Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = tab }
+        } label: {
+            VStack(spacing: 5) {
+                ZStack {
+                    Circle()
+                        .fill(selected ? TCTheme.goldGradient : LinearGradient(
+                            colors: [TCTheme.panel, TCTheme.panelRaised],
+                            startPoint: .top, endPoint: .bottom
+                        ))
+                        .frame(width: 50, height: 50)
+                        .shadow(color: selected ? TCTheme.gold.opacity(0.40) : Color.black.opacity(0.30),
+                                radius: selected ? 8 : 4, x: 0, y: 2)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(
+                                    selected ? TCTheme.gold.opacity(0.50) : TCTheme.borderMedium,
+                                    lineWidth: 1
+                                )
+                        )
+
+                    Image(systemName: tab.icon)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(selected ? .white : TCTheme.textSecondary.opacity(0.85))
+                }
+                .offset(y: -4)
+
+                Text(tab.label)
+                    .font(.system(size: 9.5, weight: selected ? .semibold : .regular))
+                    .foregroundColor(selected ? TCTheme.gold : TCTheme.textSecondary.opacity(0.75))
+                    .offset(y: -4)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
         }
         .buttonStyle(.plain)
     }
@@ -124,6 +174,8 @@ struct TrueCarryAppShell: View {
             NavigationStack { TrueCarryInsightsView() }
         case .play:
             NavigationStack { TrueCarryPlayView() }
+        case .history:
+            NavigationStack { TrueCarryHistoryView() }
         case .locker:
             NavigationStack { TrueCarryLockerView() }
         }

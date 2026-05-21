@@ -176,97 +176,115 @@ struct PastSessionsView: View {
     // MARK: - Live Session Cards
 
     private func rangeSessionCard(_ rs: PracticeSession) -> some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                Image(systemName: "scope")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(TCTheme.textMuted)
-                    .frame(width: 28, alignment: .leading)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Range Session · \(shortDate(rs.startedAt))")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text(rs.selectedClubName ?? "All Clubs")
-                        .font(.system(size: 12))
+        NavigationLink(destination: SessionDetailView(item: .range(rs))) {
+            VStack(spacing: 12) {
+                HStack(spacing: 14) {
+                    Image(systemName: "scope")
+                        .font(.system(size: 18, weight: .regular))
                         .foregroundColor(TCTheme.textMuted)
+                        .frame(width: 28, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(rs.name.isEmpty ? "Range Session · \(shortDate(rs.startedAt))" : rs.name)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text(rs.selectedClubName ?? "All Clubs")
+                            .font(.system(size: 12))
+                            .foregroundColor(TCTheme.textMuted)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(rs.shotIds.count)")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text("SHOTS")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(TCTheme.textMuted)
+                            .tracking(1)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(TCTheme.textUltraMuted)
                 }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(rs.shotIds.count)")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text("SHOTS")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(TCTheme.textMuted)
-                        .tracking(1)
+                TCDivider()
+                HStack(spacing: 0) {
+                    sessionStat("Avg Ball Speed", String(format: "%.0f mph", rs.summary.avgBallSpeed))
+                    sessionStat("Avg Carry",      String(format: "%.0f yds", rs.summary.avgCarry))
+                    sessionStat("Best Carry",     String(format: "%.0f yds", rs.summary.bestCarry))
                 }
             }
-            TCDivider()
-            HStack(spacing: 0) {
-                sessionStat("Avg Ball Speed", String(format: "%.0f mph", rs.summary.avgBallSpeed))
-                sessionStat("Avg Carry",      String(format: "%.0f yds", rs.summary.avgCarry))
-                sessionStat("Best Carry",     String(format: "%.0f yds", rs.summary.bestCarry))
-            }
+            .tcCard()
         }
-        .tcCard()
+        .buttonStyle(.plain)
     }
 
     private func simSessionCard(_ ss: SimSession) -> some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                Image(systemName: "display")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(TCTheme.textMuted)
-                    .frame(width: 28, alignment: .leading)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Sim Session · \(shortDate(ss.startedAt))")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text(ss.provider.rawValue)
-                        .font(.system(size: 12))
+        NavigationLink(destination: SessionDetailView(item: .sim(ss))) {
+            VStack(spacing: 12) {
+                HStack(spacing: 14) {
+                    Image(systemName: "display")
+                        .font(.system(size: 18, weight: .regular))
                         .foregroundColor(TCTheme.textMuted)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(ss.shotIds.count)")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text("SHOTS")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(TCTheme.textMuted)
-                        .tracking(1)
+                        .frame(width: 28, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(ss.name.isEmpty ? "Sim Session · \(shortDate(ss.startedAt))" : ss.name)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text(ss.provider.rawValue)
+                            .font(.system(size: 12))
+                            .foregroundColor(TCTheme.textMuted)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(ss.shotIds.count)")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text("SHOTS")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(TCTheme.textMuted)
+                            .tracking(1)
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(TCTheme.textUltraMuted)
                 }
             }
+            .tcCard()
         }
-        .tcCard()
+        .buttonStyle(.plain)
     }
 
     private func courseRoundCard(_ r: CourseRound) -> some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 14) {
-                Image(systemName: "flag")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundColor(TCTheme.textMuted)
-                    .frame(width: 28, alignment: .leading)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Round · \(shortDate(r.startedAt))")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text(r.courseName)
-                        .font(.system(size: 12))
+        NavigationLink(destination: SessionDetailView(item: .course(r))) {
+            VStack(spacing: 12) {
+                HStack(spacing: 14) {
+                    Image(systemName: "flag")
+                        .font(.system(size: 18, weight: .regular))
                         .foregroundColor(TCTheme.textMuted)
+                        .frame(width: 28, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(r.name.isEmpty ? "Round · \(shortDate(r.startedAt))" : r.name)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text(r.courseName)
+                            .font(.system(size: 12))
+                            .foregroundColor(TCTheme.textMuted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(TCTheme.textUltraMuted)
                 }
-                Spacer()
+                TCDivider()
+                let diff = r.scoreSummary.totalScore - r.scoreSummary.totalPar
+                HStack(spacing: 0) {
+                    sessionStat("Score",    diff == 0 ? "E" : diff > 0 ? "+\(diff)" : "\(diff)")
+                    sessionStat("Fairways", "\(r.scoreSummary.fairwaysHit)")
+                    sessionStat("Putts",    "\(r.scoreSummary.totalPutts)")
+                }
             }
-            TCDivider()
-            let diff = r.scoreSummary.totalScore - r.scoreSummary.totalPar
-            HStack(spacing: 0) {
-                sessionStat("Score",    diff == 0 ? "E" : diff > 0 ? "+\(diff)" : "\(diff)")
-                sessionStat("Fairways", "\(r.scoreSummary.fairwaysHit)")
-                sessionStat("Putts",    "\(r.scoreSummary.totalPutts)")
-            }
+            .tcCard()
         }
-        .tcCard()
+        .buttonStyle(.plain)
     }
 
     // MARK: - Saved Shots Grid

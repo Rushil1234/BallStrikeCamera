@@ -24,6 +24,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>This app uses the camera to detect a stationary ball and capture frames around impact.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>True Carry uses your local network to connect to golf simulator software running on your computer.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>True Carry uses your location to calculate golf hole distances and show yardages during rounds.</string>
 	<key>UILaunchStoryboardName</key>
