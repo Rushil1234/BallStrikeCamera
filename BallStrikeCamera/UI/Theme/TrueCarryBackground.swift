@@ -2,14 +2,21 @@ import SwiftUI
 
 // MARK: - True Carry Background
 
+/// Brand texture options for the app background (Brand pattern 06.00).
+enum BackgroundPattern {
+    case contour   // moving green-side radius rings
+    case dimple    // static golf-ball dimple grid
+}
+
 struct TrueCarryBackground: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var pattern: BackgroundPattern = .contour
 
     var body: some View {
         ZStack {
             TCTheme.background
             RadialGradient(
-                colors: [Color.white.opacity(0.025), .clear],
+                colors: [TCTheme.cream.opacity(0.025), .clear],
                 center: .top,
                 startRadius: 20,
                 endRadius: 520
@@ -26,20 +33,84 @@ struct TrueCarryBackground: View {
                 startRadius: 30,
                 endRadius: 420
             )
-            if reduceMotion {
-                TopoLinesCanvas(phase: 0)
-                    .opacity(0.06)
-                    .blendMode(.screen)
-            } else {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                    let phase = timeline.date.timeIntervalSinceReferenceDate
-                    TopoLinesCanvas(phase: phase)
-                        .opacity(0.06)
-                        .blendMode(.screen)
+            switch pattern {
+            case .dimple:
+                DimpleGridCanvas()
+            case .contour:
+                if reduceMotion {
+                    ContourRingsCanvas(phase: 0)
+                } else {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                        ContourRingsCanvas(phase: timeline.date.timeIntervalSinceReferenceDate)
+                    }
                 }
             }
         }
         .ignoresSafeArea()
+    }
+}
+
+// MARK: - Contour Rings (animated brand pattern)
+
+struct ContourRingsCanvas: View {
+    var phase: TimeInterval = 0
+    /// Distance between rings and how long one ring takes to drift outward (seconds).
+    private let spacing: CGFloat = 48
+    private let period: Double = 7
+
+    var body: some View {
+        Canvas { ctx, size in
+            let center = CGPoint(x: size.width * 0.66, y: size.height * 0.72)
+            // Farthest corner sets how many rings we need to cover the screen.
+            let maxR: CGFloat = hypot(max(center.x, size.width - center.x),
+                                      max(center.y, size.height - center.y)) + spacing
+            // Drift one full ring-spacing over `period` seconds, then loop seamlessly.
+            let t: Double = (phase.truncatingRemainder(dividingBy: period)) / period
+            let drift: CGFloat = CGFloat(t) * spacing
+
+            var r: CGFloat = drift + 6
+            while r < maxR {
+                // Fade rings gently as they reach the edges.
+                let fade: Double = 1 - Double(r / maxR) * 0.55
+                let shading = GraphicsContext.Shading.color(TCTheme.cream.opacity(0.07 * fade))
+                let rect = CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)
+                ctx.stroke(Path(ellipseIn: rect), with: shading, lineWidth: 1)
+                r += spacing
+            }
+        }
+        .drawingGroup()
+    }
+}
+
+// MARK: - Dimple Grid (static brand pattern)
+
+struct DimpleGridCanvas: View {
+    /// Tile size and dot radius mirror the brand spec: 22 px repeat, two offset dots.
+    private let tile: CGFloat = 22
+    private let dotRadius: CGFloat = 1.6
+
+    var body: some View {
+        Canvas { ctx, size in
+            let color = GraphicsContext.Shading.color(TCTheme.cream.opacity(0.06))
+            let cols: Int = Int(size.width / tile) + 2
+            let rows: Int = Int(size.height / tile) + 2
+            // Two dots per tile (30%/30% and 70%/70%) → offset dimple lattice.
+            let offsets: [(CGFloat, CGFloat)] = [(0.30, 0.30), (0.70, 0.70)]
+            for row in 0..<rows {
+                for col in 0..<cols {
+                    let ox: CGFloat = CGFloat(col) * tile
+                    let oy: CGFloat = CGFloat(row) * tile
+                    for offset in offsets {
+                        let cx: CGFloat = ox + tile * offset.0
+                        let cy: CGFloat = oy + tile * offset.1
+                        let rect = CGRect(x: cx - dotRadius, y: cy - dotRadius,
+                                          width: dotRadius * 2, height: dotRadius * 2)
+                        ctx.fill(Path(ellipseIn: rect), with: color)
+                    }
+                }
+            }
+        }
+        .drawingGroup()
     }
 }
 

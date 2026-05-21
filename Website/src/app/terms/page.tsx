@@ -1,22 +1,24 @@
-import Link from "next/link";
+import SiteNav from "@/components/SiteNav";
+import SiteFooter from "@/components/SiteFooter";
+
+export const metadata = { title: "Terms of Service" };
 
 export default function TermsPage() {
   return (
     <>
-      <nav>
-        <Link href="/" className="nav-logo">True Carry</Link>
-      </nav>
-      <main className="container" style={{ paddingTop: 60, paddingBottom: 80, maxWidth: 720, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 36, fontWeight: 800, marginBottom: 32 }}>Terms of Service</h1>
-        <div style={{ color: "var(--muted)", lineHeight: 1.8, fontSize: 15 }}>
-          <p style={{ marginBottom: 20 }}>
+      <SiteNav />
+      <main className="narrow" style={{ paddingTop: 70, paddingBottom: 90 }}>
+        <span className="eyebrow">Legal</span>
+        <h1 style={{ fontSize: "clamp(32px,5vw,46px)", margin: "14px 0 28px" }}>Terms of Service</h1>
+        <div className="prose">
+          <p>
             By using True Carry you agree to use the app for personal golf tracking only.
           </p>
-          <p style={{ marginBottom: 20 }}>
+          <p>
             Subscriptions are billed monthly or annually through Stripe. You may cancel at
             any time from your account page; access continues until the end of the billing period.
           </p>
-          <p style={{ marginBottom: 20 }}>
+          <p>
             True Carry is provided as-is. Distance and speed measurements are estimates and
             should not be relied upon for competitive purposes.
           </p>
@@ -25,6 +27,7 @@ export default function TermsPage() {
           </p>
         </div>
       </main>
+      <SiteFooter />
     </>
   );
 }

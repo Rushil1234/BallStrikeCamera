@@ -4,23 +4,23 @@ import SwiftUI
 
 enum BSTheme {
 
-    // MARK: Colors  (dark values preserved; light variants added)
-    static let backgroundTop    = Color.dyn(light: Color(red: 0.949, green: 0.945, blue: 0.933), dark: Color(red: 0.035, green: 0.037, blue: 0.041))
-    static let backgroundBottom = backgroundTop
-    static let panel            = Color.dyn(light: Color.white, dark: Color.white.opacity(0.035))
-    static let panelRaised      = Color.dyn(light: Color(red: 0.969, green: 0.965, blue: 0.953), dark: Color.white.opacity(0.055))
-    static let border           = Color.dyn(light: Color.black.opacity(0.10), dark: Color.white.opacity(0.10))
-    static let borderBright     = Color.dyn(light: Color.black.opacity(0.18), dark: Color.white.opacity(0.20))
-    static let textPrimary      = Color.dyn(light: Color(red: 0.102, green: 0.098, blue: 0.086), dark: Color.white)
-    static let textSecondary    = Color.dyn(light: Color.black.opacity(0.74), dark: Color.white.opacity(0.76))
-    static let textMuted        = Color.dyn(light: Color.black.opacity(0.50), dark: Color.white.opacity(0.50))
-    static let fairwayGreen     = Color.dyn(light: Color.black.opacity(0.74), dark: Color.white.opacity(0.78))
-    static let electricCyan     = Color.dyn(light: Color.black.opacity(0.78), dark: Color.white.opacity(0.82))
-    static let gold             = Color.dyn(light: Color.black.opacity(0.82), dark: Color.white.opacity(0.86))
-    static let dangerRed        = Color(red: 1.00, green: 0.32, blue: 0.32)
-    static let successGreen     = Color.dyn(light: Color.black.opacity(0.74), dark: Color.white.opacity(0.78))
-    static let simPurple        = Color.dyn(light: Color.black.opacity(0.66), dark: Color.white.opacity(0.70))
-    static let simBlue          = Color.dyn(light: Color.black.opacity(0.72), dark: Color.white.opacity(0.76))
+    // MARK: Colors — Brand Guidelines v1 (dark = Carry Forest, light = Paper/Bone)
+    static var backgroundTop: Color { Color.dyn(light: Color(red: 0.957, green: 0.937, blue: 0.886), dark: Color(red: 0.118, green: 0.165, blue: 0.133)) } // Paper / Carry Forest
+    static var backgroundBottom: Color { backgroundTop }
+    static var panel: Color { Color.dyn(light: Color.white,                                  dark: Color(red: 0.141, green: 0.192, blue: 0.153)) } // raised forest
+    static var panelRaised: Color { Color.dyn(light: Color(red: 0.984, green: 0.973, blue: 0.941), dark: Color(red: 0.165, green: 0.227, blue: 0.180)) } // Fairway Moss
+    static var border: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.12), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.12)) }
+    static var borderBright: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.22), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.22)) }
+    static var textPrimary: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059), dark: Color(red: 0.925, green: 0.894, blue: 0.824)) } // Ink / Bone
+    static var textSecondary: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.76), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.80)) }
+    static var textMuted: Color { Color.dyn(light: Color(red: 0.361, green: 0.353, blue: 0.310), dark: Color(red: 0.682, green: 0.690, blue: 0.635)) }
+    static var fairwayGreen: Color { Color.dyn(light: Color(red: 0.310, green: 0.420, blue: 0.267), dark: Color(red: 0.549, green: 0.647, blue: 0.522)) } // Fairway sage
+    static var electricCyan: Color { Color.dyn(light: Color(red: 0.541, green: 0.522, blue: 0.463), dark: Color(red: 0.784, green: 0.773, blue: 0.741)) } // Atlas Silver
+    static var gold: Color { Color.dyn(light: Color(red: 0.604, green: 0.482, blue: 0.275), dark: Color(red: 0.722, green: 0.604, blue: 0.369)) } // Marker Gold
+    static let dangerRed        = Color(red: 0.85, green: 0.45, blue: 0.42)
+    static var successGreen: Color { Color.dyn(light: Color(red: 0.310, green: 0.420, blue: 0.267), dark: Color(red: 0.549, green: 0.647, blue: 0.522)) }
+    static var simPurple: Color { Color.dyn(light: Color(red: 0.208, green: 0.290, blue: 0.227), dark: Color(red: 0.612, green: 0.706, blue: 0.580)) } // moss/sage
+    static var simBlue: Color { Color.dyn(light: Color(red: 0.541, green: 0.522, blue: 0.463), dark: Color(red: 0.784, green: 0.773, blue: 0.741)) } // silver
 
     // MARK: Gradients
     static var mainBackground: LinearGradient {

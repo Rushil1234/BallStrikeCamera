@@ -3,6 +3,8 @@ import SwiftUI
 struct TrueCarryProfileView: View {
     @EnvironmentObject var session: AuthSessionStore
     @State private var showClubs = false
+    @AppStorage(AppearanceStore.key) private var appearanceRaw = AppAppearance.dark.rawValue
+    @AppStorage("tc_feed_autoshare_enabled") private var autoShareFeed = true
 
     private var profile: UserProfile? { session.userProfile }
     private var user: AppUser?        { session.currentUser }
@@ -42,6 +44,7 @@ struct TrueCarryProfileView: View {
 
                     VStack(spacing: TCTheme.sectionGap) {
                         profileHeader
+                        displayCard
                         preferencesCard
                         bagCard
                         cameraCard
@@ -86,26 +89,79 @@ struct TrueCarryProfileView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(displayName)
                     .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(TCTheme.textPrimary)
 
                 HStack(spacing: 4) {
                     Image(systemName: "location.fill")
                         .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.40))
+                        .foregroundColor(TCTheme.textMuted)
                     Text(homeCourseName)
                         .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.50))
+                        .foregroundColor(TCTheme.textMuted)
                 }
 
                 Text(session.entitlementVM.tierDisplayName + (devMode ? " Mode" : " Plan"))
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(devMode ? Color(red: 1, green: 0.6, blue: 0) : .white.opacity(0.35))
+                    .foregroundColor(devMode ? Color(red: 1, green: 0.6, blue: 0) : TCTheme.textUltraMuted)
                     .tracking(0.5)
             }
 
             Spacer(minLength: 0)
         }
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Display (appearance + feed sharing)
+
+    private var displayCard: some View {
+        VStack(spacing: 0) {
+            sectionLabel("DISPLAY")
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    Image(systemName: "circle.lefthalf.filled")
+                        .font(.system(size: 14))
+                        .foregroundColor(TCTheme.textMuted)
+                        .frame(width: 24, alignment: .leading)
+                    Text("Appearance")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Spacer()
+                    Picker("", selection: $appearanceRaw) {
+                        ForEach(AppAppearance.allCases) { mode in
+                            Text(mode.label).tag(mode.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 168)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                rowDivider
+
+                HStack(spacing: 14) {
+                    Image(systemName: "newspaper")
+                        .font(.system(size: 14))
+                        .foregroundColor(TCTheme.textMuted)
+                        .frame(width: 24, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Share activities to feed")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text("Auto-post rounds & sessions to friends")
+                            .font(.system(size: 11))
+                            .foregroundColor(TCTheme.textMuted)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $autoShareFeed)
+                        .labelsHidden()
+                        .tint(TCTheme.gold)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 11)
+            }
+            .tcCard()
+        }
     }
 
     // MARK: - Preferences
@@ -130,11 +186,11 @@ struct TrueCarryProfileView: View {
         HStack(spacing: 14) {
             Image(systemName: "hand.raised")
                 .font(.system(size: 14))
-                .foregroundColor(.white.opacity(0.50))
+                .foregroundColor(TCTheme.textMuted)
                 .frame(width: 24, alignment: .leading)
             Text("Handedness")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.white)
+                .foregroundColor(TCTheme.textPrimary)
             Spacer()
             Picker("", selection: Binding(
                 get: { session.userProfile?.handedness ?? .right },
@@ -251,10 +307,10 @@ struct TrueCarryProfileView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Developer Mode")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(.white)
+                            .foregroundColor(TCTheme.textPrimary)
                         Text("Unlocks all features and bypasses limits")
                             .font(.system(size: 11))
-                            .foregroundColor(.white.opacity(0.40))
+                            .foregroundColor(TCTheme.textMuted)
                     }
                     Spacer()
                     Toggle("", isOn: $session.entitlementVM.isDeveloperMode)
@@ -299,7 +355,7 @@ struct TrueCarryProfileView: View {
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 11, weight: .medium))
-            .foregroundColor(.white.opacity(0.35))
+            .foregroundColor(TCTheme.textUltraMuted)
             .tracking(1.2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 6)
@@ -310,21 +366,21 @@ struct TrueCarryProfileView: View {
         HStack(spacing: 14) {
             Image(systemName: icon)
                 .font(.system(size: 14))
-                .foregroundColor(.white.opacity(0.50))
+                .foregroundColor(TCTheme.textMuted)
                 .frame(width: 24, alignment: .leading)
             Text(title)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.white)
+                .foregroundColor(TCTheme.textPrimary)
             Spacer()
             if !value.isEmpty {
                 Text(value)
                     .font(.system(size: 14))
-                    .foregroundColor(.white.opacity(0.45))
+                    .foregroundColor(TCTheme.textMuted)
             }
             if showChevron {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.20))
+                    .foregroundColor(TCTheme.textUltraMuted)
             }
         }
         .padding(.horizontal, 16)
@@ -333,7 +389,7 @@ struct TrueCarryProfileView: View {
 
     private var rowDivider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.07))
+            .fill(TCTheme.border)
             .frame(height: 1)
             .padding(.leading, 54)
     }

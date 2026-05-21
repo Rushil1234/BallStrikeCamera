@@ -78,7 +78,7 @@ struct TrueCarryInsightsView: View {
 
     var body: some View {
         ZStack {
-            TrueCarryBackground()
+            TrueCarryBackground(pattern: .dimple)
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {

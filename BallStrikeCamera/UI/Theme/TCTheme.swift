@@ -3,39 +3,40 @@ import SwiftUI
 // MARK: - True Carry Design System
 
 enum TCTheme {
-    // MARK: Backgrounds  (dark values preserved; light variants added)
-    static let background     = Color.dyn(light: Color(red: 0.949, green: 0.945, blue: 0.933), dark: Color(red: 0.027, green: 0.027, blue: 0.027)) // #070707
-    static let backgroundMid  = background
-    static let backgroundBot  = background
-    static let panel          = Color.dyn(light: Color.white, dark: Color(red: 0.059, green: 0.059, blue: 0.063)) // #0f0f10
-    static let panelRaised    = Color.dyn(light: Color(red: 0.969, green: 0.965, blue: 0.953), dark: Color(red: 0.075, green: 0.075, blue: 0.078)) // #131314
-    static let panelDeep      = Color.dyn(light: Color.black.opacity(0.05), dark: Color.black.opacity(0.42))
-    static let glassPanel     = panel
+    // MARK: Backgrounds — Brand Guidelines v1 (dark = Carry Forest, light = Paper/Bone)
+    static var background: Color { Color.dyn(light: Color(red: 0.957, green: 0.937, blue: 0.886), dark: Color(red: 0.118, green: 0.165, blue: 0.133)) } // Paper / Carry Forest #1E2A22
+    static var backgroundMid: Color { background }
+    static var backgroundBot: Color { background }
+    static var panel: Color { Color.dyn(light: Color.white,                                  dark: Color(red: 0.141, green: 0.192, blue: 0.153)) } // raised forest #243127
+    static var panelRaised: Color { Color.dyn(light: Color(red: 0.984, green: 0.973, blue: 0.941), dark: Color(red: 0.165, green: 0.227, blue: 0.180)) } // Fairway Moss #2A3A2E
+    static var panelDeep: Color { Color.dyn(light: Color.black.opacity(0.05),                    dark: Color(red: 0.086, green: 0.125, blue: 0.102)) } // forest-deep #16201A
+    static var glassPanel: Color { panel }
 
-    // MARK: Text
-    static let textPrimary    = Color.dyn(light: Color(red: 0.102, green: 0.098, blue: 0.086), dark: Color(red: 0.925, green: 0.914, blue: 0.886)) // #ece9e2
-    static let textSecondary  = Color.dyn(light: Color(red: 0.102, green: 0.098, blue: 0.086).opacity(0.78), dark: Color(red: 0.941, green: 0.929, blue: 0.898).opacity(0.82))
-    static let textMuted      = Color.dyn(light: Color(red: 0.435, green: 0.435, blue: 0.412), dark: Color(red: 0.553, green: 0.553, blue: 0.529)) // #8d8d87
-    static let textUltraMuted = Color.dyn(light: Color(red: 0.620, green: 0.620, blue: 0.596), dark: Color(red: 0.353, green: 0.353, blue: 0.333)) // #5a5a55
+    // MARK: Text — Range Bone on forest / Night Ink on paper
+    static var textPrimary: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059), dark: Color(red: 0.925, green: 0.894, blue: 0.824)) } // Ink #0E140F / Bone #ECE4D2
+    static var textSecondary: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.76), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.82)) }
+    static var textMuted: Color { Color.dyn(light: Color(red: 0.361, green: 0.353, blue: 0.310), dark: Color(red: 0.682, green: 0.690, blue: 0.635)) } // #5C5A4F / Ash
+    static var textUltraMuted: Color { Color.dyn(light: Color(red: 0.541, green: 0.522, blue: 0.463), dark: Color(red: 0.541, green: 0.533, blue: 0.502)) } // Pewter #8A8880
 
-    // MARK: Accents
-    static let gold           = Color.dyn(light: Color(red: 0.604, green: 0.482, blue: 0.275), dark: Color(red: 0.722, green: 0.600, blue: 0.408)) // #b89968
-    static let goldLight      = Color.dyn(light: Color(red: 0.722, green: 0.600, blue: 0.408), dark: Color(red: 0.847, green: 0.741, blue: 0.549)) // #d8bd8c
-    static let goldDim        = Color(red: 0.530, green: 0.414, blue: 0.263)
-    static let cream          = Color.dyn(light: Color(red: 0.157, green: 0.149, blue: 0.129), dark: Color(red: 0.941, green: 0.929, blue: 0.898)) // #f0ede5
-    static let sage           = Color.dyn(light: Color(red: 0.357, green: 0.471, blue: 0.310), dark: Color(red: 0.498, green: 0.608, blue: 0.451)) // #7f9b73
-    static let sageBright     = Color(red: 0.560, green: 0.680, blue: 0.510)
-    static let sageDeep       = Color(red: 0.300, green: 0.380, blue: 0.280)
-    static let deepGreen      = Color(red: 0.075, green: 0.082, blue: 0.070)
+    // MARK: Accents — Marker Gold, Atlas Silver, Fairway sage
+    static var gold: Color { Color.dyn(light: Color(red: 0.604, green: 0.482, blue: 0.275), dark: Color(red: 0.722, green: 0.604, blue: 0.369)) } // Marker Gold #B89A5E
+    static var goldLight: Color { Color.dyn(light: Color(red: 0.722, green: 0.604, blue: 0.369), dark: Color(red: 0.796, green: 0.690, blue: 0.475)) } // #CBB079
+    static let goldDim        = Color(red: 0.486, green: 0.396, blue: 0.235)
+    static var cream: Color { Color.dyn(light: Color(red: 0.086, green: 0.125, blue: 0.102), dark: Color(red: 0.925, green: 0.894, blue: 0.824)) } // Bone / Ink
+    static var sage: Color { Color.dyn(light: Color(red: 0.310, green: 0.420, blue: 0.267), dark: Color(red: 0.549, green: 0.647, blue: 0.522)) } // Fairway #8CA585
+    static let sageBright     = Color(red: 0.612, green: 0.706, blue: 0.580)
+    static let sageDeep       = Color(red: 0.208, green: 0.290, blue: 0.227)   // Moss-soft #354A3A
+    static let deepGreen      = Color(red: 0.086, green: 0.125, blue: 0.102)   // forest-deep
     static let fairway        = Color(red: 0.30, green: 0.62, blue: 0.34).opacity(0.58)
-    static let cyan           = cream.opacity(0.82)
-    static let danger         = Color(red: 0.93, green: 0.47, blue: 0.47)
+    static var silver: Color { Color.dyn(light: Color(red: 0.541, green: 0.533, blue: 0.502), dark: Color(red: 0.784, green: 0.773, blue: 0.741)) } // Atlas Silver #C8C5BD
+    static var cyan: Color { cream.opacity(0.82) }
+    static let danger         = Color(red: 0.85, green: 0.45, blue: 0.42)
 
-    // MARK: Borders
-    static let border         = Color.dyn(light: Color.black.opacity(0.08), dark: Color.white.opacity(0.07))
-    static let borderMedium   = Color.dyn(light: Color.black.opacity(0.14), dark: Color.white.opacity(0.14))
-    static let borderGold     = gold.opacity(0.35)
-    static let borderSage     = sage.opacity(0.22)
+    // MARK: Borders — bone hairlines on forest, ink hairlines on paper
+    static var border: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.12), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.12)) }
+    static var borderMedium: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.20), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.22)) }
+    static var borderGold: Color { gold.opacity(0.35) }
+    static var borderSage: Color { sage.opacity(0.22) }
 
     // MARK: Spacing
     static let hPad: CGFloat        = 20
@@ -55,19 +56,19 @@ enum TCTheme {
         colors: [sageBright, sageDeep],
         startPoint: .topLeading, endPoint: .bottomTrailing
     )
-    static let backgroundGradient = LinearGradient(
-        colors: [background, backgroundMid, backgroundBot],
-        startPoint: .top, endPoint: .bottom
-    )
-    static let heroGradient = LinearGradient(
-        colors: [panelRaised, panel],
-        startPoint: .top, endPoint: .bottom
-    )
-    static let dockBackground = Color(red: 0.027, green: 0.027, blue: 0.027).opacity(0.96)
-    static let courseGradient = LinearGradient(
-        colors: [panelRaised, panel],
-        startPoint: .topLeading, endPoint: .bottomTrailing
-    )
+    static var backgroundGradient: LinearGradient {
+        LinearGradient(colors: [background, backgroundMid, backgroundBot],
+                       startPoint: .top, endPoint: .bottom)
+    }
+    static var heroGradient: LinearGradient {
+        LinearGradient(colors: [panelRaised, panel], startPoint: .top, endPoint: .bottom)
+    }
+    static var dockBackground: Color {
+        Color.dyn(light: Color(red: 0.957, green: 0.937, blue: 0.886), dark: Color(red: 0.086, green: 0.125, blue: 0.102)).opacity(0.97)
+    }
+    static var courseGradient: LinearGradient {
+        LinearGradient(colors: [panelRaised, panel], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
 
     // MARK: Shadows
     static let goldShadow = Color.clear

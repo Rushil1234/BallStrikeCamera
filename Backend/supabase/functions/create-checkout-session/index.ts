@@ -2,11 +2,10 @@
 // Deploy: supabase functions deploy create-checkout-session
 // Called by: website /pricing page when user clicks upgrade button.
 
-import Stripe from "npm:stripe@14";
+import Stripe from "npm:stripe@21";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
-  apiVersion: "2024-04-10",
   httpClient: Stripe.createFetchHttpClient(),
 });
 
@@ -18,9 +17,7 @@ const supabase = createClient(
 const websiteURL = Deno.env.get("TRUECARRY_WEBSITE_URL") ?? "https://truecarry.app";
 
 const PRICE_IDS: Record<string, Record<string, string>> = {
-  basic:     { monthly: Deno.env.get("STRIPE_BASIC_MONTHLY_PRICE_ID")     ?? "", yearly: Deno.env.get("STRIPE_BASIC_YEARLY_PRICE_ID")     ?? "" },
-  pro:       { monthly: Deno.env.get("STRIPE_PRO_MONTHLY_PRICE_ID")       ?? "", yearly: Deno.env.get("STRIPE_PRO_YEARLY_PRICE_ID")       ?? "" },
-  unlimited: { monthly: Deno.env.get("STRIPE_UNLIMITED_MONTHLY_PRICE_ID") ?? "", yearly: Deno.env.get("STRIPE_UNLIMITED_YEARLY_PRICE_ID") ?? "" },
+  premium: { monthly: Deno.env.get("STRIPE_PREMIUM_MONTHLY_PRICE_ID") ?? "" },
 };
 
 const CORS_HEADERS = {
@@ -47,15 +44,16 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  let body: { tier?: string; billingInterval?: string };
+  let body: { tier?: string; billingInterval?: string; uiMode?: string };
   try {
     body = await req.json();
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const tier            = (body.tier ?? "pro").toLowerCase();
+  const tier            = (body.tier ?? "premium").toLowerCase();
   const billingInterval = (body.billingInterval ?? "monthly").toLowerCase();
+  const useEmbeddedCheckout = (body.uiMode ?? "").toLowerCase() === "embedded";
 
   const priceId = PRICE_IDS[tier]?.[billingInterval];
   if (!priceId) {
@@ -69,7 +67,6 @@ Deno.serve(async (req: Request) => {
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const customerParams: Stripe.Checkout.SessionCreateParams["customer_creation"] = undefined;
   const existingCustomer = entRow?.stripe_customer_id as string | undefined;
 
   const sessionParams: Stripe.Checkout.SessionCreateParams = {
@@ -87,8 +84,16 @@ Deno.serve(async (req: Request) => {
         app_tier: tier,
       },
     },
-    success_url: `${websiteURL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url:  `${websiteURL}/billing/cancel`,
+    ...(useEmbeddedCheckout
+      ? {
+          ui_mode: "embedded_page",
+          return_url: `${websiteURL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+          redirect_on_completion: "always",
+        }
+      : {
+          success_url: `${websiteURL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${websiteURL}/billing/cancel`,
+        }),
   };
 
   if (existingCustomer) {
@@ -99,7 +104,10 @@ Deno.serve(async (req: Request) => {
 
   try {
     const checkoutSession = await stripe.checkout.sessions.create(sessionParams);
-    return json({ url: checkoutSession.url }, 200);
+    return json({
+      url: checkoutSession.url,
+      clientSecret: checkoutSession.client_secret,
+    }, 200);
   } catch (err) {
     console.error("[create-checkout-session] Stripe error:", err);
     return json({ error: "Failed to create checkout session" }, 500);

@@ -28,12 +28,14 @@ struct FeedHomeView: View {
 // MARK: - Home feed (Strava-style)
 
 struct FeedView: View {
+    @EnvironmentObject var session: AuthSessionStore
     @StateObject private var vm: FeedViewModel
     private let authorName: String
     private let userId: UUID
     private let backend: AppBackend
 
     @State private var showFriends = false
+    @State private var showProfile = false
     @State private var commentingPost: FeedPost?
 
     init(userId: UUID, authorName: String, backend: AppBackend) {
@@ -43,41 +45,59 @@ struct FeedView: View {
         _vm = StateObject(wrappedValue: FeedViewModel(userId: userId, backend: backend))
     }
 
+    private var userInitials: String {
+        let parts = authorName.components(separatedBy: " ")
+        if parts.count >= 2, let f = parts[0].first, let l = parts[1].first { return "\(f)\(l)" }
+        return String(authorName.prefix(2)).uppercased()
+    }
+
     var body: some View {
         ZStack {
-            TCTheme.background.ignoresSafeArea()
-            VStack(spacing: 0) {
-                topBar
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 0) {
-                        weeklySnapshot
-                        sectionGap
-                        if vm.posts.isEmpty && !vm.isLoading {
-                            emptyState
-                        } else {
-                            ForEach(Array(vm.posts.enumerated()), id: \.element.id) { _, post in
-                                FeedPostRow(
-                                    post: post,
-                                    authorName: authorName,
-                                    gimmeCount: vm.gimmeCount(for: post),
-                                    hasGimmed: vm.hasGimmed(post),
-                                    onGimme: { Task { await vm.toggleGimme(post) } },
-                                    onComment: { commentingPost = post }
-                                )
-                                sectionGap
-                            }
-                            caughtUpNote
+            TrueCarryBackground()
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    TCHeaderBar(initials: userInitials) {
+                        Button { showFriends = true } label: {
+                            Image(systemName: "person.2")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(TCTheme.textSecondary)
+                                .frame(width: 32, height: 32)
                         }
-                        Spacer(minLength: 96)
+                        .buttonStyle(.plain)
+                        TCProfileAvatarButton(initials: userInitials,
+                                              devMode: session.entitlementVM.isDeveloperMode) { showProfile = true }
                     }
+                    weeklySnapshot
+                    sectionGap
+                    if vm.posts.isEmpty && !vm.isLoading {
+                        emptyState
+                    } else {
+                        ForEach(Array(vm.posts.enumerated()), id: \.element.id) { _, post in
+                            FeedPostRow(
+                                post: post,
+                                authorName: authorName,
+                                gimmeCount: vm.gimmeCount(for: post),
+                                hasGimmed: vm.hasGimmed(post),
+                                onGimme: { Task { await vm.toggleGimme(post) } },
+                                onComment: { commentingPost = post }
+                            )
+                            sectionGap
+                        }
+                        caughtUpNote
+                    }
+                    Spacer(minLength: 120)
                 }
-                .refreshable { await vm.load() }
             }
+            .refreshable { await vm.load() }
         }
         .navigationBarHidden(true)
         .task { await vm.load() }
         .sheet(isPresented: $showFriends, onDismiss: { Task { await vm.load() } }) {
             NavigationStack { FriendsView(userId: userId, backend: backend) }
+                .tcAppearance()
+        }
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { TrueCarryProfileView() }
                 .tcAppearance()
         }
         .sheet(item: $commentingPost) { post in
@@ -92,48 +112,6 @@ struct FeedView: View {
         Rectangle()
             .fill(TCTheme.panelDeep)
             .frame(height: 8)
-    }
-
-    // MARK: Top bar
-
-    private var topBar: some View {
-        HStack(spacing: 14) {
-            Button { showFriends = true } label: { AvatarCircle(name: authorName, size: 34) }
-                .buttonStyle(.plain)
-            Button { showFriends = true } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(TCTheme.textPrimary)
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            HStack(spacing: 6) {
-                Image(systemName: "bolt.shield")
-                Text("Upgrade")
-            }
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(TCTheme.gold)
-            .padding(.horizontal, 16).padding(.vertical, 7)
-            .overlay(Capsule().strokeBorder(TCTheme.gold.opacity(0.7), lineWidth: 1.5))
-
-            Spacer()
-
-            Button { showFriends = true } label: {
-                Image(systemName: "person.2")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(TCTheme.textPrimary)
-            }
-            .buttonStyle(.plain)
-            Image(systemName: "bell")
-                .font(.system(size: 18, weight: .medium))
-                .foregroundColor(TCTheme.textPrimary)
-        }
-        .padding(.horizontal, TCTheme.hPad)
-        .padding(.vertical, 12)
-        .background(TCTheme.background)
-        .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .bottom)
     }
 
     // MARK: Weekly snapshot
