@@ -10,6 +10,7 @@ build/
 
 # Secrets — never commit real keys
 BallStrikeCamera/Secrets.plist
+BallStrikeCamera/Resources/Secrets.plist
 Config/Secrets.plist
 *.secret
 .env

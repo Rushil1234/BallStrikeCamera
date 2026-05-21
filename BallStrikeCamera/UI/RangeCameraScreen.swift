@@ -48,8 +48,14 @@ struct RangeCameraScreen: View {
                 dismiss()
             }
         )
-        .onAppear  { OrientationManager.shared.lockLandscape() }
-        .onDisappear { OrientationManager.shared.lockPortrait() }
+        .onAppear {
+            OrientationManager.shared.lockLandscape()
+            camera.start()
+        }
+        .onDisappear {
+            OrientationManager.shared.lockPortrait()
+            camera.stop()
+        }
         .task { await loadClubs() }
         .confirmationDialog("Select Club", isPresented: $showClubPicker, titleVisibility: .visible) {
             ForEach(clubs) { club in
