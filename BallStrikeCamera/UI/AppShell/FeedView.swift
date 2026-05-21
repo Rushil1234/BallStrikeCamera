@@ -53,7 +53,7 @@ struct FeedView: View {
 
     var body: some View {
         ZStack {
-            TrueCarryBackground()
+            TrueCarryBackground(pattern: .plain)
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
@@ -164,31 +164,14 @@ struct FeedView: View {
     // MARK: Empty / footer
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "figure.golf")
-                .font(.system(size: 34))
-                .foregroundColor(TCTheme.sage.opacity(0.7))
-            Text("Your feed is quiet")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(TCTheme.textPrimary)
-            Text("Add friends to see their rounds and range sessions — your own activity shows up here too.")
-                .font(.system(size: 13))
-                .foregroundColor(TCTheme.textMuted)
-                .multilineTextAlignment(.center)
-            Button { showFriends = true } label: {
-                Text("Find Friends")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(TCTheme.background)
-                    .padding(.horizontal, 22).padding(.vertical, 10)
-                    .background(TCTheme.gold)
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity)
+        GolfBallEmptyField(
+            title: "Your feed is quiet",
+            message: "Add friends to see their rounds and range sessions. Your own activity shows up here too.",
+            actionTitle: "Find Friends",
+            action: { showFriends = true }
+        )
         .padding(.horizontal, TCTheme.hPad)
-        .padding(.vertical, 48)
+        .padding(.vertical, 28)
     }
 
     private var caughtUpNote: some View {

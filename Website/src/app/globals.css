@@ -1129,8 +1129,8 @@ code {
 /* Header */
 .round .head{ position:fixed; top:32px; left:0; right:0; z-index:55; padding:14px 0; background:color-mix(in oklab,var(--forest) 85%,transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid color-mix(in oklab,var(--bone) 8%,transparent); }
 .round .head .row{ display:flex; justify-content:space-between; align-items:center; padding:0 var(--gutter); }
-.round .brand{ display:inline-flex; align-items:center; gap:12px; text-decoration:none; color:var(--bone); }
-.round .brand img{ width:28px; height:28px; object-fit:contain; }
+.round .brand{ display:inline-flex; align-items:center; gap:14px; text-decoration:none; color:var(--bone); }
+.round .brand img{ width:52px; height:52px; object-fit:contain; margin:-10px 0; }
 .round .brand .n{ font-family:var(--display); font-size:22px; line-height:1; }
 .round .head .nav{ display:inline-flex; align-items:center; gap:24px; }
 .round .head .nav .l{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.22em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 72%,transparent); text-decoration:none; transition:color .2s ease; background:none; border:none; cursor:pointer; }
@@ -1327,12 +1327,13 @@ code {
     gap:14px;
   }
   .round .brand{
-    gap:9px;
+    gap:10px;
     min-width:0;
   }
   .round .brand img{
-    width:24px;
-    height:24px;
+    width:40px;
+    height:40px;
+    margin:-8px 0;
   }
   .round .brand .n{
     font-size:20px;

@@ -4,13 +4,14 @@ import SwiftUI
 
 /// Brand texture options for the app background (Brand pattern 06.00).
 enum BackgroundPattern {
+    case plain     // brand wash without surface pattern
     case contour   // moving green-side radius rings
     case dimple    // static golf-ball dimple grid
 }
 
 struct TrueCarryBackground: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    var pattern: BackgroundPattern = .contour
+    var pattern: BackgroundPattern = .plain
 
     var body: some View {
         ZStack {
@@ -34,6 +35,8 @@ struct TrueCarryBackground: View {
                 endRadius: 420
             )
             switch pattern {
+            case .plain:
+                EmptyView()
             case .dimple:
                 DimpleGridCanvas()
             case .contour:

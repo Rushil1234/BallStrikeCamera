@@ -4,26 +4,26 @@ import SwiftUI
 
 enum TCTheme {
     // MARK: Backgrounds — Brand Guidelines v1 (dark = Carry Forest, light = Paper/Bone)
-    static var background: Color { Color.dyn(light: Color(red: 0.957, green: 0.937, blue: 0.886), dark: Color(red: 0.118, green: 0.165, blue: 0.133)) } // Paper / Carry Forest #1E2A22
+    static var background: Color { Color.dyn(light: Color(red: 0.955, green: 0.935, blue: 0.875), dark: Color(red: 0.118, green: 0.165, blue: 0.133)) } // Paper / Carry Forest #1E2A22
     static var backgroundMid: Color { background }
     static var backgroundBot: Color { background }
-    static var panel: Color { Color.dyn(light: Color.white,                                  dark: Color(red: 0.141, green: 0.192, blue: 0.153)) } // raised forest #243127
-    static var panelRaised: Color { Color.dyn(light: Color(red: 0.984, green: 0.973, blue: 0.941), dark: Color(red: 0.165, green: 0.227, blue: 0.180)) } // Fairway Moss #2A3A2E
-    static var panelDeep: Color { Color.dyn(light: Color.black.opacity(0.05),                    dark: Color(red: 0.086, green: 0.125, blue: 0.102)) } // forest-deep #16201A
+    static var panel: Color { Color.dyn(light: Color(red: 0.996, green: 0.984, blue: 0.945), dark: Color(red: 0.141, green: 0.192, blue: 0.153)) } // warm paper / raised forest #243127
+    static var panelRaised: Color { Color.dyn(light: Color(red: 0.925, green: 0.894, blue: 0.824), dark: Color(red: 0.165, green: 0.227, blue: 0.180)) } // Range Bone / Fairway Moss #2A3A2E
+    static var panelDeep: Color { Color.dyn(light: Color(red: 0.878, green: 0.835, blue: 0.737), dark: Color(red: 0.086, green: 0.125, blue: 0.102)) } // warm divider / forest-deep #16201A
     static var glassPanel: Color { panel }
 
     // MARK: Text — Range Bone on forest / Night Ink on paper
     static var textPrimary: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059), dark: Color(red: 0.925, green: 0.894, blue: 0.824)) } // Ink #0E140F / Bone #ECE4D2
     static var textSecondary: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.76), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.82)) }
-    static var textMuted: Color { Color.dyn(light: Color(red: 0.361, green: 0.353, blue: 0.310), dark: Color(red: 0.682, green: 0.690, blue: 0.635)) } // #5C5A4F / Ash
-    static var textUltraMuted: Color { Color.dyn(light: Color(red: 0.541, green: 0.522, blue: 0.463), dark: Color(red: 0.541, green: 0.533, blue: 0.502)) } // Pewter #8A8880
+    static var textMuted: Color { Color.dyn(light: Color(red: 0.318, green: 0.306, blue: 0.259), dark: Color(red: 0.682, green: 0.690, blue: 0.635)) } // warm ink mute / Ash
+    static var textUltraMuted: Color { Color.dyn(light: Color(red: 0.455, green: 0.431, blue: 0.361), dark: Color(red: 0.541, green: 0.533, blue: 0.502)) } // warm pewter / Pewter #8A8880
 
     // MARK: Accents — Marker Gold, Atlas Silver, Fairway sage
-    static var gold: Color { Color.dyn(light: Color(red: 0.604, green: 0.482, blue: 0.275), dark: Color(red: 0.722, green: 0.604, blue: 0.369)) } // Marker Gold #B89A5E
+    static var gold: Color { Color.dyn(light: Color(red: 0.514, green: 0.392, blue: 0.188), dark: Color(red: 0.722, green: 0.604, blue: 0.369)) } // deeper Marker Gold / #B89A5E
     static var goldLight: Color { Color.dyn(light: Color(red: 0.722, green: 0.604, blue: 0.369), dark: Color(red: 0.796, green: 0.690, blue: 0.475)) } // #CBB079
     static let goldDim        = Color(red: 0.486, green: 0.396, blue: 0.235)
     static var cream: Color { Color.dyn(light: Color(red: 0.086, green: 0.125, blue: 0.102), dark: Color(red: 0.925, green: 0.894, blue: 0.824)) } // Bone / Ink
-    static var sage: Color { Color.dyn(light: Color(red: 0.310, green: 0.420, blue: 0.267), dark: Color(red: 0.549, green: 0.647, blue: 0.522)) } // Fairway #8CA585
+    static var sage: Color { Color.dyn(light: Color(red: 0.220, green: 0.337, blue: 0.247), dark: Color(red: 0.549, green: 0.647, blue: 0.522)) } // deeper Fairway / #8CA585
     static let sageBright     = Color(red: 0.612, green: 0.706, blue: 0.580)
     static let sageDeep       = Color(red: 0.208, green: 0.290, blue: 0.227)   // Moss-soft #354A3A
     static let deepGreen      = Color(red: 0.086, green: 0.125, blue: 0.102)   // forest-deep
@@ -33,8 +33,8 @@ enum TCTheme {
     static let danger         = Color(red: 0.85, green: 0.45, blue: 0.42)
 
     // MARK: Borders — bone hairlines on forest, ink hairlines on paper
-    static var border: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.12), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.12)) }
-    static var borderMedium: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.20), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.22)) }
+    static var border: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.15), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.12)) }
+    static var borderMedium: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.24), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.22)) }
     static var borderGold: Color { gold.opacity(0.35) }
     static var borderSage: Color { sage.opacity(0.22) }
 
@@ -45,13 +45,18 @@ enum TCTheme {
     static let rowRadius: CGFloat   = 6
 
     // MARK: Gradients
-    /// Fixed light fill for primary buttons (which use hardcoded dark text), so
-    /// it stays readable in both light and dark mode.
-    static let primaryButtonFill = Color(red: 0.941, green: 0.929, blue: 0.898)
-    static let goldGradient = LinearGradient(
-        colors: [primaryButtonFill, primaryButtonFill],
-        startPoint: .topLeading, endPoint: .bottomTrailing
-    )
+    /// Primary CTA: an inverted brand button — Carry Forest on paper (light),
+    /// Range Bone on forest (dark). High contrast in both modes; keeps gold as
+    /// a ≤5% accent per the brand usage ratio.
+    static var primaryFill: Color { Color.dyn(light: Color(red: 0.118, green: 0.165, blue: 0.133), dark: Color(red: 0.925, green: 0.894, blue: 0.824)) } // Carry Forest / Range Bone
+    static var onPrimary: Color { Color.dyn(light: Color(red: 0.925, green: 0.894, blue: 0.824), dark: Color(red: 0.055, green: 0.078, blue: 0.059)) } // Bone text / Ink text
+    static var primaryGradient: LinearGradient {
+        LinearGradient(colors: [primaryFill, primaryFill], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+    /// True Marker Gold gradient — for accent badges and icons (white/ink content on top).
+    static var goldGradient: LinearGradient {
+        LinearGradient(colors: [goldLight, gold], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
     static let sageGradient = LinearGradient(
         colors: [sageBright, sageDeep],
         startPoint: .topLeading, endPoint: .bottomTrailing

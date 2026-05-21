@@ -12,16 +12,14 @@ struct LoginView: View {
                 .ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    Spacer(minLength: 46)
+                    Spacer(minLength: 88)
                     logoSection
-                    Spacer(minLength: 34)
+                    Spacer(minLength: 40)
                     formCard
                     Spacer(minLength: 18)
                     createAccountButton
                     Spacer(minLength: 12)
                     guestButton
-                    Spacer(minLength: 22)
-                    authBenefits
                     Spacer(minLength: 48)
                 }
                 .padding(.horizontal, TCTheme.hPad)
@@ -44,42 +42,18 @@ struct LoginView: View {
     // MARK: Logo
 
     private var logoSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack {
-                VStack(alignment: .leading, spacing: 5) {
-                    TrueCarryLogo(size: 25)
-                    Text("THE CAMERA LAUNCH MONITOR")
-                        .font(.system(size: 10, weight: .medium))
-                        .tracking(3.0)
-                        .foregroundColor(TCTheme.textMuted)
-                }
-                Spacer()
-                Text("SIGN IN")
+        VStack(spacing: 24) {
+            TCFramedCrest(size: 196)
+
+            VStack(spacing: 10) {
+                TrueCarryLogo(size: 30)
+                Text("PRECISION GOLF ANALYTICS")
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(TCTheme.textUltraMuted)
-                    .tracking(2.0)
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                (Text("Know every\n")
-                    .foregroundColor(TCTheme.cream)
-                 + Text("yard")
-                    .italic()
-                    .foregroundColor(TCTheme.goldLight)
-                 + Text(" you carry.")
-                    .foregroundColor(TCTheme.cream))
-                    .font(.system(size: 48, weight: .regular, design: .serif))
-                    .tracking(-1.2)
-                    .lineSpacing(-4)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("Sign in to sync your bag, sessions, rounds, and course-ready GPS maps.")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(TCTheme.textMuted)
-                    .lineSpacing(4)
+                    .tracking(3.4)
+                    .foregroundColor(TCTheme.gold)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: Form
@@ -87,14 +61,9 @@ struct LoginView: View {
     private var formCard: some View {
         VStack(spacing: 18) {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Welcome back")
-                        .font(.system(size: 19, weight: .medium, design: .serif))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text("Sign in to sync your bag, sessions, and rounds.")
-                        .font(.system(size: 12))
-                        .foregroundColor(TCTheme.textMuted)
-                }
+                Text("Welcome back")
+                    .font(.system(size: 19, weight: .medium, design: .serif))
+                    .foregroundColor(TCTheme.textPrimary)
                 Spacer()
                 Image(systemName: "lock.shield.fill")
                     .font(.system(size: 18, weight: .semibold))
@@ -170,33 +139,6 @@ struct LoginView: View {
         .buttonStyle(.plain)
     }
 
-    private var authBenefits: some View {
-        HStack(spacing: 10) {
-            authBenefit("Verified GPS", "checkmark.seal.fill")
-            authBenefit("Bag Sync", "figure.golf")
-            authBenefit("Insights", "chart.line.uptrend.xyaxis")
-        }
-    }
-
-    private func authBenefit(_ title: String, _ icon: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(TCTheme.gold)
-            Text(title)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(TCTheme.textMuted)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .background(TCTheme.panel)
-        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(TCTheme.border, lineWidth: 1)
-        )
-    }
 }
 
 // MARK: - Create Account View
@@ -284,6 +226,66 @@ struct CreateAccountView: View {
     }
 }
 
+// MARK: - Framed brand crest (luxury logo frame — brand guideline 'logo-frame')
+
+/// The True Carry logo presented in a sharp gold-hairline frame with an inner
+/// inset rule and four corner accents, echoing the brand site's hero treatment.
+struct TCFramedCrest: View {
+    var size: CGFloat = 196
+
+    var body: some View {
+        Image("tc_logo")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: size, height: size)
+            .clipped()
+            // Inner inset hairline
+            .overlay(
+                Rectangle()
+                    .strokeBorder(TCTheme.gold.opacity(0.20), lineWidth: 0.5)
+                    .padding(12)
+            )
+            // Outer hairline frame
+            .overlay(
+                Rectangle()
+                    .strokeBorder(TCTheme.gold.opacity(0.45), lineWidth: 0.5)
+            )
+            // Gold corner accents
+            .overlay(
+                CrestCornerAccents(length: 18)
+                    .stroke(TCTheme.gold, lineWidth: 1)
+                    .opacity(0.75)
+            )
+            .shadow(color: Color.black.opacity(0.18), radius: 24, x: 0, y: 16)
+    }
+}
+
+/// Four L-shaped marks, one per corner.
+struct CrestCornerAccents: Shape {
+    var length: CGFloat = 18
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        let l = length
+        // Top-left
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY + l))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.minX + l, y: rect.minY))
+        // Top-right
+        p.move(to: CGPoint(x: rect.maxX - l, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + l))
+        // Bottom-left
+        p.move(to: CGPoint(x: rect.minX, y: rect.maxY - l))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX + l, y: rect.maxY))
+        // Bottom-right
+        p.move(to: CGPoint(x: rect.maxX - l, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - l))
+        return p
+    }
+}
+
 // MARK: - Reusable auth text field (TCTheme)
 
 struct TCAuthTextField: View {
@@ -309,7 +311,7 @@ struct TCAuthTextField: View {
                 }
             }
             .font(.system(size: 15))
-            .foregroundColor(.white)
+            .foregroundColor(TCTheme.textPrimary)
             .tint(TCTheme.gold)
             .focused($isFocused)
         }

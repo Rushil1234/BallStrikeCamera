@@ -65,24 +65,31 @@ struct PremiumActionButton: View {
             .clipShape(RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: BSTheme.cardRadius, style: .continuous)
-                    .strokeBorder(BSTheme.border, lineWidth: 1)
+                    .strokeBorder(isPrimary ? TCTheme.gold.opacity(0.30) : BSTheme.border, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
     }
 
+    /// `.gradient` and `.accent` are strong primary CTAs; `.ghost` is a quiet panel.
+    private var isPrimary: Bool {
+        switch style {
+        case .gradient, .accent: return true
+        case .ghost:             return false
+        }
+    }
+
     @ViewBuilder private var background: some View {
         switch style {
-        case .gradient:        BSTheme.panelRaised
-        case .accent:          BSTheme.panelRaised
-        case .ghost:           BSTheme.panel
+        case .gradient, .accent: TCTheme.primaryFill
+        case .ghost:             BSTheme.panel
         }
     }
     private var foregroundColor: Color {
         switch style {
-        case .gradient: return BSTheme.textPrimary
-        case .accent: return BSTheme.textPrimary
-        case .ghost: return BSTheme.textPrimary
+        case .gradient: return TCTheme.onPrimary
+        case .accent:   return TCTheme.onPrimary
+        case .ghost:    return BSTheme.textPrimary
         }
     }
 }

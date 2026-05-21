@@ -118,7 +118,7 @@ struct TrueCarryInsightsView: View {
     // MARK: - Separator
 
     private var sep: some View {
-        Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1)
+        Rectangle().fill(TCTheme.border).frame(height: 1)
     }
 
     // MARK: - Club Picker
@@ -128,7 +128,7 @@ struct TrueCarryInsightsView: View {
             HStack(spacing: 6) {
                 Text("CLUB")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.40))
+                    .foregroundColor(TCTheme.textMuted)
                     .tracking(1.5)
 
                 Picker("", selection: $selectedClub) {
@@ -140,7 +140,7 @@ struct TrueCarryInsightsView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .tint(.white)
+                .tint(TCTheme.gold)
 
                 Spacer()
             }
@@ -156,13 +156,13 @@ struct TrueCarryInsightsView: View {
         VStack(spacing: 10) {
             Image(systemName: "chart.bar.xaxis")
                 .font(.system(size: 32))
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundColor(TCTheme.textUltraMuted)
             Text("No shots recorded yet")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.white.opacity(0.70))
+                .foregroundColor(TCTheme.textPrimary)
             Text("Hit shots in a range session with a club selected to see your stats here.")
                 .font(.system(size: 13))
-                .foregroundColor(.white.opacity(0.40))
+                .foregroundColor(TCTheme.textMuted)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -172,7 +172,7 @@ struct TrueCarryInsightsView: View {
     private var selectPrompt: some View {
         Text("Select a club above to see your stats.")
             .font(.system(size: 14))
-            .foregroundColor(.white.opacity(0.40))
+            .foregroundColor(TCTheme.textMuted)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 40)
     }
@@ -216,10 +216,10 @@ struct TrueCarryInsightsView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Shot Dispersion")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(TCTheme.textPrimary)
                 Text("Plotted from horizontal launch angle and carry")
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.40))
+                    .foregroundColor(TCTheme.textMuted)
             }
             .padding(.top, 20)
 
@@ -230,9 +230,9 @@ struct TrueCarryInsightsView: View {
 
             HStack(spacing: 0) {
                 inlineStat(onTarget,                                          "ON TARGET")
-                Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 28)
+                verticalDivider(height: 28)
                 inlineStat(hlaSpread,                                         "HLA SPREAD")
-                Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 28)
+                verticalDivider(height: 28)
                 inlineStat(shots.isEmpty ? "—" : "\(shots.count)",            "SHOTS")
             }
             .padding(.bottom, 20)
@@ -248,11 +248,11 @@ struct TrueCarryInsightsView: View {
         let launch = avg(shots.map { $0.metrics.vlaDegrees })
         return HStack(spacing: 0) {
             statCol("AVG CARRY",  fmt(carry),               carry  == nil ? "" : "yds")
-            Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 40)
+            verticalDivider(height: 40)
             statCol("BEST CARRY", fmt(best),                best   == nil ? "" : "yds")
-            Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 40)
+            verticalDivider(height: 40)
             statCol("BALL SPEED", fmt(speed),               speed  == nil ? "" : "mph")
-            Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 40)
+            verticalDivider(height: 40)
             statCol("LAUNCH",     fmt(launch, decimals: 1), launch == nil ? "" : "°")
         }
         .padding(.vertical, 20)
@@ -281,29 +281,29 @@ struct TrueCarryInsightsView: View {
             HStack {
                 Text("Carry Trend")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundColor(TCTheme.textPrimary)
                 Spacer()
                 Text(carries.isEmpty ? "" : "Last \(carries.count) shots")
                     .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.40))
+                    .foregroundColor(TCTheme.textMuted)
             }
             .padding(.top, 20)
 
             if carries.isEmpty {
                 Text("Hit more shots to see your carry trend.")
                     .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.40))
+                    .foregroundColor(TCTheme.textMuted)
                     .padding(.vertical, 20)
             } else {
-                TCTrendLine(values: carries, color: .white.opacity(0.70))
+                TCTrendLine(values: carries, color: TCTheme.sage)
                     .frame(height: 56)
             }
 
             HStack(spacing: 0) {
                 statCol("BEST",    bestC.map { "\(Int($0))" } ?? "—", bestC == nil ? "" : "yds")
-                Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 40)
+                verticalDivider(height: 40)
                 statCol("AVERAGE", avgC.map  { "\(Int($0))" } ?? "—", avgC  == nil ? "" : "yds")
-                Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 40)
+                verticalDivider(height: 40)
                 statCol("CHANGE",  changeStr, "")
             }
             .padding(.bottom, 20)
@@ -319,11 +319,11 @@ struct TrueCarryInsightsView: View {
         let total  = avg(shots.map { $0.metrics.totalYards })
         return HStack(spacing: 0) {
             statCol("BACKSPIN",     fmt(spin),               spin   == nil ? "" : "rpm")
-            Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 40)
+            verticalDivider(height: 40)
             statCol("SMASH FACTOR", fmt(smash, decimals: 2), "")
-            Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 40)
+            verticalDivider(height: 40)
             statCol("CLUB SPEED",   fmt(cSpeed),             cSpeed == nil ? "" : "mph")
-            Rectangle().fill(Color.white.opacity(0.12)).frame(width: 1, height: 40)
+            verticalDivider(height: 40)
             statCol("TOTAL DIST",   fmt(total),              total  == nil ? "" : "yds")
         }
         .padding(.vertical, 20)
@@ -336,16 +336,16 @@ struct TrueCarryInsightsView: View {
             HStack(alignment: .lastTextBaseline, spacing: 3) {
                 Text(value)
                     .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(TCTheme.textPrimary)
                 if !unitStr.isEmpty && value != "—" {
                     Text(unitStr)
                         .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.50))
+                        .foregroundColor(TCTheme.textMuted)
                 }
             }
             Text(label)
                 .font(.system(size: 9, weight: .medium))
-                .foregroundColor(.white.opacity(0.40))
+                .foregroundColor(TCTheme.textMuted)
                 .tracking(0.8)
         }
         .frame(maxWidth: .infinity)
@@ -355,12 +355,18 @@ struct TrueCarryInsightsView: View {
         VStack(spacing: 4) {
             Text(value)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(TCTheme.textPrimary)
             Text(label)
                 .font(.system(size: 9, weight: .medium))
-                .foregroundColor(.white.opacity(0.40))
+                .foregroundColor(TCTheme.textMuted)
                 .tracking(0.8)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func verticalDivider(height: CGFloat) -> some View {
+        Rectangle()
+            .fill(TCTheme.borderMedium)
+            .frame(width: 1, height: height)
     }
 }

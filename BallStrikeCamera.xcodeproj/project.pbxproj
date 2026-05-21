@@ -102,6 +102,7 @@
 		BF0000030000000000000010 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000010 /* AppRootView.swift */; };
 		BF0000030000000000000011 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000011 /* AuthViewModel.swift */; };
 		BF0000030000000000000012 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000012 /* LoginView.swift */; };
+		BF0000030000000000000099 /* TrueCarryLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000099 /* TrueCarryLaunchView.swift */; };
 		BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000013 /* ClubBagViewModel.swift */; };
 		BF0000030000000000000014 /* RangeSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000014 /* RangeSessionViewModel.swift */; };
 		BF0000030000000000000015 /* SimSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000015 /* SimSessionViewModel.swift */; };
@@ -118,6 +119,7 @@
 		BF0000060000000000000004 /* TrueCarryBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000003 /* TrueCarryBackground.swift */; };
 		BF0000060000000000000006 /* TCCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000005 /* TCCards.swift */; };
 		BF0000060000000000000008 /* TCBottomDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000007 /* TCBottomDock.swift */; };
+		BF0000060000000000000030 /* SpinningGolfBallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000002F /* SpinningGolfBallView.swift */; };
 		BF000006000000000000000A /* TrueCarryHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000009 /* TrueCarryHomeView.swift */; };
 		BF000006000000000000000C /* TrueCarryInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000000B /* TrueCarryInsightsView.swift */; };
 		BF000006000000000000000E /* TrueCarryPlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000000D /* TrueCarryPlayView.swift */; };
@@ -251,6 +253,7 @@
 		BF0000020000000000000010 /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000011 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		BF0000020000000000000012 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		BF0000020000000000000099 /* TrueCarryLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryLaunchView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000013 /* ClubBagViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubBagViewModel.swift; sourceTree = "<group>"; };
 		BF0000020000000000000014 /* RangeSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RangeSessionViewModel.swift; sourceTree = "<group>"; };
 		BF0000020000000000000015 /* SimSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimSessionViewModel.swift; sourceTree = "<group>"; };
@@ -267,6 +270,7 @@
 		BF0000060000000000000003 /* TrueCarryBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryBackground.swift; sourceTree = "<group>"; };
 		BF0000060000000000000005 /* TCCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCCards.swift; sourceTree = "<group>"; };
 		BF0000060000000000000007 /* TCBottomDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCBottomDock.swift; sourceTree = "<group>"; };
+		BF000006000000000000002F /* SpinningGolfBallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpinningGolfBallView.swift; sourceTree = "<group>"; };
 		BF0000060000000000000009 /* TrueCarryHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryHomeView.swift; sourceTree = "<group>"; };
 		BF000006000000000000000B /* TrueCarryInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryInsightsView.swift; sourceTree = "<group>"; };
 		BF000006000000000000000D /* TrueCarryPlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryPlayView.swift; sourceTree = "<group>"; };
@@ -587,6 +591,7 @@
 				BF0000020000000000000010 /* AppRootView.swift */,
 				BF0000020000000000000011 /* AuthViewModel.swift */,
 				BF0000020000000000000012 /* LoginView.swift */,
+				BF0000020000000000000099 /* TrueCarryLaunchView.swift */,
 			);
 			path = Auth;
 			sourceTree = "<group>";
@@ -643,6 +648,7 @@
 			children = (
 				BF0000060000000000000005 /* TCCards.swift */,
 				BF0000060000000000000007 /* TCBottomDock.swift */,
+				BF000006000000000000002F /* SpinningGolfBallView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -880,6 +886,7 @@
 				BF0000030000000000000010 /* AppRootView.swift in Sources */,
 				BF0000030000000000000011 /* AuthViewModel.swift in Sources */,
 				BF0000030000000000000012 /* LoginView.swift in Sources */,
+				BF0000030000000000000099 /* TrueCarryLaunchView.swift in Sources */,
 				BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */,
 				BF0000030000000000000014 /* RangeSessionViewModel.swift in Sources */,
 				BF0000030000000000000015 /* SimSessionViewModel.swift in Sources */,
@@ -896,6 +903,7 @@
 				BF0000060000000000000004 /* TrueCarryBackground.swift in Sources */,
 				BF0000060000000000000006 /* TCCards.swift in Sources */,
 				BF0000060000000000000008 /* TCBottomDock.swift in Sources */,
+				BF0000060000000000000030 /* SpinningGolfBallView.swift in Sources */,
 				BF000006000000000000000A /* TrueCarryHomeView.swift in Sources */,
 				BF000006000000000000000C /* TrueCarryInsightsView.swift in Sources */,
 				BF000006000000000000000E /* TrueCarryPlayView.swift in Sources */,

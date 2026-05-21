@@ -28,3 +28,6 @@ Website/node_modules/
 Website/.next/
 Website/out/
 
+
+# Supabase CLI temp artifacts
+.temp/

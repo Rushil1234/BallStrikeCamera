@@ -34,11 +34,11 @@ enum AppAppearance: String, CaseIterable, Identifiable {
 
 /// Single source of truth for the chosen appearance. Backed by UserDefaults so
 /// every `.tcAppearance()` modifier and the settings picker stay in sync.
-/// Defaults to `.dark` to preserve the app's original look.
+/// Defaults to `.light` — the brand's primary "paper" surface.
 enum AppearanceStore {
     static let key = "tc_appearance"
     static var current: AppAppearance {
-        AppAppearance(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .dark
+        AppAppearance(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .light
     }
 }
 
@@ -48,8 +48,8 @@ enum AppearanceStore {
 /// and the UIWindow's overrideUserInterfaceStyle — the latter is what UIKit-backed
 /// dynamic colors (Color.dyn) actually resolve against.
 private struct AppearanceModifier: ViewModifier {
-    @AppStorage(AppearanceStore.key) private var raw = AppAppearance.dark.rawValue
-    private var appearance: AppAppearance { AppAppearance(rawValue: raw) ?? .dark }
+    @AppStorage(AppearanceStore.key) private var raw = AppAppearance.light.rawValue
+    private var appearance: AppAppearance { AppAppearance(rawValue: raw) ?? .light }
     func body(content: Content) -> some View {
         content
             .preferredColorScheme(appearance.colorScheme)

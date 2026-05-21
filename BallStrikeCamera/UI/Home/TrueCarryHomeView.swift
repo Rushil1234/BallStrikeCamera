@@ -48,7 +48,7 @@ struct TrueCarryHomeView: View {
 
     var body: some View {
         ZStack {
-            TrueCarryBackground()
+            TrueCarryBackground(pattern: .plain)
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
@@ -141,20 +141,7 @@ struct TrueCarryHomeView: View {
             }
 
             if rounds.isEmpty && rangeSessions.isEmpty {
-                VStack(spacing: 10) {
-                    Image(systemName: "figure.golf")
-                        .font(.system(size: 30))
-                        .foregroundColor(TCTheme.textMuted)
-                    Text("No activity yet")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(TCTheme.textSecondary)
-                    Text("Start a round or range session to see your stats here.")
-                        .font(.system(size: 12))
-                        .foregroundColor(TCTheme.textMuted)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 28)
+                GolfBallEmptyField()
             } else {
                 if let latestRound = rounds.first {
                     TCFeedCard(

@@ -218,21 +218,21 @@ struct TCPrimaryGoldButton: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Text(title)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(Color(red: 0.039, green: 0.039, blue: 0.039))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(TCTheme.onPrimary)
                 if let ic = icon {
                     Image(systemName: ic)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color(red: 0.039, green: 0.039, blue: 0.039).opacity(0.86))
+                        .foregroundColor(TCTheme.onPrimary.opacity(0.86))
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
-            .background(TCTheme.goldGradient)
+            .background(TCTheme.primaryGradient)
             .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    .strokeBorder(TCTheme.gold.opacity(0.30), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

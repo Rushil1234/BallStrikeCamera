@@ -12,12 +12,12 @@ type Hole = { n: number; name: string; par: number; yd: number; id: string };
 
 const HOLES: Hole[] = [
   { n: 1, name: "Tee off", par: 4, yd: 372, id: "h01" },
-  { n: 3, name: "Three readings", par: 5, yd: 542, id: "h03" },
-  { n: 4, name: "At last light", par: 4, yd: 411, id: "h04" },
-  { n: 6, name: "Wednesday at the Presidio", par: 3, yd: 192, id: "h06" },
-  { n: 7, name: "One plan", par: 4, yd: 425, id: "h07" },
-  { n: 8, name: "When you're ready", par: 3, yd: 158, id: "h08" },
-  { n: 9, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
+  { n: 2, name: "Three readings", par: 5, yd: 542, id: "h03" },
+  { n: 3, name: "Wednesday at the Presidio", par: 3, yd: 192, id: "h06" },
+  { n: 4, name: "One plan", par: 4, yd: 425, id: "h07" },
+  { n: 5, name: "When you're ready", par: 3, yd: 158, id: "h08" },
+  { n: 6, name: "At last light", par: 4, yd: 411, id: "h04" },
+  { n: 7, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
 ];
 
 function HoleStrip({ hole }: { hole: Hole }) {
@@ -75,7 +75,7 @@ export default function HomePage() {
 
     const sections = Array.from(document.querySelectorAll<HTMLElement>(".round .hole"));
     const rows = Array.from(document.querySelectorAll<HTMLElement>("#scHoles .row"));
-    const played = new Set<number>();
+    const played = new Set<string>();
     let total = 0;
     let raf = 0;
 
@@ -96,20 +96,23 @@ export default function HomePage() {
 
     function update() {
       const trigger = window.innerHeight * 0.55;
-      let currentIdx = 0;
-      sections.forEach((sec, i) => {
+      let currentId = sections[0]?.id ?? "";
+      sections.forEach((sec) => {
+        const hole = HOLES.find((item) => item.id === sec.id);
+        if (!hole) return;
         if (sec.getBoundingClientRect().top < trigger) {
-          if (!played.has(i)) {
-            played.add(i);
-            total += HOLES[i]?.yd ?? 0;
+          if (!played.has(hole.id)) {
+            played.add(hole.id);
+            total += hole.yd;
             animateTotal(total);
           }
-          currentIdx = i;
+          currentId = hole.id;
         }
       });
-      rows.forEach((r, i) => {
-        r.classList.toggle("played", played.has(i));
-        r.classList.toggle("current", i === currentIdx);
+      rows.forEach((r) => {
+        const rowId = r.dataset.holeId ?? "";
+        r.classList.toggle("played", played.has(rowId));
+        r.classList.toggle("current", rowId === currentId);
       });
       const trail = trailRef.current, ball = ballRef.current;
       if (trail && ball) {
@@ -150,7 +153,7 @@ export default function HomePage() {
       <header className="head">
         <div className="row">
           <a className="brand" href="#h01">
-            <img src="/truecarry-logo.png" alt="" />
+            <img src="/truecarry-header-logo.png" alt="" />
             <span className="n">True <span className="it">Carry.</span></span>
           </a>
           <nav className="nav">
@@ -232,29 +235,10 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H04 — scene */}
-          <section className="hole h04" id="h04">
-            <div className="wrap strip-wrap"><HoleStrip hole={HOLES[2]} /></div>
-            <div className="scene">
-              <div className="ground" />
-              <div className="horizon" />
-              <div className="arc">
-                <svg viewBox="0 0 1440 720" preserveAspectRatio="none"><path d="M 180 580 Q 720 60, 1080 520" /></svg>
-              </div>
-              <div className="ball-dot" />
-              <div className="pin" />
-              <div className="cap">
-                Presidio · Hole 4 <span className="dot" /> Last light <span className="dot" /> 6:42 PM
-                <div className="meta">Wind 8 mph SW · Temp 62°F · No add-on hardware</div>
-              </div>
-              <div className="stamp">Carry recorded<span className="v">287.4 yd</span></div>
-            </div>
-          </section>
-
           {/* H06 — round card (paper) */}
           <section className="hole h06" id="h06">
             <div className="wrap">
-              <HoleStrip hole={HOLES[3]} />
+              <HoleStrip hole={HOLES[2]} />
               <div className="top">
                 <h2>Wednesday<br />at the <span className="it">Presidio.</span></h2>
                 <p>Every round becomes an object you can return to. Carry per hole, club per shot, where the misses cluster. This is Maren&apos;s back nine from last week — birdie on 15 with a 168-yard 8-iron.</p>
@@ -283,9 +267,10 @@ export default function HomePage() {
           </section>
 
           {/* H07 — pricing */}
+          <span id="pricing" aria-hidden style={{ position: "absolute", marginTop: "-80px" }} />
           <section className="hole h07" id="h07">
             <div className="wrap">
-              <HoleStrip hole={HOLES[4]} />
+              <HoleStrip hole={HOLES[3]} />
               <h2 className="price"><span className="dollar">$</span>10<span className="per">per<br />month</span></h2>
               <p className="summary">Everything True Carry does, in one plan. <span className="it">Cancel anytime, keep your data.</span></p>
               <ul className="features">
@@ -307,9 +292,28 @@ export default function HomePage() {
           <section className="hole h08" id="h08">
             <div className="atlas-bg"><img src="/truecarry-logo.png" alt="" /></div>
             <div className="wrap">
-              <HoleStrip hole={HOLES[5]} />
+              <HoleStrip hole={HOLES[4]} />
               <p className="copy">When you&apos;re ready,<br />we&apos;ll be in the <span className="gold">bag.</span></p>
               <a href="#h07" className="link" onClick={(e) => { e.preventDefault(); startCheckout(); }}>Start the trial &nbsp;→</a>
+            </div>
+          </section>
+
+          {/* H04 — scene */}
+          <section className="hole h04" id="h04">
+            <div className="wrap strip-wrap"><HoleStrip hole={HOLES[5]} /></div>
+            <div className="scene">
+              <div className="ground" />
+              <div className="horizon" />
+              <div className="arc">
+                <svg viewBox="0 0 1440 720" preserveAspectRatio="none"><path d="M 180 580 Q 720 60, 1080 520" /></svg>
+              </div>
+              <div className="ball-dot" />
+              <div className="pin" />
+              <div className="cap">
+                Presidio · Hole 4 <span className="dot" /> Last light <span className="dot" /> 6:42 PM
+                <div className="meta">Wind 8 mph SW · Temp 62°F · No add-on hardware</div>
+              </div>
+              <div className="stamp">Carry recorded<span className="v">287.4 yd</span></div>
             </div>
           </section>
 
@@ -361,7 +365,7 @@ export default function HomePage() {
             <span className="col-h r">Par</span>
             <span className="col-h r">Yd</span>
             {HOLES.map((h) => (
-              <div className="row" key={h.id} onClick={() => document.getElementById(h.id)?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ cursor: "pointer" }}>
+              <div className="row" key={h.id} data-hole-id={h.id} onClick={() => document.getElementById(h.id)?.scrollIntoView({ behavior: "smooth", block: "start" })} style={{ cursor: "pointer" }}>
                 <span className="h">{String(h.n).padStart(2, "0")}</span>
                 <span className="name">{h.name}</span>
                 <span className="par">P{h.par}</span>
