@@ -17,7 +17,9 @@ const supabase = createClient(
 const websiteURL = Deno.env.get("TRUECARRY_WEBSITE_URL") ?? "https://truecarry.app";
 
 const PRICE_IDS: Record<string, Record<string, string>> = {
-  premium: { monthly: Deno.env.get("STRIPE_PREMIUM_MONTHLY_PRICE_ID") ?? "" },
+  basic: { monthly: Deno.env.get("STRIPE_BASIC_MONTHLY_PRICE_ID") ?? "" },
+  pro:   { monthly: Deno.env.get("STRIPE_PRO_MONTHLY_PRICE_ID")   ?? "" },
+  atlas: { monthly: Deno.env.get("STRIPE_ATLAS_MONTHLY_PRICE_ID") ?? "" },
 };
 
 const CORS_HEADERS = {
@@ -51,7 +53,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Invalid JSON body" }, 400);
   }
 
-  const tier            = (body.tier ?? "premium").toLowerCase();
+  const tier            = (body.tier ?? "pro").toLowerCase();
   const billingInterval = (body.billingInterval ?? "monthly").toLowerCase();
   const useEmbeddedCheckout = (body.uiMode ?? "").toLowerCase() === "embedded";
 

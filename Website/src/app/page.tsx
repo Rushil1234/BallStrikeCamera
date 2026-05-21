@@ -1,23 +1,30 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
 import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
-
-const CHECKOUT_URL = process.env.NEXT_PUBLIC_CREATE_CHECKOUT_FUNCTION_URL!;
-const CHECKOUT_RETURN_PATH = "/?checkout=premium#h07";
+import PhoneDemo from "@/components/PhoneDemo";
 
 type Hole = { n: number; name: string; par: number; yd: number; id: string };
 
 const HOLES: Hole[] = [
   { n: 1, name: "Tee off", par: 4, yd: 372, id: "h01" },
-  { n: 2, name: "Three readings", par: 5, yd: 542, id: "h03" },
-  { n: 3, name: "Wednesday at the Presidio", par: 3, yd: 192, id: "h06" },
-  { n: 4, name: "One plan", par: 4, yd: 425, id: "h07" },
-  { n: 5, name: "When you're ready", par: 3, yd: 158, id: "h08" },
-  { n: 6, name: "At last light", par: 4, yd: 411, id: "h04" },
-  { n: 7, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
+  { n: 2, name: "What it does", par: 5, yd: 542, id: "h03" },
+  { n: 3, name: "One plan", par: 4, yd: 425, id: "h07" },
+  { n: 4, name: "When you're ready", par: 3, yd: 158, id: "h08" },
+  { n: 5, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
+];
+
+type Plan = { id: string; name: string; price: string; per: string; tag: string; features: string[]; featured?: boolean; href?: string; cta?: string };
+
+const PLANS: Plan[] = [
+  { id: "free", name: "Free", price: "$0", per: "forever", tag: "Get a feel for it.", cta: "Get the app", href: "/login",
+    features: ["Range mode", "10 shots a day", "Ball speed & carry", "On-device storage"] },
+  { id: "basic", name: "Basic", price: "$5", per: "/ month", tag: "For the regular range-goer.",
+    features: ["All modes — range, sim, course", "Unlimited shots", "100 cloud-saved shots", "Basic analytics", "Cloud sync"] },
+  { id: "pro", name: "Pro", price: "$10", per: "/ month", tag: "For the player chasing gains.", featured: true,
+    features: ["Everything in Basic", "1,000 cloud shots", "Advanced analytics", "In-round suggestions", "Video export"] },
+  { id: "atlas", name: "Atlas", price: "$25", per: "/ month", tag: "The whole bag.",
+    features: ["Everything in Pro", "Unlimited cloud shots", "Full media storage", "Apple Watch companion", "Priority support"] },
 ];
 
 function HoleStrip({ hole }: { hole: Hole }) {
@@ -32,39 +39,25 @@ function HoleStrip({ hole }: { hole: Hole }) {
 }
 
 export default function HomePage() {
-  const router = useRouter();
-  const [checkoutToken, setCheckoutToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutTier, setCheckoutTier] = useState("pro");
   const totalRef = useRef<HTMLSpanElement | null>(null);
   const ballRef = useRef<HTMLDivElement | null>(null);
   const trailRef = useRef<HTMLDivElement | null>(null);
 
-  async function startCheckout() {
-    if (loading) return;
-    setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push(`/login?redirect=${encodeURIComponent(CHECKOUT_RETURN_PATH)}`);
-        return;
-      }
-      setCheckoutToken(session.access_token);
-      if (window.location.search.includes("checkout=premium")) {
-        window.history.replaceState(null, "", "/#h07");
-      }
-    } finally {
-      setLoading(false);
-    }
+  // Opening the panel never navigates — the overlay handles auth + Stripe inline.
+  function openCheckout(tier: string = "pro") {
+    setCheckoutTier(tier);
+    setCheckoutOpen(true);
   }
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("checkout") === "premium") {
       document.getElementById("h07")?.scrollIntoView({ block: "start" });
-      void startCheckout();
+      setCheckoutOpen(true);
+      window.history.replaceState(null, "", "/#h07");
     }
-    // Run only once on entry so checkout intent opens after login.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Scroll: mark holes played, highlight current, tally carry, move the ball.
@@ -157,12 +150,11 @@ export default function HomePage() {
             <span className="n">True <span className="it">Carry.</span></span>
           </a>
           <nav className="nav">
-            <a className="l" href="#h03">Readings</a>
-            <a className="l" href="#h06">Rounds</a>
+            <a className="l" href="#h03">What it does</a>
             <a className="l" href="#h07">Pricing</a>
             <a className="l btn" href="/login">Sign in</a>
-            <a className="l btn primary" href="#h07" onClick={(e) => { e.preventDefault(); startCheckout(); }}>
-              {loading ? "…" : "Get the app"}
+            <a className="l btn primary" href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>
+              Get the app
             </a>
           </nav>
         </div>
@@ -186,8 +178,8 @@ export default function HomePage() {
               <h1>Bear<br />every <span className="yard">yard.</span></h1>
               <div className="tee-off">
                 <div className="links">
-                  <a className="solid" href="#h07" onClick={(e) => { e.preventDefault(); startCheckout(); }}>Get the app</a>
-                  <a className="ghost" href="#h03">See what it reads</a>
+                  <a className="solid" href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get the app</a>
+                  <a className="ghost" href="#h03">See what it does</a>
                 </div>
                 <div className="note">Now on the tee<br /><span className="v">You.</span></div>
               </div>
@@ -200,7 +192,7 @@ export default function HomePage() {
               <strong>{HOLES[0].yd} yd</strong>
             </div>
             <div className="mobile-round-list">
-              {HOLES.slice(0, 5).map((hole) => (
+              {HOLES.map((hole) => (
                 <a href={`#${hole.id}`} key={hole.id}>
                   <span>{String(hole.n).padStart(2, "0")}</span>
                   <b>{hole.name}</b>
@@ -210,80 +202,54 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H03 — readings */}
+          {/* H03 — what it does + live demo */}
           <section className="hole h03" id="h03">
             <div className="wrap">
               <HoleStrip hole={HOLES[1]} />
-              <p className="deck">At 240 frames a second, your phone sees enough to read the strike, the window, and the carry.</p>
-              <div className="readings">
-                <div className="reading">
-                  <div className="label">Ball speed<span className="num">A · 01</span></div>
-                  <div className="v">128<span className="u">mph</span></div>
-                  <div className="gloss"><p>Read off the strike — not estimated from the club.</p><div className="src">±1.4 mph vs. radar baseline</div></div>
+              <div className="app-demo">
+                <div className="app-demo-copy">
+                  <h2>See what it<br /><span className="it">does.</span></h2>
+                  <p className="deck">Set your phone down, hit a shot, and True Carry reads the strike at 240 frames a second — ball speed, launch, and the carry the ball actually flies. No add-on hardware.</p>
+                  <ul className="app-stats">
+                    <li><span>Ball speed</span><b>±1.4 mph</b><em>vs. radar baseline</em></li>
+                    <li><span>Launch</span><b>±0.4°</b><em>vs. radar baseline</em></li>
+                    <li><span>True carry</span><b>±2.1 yd</b><em>vs. TrackMan · 14,210 shots</em></li>
+                  </ul>
+                  <p className="app-demo-hint">Pick a club and take a swing →</p>
                 </div>
-                <div className="reading">
-                  <div className="label">Launch<span className="num">A · 02</span></div>
-                  <div className="v">17.6<span className="u">deg</span></div>
-                  <div className="gloss"><p>The window the ball leaves on, degree by degree.</p><div className="src">±0.4° vs. radar baseline</div></div>
-                </div>
-                <div className="reading gold">
-                  <div className="label">True carry<span className="num">A · 03 · headline</span></div>
-                  <div className="v">172<span className="u">yd</span></div>
-                  <div className="gloss"><p>The yards the ball actually flies through air. Before bounce, before roll, before the story.</p><div className="src">±2.1 yd vs. TrackMan baseline · 14,210 shots</div></div>
+                <div className="app-demo-phone">
+                  <PhoneDemo />
                 </div>
               </div>
             </div>
           </section>
 
-          {/* H06 — round card (paper) */}
-          <section className="hole h06" id="h06">
-            <div className="wrap">
-              <HoleStrip hole={HOLES[2]} />
-              <div className="top">
-                <h2>Wednesday<br />at the <span className="it">Presidio.</span></h2>
-                <p>Every round becomes an object you can return to. Carry per hole, club per shot, where the misses cluster. This is Maren&apos;s back nine from last week — birdie on 15 with a 168-yard 8-iron.</p>
-              </div>
-              <div className="card">
-                <div className="sc-head">
-                  <div>
-                    <div className="title">True <span className="it">Carry.</span></div>
-                    <div className="sub">Round · Presidio · Back 9</div>
-                  </div>
-                  <div className="right">05·14·26<br />Maren · idx +2.4<br />Tee · Blue</div>
-                </div>
-                <table>
-                  <thead><tr><th>Hole</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th>15</th><th>16</th><th>17</th><th>18</th></tr></thead>
-                  <tbody>
-                    <tr><td className="lbl">Par</td><td>4</td><td>5</td><td>3</td><td>4</td><td>4</td><td>3</td><td>5</td><td>4</td><td>4</td></tr>
-                    <tr><td className="lbl">Score</td><td>4</td><td>6</td><td>3</td><td>5</td><td>4</td><td className="gold">2</td><td>5</td><td>4</td><td>5</td></tr>
-                    <tr><td className="lbl">Carry · yd</td><td>248</td><td>262</td><td>168</td><td>241</td><td>233</td><td>177</td><td>270</td><td>239</td><td>251</td></tr>
-                    <tr><td className="lbl">Club</td><td>D</td><td>D</td><td>7i</td><td>D</td><td>3w</td><td>8i</td><td>D</td><td>D</td><td>D</td></tr>
-                    <tr className="totals"><td className="lbl">Net</td><td colSpan={9}>38</td></tr>
-                  </tbody>
-                </table>
-                <div className="sc-foot"><span>Wind 8 mph SW · 62°F</span><span className="net">+2<span className="it">.</span></span></div>
-              </div>
-            </div>
-          </section>
-
-          {/* H07 — pricing */}
+          {/* H07 — pricing (four tiers) */}
           <span id="pricing" aria-hidden style={{ position: "absolute", marginTop: "-80px" }} />
           <section className="hole h07" id="h07">
             <div className="wrap">
-              <HoleStrip hole={HOLES[3]} />
-              <h2 className="price"><span className="dollar">$</span>10<span className="per">per<br />month</span></h2>
-              <p className="summary">Everything True Carry does, in one plan. <span className="it">Cancel anytime, keep your data.</span></p>
-              <ul className="features">
-                <li><span className="what">Ball, launch &amp; carry on <span className="it">every</span> shot</span><span className="ok">Included</span></li>
-                <li><span className="what">Range, simulator &amp; course modes</span><span className="ok">Included</span></li>
-                <li><span className="what">A full season of <span className="it">shot history</span></span><span className="ok">Included</span></li>
-                <li><span className="what">Cloud sync &amp; export</span><span className="ok">Included</span></li>
-                <li><span className="what">Apple Watch companion</span><span className="ok">Included</span></li>
-                <li><span className="what">Monthly model refresh</span><span className="ok">Included</span></li>
-              </ul>
-              <div className="cta">
-                <a className="solid" href="#h07" onClick={(e) => { e.preventDefault(); startCheckout(); }}>{loading ? "Preparing…" : "Get Premium"}</a>
-                <a className="ghost" href="#h03">See what it reads</a>
+              <HoleStrip hole={HOLES[2]} />
+              <div className="plans-head">
+                <h2>One round.<br /><span className="it">Four ways to play.</span></h2>
+                <p>Start free. Step up when you want more of the numbers. <span className="it">Cancel anytime, keep your data.</span></p>
+              </div>
+              <div className="plans">
+                {PLANS.map((plan) => (
+                  <div className={`plan${plan.featured ? " featured" : ""}`} key={plan.id}>
+                    {plan.featured && <span className="plan-flag">Most played</span>}
+                    <div className="plan-name">{plan.name}</div>
+                    <div className="plan-price">{plan.price}<span className="per">{plan.per}</span></div>
+                    <p className="plan-tag">{plan.tag}</p>
+                    <ul>
+                      {plan.features.map((f) => <li key={f}>{f}</li>)}
+                    </ul>
+                    {plan.href ? (
+                      <a className="plan-cta" href={plan.href}>{plan.cta ?? `Choose ${plan.name}`}</a>
+                    ) : (
+                      <a className="plan-cta" href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(plan.id); }}>Get {plan.name}</a>
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           </section>
@@ -292,28 +258,9 @@ export default function HomePage() {
           <section className="hole h08" id="h08">
             <div className="atlas-bg"><img src="/truecarry-logo.png" alt="" /></div>
             <div className="wrap">
-              <HoleStrip hole={HOLES[4]} />
+              <HoleStrip hole={HOLES[3]} />
               <p className="copy">When you&apos;re ready,<br />we&apos;ll be in the <span className="gold">bag.</span></p>
-              <a href="#h07" className="link" onClick={(e) => { e.preventDefault(); startCheckout(); }}>Start the trial &nbsp;→</a>
-            </div>
-          </section>
-
-          {/* H04 — scene */}
-          <section className="hole h04" id="h04">
-            <div className="wrap strip-wrap"><HoleStrip hole={HOLES[5]} /></div>
-            <div className="scene">
-              <div className="ground" />
-              <div className="horizon" />
-              <div className="arc">
-                <svg viewBox="0 0 1440 720" preserveAspectRatio="none"><path d="M 180 580 Q 720 60, 1080 520" /></svg>
-              </div>
-              <div className="ball-dot" />
-              <div className="pin" />
-              <div className="cap">
-                Presidio · Hole 4 <span className="dot" /> Last light <span className="dot" /> 6:42 PM
-                <div className="meta">Wind 8 mph SW · Temp 62°F · No add-on hardware</div>
-              </div>
-              <div className="stamp">Carry recorded<span className="v">287.4 yd</span></div>
+              <a href="#h07" className="link" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get Premium &nbsp;→</a>
             </div>
           </section>
 
@@ -328,15 +275,14 @@ export default function HomePage() {
                 </div>
                 <div className="col">
                   <h4>Product</h4>
-                  <a href="#h03">What it reads</a>
-                  <a href="#h06">Round view</a>
+                  <a href="#h03">What it does</a>
                   <a href="#h07">Pricing</a>
+                  <a href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get the app</a>
                 </div>
                 <div className="col">
                   <h4>Account</h4>
                   <a href="/login">Sign in</a>
                   <a href="/account">Your account</a>
-                  <a href="#h07" onClick={(e) => { e.preventDefault(); startCheckout(); }}>Get the app</a>
                 </div>
                 <div className="col">
                   <h4>Legal</h4>
@@ -387,13 +333,7 @@ export default function HomePage() {
         </aside>
       </div>
 
-      {checkoutToken && (
-        <EmbeddedCheckoutPanel
-          accessToken={checkoutToken}
-          checkoutUrl={CHECKOUT_URL}
-          onClose={() => setCheckoutToken(null)}
-        />
-      )}
+      {checkoutOpen && <EmbeddedCheckoutPanel tier={checkoutTier} onClose={() => setCheckoutOpen(false)} />}
     </div>
   );
 }

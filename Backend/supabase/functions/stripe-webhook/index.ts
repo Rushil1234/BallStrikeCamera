@@ -22,7 +22,9 @@ const CORS_HEADERS = {
 };
 
 const PRICE_TO_TIER: Record<string, string> = {
-  [Deno.env.get("STRIPE_PREMIUM_MONTHLY_PRICE_ID") ?? ""]: "premium",
+  [Deno.env.get("STRIPE_BASIC_MONTHLY_PRICE_ID") ?? ""]: "basic",
+  [Deno.env.get("STRIPE_PRO_MONTHLY_PRICE_ID")   ?? ""]: "pro",
+  [Deno.env.get("STRIPE_ATLAS_MONTHLY_PRICE_ID") ?? ""]: "atlas",
 };
 
 Deno.serve(async (req: Request) => {

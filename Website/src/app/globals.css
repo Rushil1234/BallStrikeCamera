@@ -1223,6 +1223,69 @@ code {
 .round .reading .gloss .src{ margin-top:12px; font-family:var(--r-mono); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 42%,transparent); }
 @media (max-width:760px){ .round .reading .label,.round .reading .v,.round .reading .gloss{ grid-column:1 / -1; padding-bottom:12px; } .round .reading .v{ font-size:76px; } }
 
+/* H03 — what it does + live app demo */
+.round .app-demo{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:clamp(40px,6vw,80px); align-items:center; }
+.round .app-demo .app-demo-copy h2{ font-family:var(--display); font-weight:400; font-size:clamp(44px,7vw,96px); line-height:.9; letter-spacing:-.03em; margin:0 0 24px; }
+.round .app-demo .app-demo-copy h2 .it{ font-style:italic; color:var(--carry-gold); }
+.round .app-demo .app-demo-copy .deck{ margin-bottom:0; }
+.round .app-stats{ list-style:none; margin:clamp(28px,4vw,44px) 0 0; padding:0; }
+.round .app-stats li{ display:grid; grid-template-columns:1fr auto; align-items:baseline; gap:4px 16px; padding:16px 0; border-top:1px solid color-mix(in oklab,var(--bone) 16%,transparent); }
+.round .app-stats li:last-child{ border-bottom:1px solid color-mix(in oklab,var(--bone) 16%,transparent); }
+.round .app-stats li > span{ font-family:var(--r-mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 60%,transparent); }
+.round .app-stats li b{ font-family:var(--display); font-style:italic; font-size:30px; color:var(--carry-gold); line-height:1; }
+.round .app-stats li em{ grid-column:1 / -1; font-family:var(--r-mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; font-style:normal; color:color-mix(in oklab,var(--bone) 40%,transparent); }
+.round .app-demo-hint{ margin-top:28px; font-family:var(--r-mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--carry-gold); }
+.round .app-demo .app-demo-phone{ display:flex; justify-content:center; }
+.round .app-demo .app-demo-phone .phone{ margin:0; }
+@media (max-width:880px){
+  .round .app-demo{ grid-template-columns:1fr; gap:44px; }
+  .round .app-demo .app-demo-phone{ order:-1; }
+}
+
+/* H07 — four-tier pricing */
+.round .plans-head{ margin-bottom:clamp(40px,6vw,72px); }
+.round .plans-head h2{ font-family:var(--display); font-weight:400; font-size:clamp(40px,6.5vw,88px); line-height:.92; letter-spacing:-.03em; margin:0 0 18px; }
+.round .plans-head h2 .it{ font-style:italic; color:var(--carry-gold); }
+.round .plans-head p{ font-family:var(--display); font-style:italic; font-size:clamp(18px,2vw,24px); line-height:1.4; color:color-mix(in oklab,var(--bone) 80%,transparent); max-width:42ch; }
+.round .plans-head p .it{ color:var(--carry-gold); }
+.round .plans{ display:grid; grid-template-columns:repeat(4,1fr); border-top:1px solid color-mix(in oklab,var(--bone) 20%,transparent); }
+.round .plan{ display:flex; flex-direction:column; padding:34px 26px; border-right:1px solid color-mix(in oklab,var(--bone) 14%,transparent); position:relative; }
+.round .plan:last-child{ border-right:none; }
+.round .plan.featured{ background:color-mix(in oklab,var(--carry-gold) 8%,transparent); padding-top:50px; }
+.round .plan-flag{ position:absolute; top:0; left:0; right:0; text-align:center; font-family:var(--r-mono); font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink); background:var(--carry-gold); padding:6px; }
+.round .plan-name{ font-family:var(--r-sans); font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--bone); margin-bottom:16px; }
+.round .plan-price{ font-family:var(--display); font-size:clamp(44px,5vw,62px); line-height:1; letter-spacing:-.02em; color:var(--bone); }
+.round .plan-price .per{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 50%,transparent); margin-left:6px; }
+.round .plan-tag{ font-family:var(--display); font-style:italic; font-size:16px; line-height:1.35; color:color-mix(in oklab,var(--bone) 75%,transparent); margin:14px 0 24px; min-height:44px; }
+.round .plan ul{ list-style:none; margin:0 0 26px; padding:0; display:flex; flex-direction:column; gap:11px; flex:1; }
+.round .plan ul li{ font-family:var(--r-sans); font-size:13px; line-height:1.45; color:color-mix(in oklab,var(--bone) 72%,transparent); padding-left:18px; position:relative; }
+.round .plan ul li::before{ content:"+"; position:absolute; left:0; color:var(--carry-gold); }
+.round .plan-cta{ font-family:var(--r-mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; padding:14px 16px; border-radius:2px; text-align:center; cursor:pointer; text-decoration:none; transition:all .2s ease; border:1px solid color-mix(in oklab,var(--bone) 28%,transparent); color:var(--bone); }
+.round .plan-cta:hover{ background:var(--bone); color:var(--ink); }
+.round .plan.featured .plan-cta{ background:var(--bone); color:var(--ink); border-color:var(--bone); }
+.round .plan.featured .plan-cta:hover{ background:var(--carry-gold); border-color:var(--carry-gold); }
+@media (max-width:900px){
+  .round .plans{ grid-template-columns:repeat(2,1fr); border-left:1px solid color-mix(in oklab,var(--bone) 14%,transparent); }
+  .round .plan{ border-bottom:1px solid color-mix(in oklab,var(--bone) 14%,transparent); }
+  .round .plan:nth-child(2n){ border-right:none; }
+}
+@media (max-width:520px){
+  .round .plans{ grid-template-columns:1fr; }
+  .round .plan{ border-right:none; }
+  .round .plan:nth-child(2n){ border-right:none; }
+}
+
+/* Inline auth inside the checkout overlay (so Get Premium never redirects) */
+.checkout-auth{ max-width:430px; }
+.checkout-auth h3{ font-size:26px; margin-bottom:8px; }
+.checkout-auth > p{ color:var(--muted); font-size:14px; margin-bottom:16px; line-height:1.6; }
+.checkout-auth label{ display:block; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:14px 0 7px; }
+.checkout-auth input{ width:100%; background:var(--surface-2); border:1px solid var(--border-strong); border-radius:8px; padding:13px 14px; color:var(--text); font-size:15px; outline:none; transition:border-color .2s; }
+.checkout-auth input:focus{ border-color:var(--text); }
+.checkout-auth .btn{ margin-top:22px; }
+.checkout-auth-switch{ margin-top:16px; font-size:13.5px; color:var(--muted); }
+.checkout-auth-switch button{ background:none; border:none; color:var(--carry-gold); cursor:pointer; font:inherit; font-weight:600; }
+
 /* H04 scene */
 .round .h04{ padding:0; position:relative; }
 .round .h04 .strip-wrap{ padding:clamp(80px,12vw,140px) 0 40px; }
