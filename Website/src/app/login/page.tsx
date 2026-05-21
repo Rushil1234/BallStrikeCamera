@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useState, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
-import SiteNav from "@/components/SiteNav";
+import ThemeToggle from "@/components/ThemeToggle";
+
+function safeRedirectPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/account";
+  return value;
+}
 
 function LoginForm() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -15,7 +20,7 @@ function LoginForm() {
   const [success, setSuccess] = useState<string | null>(null);
   const router = useRouter();
   const params = useSearchParams();
-  const redirect = params.get("redirect") ?? "/account";
+  const redirect = safeRedirectPath(params.get("redirect"));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,62 +47,92 @@ function LoginForm() {
   }
 
   return (
-    <main style={{ maxWidth: 440, margin: "0 auto", padding: "min(11vh, 90px) 24px 90px" }}>
-      <div style={{ textAlign: "center", marginBottom: 30 }}>
-        <span className="eyebrow">{mode === "signin" ? "Welcome back" : "Join True Carry"}</span>
-        <h1 style={{ fontSize: 38, margin: "14px 0 10px" }}>
-          {mode === "signin" ? "Sign In" : "Create Account"}
-        </h1>
-        <p style={{ color: "var(--muted)", fontSize: 15 }}>
-          {mode === "signin" ? "Access your subscription and account." : "Set up your account to manage your plan."}
-        </p>
-      </div>
+    <main className="auth-main" aria-labelledby="auth-title">
+      <section className="auth-panel">
+        <div className="auth-copy">
+          <span className="auth-kicker">{mode === "signin" ? "Welcome back" : "Join True Carry"}</span>
+          <h1 id="auth-title">{mode === "signin" ? "Sign in to your bag." : "Create your True Carry account."}</h1>
+          <p>
+            {mode === "signin"
+              ? "Open your dashboard, manage your plan, and keep every round synced."
+              : "Set up your account so premium data, devices, and shot history stay tied to you."}
+          </p>
+        </div>
 
-      <div className="card">
-        {success && <p className="success-msg" style={{ marginBottom: 16 }}>{success}</p>}
-        {error && <p className="error-msg" style={{ marginBottom: 16 }}>{error}</p>}
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-          <div>
-            <label>Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
+        <div className="auth-card">
+          <div className="auth-card-head">
+            <span className="auth-card-label">{mode === "signin" ? "Account access" : "New account"}</span>
+            <h2>{mode === "signin" ? "Sign In" : "Create Account"}</h2>
           </div>
-          <div>
-            <label>Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
-          </div>
-          <button type="submit" className="btn btn-gold btn-block" style={{ marginTop: 6 }} disabled={loading}>
-            {loading ? "Loading…" : mode === "signin" ? "Sign In" : "Create Account"}
-          </button>
-        </form>
 
-        <p style={{ textAlign: "center", marginTop: 22, fontSize: 14, color: "var(--muted)" }}>
-          {mode === "signin" ? (
-            <>No account?{" "}
-              <button onClick={() => setMode("signup")} style={{ background: "none", border: "none", color: "var(--gold)", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>Create one</button>
-            </>
-          ) : (
-            <>Have an account?{" "}
-              <button onClick={() => setMode("signin")} style={{ background: "none", border: "none", color: "var(--gold)", cursor: "pointer", fontSize: 14, fontWeight: 600 }}>Sign in</button>
-            </>
-          )}
-        </p>
-      </div>
+          {success && <p className="success-msg auth-message">{success}</p>}
+          {error && <p className="error-msg auth-message">{error}</p>}
 
-      <p style={{ textAlign: "center", marginTop: 24, fontSize: 13.5, color: "var(--muted)" }}>
-        <Link href="/">← Back to home</Link>
-      </p>
+          <form onSubmit={handleSubmit} className="auth-form">
+            <div>
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                required
+              />
+            </div>
+            <button type="submit" className="auth-submit" disabled={loading}>
+              {loading ? "Loading..." : mode === "signin" ? "Sign In" : "Create Account"}
+            </button>
+          </form>
+
+          <p className="auth-switch">
+            {mode === "signin" ? "No account yet?" : "Already have an account?"}{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setSuccess(null);
+                setMode(mode === "signin" ? "signup" : "signin");
+              }}
+            >
+              {mode === "signin" ? "Create one" : "Sign in"}
+            </button>
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
 
 export default function LoginPage() {
   return (
-    <>
-      <SiteNav actions={<Link href="/#pricing">Pricing</Link>} />
+    <div className="auth-page">
+      <header className="auth-nav">
+        <Link href="/" className="auth-brand" aria-label="True Carry home">
+          <img src="/truecarry-logo.png" alt="" aria-hidden />
+          <span>True <em>Carry.</em></span>
+        </Link>
+        <nav className="auth-nav-links" aria-label="Login page navigation">
+          <Link href="/#h07">Pricing</Link>
+          <ThemeToggle />
+        </nav>
+      </header>
       <Suspense>
         <LoginForm />
       </Suspense>
-    </>
+    </div>
   );
 }
