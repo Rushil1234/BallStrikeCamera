@@ -27,14 +27,17 @@ struct ClubTracker {
         var approachDirectionX: CGFloat = -1
         var approachDirectionY: CGFloat = 0
         var ballExclusionRadiusScale: CGFloat = 1.8
-        var clubSearchROIScaleX: CGFloat = 10.5
+        // Wider ROI (was 10.5) catches clubs that appear farther from the ball center.
+        var clubSearchROIScaleX: CGFloat = 13.5
         var clubSearchROIScaleY: CGFloat = 6.0
-        var minClubDarknessOrEdgeThreshold: Int = 85
+        // Slightly more permissive: accepts pixels up to brightness 100 as club (was 85).
+        var minClubDarknessOrEdgeThreshold: Int = 100
         var useFrameDifference: Bool = true
-        var frameDifferenceThreshold: Int = 34
+        // More sensitive to motion: lower difference threshold (was 34).
+        var frameDifferenceThreshold: Int = 24
         var minClubBlobArea: Int = 5
         var maxClubBlobArea: Int = 6000
-        var minClubConfidence: Double = 0.20
+        var minClubConfidence: Double = 0.15
         var sampleStride: Int = 2
         var debugLoggingEnabled: Bool = true
     }
@@ -203,9 +206,11 @@ struct ClubTracker {
 
         var centerX = ballCenter.x
         var centerY = ballCenter.y
+        // Offset farther behind the ball (was 0.40) so the ROI captures the club
+        // head and shaft as they approach from the trailing side.
         if configuration.searchBehindBallEnabled {
-            centerX += configuration.approachDirectionX * width * 0.40
-            centerY += configuration.approachDirectionY * height * 0.40
+            centerX += configuration.approachDirectionX * width * 0.55
+            centerY += configuration.approachDirectionY * height * 0.55
         }
 
         let roi = CGRect(

@@ -6,7 +6,12 @@ struct RangeSessionView: View {
     @State private var showCamera = false
     @State private var showEndAlert = false
 
+    private let userId: UUID
+    private let backend: AppBackend
+
     init(userId: UUID, backend: AppBackend) {
+        self.userId  = userId
+        self.backend = backend
         _vm = StateObject(wrappedValue: RangeSessionViewModel(userId: userId, backend: backend))
     }
 
@@ -62,13 +67,11 @@ struct RangeSessionView: View {
         }
         .fullScreenCover(isPresented: $showCamera) {
             RangeCameraScreen(
+                userId: userId,
+                backend: backend,
                 initialClubId: vm.selectedClub?.id,
                 initialClubName: vm.selectedClub?.name,
-                shotCount: vm.shots.count,
-                context: ShotContext(sourceMode: .range),
-                onShotSaved: { shot in
-                    Task { await vm.addShot(shot) }
-                }
+                context: ShotContext(sourceMode: .range)
             )
         }
         .task {

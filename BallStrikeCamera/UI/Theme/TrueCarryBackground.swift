@@ -159,10 +159,18 @@ struct TrueCarryLogo: View {
     var size: CGFloat = 24
 
     var body: some View {
-        Text("True Carry")
-            .font(.system(size: size, weight: .medium, design: .serif))
-            .tracking(-0.25)
-            .foregroundColor(TCTheme.cream)
+        HStack(spacing: 8) {
+            Image("tc_logo")
+                .resizable()
+                .scaledToFit()
+                .frame(height: max(size * 1.5, 30))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            Text("True Carry")
+                .font(.system(size: size, weight: .medium, design: .serif))
+                .tracking(-0.25)
+                .foregroundColor(TCTheme.cream)
+        }
+        .accessibilityLabel("True Carry")
     }
 }
 

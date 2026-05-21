@@ -131,7 +131,9 @@ struct FeedView: View {
                 .buttonStyle(.plain)
             }
             HStack(spacing: 0) {
-                snapshotMetric(title: "Activities", value: "\(vm.weeklyActivityCount)")
+                // TODO: Replace weeklyActivityCount with completed rounds year-to-date
+                // once round aggregation is finalized (currently counts all feed posts).
+                snapshotMetric(title: "Rounds YTD", value: "\(vm.weeklyActivityCount)")
                 snapshotMetric(title: "Gimmes", value: "\(vm.weeklyGimmesReceived)")
                 snapshotMetric(title: "Friends", value: "\(vm.friendsCount)")
             }
@@ -141,24 +143,16 @@ struct FeedView: View {
     }
 
     private func snapshotMetric(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 13))
-                .foregroundColor(TCTheme.textMuted)
+        VStack(alignment: .center, spacing: 6) {
             Text(value)
-                .font(.system(size: 26, weight: .bold))
+                .font(.system(size: 28, weight: .bold))
                 .foregroundColor(TCTheme.textPrimary)
-            HStack(spacing: 4) {
-                Image(systemName: "triangle.fill").font(.system(size: 7))
-                Text(value)
-            }
-            .font(.system(size: 11, weight: .medium))
-            .foregroundColor(TCTheme.textMuted)
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(TCTheme.panel)
-            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+            Text(title)
+                .font(.system(size: 12))
+                .foregroundColor(TCTheme.textMuted)
+                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: Empty / footer

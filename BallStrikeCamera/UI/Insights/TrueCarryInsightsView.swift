@@ -10,10 +10,13 @@ struct TrueCarryInsightsView: View {
     // MARK: - Club list
 
     private var availableClubs: [String] {
-        var names = Set<String>()
-        clubs.forEach { names.insert($0.name) }
-        shots.compactMap { $0.clubName }.filter { !$0.isEmpty }.forEach { names.insert($0) }
-        return names.sorted { avgCarry(shotsFor($0)) > avgCarry(shotsFor($1)) }
+        // Primary: use the user's bag in their configured sort order exactly.
+        let bagClubs = clubs.sorted { $0.sortOrder < $1.sortOrder }.map(\.name)
+        if !bagClubs.isEmpty { return bagClubs }
+        // Fallback: clubs inferred from shot history (no bag configured yet).
+        var seen = Set<String>()
+        return shots.compactMap { $0.clubName }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     private func shotsFor(_ club: String) -> [SavedShot] {
@@ -46,22 +49,71 @@ struct TrueCarryInsightsView: View {
         return decimals > 0 ? String(format: "%.\(decimals)f", v) : "\(Int(v))"
     }
 
+    // MARK: - Robust scaling helpers
+
+    /// Linear interpolation percentile on a pre-sorted array (p in 0.0...1.0).
+    private func percentile(_ sorted: [Double], _ p: Double) -> Double {
+        guard !sorted.isEmpty else { return 0 }
+        if sorted.count == 1 { return sorted[0] }
+        let idx = p * Double(sorted.count - 1)
+        let lo  = Int(idx)
+        let hi  = min(lo + 1, sorted.count - 1)
+        return sorted[lo] + (idx - Double(lo)) * (sorted[hi] - sorted[lo])
+    }
+
+    /// Returns a display domain anchored at the lowerP–upperP percentile range with padding.
+    /// Outliers beyond this range are clamped to the domain edge for display, not hidden.
+    private func robustDomain(values: [Double], lowerP: Double = 0.10, upperP: Double = 0.90,
+                               minSpan: Double = 1) -> ClosedRange<Double> {
+        let sorted = values.sorted()
+        let lo   = percentile(sorted, lowerP)
+        let hi   = percentile(sorted, upperP)
+        let span = max(hi - lo, minSpan)
+        let pad  = span * 0.10
+        return (lo - pad)...(hi + pad)
+    }
+
     // MARK: - Dispersion dots
 
     private func dispersionDots(_ shots: [SavedShot]) -> [(x: CGFloat, y: CGFloat)] {
         let valid = shots.filter { $0.metrics.carryYards > 0 }
         guard !valid.isEmpty else { return [] }
-        let carries    = valid.map { $0.metrics.carryYards }
-        let avgC       = carries.reduce(0, +) / Double(carries.count)
-        let carryRange = max((carries.max() ?? avgC) - (carries.min() ?? avgC), 1)
-        let hlaValues  = valid.map { s -> Double in
+
+        let carries   = valid.map { $0.metrics.carryYards }
+        let hlaValues = valid.map { s -> Double in
             let d = s.metrics.hlaDegrees
             return s.metrics.hlaDirection.lowercased() == "left" ? -d : d
         }
-        let maxAbsHLA = max(hlaValues.map { abs($0) }.max() ?? 1, 0.5)
+
+        // Robust carry domain: uses 10th–90th percentile so a single shank
+        // doesn't collapse all normal shots into a tiny band.
+        let carryDomain: ClosedRange<Double> = {
+            if carries.count <= 2 {
+                return ((carries.min() ?? 0) - 5)...((carries.max() ?? 0) + 5)
+            }
+            return robustDomain(values: carries, lowerP: 0.10, upperP: 0.90, minSpan: 10)
+        }()
+        let carryMid  = (carryDomain.lowerBound + carryDomain.upperBound) / 2
+        let carryHalf = max((carryDomain.upperBound - carryDomain.lowerBound) / 2, 1)
+
+        // Robust HLA domain: uses 5th–95th percentile.
+        let hlaDomain: ClosedRange<Double> = {
+            if hlaValues.count <= 2 {
+                let m = max(hlaValues.map { abs($0) }.max() ?? 1, 1)
+                return (-m - 1)...(m + 1)
+            }
+            return robustDomain(values: hlaValues, lowerP: 0.05, upperP: 0.95, minSpan: 2)
+        }()
+        let hlaMid  = (hlaDomain.lowerBound + hlaDomain.upperBound) / 2
+        let hlaHalf = max((hlaDomain.upperBound - hlaDomain.lowerBound) / 2, 1)
+
         return zip(valid, hlaValues).map { shot, hla in
-            let xOff = CGFloat(hla / (maxAbsHLA * 2.0)) * 0.18
-            let yOff = CGFloat((shot.metrics.carryYards - avgC) / (carryRange * 0.6)) * 0.15
+            // Clamp outliers to the domain edge so they stay visible without
+            // distorting the scale for the majority of shots.
+            let clampedCarry = min(max(shot.metrics.carryYards, carryDomain.lowerBound), carryDomain.upperBound)
+            let clampedHLA   = min(max(hla, hlaDomain.lowerBound), hlaDomain.upperBound)
+            let xOff = CGFloat((clampedHLA   - hlaMid)  / hlaHalf)  * 0.18
+            let yOff = CGFloat((clampedCarry - carryMid) / carryHalf) * 0.15
             return (x: min(max(0.5 + xOff, 0.15), 0.85),
                     y: min(max(0.5 - yOff, 0.20), 0.80))
         }
@@ -78,7 +130,7 @@ struct TrueCarryInsightsView: View {
 
     var body: some View {
         ZStack {
-            TrueCarryBackground(pattern: .dimple)
+            TrueCarryBackground(pattern: .plain)
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
@@ -154,13 +206,13 @@ struct TrueCarryInsightsView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image(systemName: "chart.bar.xaxis")
+            Image(systemName: "bag")
                 .font(.system(size: 32))
                 .foregroundColor(TCTheme.textUltraMuted)
-            Text("No shots recorded yet")
+            Text("No clubs in your bag yet")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(TCTheme.textPrimary)
-            Text("Hit shots in a range session with a club selected to see your stats here.")
+            Text("Add clubs from Profile to view your shot insights here.")
                 .font(.system(size: 13))
                 .foregroundColor(TCTheme.textMuted)
                 .multilineTextAlignment(.center)

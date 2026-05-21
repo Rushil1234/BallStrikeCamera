@@ -75,9 +75,8 @@ private struct GolfBallCanvas: View {
                 )
             )
 
-            // Dimples projected onto the sphere.
-            // Clip everything that follows to the ball.
             ctx.clip(to: ballPath)
+
             drawDimples(ctx: &ctx, center: center, radius: r)
 
             // Ambient occlusion at the rim.
@@ -85,88 +84,74 @@ private struct GolfBallCanvas: View {
                 ballPath,
                 with: .radialGradient(
                     Gradient(stops: [
-                        .init(color: .clear,                  location: 0.62),
-                        .init(color: Color.black.opacity(0.0), location: 0.78),
+                        .init(color: .clear,                   location: 0.62),
+                        .init(color: Color.black.opacity(0.0),  location: 0.78),
                         .init(color: Color.black.opacity(0.22), location: 1.0)
                     ]),
                     center: center,
                     startRadius: 0, endRadius: r
                 )
             )
-
-            // Specular highlight.
-            let hi = CGPoint(x: center.x - r * 0.36, y: center.y - r * 0.42)
-            ctx.fill(
-                Path(ellipseIn: CGRect(x: hi.x - r * 0.30, y: hi.y - r * 0.30,
-                                       width: r * 0.60, height: r * 0.60)),
-                with: .radialGradient(
-                    Gradient(colors: [Color.white.opacity(0.95), .clear]),
-                    center: hi, startRadius: 0, endRadius: r * 0.34
-                )
-            )
-            // Tight glint
-            ctx.fill(
-                Path(ellipseIn: CGRect(x: hi.x - r * 0.07, y: hi.y - r * 0.07,
-                                       width: r * 0.14, height: r * 0.14)),
-                with: .color(Color.white)
-            )
         }
     }
 
-    /// Lay dimples on a lat/long grid, rotate longitude by `phase`, project to the
-    /// visible hemisphere. Front-facing dimples (z > 0) are drawn, scaled by depth.
     private func drawDimples(ctx: inout GraphicsContext, center: CGPoint, radius r: CGFloat) {
         let spin = phase * 2 * .pi
-        // Tilt the spin axis slightly for a more natural tumble.
         let tilt = 0.32
+        // Golden angle gives the most uniform sphere coverage with no row banding.
+        let goldenAngle = Double.pi * (3.0 - sqrt(5.0))
 
-        let latBands = 9
-        for i in 0..<latBands {
-            // Latitude from -80 to +80 degrees.
-            let lat = (Double(i) / Double(latBands - 1) - 0.5) * (.pi * 0.92)
-            let cosLat = cos(lat)
-            // Fewer dimples near the poles, more around the equator.
-            let count = max(4, Int((Double(latBands) * 2.4) * cosLat))
-            for j in 0..<count {
-                let lon = (Double(j) / Double(count)) * 2 * .pi + spin
-                // Unit sphere coords (apply axis tilt around X).
-                let x0 = cosLat * sin(lon)
-                let y0 = sin(lat)
-                let z0 = cosLat * cos(lon)
-                let y = y0 * cos(tilt) - z0 * sin(tilt)
-                let z = y0 * sin(tilt) + z0 * cos(tilt)
-                let x = x0
-                guard z > 0.04 else { continue } // only the front hemisphere
+        // 300 dimples via Fibonacci sphere: every point is equidistant from its
+        // neighbours, so dimples pack like a real ball with no visible seams or rows.
+        // Average nearest-neighbour angular gap ≈ 0.205 rad → dimR ≈ r * 0.115 to touch.
+        let dimpleCount = 300
 
-                let px = center.x + CGFloat(x) * r
-                let py = center.y + CGFloat(y) * r
-                // Perspective: dimples shrink and fade toward the rim.
-                let depth = CGFloat(z)
-                let dimR = r * 0.052 * (0.45 + 0.55 * depth)
+        for i in 0..<dimpleCount {
+            let y0 = 1.0 - (Double(i) / Double(dimpleCount - 1)) * 2.0
+            let ringR = sqrt(max(0.0, 1.0 - y0 * y0))
+            let theta = goldenAngle * Double(i)
+            let x0 = cos(theta) * ringR
+            let z0 = sin(theta) * ringR
 
-                // Shade dimple by position relative to the light (upper-left).
-                let lightDot = CGFloat(x) * -0.5 + CGFloat(y) * -0.55 + depth * 0.4
-                let shadeAmt = min(max(0.10 + (1 - lightDot) * 0.10, 0.06), 0.26) * Double(depth)
+            // Spin around Y axis.
+            let xs = x0 * cos(spin) + z0 * sin(spin)
+            let zs = -x0 * sin(spin) + z0 * cos(spin)
 
-                let dRect = CGRect(x: px - dimR, y: py - dimR, width: dimR * 2, height: dimR * 2)
-                // Concave look: dark crescent lower-right, light crescent upper-left.
-                ctx.fill(
-                    Path(ellipseIn: dRect),
-                    with: .radialGradient(
-                        Gradient(colors: [Color.black.opacity(shadeAmt), .clear]),
-                        center: CGPoint(x: px + dimR * 0.28, y: py + dimR * 0.28),
-                        startRadius: 0, endRadius: dimR * 1.25
-                    )
+            // Tilt around X axis.
+            let y = y0  * cos(tilt) - zs * sin(tilt)
+            let z = y0  * sin(tilt) + zs * cos(tilt)
+            let x = xs
+
+            // Include dimples right to the limb; ballPath clip handles the edge.
+            guard z > -0.05 else { continue }
+
+            let px = center.x + CGFloat(x) * r
+            let py = center.y + CGFloat(y) * r
+
+            // Floor depth so edge dimples stay visible rather than vanishing.
+            let depth    = CGFloat(max(z, 0.18))
+            let dimR     = r * 0.115 * (0.70 + 0.30 * depth)
+
+            let lightDot = CGFloat(x) * -0.5 + CGFloat(y) * -0.55 + depth * 0.4
+            let shadeAmt = min(max(0.21 + (1 - lightDot) * 0.22, 0.14), 0.50) * Double(depth)
+
+            let dRect = CGRect(x: px - dimR, y: py - dimR, width: dimR * 2, height: dimR * 2)
+            ctx.fill(
+                Path(ellipseIn: dRect),
+                with: .radialGradient(
+                    Gradient(colors: [Color.black.opacity(shadeAmt), .clear]),
+                    center: CGPoint(x: px + dimR * 0.28, y: py + dimR * 0.28),
+                    startRadius: 0, endRadius: dimR * 1.25
                 )
-                ctx.fill(
-                    Path(ellipseIn: dRect),
-                    with: .radialGradient(
-                        Gradient(colors: [Color.white.opacity(0.22 * Double(depth)), .clear]),
-                        center: CGPoint(x: px - dimR * 0.3, y: py - dimR * 0.3),
-                        startRadius: 0, endRadius: dimR * 0.9
-                    )
+            )
+            ctx.fill(
+                Path(ellipseIn: dRect),
+                with: .radialGradient(
+                    Gradient(colors: [Color.white.opacity(0.26 * Double(depth)), .clear]),
+                    center: CGPoint(x: px - dimR * 0.3, y: py - dimR * 0.3),
+                    startRadius: 0, endRadius: dimR * 0.9
                 )
-            }
+            )
         }
     }
 }
