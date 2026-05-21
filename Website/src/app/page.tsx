@@ -69,6 +69,10 @@ export default function HomePage() {
 
   // Scroll: mark holes played, highlight current, tally carry, move the ball.
   useEffect(() => {
+    const shouldReduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const isCompact = window.matchMedia("(max-width: 760px)").matches;
+    if (shouldReduceMotion || isCompact) return;
+
     const sections = Array.from(document.querySelectorAll<HTMLElement>(".round .hole"));
     const rows = Array.from(document.querySelectorAll<HTMLElement>("#scHoles .row"));
     const played = new Set<number>();
@@ -184,6 +188,22 @@ export default function HomePage() {
                 </div>
                 <div className="note">Now on the tee<br /><span className="v">You.</span></div>
               </div>
+            </div>
+          </section>
+
+          <section className="mobile-round-card" aria-label="Mobile round summary">
+            <div className="mobile-round-head">
+              <span>Your round</span>
+              <strong>{HOLES[0].yd} yd</strong>
+            </div>
+            <div className="mobile-round-list">
+              {HOLES.slice(0, 5).map((hole) => (
+                <a href={`#${hole.id}`} key={hole.id}>
+                  <span>{String(hole.n).padStart(2, "0")}</span>
+                  <b>{hole.name}</b>
+                  <em>{hole.yd} yd</em>
+                </a>
+              ))}
             </div>
           </section>
 
