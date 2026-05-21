@@ -84,16 +84,16 @@ struct TrueCarryLockerView: View {
                 NavigationStack {
                     ClubsInBagView(userId: uid, backend: session.backend)
                 }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
             }
         }
         .sheet(isPresented: $showSessions) {
             NavigationStack { PastSessionsView() }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
         }
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
         }
         .sheet(isPresented: $showNotesEditor) {
             NavigationStack {
@@ -116,7 +116,7 @@ struct TrueCarryLockerView: View {
                     }
                 }
             }
-            .preferredColorScheme(.dark)
+            .tcAppearance()
         }
         .task {
             if let uid = user?.id {

@@ -8,6 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */; };
+		2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = D285E96FFA0E9231BA42EF6E /* Appearance.swift */; };
+		A29AF9D940AB9F30006F388D /* FriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */; };
+		AA99CCFA875B0F87C1A65A88 /* FeedPostFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 149AC498EAA5CC0753C5FD3C /* FeedPostFactory.swift */; };
 		BF0000010000000000000001 /* BallStrikeCameraApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000101 /* BallStrikeCameraApp.swift */; };
 		BF0000010000000000000002 /* CameraPhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000102 /* CameraPhase.swift */; };
 		BF0000010000000000000003 /* PlatformImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000103 /* PlatformImage.swift */; };
@@ -153,6 +156,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		149AC498EAA5CC0753C5FD3C /* FeedPostFactory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FeedPostFactory.swift; sourceTree = "<group>"; };
 		209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImpactDetector.swift; sourceTree = "<group>"; };
 		BF0000010000000000000101 /* BallStrikeCameraApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallStrikeCameraApp.swift; sourceTree = "<group>"; };
 		BF0000010000000000000102 /* CameraPhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPhase.swift; sourceTree = "<group>"; };
@@ -298,6 +302,8 @@
 		BF000008000000000000000D /* TrackedShotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackedShotModels.swift; sourceTree = "<group>"; };
 		BF0000090000000000000001 /* TrueCarryProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryProfileView.swift; sourceTree = "<group>"; };
 		BF00SECRETS00000000000001 /* Secrets.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Secrets.plist; sourceTree = "<group>"; };
+		D285E96FFA0E9231BA42EF6E /* Appearance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Appearance.swift; sourceTree = "<group>"; };
+		E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -532,6 +538,7 @@
 				BF000001000000000000014F /* ProfileSettingsView.swift */,
 				BF0000010000000000000151 /* BallStrikeTheme.swift */,
 				BF0000010000000000000152 /* BallStrikeBackgroundView.swift */,
+				E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */,
 			);
 			path = AppShell;
 			sourceTree = "<group>";
@@ -555,6 +562,7 @@
 				BF0000070000000000000004 /* SupabaseConfig.swift */,
 				BF0000070000000000000005 /* SupabaseBackendService.swift */,
 				BF0000070000000000000006 /* SupabaseDTOs.swift */,
+				149AC498EAA5CC0753C5FD3C /* FeedPostFactory.swift */,
 			);
 			path = Data;
 			sourceTree = "<group>";
@@ -625,6 +633,7 @@
 				BF0000060000000000000001 /* TCTheme.swift */,
 				BF0000060000000000000003 /* TrueCarryBackground.swift */,
 				BF000006000000000000001D /* TCVisuals.swift */,
+				D285E96FFA0E9231BA42EF6E /* Appearance.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -921,6 +930,9 @@
 				BF0000080000000000000014 /* PlatformSeams.swift in Sources */,
 				BF0000080000000000000016 /* CourseDataAggregator.swift in Sources */,
 				BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */,
+				AA99CCFA875B0F87C1A65A88 /* FeedPostFactory.swift in Sources */,
+				A29AF9D940AB9F30006F388D /* FriendsView.swift in Sources */,
+				2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

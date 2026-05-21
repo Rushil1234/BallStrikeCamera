@@ -49,7 +49,6 @@ struct ModeSelectionView: View {
         }
         .navigationTitle("Modes")
         .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
         .fullScreenCover(isPresented: $showRange)  { RangeModeView()  }
         .sheet(isPresented: $showSim)              { SimModeView()    }

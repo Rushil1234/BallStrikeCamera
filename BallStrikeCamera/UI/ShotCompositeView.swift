@@ -23,7 +23,7 @@ struct ShotCompositeView: View {
             infoPanel
         }
         .background(Color.black.ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .tcAppearance()
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .onAppear { renderComposite() }

@@ -3,27 +3,27 @@ import SwiftUI
 // MARK: - True Carry Design System
 
 enum TCTheme {
-    // MARK: Backgrounds
-    static let background     = Color(red: 0.027, green: 0.027, blue: 0.027) // #070707
+    // MARK: Backgrounds  (dark values preserved; light variants added)
+    static let background     = Color.dyn(light: Color(red: 0.949, green: 0.945, blue: 0.933), dark: Color(red: 0.027, green: 0.027, blue: 0.027)) // #070707
     static let backgroundMid  = background
     static let backgroundBot  = background
-    static let panel          = Color(red: 0.059, green: 0.059, blue: 0.063) // #0f0f10
-    static let panelRaised    = Color(red: 0.075, green: 0.075, blue: 0.078) // #131314
-    static let panelDeep      = Color.black.opacity(0.42)
+    static let panel          = Color.dyn(light: Color.white, dark: Color(red: 0.059, green: 0.059, blue: 0.063)) // #0f0f10
+    static let panelRaised    = Color.dyn(light: Color(red: 0.969, green: 0.965, blue: 0.953), dark: Color(red: 0.075, green: 0.075, blue: 0.078)) // #131314
+    static let panelDeep      = Color.dyn(light: Color.black.opacity(0.05), dark: Color.black.opacity(0.42))
     static let glassPanel     = panel
 
     // MARK: Text
-    static let textPrimary    = Color(red: 0.925, green: 0.914, blue: 0.886) // #ece9e2
-    static let textSecondary  = Color(red: 0.941, green: 0.929, blue: 0.898).opacity(0.82)
-    static let textMuted      = Color(red: 0.553, green: 0.553, blue: 0.529) // #8d8d87
-    static let textUltraMuted = Color(red: 0.353, green: 0.353, blue: 0.333) // #5a5a55
+    static let textPrimary    = Color.dyn(light: Color(red: 0.102, green: 0.098, blue: 0.086), dark: Color(red: 0.925, green: 0.914, blue: 0.886)) // #ece9e2
+    static let textSecondary  = Color.dyn(light: Color(red: 0.102, green: 0.098, blue: 0.086).opacity(0.78), dark: Color(red: 0.941, green: 0.929, blue: 0.898).opacity(0.82))
+    static let textMuted      = Color.dyn(light: Color(red: 0.435, green: 0.435, blue: 0.412), dark: Color(red: 0.553, green: 0.553, blue: 0.529)) // #8d8d87
+    static let textUltraMuted = Color.dyn(light: Color(red: 0.620, green: 0.620, blue: 0.596), dark: Color(red: 0.353, green: 0.353, blue: 0.333)) // #5a5a55
 
     // MARK: Accents
-    static let gold           = Color(red: 0.722, green: 0.600, blue: 0.408) // #b89968
-    static let goldLight      = Color(red: 0.847, green: 0.741, blue: 0.549) // #d8bd8c
+    static let gold           = Color.dyn(light: Color(red: 0.604, green: 0.482, blue: 0.275), dark: Color(red: 0.722, green: 0.600, blue: 0.408)) // #b89968
+    static let goldLight      = Color.dyn(light: Color(red: 0.722, green: 0.600, blue: 0.408), dark: Color(red: 0.847, green: 0.741, blue: 0.549)) // #d8bd8c
     static let goldDim        = Color(red: 0.530, green: 0.414, blue: 0.263)
-    static let cream          = Color(red: 0.941, green: 0.929, blue: 0.898) // #f0ede5
-    static let sage           = Color(red: 0.498, green: 0.608, blue: 0.451) // #7f9b73
+    static let cream          = Color.dyn(light: Color(red: 0.157, green: 0.149, blue: 0.129), dark: Color(red: 0.941, green: 0.929, blue: 0.898)) // #f0ede5
+    static let sage           = Color.dyn(light: Color(red: 0.357, green: 0.471, blue: 0.310), dark: Color(red: 0.498, green: 0.608, blue: 0.451)) // #7f9b73
     static let sageBright     = Color(red: 0.560, green: 0.680, blue: 0.510)
     static let sageDeep       = Color(red: 0.300, green: 0.380, blue: 0.280)
     static let deepGreen      = Color(red: 0.075, green: 0.082, blue: 0.070)
@@ -32,8 +32,8 @@ enum TCTheme {
     static let danger         = Color(red: 0.93, green: 0.47, blue: 0.47)
 
     // MARK: Borders
-    static let border         = Color.white.opacity(0.07)
-    static let borderMedium   = Color.white.opacity(0.14)
+    static let border         = Color.dyn(light: Color.black.opacity(0.08), dark: Color.white.opacity(0.07))
+    static let borderMedium   = Color.dyn(light: Color.black.opacity(0.14), dark: Color.white.opacity(0.14))
     static let borderGold     = gold.opacity(0.35)
     static let borderSage     = sage.opacity(0.22)
 
@@ -44,8 +44,11 @@ enum TCTheme {
     static let rowRadius: CGFloat   = 6
 
     // MARK: Gradients
+    /// Fixed light fill for primary buttons (which use hardcoded dark text), so
+    /// it stays readable in both light and dark mode.
+    static let primaryButtonFill = Color(red: 0.941, green: 0.929, blue: 0.898)
     static let goldGradient = LinearGradient(
-        colors: [cream, cream],
+        colors: [primaryButtonFill, primaryButtonFill],
         startPoint: .topLeading, endPoint: .bottomTrailing
     )
     static let sageGradient = LinearGradient(

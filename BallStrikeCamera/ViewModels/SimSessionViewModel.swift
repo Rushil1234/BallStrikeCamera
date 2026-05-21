@@ -51,6 +51,8 @@ final class SimSessionViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        // Auto-share the completed session to the social feed (opt-out in settings).
+        await FeedAutoPoster.share(sim: session, backend: backend)
         activeSession = nil
     }
 }

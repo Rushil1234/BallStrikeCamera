@@ -62,7 +62,7 @@ struct TrueCarryProfileView: View {
                 NavigationStack {
                     ClubsInBagView(userId: uid, backend: session.backend)
                 }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
             }
         }
     }

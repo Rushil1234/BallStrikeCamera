@@ -73,7 +73,7 @@ struct HomeDashboardView: View {
         .sheet(isPresented: $showCourse)           { EmptyView() } // Course flow lives in TrueCarryPlayView
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
         }
     }
 

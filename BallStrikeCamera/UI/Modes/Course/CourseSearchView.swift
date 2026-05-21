@@ -181,7 +181,7 @@ struct CourseSearchView: View {
                 onSelect(course, tee)
                 dismiss()
             }
-            .preferredColorScheme(.dark)
+            .tcAppearance()
         }
         .onChange(of: query) { newVal in
             searchTask?.cancel()

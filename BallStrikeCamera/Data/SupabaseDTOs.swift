@@ -171,6 +171,148 @@ struct SupabaseCourseGeometryRow: Codable {
     }
 }
 
+// MARK: - Feed / Social Row DTOs
+
+/// Bridges the `feed_posts` table (id, user_id, payload JSONB, visibility, timestamp)
+/// to/from the flat `FeedPost` model. The post body lives in `payload`.
+struct SupabaseFeedPostRow: Codable {
+    var id: String
+    var userId: String
+    var payload: FeedPost
+    var visibility: String
+    var timestamp: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userId = "user_id"
+        case payload
+        case visibility
+        case timestamp
+    }
+
+    func toFeedPost() -> FeedPost? {
+        var post = payload
+        if let uid = UUID(uuidString: userId) { post.userId = uid }
+        if let pid = UUID(uuidString: id) { post.id = pid }
+        if let ts = ISO8601DateFormatter.tcFlexible.date(from: timestamp) { post.timestamp = ts }
+        return post
+    }
+}
+
+/// Row returned by the `feed_reactions` table (one "gimme" per user per post).
+struct SupabaseReactionRow: Codable {
+    var id: String
+    var postId: String
+    var userId: String
+    var emoji: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case postId = "post_id"
+        case userId = "user_id"
+        case emoji
+    }
+}
+
+/// Row returned by the `feed_comments` table.
+struct SupabaseCommentRow: Codable {
+    var id: String
+    var postId: String
+    var userId: String
+    var authorName: String
+    var body: String
+    var createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case postId = "post_id"
+        case userId = "user_id"
+        case authorName = "author_name"
+        case body
+        case createdAt = "created_at"
+    }
+
+    func toFeedComment() -> FeedComment? {
+        guard let pid = UUID(uuidString: postId), let uid = UUID(uuidString: userId) else { return nil }
+        return FeedComment(
+            id: UUID(uuidString: id) ?? UUID(),
+            postId: pid,
+            userId: uid,
+            authorName: authorName,
+            body: body,
+            createdAt: ISO8601DateFormatter.tcFlexible.date(from: createdAt) ?? Date()
+        )
+    }
+}
+
+/// Minimal public profile returned by the `search_users` / `list_friends` RPCs.
+struct SupabaseUserSearchRow: Codable {
+    var userId: String
+    var displayName: String
+    var homeCourseName: String?
+    var profileImagePath: String?
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case displayName = "display_name"
+        case homeCourseName = "home_course_name"
+        case profileImagePath = "profile_image_path"
+    }
+
+    func toFriendProfile() -> FriendProfile? {
+        guard let uid = UUID(uuidString: userId) else { return nil }
+        return FriendProfile(userId: uid, displayName: displayName, homeCourseName: homeCourseName)
+    }
+}
+
+/// Row returned by the `list_incoming_requests` RPC.
+struct SupabaseIncomingRequestRow: Codable {
+    var requestId: String
+    var fromUserId: String
+    var displayName: String
+    var sentAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case fromUserId = "from_user_id"
+        case displayName = "display_name"
+        case sentAt = "sent_at"
+    }
+
+    func toIncomingRequest() -> IncomingFriendRequest? {
+        guard let rid = UUID(uuidString: requestId), let uid = UUID(uuidString: fromUserId) else { return nil }
+        return IncomingFriendRequest(
+            requestId: rid,
+            fromUserId: uid,
+            displayName: displayName,
+            sentAt: ISO8601DateFormatter.tcFlexible.date(from: sentAt) ?? Date()
+        )
+    }
+}
+
+/// Supabase `timestamptz` values may or may not carry fractional seconds; parse both.
+enum SupabaseDate {
+    private static let withFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let plain: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+    static func parse(_ string: String) -> Date? {
+        withFraction.date(from: string) ?? plain.date(from: string)
+    }
+}
+
+extension ISO8601DateFormatter {
+    /// Convenience shim so call sites read `ISO8601DateFormatter.tcFlexible.date(from:)`.
+    static let tcFlexible = FlexibleParser()
+    struct FlexibleParser { func date(from string: String) -> Date? { SupabaseDate.parse(string) } }
+}
+
 // MARK: - Generic helpers
 
 struct SupabaseError: Decodable {

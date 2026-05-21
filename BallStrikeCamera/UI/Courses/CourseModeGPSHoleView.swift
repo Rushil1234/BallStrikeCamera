@@ -1301,7 +1301,7 @@ struct CourseModeGPSHoleView: View {
                     let idx = vm.currentHoleIndex
                     Task { await vm.setScore(holeIndex: idx, score: s, putts: p, fairwayHit: f, gir: g) }
                 }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
             }
         }
         .sheet(isPresented: $showScorecard) {
@@ -1309,7 +1309,7 @@ struct CourseModeGPSHoleView: View {
                 NavigationStack {
                     ScorecardView(round: round, course: vm.selectedCourse)
                 }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
             }
         }
         .sheet(item: Binding(
@@ -1343,7 +1343,7 @@ struct CourseModeGPSHoleView: View {
                         setTrackShotMode(false)
                     }
                 )
-                .preferredColorScheme(.dark)
+                .tcAppearance()
             }
         }
         .task {

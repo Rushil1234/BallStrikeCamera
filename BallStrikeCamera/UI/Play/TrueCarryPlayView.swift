@@ -92,7 +92,7 @@ struct TrueCarryPlayView: View {
                         }
                     }
                 }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
             }
         }
         .sheet(isPresented: $showRoundSetup) {
@@ -105,7 +105,7 @@ struct TrueCarryPlayView: View {
                         }
                     }
                 }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
             }
         }
         .alert("Course Mode", isPresented: $showUpgradeAlert) {
@@ -134,7 +134,7 @@ struct TrueCarryPlayView: View {
             NavigationStack {
                 PastSessionsView()
             }
-            .preferredColorScheme(.dark)
+            .tcAppearance()
         }
         .fullScreenCover(item: $resumeRound) { round in
             if let uid = session.currentUser?.id {

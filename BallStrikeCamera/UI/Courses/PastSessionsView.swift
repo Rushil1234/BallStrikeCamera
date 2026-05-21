@@ -71,7 +71,6 @@ struct PastSessionsView: View {
         }
         .navigationTitle("Past Sessions")
         .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
         .task { await loadData() }
     }

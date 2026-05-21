@@ -58,7 +58,6 @@ struct AnalyticsView: View {
         }
         .navigationTitle("Analytics")
         .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
         .task {
             // Analytics data is derived from saved shots — hook up AnalyticsViewModel here

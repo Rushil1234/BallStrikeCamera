@@ -42,7 +42,6 @@ struct RangeModeView: View {
             }
             .navigationTitle("Range Mode")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbarBackground(.clear, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -59,7 +58,7 @@ struct RangeModeView: View {
                     NavigationStack {
                         RangeSessionView(userId: uid, backend: session.backend)
                     }
-                    .preferredColorScheme(.dark)
+                    .tcAppearance()
                 }
             }
             .onAppear {
@@ -67,7 +66,7 @@ struct RangeModeView: View {
                 OrientationManager.shared.lockPortrait()
             }
         }
-        .preferredColorScheme(.dark)
+        .tcAppearance()
     }
 
     // MARK: Club Picker

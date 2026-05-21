@@ -48,6 +48,25 @@ protocol AppBackend {
     func deleteFeedPost(postId: UUID, userId: UUID) async throws
     func loadFeed(userId: UUID) async throws -> [FeedPost]
 
+    // Gimmes (feed reactions) — the golf-flavored "kudos"
+    func loadGimmes() async throws -> [FeedReaction]
+    func addGimme(postId: UUID, userId: UUID) async throws
+    func removeGimme(postId: UUID, userId: UUID) async throws
+
+    // Comments
+    func loadComments(postId: UUID) async throws -> [FeedComment]
+    func addComment(_ comment: FeedComment) async throws
+
+    // Friends / contacts
+    func searchUsers(query: String) async throws -> [FriendProfile]
+    func sendFriendRequest(fromUserId: UUID, toUserId: UUID) async throws
+    func loadIncomingRequests() async throws -> [IncomingFriendRequest]
+    func acceptFriendRequest(requestId: UUID) async throws
+    func declineFriendRequest(requestId: UUID) async throws
+    func loadFriends() async throws -> [FriendProfile]
+    func createInviteCode(userId: UUID) async throws -> String
+    func redeemInvite(code: String) async throws
+
     // Entitlements & usage
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement
     func loadUsageCounter(userId: UUID, date: String) async throws -> UsageCounter?
@@ -75,6 +94,22 @@ extension AppBackend {
     func requestCourseGeometryBackfill(_ course: GolfCourse, reason: String = "missing_geometry") async throws {
         // no-op for local; the Supabase backend queues server-side geometry work.
     }
+
+    // MARK: Social defaults (local/guest mode has no social graph)
+
+    func loadGimmes() async throws -> [FeedReaction] { [] }
+    func addGimme(postId: UUID, userId: UUID) async throws {}
+    func removeGimme(postId: UUID, userId: UUID) async throws {}
+    func loadComments(postId: UUID) async throws -> [FeedComment] { [] }
+    func addComment(_ comment: FeedComment) async throws {}
+    func searchUsers(query: String) async throws -> [FriendProfile] { [] }
+    func sendFriendRequest(fromUserId: UUID, toUserId: UUID) async throws {}
+    func loadIncomingRequests() async throws -> [IncomingFriendRequest] { [] }
+    func acceptFriendRequest(requestId: UUID) async throws {}
+    func declineFriendRequest(requestId: UUID) async throws {}
+    func loadFriends() async throws -> [FriendProfile] { [] }
+    func createInviteCode(userId: UUID) async throws -> String { String(UUID().uuidString.prefix(8)).uppercased() }
+    func redeemInvite(code: String) async throws {}
 }
 
 // MARK: - Backend Errors

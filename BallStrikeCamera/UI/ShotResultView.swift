@@ -157,7 +157,7 @@ struct ShotResultView: View {
             }
         }
         .background(Color(white: 0.06).ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .tcAppearance()
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .contentShape(Rectangle())
@@ -258,7 +258,7 @@ struct ShotResultView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(white: 0.06).ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .tcAppearance()
         .statusBarHidden(true)
     }
 

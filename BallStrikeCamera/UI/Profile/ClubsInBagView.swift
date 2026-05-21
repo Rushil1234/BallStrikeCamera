@@ -30,7 +30,6 @@ struct ClubsInBagView: View {
         }
         .navigationTitle("Clubs in Bag")
         .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {

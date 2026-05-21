@@ -71,6 +71,31 @@ struct FeedComment: Codable, Identifiable {
     var createdAt: Date = Date()
 }
 
+// MARK: - Friend Discovery View Models
+
+/// A friend or search result — the minimal public projection returned by RPCs.
+struct FriendProfile: Identifiable, Equatable {
+    var userId: UUID
+    var displayName: String
+    var homeCourseName: String?
+    var id: UUID { userId }
+
+    var initials: String {
+        let parts = displayName.split(separator: " ")
+        let chars = parts.prefix(2).compactMap { $0.first }
+        return chars.isEmpty ? "?" : String(chars).uppercased()
+    }
+}
+
+/// A pending friend request received by the current user.
+struct IncomingFriendRequest: Identifiable, Equatable {
+    var requestId: UUID
+    var fromUserId: UUID
+    var displayName: String
+    var sentAt: Date
+    var id: UUID { requestId }
+}
+
 // MARK: - In-Round Suggestion
 
 enum SuggestionType: String, Codable {

@@ -38,7 +38,7 @@ struct LoginView: View {
             CreateAccountView()
                 .environmentObject(session)
         }
-        .preferredColorScheme(.dark)
+        .tcAppearance()
     }
 
     // MARK: Logo
@@ -269,7 +269,6 @@ struct CreateAccountView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbarBackground(.clear, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -281,7 +280,7 @@ struct CreateAccountView: View {
                 if loggedIn { dismiss() }
             }
         }
-        .preferredColorScheme(.dark)
+        .tcAppearance()
     }
 }
 

@@ -75,7 +75,6 @@ struct EditClubView: View {
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbarBackground(.clear, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -89,7 +88,7 @@ struct EditClubView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .tcAppearance()
     }
 
     private var formSection: some View {

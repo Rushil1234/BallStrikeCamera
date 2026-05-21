@@ -28,14 +28,13 @@ struct ProfileSettingsView: View {
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
         .sheet(isPresented: $showClubs) {
             if let uid = user?.id {
                 NavigationStack {
                     ClubsInBagView(userId: uid, backend: session.backend)
                 }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
             }
         }
     }
@@ -152,6 +151,8 @@ struct ProfileSettingsView: View {
             BSSettingsRow(icon: "flag.fill",              title: "Home Course",
                           value: profile?.homeCourseName.isEmpty == false
                               ? profile!.homeCourseName : "Not set",           accent: BSTheme.gold)
+            BSDivider()
+            FeedShareRow()
         }
     }
 
@@ -174,6 +175,8 @@ struct ProfileSettingsView: View {
 
     private var appSection: some View {
         BSSettingsSection("App") {
+            AppearanceRow()
+            BSDivider()
             BSSettingsRow(icon: "info.circle.fill",         title: "Version",         value: "1.0.0", accent: BSTheme.textMuted)
             BSDivider()
             BSSettingsRow(icon: "questionmark.circle.fill", title: "Help & Support",                   accent: BSTheme.electricCyan)
@@ -205,6 +208,69 @@ struct ProfileSettingsView: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Appearance Row (Light / Dark / System)
+
+private struct AppearanceRow: View {
+    @AppStorage(AppearanceStore.key) private var raw = AppAppearance.dark.rawValue
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(BSTheme.gold.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "paintbrush.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(BSTheme.gold)
+            }
+            Text("Appearance")
+                .font(.system(size: 15))
+                .foregroundColor(BSTheme.textPrimary)
+            Spacer()
+            Picker("", selection: $raw) {
+                ForEach(AppAppearance.allCases) { mode in
+                    Text(mode.label).tag(mode.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Feed Sharing Row (auto-post opt-out)
+
+private struct FeedShareRow: View {
+    @AppStorage("tc_feed_autoshare_enabled") private var autoShare = true
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(BSTheme.fairwayGreen.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "newspaper.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(BSTheme.fairwayGreen)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Share activities to feed")
+                    .font(.system(size: 15))
+                    .foregroundColor(BSTheme.textPrimary)
+                Text("Auto-post completed rounds & sessions to friends")
+                    .font(.system(size: 11))
+                    .foregroundColor(BSTheme.textMuted)
+            }
+            Spacer()
+            Toggle("", isOn: $autoShare)
+                .labelsHidden()
+                .tint(BSTheme.fairwayGreen)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 }
 

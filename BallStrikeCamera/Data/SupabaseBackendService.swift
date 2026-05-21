@@ -291,7 +291,15 @@ final class SupabaseBackendService: AppBackend {
     // MARK: - Feed
 
     func saveFeedPost(_ post: FeedPost) async throws {
-        try await upsert(table: "feed_posts", body: try toDict(post))
+        // feed_posts stores the post body in a `payload` JSONB column.
+        let body: [String: Any] = [
+            "id": post.id.uuidString,
+            "user_id": post.userId.uuidString,
+            "visibility": "friends",
+            "timestamp": ISO8601DateFormatter().string(from: post.timestamp),
+            "payload": try toDict(post)
+        ]
+        try await upsert(table: "feed_posts", body: body)
     }
 
     func deleteFeedPost(postId: UUID, userId: UUID) async throws {
@@ -299,9 +307,149 @@ final class SupabaseBackendService: AppBackend {
     }
 
     func loadFeed(userId: UUID) async throws -> [FeedPost] {
-        let rows: [FeedPost] = try await selectWhere(
-            table: "feed_posts", column: "user_id", value: userId.uuidString)
-        return rows.sorted { $0.timestamp > $1.timestamp }
+        // RLS scopes feed_posts to the caller + their friends, so select all and sort.
+        var components = URLComponents(url: restURL("feed_posts"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "order", value: "timestamp.desc"),
+            URLQueryItem(name: "limit", value: "100")
+        ]
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await session.data(for: req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:feed_posts", data: data, response: response)
+            throw BackendError.loadFailed("feed_posts")
+        }
+        let rows = try decoder.decode([SupabaseFeedPostRow].self, from: data)
+        return rows.compactMap { $0.toFeedPost() }.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    // MARK: - Gimmes (feed reactions)
+
+    func loadGimmes() async throws -> [FeedReaction] {
+        // RLS scopes reactions to posts the caller can see.
+        var components = URLComponents(url: restURL("feed_reactions"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "emoji", value: "eq.gimme")]
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await session.data(for: req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:feed_reactions", data: data, response: response)
+            throw BackendError.loadFailed("feed_reactions")
+        }
+        let rows = try decoder.decode([SupabaseReactionRow].self, from: data)
+        return rows.compactMap { row in
+            guard let pid = UUID(uuidString: row.postId), let uid = UUID(uuidString: row.userId) else { return nil }
+            return FeedReaction(id: UUID(uuidString: row.id) ?? UUID(), postId: pid, userId: uid, emoji: row.emoji)
+        }
+    }
+
+    func addGimme(postId: UUID, userId: UUID) async throws {
+        let body: [String: Any] = [
+            "post_id": postId.uuidString,
+            "user_id": userId.uuidString,
+            "emoji": "gimme"
+        ]
+        var components = URLComponents(url: restURL("feed_reactions"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "on_conflict", value: "post_id,user_id")]
+        var req = authorizedRequest(url: components.url!, method: "POST")
+        req.setValue("return=minimal,resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 201 || status == 204 else {
+            logError("addGimme", data: data, response: response)
+            throw BackendError.saveFailed("feed_reactions")
+        }
+    }
+
+    func removeGimme(postId: UUID, userId: UUID) async throws {
+        var components = URLComponents(url: restURL("feed_reactions"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "post_id", value: "eq.\(postId.uuidString)"),
+            URLQueryItem(name: "user_id", value: "eq.\(userId.uuidString)"),
+            URLQueryItem(name: "emoji", value: "eq.gimme")
+        ]
+        var req = authorizedRequest(url: components.url!, method: "DELETE")
+        req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        _ = try? await session.data(for: req)
+    }
+
+    // MARK: - Comments
+
+    func loadComments(postId: UUID) async throws -> [FeedComment] {
+        var components = URLComponents(url: restURL("feed_comments"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "post_id", value: "eq.\(postId.uuidString)"),
+            URLQueryItem(name: "order", value: "created_at.asc")
+        ]
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await session.data(for: req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:feed_comments", data: data, response: response)
+            throw BackendError.loadFailed("feed_comments")
+        }
+        let rows = try decoder.decode([SupabaseCommentRow].self, from: data)
+        return rows.compactMap { $0.toFeedComment() }
+    }
+
+    func addComment(_ comment: FeedComment) async throws {
+        let body: [String: Any] = [
+            "id": comment.id.uuidString,
+            "post_id": comment.postId.uuidString,
+            "user_id": comment.userId.uuidString,
+            "author_name": comment.authorName,
+            "body": comment.body
+        ]
+        try await upsert(table: "feed_comments", body: body)
+    }
+
+    // MARK: - Friends / contacts
+
+    func searchUsers(query: String) async throws -> [FriendProfile] {
+        let rows: [SupabaseUserSearchRow] = try await rpc("search_users", body: ["q": query])
+        return rows.compactMap { $0.toFriendProfile() }
+    }
+
+    func sendFriendRequest(fromUserId: UUID, toUserId: UUID) async throws {
+        let body: [String: Any] = [
+            "from_user_id": fromUserId.uuidString,
+            "to_user_id": toUserId.uuidString,
+            "status": "pending"
+        ]
+        try await upsert(table: "friend_requests", body: body)
+    }
+
+    func loadIncomingRequests() async throws -> [IncomingFriendRequest] {
+        let rows: [SupabaseIncomingRequestRow] = try await rpc("list_incoming_requests", body: [:])
+        return rows.compactMap { $0.toIncomingRequest() }
+    }
+
+    func acceptFriendRequest(requestId: UUID) async throws {
+        try await rpcVoid("accept_friend_request", body: ["req_id": requestId.uuidString])
+    }
+
+    func declineFriendRequest(requestId: UUID) async throws {
+        let body: [String: Any] = ["status": "declined", "resolved_at": ISO8601DateFormatter().string(from: Date())]
+        var components = URLComponents(url: restURL("friend_requests"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "id", value: "eq.\(requestId.uuidString)")]
+        var req = authorizedRequest(url: components.url!, method: "PATCH")
+        req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        _ = try? await session.data(for: req)
+    }
+
+    func loadFriends() async throws -> [FriendProfile] {
+        let rows: [SupabaseUserSearchRow] = try await rpc("list_friends", body: [:])
+        return rows.compactMap { $0.toFriendProfile() }
+    }
+
+    func createInviteCode(userId: UUID) async throws -> String {
+        let code = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8)).uppercased()
+        try await upsert(table: "invite_codes", body: ["code": code, "user_id": userId.uuidString])
+        return code
+    }
+
+    func redeemInvite(code: String) async throws {
+        try await rpcVoid("redeem_invite", body: ["p_code": code])
     }
 
     // MARK: - Entitlement
@@ -372,6 +520,34 @@ final class SupabaseBackendService: AppBackend {
             throw BackendError.loadFailed(table)
         }
         return try decoder.decode([T].self, from: data)
+    }
+
+    /// Calls a table-returning Postgres RPC and decodes the JSON array result.
+    private func rpc<T: Decodable>(_ name: String, body: [String: Any]) async throws -> [T] {
+        let url = config.rpcBaseURL.appendingPathComponent(name)
+        var req = authorizedRequest(url: url, method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 201 else {
+            logError("rpc:\(name)", data: data, response: response)
+            throw BackendError.loadFailed("rpc:\(name)")
+        }
+        if data.isEmpty { return [] }
+        return try decoder.decode([T].self, from: data)
+    }
+
+    /// Calls a void-returning Postgres RPC (ignores the body).
+    private func rpcVoid(_ name: String, body: [String: Any]) async throws {
+        let url = config.rpcBaseURL.appendingPathComponent(name)
+        var req = authorizedRequest(url: url, method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await session.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 201 || status == 204 else {
+            logError("rpc:\(name)", data: data, response: response)
+            throw BackendError.saveFailed("rpc:\(name)")
+        }
     }
 
     private func upsert(table: String, body: [String: Any]) async throws {

@@ -53,7 +53,7 @@ struct ShotTrackingReviewView: View {
             metricsPanel
         }
         .background(Color.black.ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .tcAppearance()
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .fullScreenCover(isPresented: $showComposite) {

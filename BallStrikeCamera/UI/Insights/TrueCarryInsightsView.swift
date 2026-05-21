@@ -101,7 +101,7 @@ struct TrueCarryInsightsView: View {
         .navigationBarHidden(true)
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
         }
         .task {
             guard let uid = session.currentUser?.id else { return }

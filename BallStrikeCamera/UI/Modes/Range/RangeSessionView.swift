@@ -33,7 +33,6 @@ struct RangeSessionView: View {
         }
         .navigationTitle("Range Session")
         .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {

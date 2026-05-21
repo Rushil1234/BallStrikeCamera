@@ -7,7 +7,7 @@ enum TCTab: Int, CaseIterable {
 
     var label: String {
         switch self {
-        case .home:     return "Home"
+        case .home:     return "Feed"
         case .insights: return "Insights"
         case .play:     return "Play"
         case .locker:   return "Locker"
@@ -15,7 +15,7 @@ enum TCTab: Int, CaseIterable {
     }
     var icon: String {
         switch self {
-        case .home:     return "house.fill"
+        case .home:     return "newspaper.fill"
         case .insights: return "chart.bar.xaxis"
         case .play:     return "flag.fill"
         case .locker:   return "person.crop.circle.fill"
@@ -112,14 +112,14 @@ struct TrueCarryAppShell: View {
             }
         }
         .background(TCTheme.background.ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .tcAppearance()
     }
 
     @ViewBuilder
     private var tabContent: some View {
         switch selectedTab {
         case .home:
-            NavigationStack { TrueCarryHomeView() }
+            NavigationStack { FeedHomeView() }
         case .insights:
             NavigationStack { TrueCarryInsightsView() }
         case .play:

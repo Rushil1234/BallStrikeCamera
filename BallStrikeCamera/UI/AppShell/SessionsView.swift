@@ -57,7 +57,6 @@ struct SessionsView: View {
         }
         .navigationTitle("Sessions")
         .navigationBarTitleDisplayMode(.large)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbarBackground(.clear, for: .navigationBar)
     }
 

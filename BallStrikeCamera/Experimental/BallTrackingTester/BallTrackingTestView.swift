@@ -43,7 +43,7 @@ struct BallTrackingTestView: View {
             }
         }
         .background(Color.black.ignoresSafeArea())
-        .preferredColorScheme(.dark)
+        .tcAppearance()
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .onAppear { exports = loader.listAvailableExports() }

@@ -342,6 +342,8 @@ final class CourseRoundViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        // Auto-share the completed round to the social feed (opt-out in settings).
+        await FeedAutoPoster.share(round: round, backend: backend)
         activeRound = nil
     }
 

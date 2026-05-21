@@ -67,11 +67,11 @@ struct TrueCarryHomeView: View {
         .navigationBarHidden(true)
         .sheet(isPresented: $showSessions) {
             NavigationStack { PastSessionsView() }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
         }
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
-                .preferredColorScheme(.dark)
+                .tcAppearance()
         }
         .task {
             if let uid = session.currentUser?.id {

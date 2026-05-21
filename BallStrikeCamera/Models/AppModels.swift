@@ -276,12 +276,20 @@ struct FeedPost: Codable, Identifiable {
     var title: String
     var subtitle: String
     var metricHighlight: String
+    var stats: [FeedStat] = []
     var timestamp: Date = Date()
     var likes: Int = 0
     var commentsCount: Int = 0
     var linkedShotId: UUID?
     var linkedSessionId: UUID?
     var linkedRoundId: UUID?
+}
+
+/// One stat column in a feed card (Strava-style: small label over bold value).
+struct FeedStat: Codable, Hashable, Identifiable {
+    var label: String
+    var value: String
+    var id: String { label + value }
 }
 
 enum FeedPostType: String, Codable {

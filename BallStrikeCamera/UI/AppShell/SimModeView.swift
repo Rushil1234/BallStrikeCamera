@@ -47,7 +47,6 @@ struct SimModeView: View {
             }
             .navigationTitle("Simulator")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbarBackground(.clear, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -57,7 +56,7 @@ struct SimModeView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .tcAppearance()
         .alert("Simulator Scan", isPresented: Binding(
             get: { scanMessage != nil },
             set: { if !$0 { scanMessage = nil } }

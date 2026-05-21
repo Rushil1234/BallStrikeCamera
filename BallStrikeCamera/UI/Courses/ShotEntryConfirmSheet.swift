@@ -55,7 +55,6 @@ struct ShotEntryConfirmSheet: View {
             }
             .navigationTitle("Track Shot")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbarBackground(.clear, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

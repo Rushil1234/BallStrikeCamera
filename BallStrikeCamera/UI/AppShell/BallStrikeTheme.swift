@@ -4,23 +4,23 @@ import SwiftUI
 
 enum BSTheme {
 
-    // MARK: Colors
-    static let backgroundTop    = Color(red: 0.035, green: 0.037, blue: 0.041)
+    // MARK: Colors  (dark values preserved; light variants added)
+    static let backgroundTop    = Color.dyn(light: Color(red: 0.949, green: 0.945, blue: 0.933), dark: Color(red: 0.035, green: 0.037, blue: 0.041))
     static let backgroundBottom = backgroundTop
-    static let panel            = Color.white.opacity(0.035)
-    static let panelRaised      = Color.white.opacity(0.055)
-    static let border           = Color.white.opacity(0.10)
-    static let borderBright     = Color.white.opacity(0.20)
-    static let textPrimary      = Color.white
-    static let textSecondary    = Color.white.opacity(0.76)
-    static let textMuted        = Color.white.opacity(0.50)
-    static let fairwayGreen     = Color.white.opacity(0.78)
-    static let electricCyan     = Color.white.opacity(0.82)
-    static let gold             = Color.white.opacity(0.86)
+    static let panel            = Color.dyn(light: Color.white, dark: Color.white.opacity(0.035))
+    static let panelRaised      = Color.dyn(light: Color(red: 0.969, green: 0.965, blue: 0.953), dark: Color.white.opacity(0.055))
+    static let border           = Color.dyn(light: Color.black.opacity(0.10), dark: Color.white.opacity(0.10))
+    static let borderBright     = Color.dyn(light: Color.black.opacity(0.18), dark: Color.white.opacity(0.20))
+    static let textPrimary      = Color.dyn(light: Color(red: 0.102, green: 0.098, blue: 0.086), dark: Color.white)
+    static let textSecondary    = Color.dyn(light: Color.black.opacity(0.74), dark: Color.white.opacity(0.76))
+    static let textMuted        = Color.dyn(light: Color.black.opacity(0.50), dark: Color.white.opacity(0.50))
+    static let fairwayGreen     = Color.dyn(light: Color.black.opacity(0.74), dark: Color.white.opacity(0.78))
+    static let electricCyan     = Color.dyn(light: Color.black.opacity(0.78), dark: Color.white.opacity(0.82))
+    static let gold             = Color.dyn(light: Color.black.opacity(0.82), dark: Color.white.opacity(0.86))
     static let dangerRed        = Color(red: 1.00, green: 0.32, blue: 0.32)
-    static let successGreen     = Color.white.opacity(0.78)
-    static let simPurple        = Color.white.opacity(0.70)
-    static let simBlue          = Color.white.opacity(0.76)
+    static let successGreen     = Color.dyn(light: Color.black.opacity(0.74), dark: Color.white.opacity(0.78))
+    static let simPurple        = Color.dyn(light: Color.black.opacity(0.66), dark: Color.white.opacity(0.70))
+    static let simBlue          = Color.dyn(light: Color.black.opacity(0.72), dark: Color.white.opacity(0.76))
 
     // MARK: Gradients
     static var mainBackground: LinearGradient {
