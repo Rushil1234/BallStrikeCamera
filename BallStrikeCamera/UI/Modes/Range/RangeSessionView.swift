@@ -5,6 +5,8 @@ struct RangeSessionView: View {
     @StateObject private var vm: RangeSessionViewModel
     @State private var showCamera = false
     @State private var showEndAlert = false
+    @State private var showSaveSheet = false
+    @State private var saveSheetDefaultName = "Range Session"
 
     private let userId: UUID
     private let backend: AppBackend
@@ -48,22 +50,38 @@ struct RangeSessionView: View {
                 .foregroundColor(BSTheme.textMuted)
             }
         }
-        .alert("End Session?", isPresented: $showEndAlert) {
-            Button("End & Save", role: .destructive) {
+        .confirmationDialog("End Range Session?", isPresented: $showEndAlert, titleVisibility: .visible) {
+            Button("Save Session") {
                 Task {
-                    await vm.endSession()
-                    dismiss()
+                    saveSheetDefaultName = await vm.computeDefaultName()
+                    showSaveSheet = true
                 }
             }
-            Button("Discard", role: .destructive) {
+            Button("Discard Session", role: .destructive) {
                 Task {
                     await vm.discardSession()
                     dismiss()
                 }
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Continue Session", role: .cancel) {}
         } message: {
-            Text("Save this session or discard it?")
+            Text(vm.shots.isEmpty
+                 ? "Save this session to History or delete it?"
+                 : "Save this session to History or delete it? You have \(vm.shots.count) shot\(vm.shots.count == 1 ? "" : "s").")
+        }
+        .sheet(isPresented: $showSaveSheet) {
+            SessionSaveSheet(
+                config: SessionSaveConfig(
+                    type: .range,
+                    defaultName: saveSheetDefaultName,
+                    date: vm.activeSession?.startedAt ?? Date()
+                )
+            ) { name, desc in
+                Task {
+                    await vm.endSessionWithDetails(name: name, description: desc)
+                    dismiss()
+                }
+            }
         }
         .fullScreenCover(isPresented: $showCamera) {
             RangeCameraScreen(

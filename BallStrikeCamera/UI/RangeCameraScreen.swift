@@ -16,6 +16,8 @@ struct RangeCameraScreen: View {
     var context: ShotContext? = nil
     var externalOnShotSaved: ((SavedShot) -> Void)? = nil
 
+    private let userId: UUID
+    private let backend: AppBackend
     private var isCourseMode: Bool { context?.sourceMode == .course }
 
     init(userId: UUID,
@@ -24,6 +26,8 @@ struct RangeCameraScreen: View {
          initialClubName: String? = nil,
          context: ShotContext? = nil,
          onShotSaved: ((SavedShot) -> Void)? = nil) {
+        self.userId = userId
+        self.backend = backend
         _rangeVM = StateObject(wrappedValue: RangeSessionViewModel(userId: userId, backend: backend))
         _selectedClub = State(initialValue: initialClubName ?? "7 Iron")
         _selectedClubId = State(initialValue: initialClubId)
@@ -53,15 +57,15 @@ struct RangeCameraScreen: View {
                     exitClean()
                 }
             },
-            onShotSaved: { shot in
-                if let handler = externalOnShotSaved {
-                    handler(shot)
-                } else {
-                    Task { await rangeVM.addShot(shot) }
-                }
-            },
+            onShotSaved: isCourseMode ? externalOnShotSaved : nil,
             onShotComplete: {}
         )
+        .onChange(of: camera.showShotResult) { isShowing in
+            guard isShowing, !isCourseMode,
+                  let analysis = camera.latestShotAnalysis,
+                  let metrics = analysis.metrics else { return }
+            Task { await autoSave(analysis: analysis, metrics: SavedShotMetrics(metrics)) }
+        }
         .onAppear {
             OrientationManager.shared.lockLandscape()
             camera.start()
@@ -126,6 +130,21 @@ struct RangeCameraScreen: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+    }
+
+    private func autoSave(analysis: ShotAnalysisResult, metrics: SavedShotMetrics) async {
+        let composite = ShotCompositeRenderer().render(analysis: analysis, mode: .darkenedHighContrast)
+        let service = ShotPersistenceService(userId: userId, backend: backend)
+        guard let shot = try? await service.saveShot(
+            metrics: metrics,
+            compositeImage: composite,
+            clubId: selectedClubId,
+            clubName: selectedClub,
+            mode: .range,
+            saveOriginalFrames: rangeVM.saveOriginalFrames,
+            sessionId: rangeVM.activeSession?.id
+        ) else { return }
+        await rangeVM.addShot(shot)
     }
 
     private func exitClean() {
