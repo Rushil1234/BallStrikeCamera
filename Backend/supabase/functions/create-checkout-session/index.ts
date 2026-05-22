@@ -105,7 +105,22 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const checkoutSession = await stripe.checkout.sessions.create(sessionParams);
+    let checkoutSession;
+    if (useEmbeddedCheckout) {
+      // Stripe renamed the embedded ui_mode ("embedded" <-> "embedded_page")
+      // across API versions. Try the current value, fall back to the legacy one.
+      try {
+        checkoutSession = await stripe.checkout.sessions.create(sessionParams);
+      } catch (e) {
+        console.warn("[create-checkout-session] embedded_page failed, retrying ui_mode=embedded:", e);
+        checkoutSession = await stripe.checkout.sessions.create({
+          ...sessionParams,
+          ui_mode: "embedded" as Stripe.Checkout.SessionCreateParams.UiMode,
+        });
+      }
+    } else {
+      checkoutSession = await stripe.checkout.sessions.create(sessionParams);
+    }
     return json({
       url: checkoutSession.url,
       clientSecret: checkoutSession.client_secret,
