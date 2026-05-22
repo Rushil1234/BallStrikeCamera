@@ -73,6 +73,22 @@ final class AuthSessionStore: ObservableObject {
         await entitlementVM.load(userId: user.id)
     }
 
+    func sendPasswordReset(email: String) async throws {
+        try await configuredBackend.sendPasswordReset(email: email)
+    }
+
+    func resendConfirmationEmail(email: String) async throws {
+        try await configuredBackend.resendConfirmationEmail(email: email)
+    }
+
+    func refreshSessionAndEntitlement() async {
+        guard let user = currentUser else { return }
+        try? await configuredBackend.refreshSession()
+        activateBackend(configuredBackend)
+        currentUser = (try? await configuredBackend.currentUser()) ?? user
+        await entitlementVM.refresh(userId: currentUser?.id ?? user.id)
+    }
+
     func continueAsGuest() async throws {
         let user: AppUser
         do {

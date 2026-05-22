@@ -32,7 +32,11 @@ final class CourseDataAggregator {
             return cached
         }
 
-        let sharedGeometry = await loadSharedGeometry(courseId: course.id, backend: backend)
+        // Exact id, then fuzzy name+proximity (absorbs MapKit-vs-OSM id drift on pre-baked courses).
+        var sharedGeometry = await loadSharedGeometry(courseId: course.id, backend: backend)
+        if sharedGeometry == nil {
+            sharedGeometry = await loadSharedGeometryFuzzy(course, backend: backend)
+        }
         if let sharedGeometry, sharedGeometry.hasTrustedGeometry, isUsableCachedCourse(sharedGeometry) {
             OSMGolfService.shared.cacheMergedCourse(sharedGeometry)
             return sharedGeometry
@@ -104,6 +108,22 @@ final class CourseDataAggregator {
         } catch {
             #if DEBUG
             print("[Aggregator] shared course geometry failed: \(error.localizedDescription)")
+            #endif
+            return nil
+        }
+    }
+
+    /// Fuzzy fallback when the exact id misses — the bulk OSM pre-bake can't always reproduce the
+    /// MapKit synthetic id, so we match the shared geometry by name + proximity instead.
+    private func loadSharedGeometryFuzzy(_ course: GolfCourse, backend: AppBackend?) async -> GolfCourse? {
+        guard let backend = sharedGeometryBackend(preferred: backend) else { return nil }
+        do {
+            let match = try await backend.findCourseGeometryNear(name: course.name,
+                                                                 coordinate: course.coordinate)
+            return match?.hasTrustedGeometry == true ? match : nil
+        } catch {
+            #if DEBUG
+            print("[Aggregator] fuzzy shared geometry failed: \(error.localizedDescription)")
             #endif
             return nil
         }
@@ -250,6 +270,32 @@ struct CourseAvailabilityReport: Identifiable, Equatable {
     }
 }
 
+/// How fully a course can be played, best tier first. The app no longer blocks a round just
+/// because OSM lacks hand-traced geometry for every hole — it starts in the richest tier the
+/// free data (GolfCourseAPI scorecard + OSM greens) supports and keeps queueing backfill so
+/// coverage improves over time.
+enum CourseModeTier {
+    /// Verified tee + green polygon + route for every hole, scorecard yardages validated.
+    case fullGPS
+    /// Scorecard + a green-center point on most holes — distance-to-green works. Green polygon /
+    /// front / back are synthesized from the center where OSM didn't trace them.
+    case rangefinder
+    /// A usable scorecard but not enough geometry for live distances — score tracking only.
+    case scorecardOnly
+    /// Nothing playable (no holes, no geometry).
+    case unavailable
+
+    var isPlayable: Bool { self != .unavailable }
+    var hasLiveDistances: Bool { self == .fullGPS || self == .rangefinder }
+}
+
+struct CourseModeReadiness {
+    let tier: CourseModeTier
+    /// Diagnostic detail. Always present for `.unavailable`; present for degraded tiers so the
+    /// app can show a banner and log the course for geometry backfill.
+    let report: CourseAvailabilityReport?
+}
+
 enum CourseAvailability {
     private static let minimumHoleCount = 9
 
@@ -259,72 +305,84 @@ enum CourseAvailability {
             .appendingPathComponent("unavailable_courses.csv")
     }
 
-    static func evaluateCourseMode(course: GolfCourse,
-                                   teeBox: TeeBox?) -> CourseAvailabilityReport? {
-        let scorecardHoles = course.holes.filter { $0.number > 0 }
-        let expectedCount = expectedPlayableHoleCount(for: scorecardHoles)
-        let geometryHoles = scorecardHoles.filter(isHoleGeometryPlayable)
-        var missing: [Int] = []
-        var validationErrors: [String] = []
+    /// Classify how fully a course can be played. Never blocks unless the course is genuinely empty.
+    static func evaluateReadiness(course: GolfCourse,
+                                  teeBox: TeeBox?) -> CourseModeReadiness {
+        let playable = course.holes.filter { $0.number > 0 }
+        let expectedCount = expectedPlayableHoleCount(for: playable)
+        let geometryHoles = playable.filter(isHoleGeometryPlayable)
+        let centerHoles = playable.filter { $0.hasGreenCenter }
 
-        if !course.hasTrustedGeometry {
-            validationErrors.append("missing_trusted_geometry")
-        }
-
-        guard scorecardHoles.count >= minimumHoleCount else {
-            return report(
-                course: course,
-                reasonCode: "missing_scorecard",
-                message: "This course does not have a complete scorecard yet, so True Carry cannot start a verified GPS round.",
-                missing: Array(1...18),
-                scorecardHoleCount: scorecardHoles.count,
-                geometryHoleCount: geometryHoles.count
+        // Genuinely empty — nothing to score or range.
+        guard !playable.isEmpty, playable.count >= minimumHoleCount || !centerHoles.isEmpty else {
+            return CourseModeReadiness(
+                tier: .unavailable,
+                report: report(
+                    course: course,
+                    reasonCode: "missing_scorecard",
+                    message: "This course does not have a scorecard or map data yet, so True Carry can't start a round.",
+                    missing: Array(1...18),
+                    scorecardHoleCount: playable.count,
+                    geometryHoleCount: geometryHoles.count
+                )
             )
         }
 
-        guard hasAuthoritativeScorecard(scorecardHoles, teeBox: teeBox, expectedCount: expectedCount) else {
-            return report(
+        // Full verified GPS: authoritative scorecard + complete geometry on every expected hole,
+        // with no large yardage disagreements.
+        let authoritative = hasAuthoritativeScorecard(playable, teeBox: teeBox, expectedCount: expectedCount)
+        let fullGeomCount = (1...expectedCount).filter { number in
+            playable.first(where: { $0.number == number }).map(isHoleGeometryPlayable) ?? false
+        }.count
+        let yardageMismatches = playable.compactMap { yardageMismatch(for: $0, teeBox: teeBox) }
+        if authoritative, fullGeomCount == expectedCount, yardageMismatches.isEmpty,
+           course.hasTrustedGeometry {
+            return CourseModeReadiness(tier: .fullGPS, report: nil)
+        }
+
+        // Rangefinder: enough green centers to give distance-to-green. We synthesize polygon /
+        // front / back from the centers at round start.
+        let rangefinderThreshold = max(minimumHoleCount, Int((Double(expectedCount) * 0.5).rounded()))
+        if centerHoles.count >= rangefinderThreshold {
+            return CourseModeReadiness(
+                tier: .rangefinder,
+                report: report(
+                    course: course,
+                    reasonCode: "rangefinder_partial_geometry",
+                    message: "Playing in rangefinder mode — distance to the green is live, but verified tee/green outlines are still being mapped.",
+                    missing: (1...expectedCount).filter { number in
+                        !(playable.first(where: { $0.number == number })?.hasGreenCenter ?? false)
+                    },
+                    scorecardHoleCount: playable.count,
+                    geometryHoleCount: centerHoles.count
+                )
+            )
+        }
+
+        // Scorecard only: track score and see par/yardage, no live distances.
+        return CourseModeReadiness(
+            tier: .scorecardOnly,
+            report: report(
                 course: course,
-                reasonCode: "missing_scorecard_yardages",
-                message: "This course has map geometry, but it is missing verified tee-box yardages. True Carry is holding it until the scorecard and GPS map can be matched.",
+                reasonCode: "scorecard_only",
+                message: "Playing in scorecard mode — live GPS distances aren't available for this course yet.",
                 missing: [],
-                scorecardHoleCount: scorecardHoles.count,
-                geometryHoleCount: geometryHoles.count
+                scorecardHoleCount: playable.count,
+                geometryHoleCount: centerHoles.count
             )
-        }
+        )
+    }
 
-        for number in 1...expectedCount {
-            guard let hole = scorecardHoles.first(where: { $0.number == number }) else {
-                missing.append(number)
-                continue
-            }
-            if !isHoleGeometryPlayable(hole) {
-                missing.append(number)
-            }
-            if let mismatch = yardageMismatch(for: hole, teeBox: teeBox) {
-                validationErrors.append(mismatch)
-            }
+    /// Returns a course copy where holes that have a green center but no traced green polygon get a
+    /// synthesized polygon + front/back, so the round map can render distance-to-green everywhere.
+    static func makePlayReady(_ course: GolfCourse) -> GolfCourse {
+        var result = course
+        result.holes = course.holes.map { hole in
+            var h = hole
+            h.fillSyntheticGreenIfNeeded()
+            return h
         }
-
-        guard validationErrors.isEmpty, missing.isEmpty else {
-            let code = validationErrors.first ?? "partial_geometry"
-            let message: String
-            if !missing.isEmpty {
-                message = "This course is not available yet because verified tee, green, and route geometry is missing for \(missing.count) hole\(missing.count == 1 ? "" : "s")."
-            } else {
-                message = "This course map failed True Carry's yardage validation, so it is being held for review instead of showing unreliable pins."
-            }
-            return report(
-                course: course,
-                reasonCode: code,
-                message: message,
-                missing: missing,
-                scorecardHoleCount: scorecardHoles.count,
-                geometryHoleCount: geometryHoles.count
-            )
-        }
-
-        return nil
+        return result
     }
 
     static func recordUnavailable(_ report: CourseAvailabilityReport,
@@ -388,15 +446,32 @@ enum CourseAvailability {
 
     private static func yardageMismatch(for hole: GolfHole,
                                         teeBox: TeeBox?) -> String? {
-        guard let teeBox,
-              let scorecardYards = hole.teeYardsByTeeBox[teeBox.id],
-              scorecardYards > 0 else { return nil }
         let geometryYards = routeYards(for: hole) ?? hole.measuredYardage
         guard let geometryYards, geometryYards > 0 else { return nil }
-        let tolerance = max(25, Int((Double(scorecardYards) * 0.08).rounded()))
-        let delta = abs(scorecardYards - geometryYards)
+
+        let hasSelectedTeeGeometry = teeBox.flatMap { hole.teeCoordinateByTeeBox?[$0.id] } != nil
+        let candidates: [(label: String, yards: Int)]
+        if hasSelectedTeeGeometry,
+           let teeBox,
+           let selectedYards = hole.teeYardsByTeeBox[teeBox.id],
+           selectedYards > 0 {
+            candidates = [(teeBox.name, selectedYards)]
+        } else {
+            // OSM usually stores one `golf=hole` route, not a separate centerline per tee box.
+            // Validate that the route matches at least one official tee yardage so forward
+            // tees do not falsely block an otherwise verified course map.
+            candidates = hole.teeYardsByTeeBox
+                .compactMap { key, yards in yards > 0 ? (key, yards) : nil }
+        }
+
+        guard let closest = candidates.min(by: {
+            abs($0.yards - geometryYards) < abs($1.yards - geometryYards)
+        }) else { return nil }
+
+        let tolerance = max(25, Int((Double(closest.yards) * 0.08).rounded()))
+        let delta = abs(closest.yards - geometryYards)
         guard delta > tolerance else { return nil }
-        return "hole_\(hole.number)_yardage_mismatch_\(geometryYards)_vs_\(scorecardYards)"
+        return "hole_\(hole.number)_yardage_mismatch_\(geometryYards)_vs_nearest_scorecard_\(closest.yards)"
     }
 
     private static func routeYards(for hole: GolfHole) -> Int? {

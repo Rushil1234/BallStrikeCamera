@@ -17,7 +17,8 @@ enum GolfCourseAPIConfig {
               let dict = NSDictionary(contentsOf: url) as? [String: Any],
               let key  = dict["GolfCourseAPIKey"] as? String,
               !key.isEmpty,
-              key != "PUT_KEY_HERE"
+              key != "PUT_KEY_HERE",
+              !key.hasPrefix("YOUR_")
         else { return nil }
         return key
     }

@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 // MARK: - Backend Protocol
 
@@ -8,6 +9,9 @@ protocol AppBackend {
     func currentUser() async throws -> AppUser?
     func signIn(email: String, password: String) async throws -> AppUser
     func createAccount(name: String, email: String, password: String) async throws -> AppUser
+    func sendPasswordReset(email: String) async throws
+    func resendConfirmationEmail(email: String) async throws
+    func refreshSession() async throws
     func continueAsGuest() async throws -> AppUser
     func signOut() async throws
 
@@ -43,6 +47,8 @@ protocol AppBackend {
     // Shared course geometry — keyed by provider/course id, shared across users
     func saveCourseGeometry(_ course: GolfCourse) async throws
     func loadCourseGeometry(courseId: String) async throws -> GolfCourse?
+    /// Fuzzy fallback when the exact course_id misses: best name + proximity match.
+    func findCourseGeometryNear(name: String, coordinate: CLLocationCoordinate2D?) async throws -> GolfCourse?
     func requestCourseGeometryBackfill(_ course: GolfCourse, reason: String) async throws
 
     // Feed — userId embedded in model
@@ -90,10 +96,22 @@ extension AppBackend {
     func incrementUsage(userId: UUID, action: EntitlementAction) async throws {
         // no-op for local
     }
+    func sendPasswordReset(email: String) async throws {
+        // no-op for local
+    }
+    func resendConfirmationEmail(email: String) async throws {
+        // no-op for local
+    }
+    func refreshSession() async throws {
+        // no-op for local
+    }
     func saveCourseGeometry(_ course: GolfCourse) async throws {
         // no-op for local; OSMGolfService keeps the on-device cache.
     }
     func loadCourseGeometry(courseId: String) async throws -> GolfCourse? {
+        nil
+    }
+    func findCourseGeometryNear(name: String, coordinate: CLLocationCoordinate2D?) async throws -> GolfCourse? {
         nil
     }
     func requestCourseGeometryBackfill(_ course: GolfCourse, reason: String = "missing_geometry") async throws {
@@ -123,6 +141,7 @@ enum BackendError: LocalizedError {
     case userNotFound
     case wrongPassword
     case emailAlreadyExists
+    case emailConfirmationRequired(String)
     case notAuthenticated
     case saveFailed(String)
     case loadFailed(String)
@@ -133,6 +152,8 @@ enum BackendError: LocalizedError {
         case .userNotFound:        return "Account not found."
         case .wrongPassword:       return "Incorrect password."
         case .emailAlreadyExists:  return "An account with this email already exists."
+        case .emailConfirmationRequired(let email):
+            return "Check \(email) to confirm your account, then sign in."
         case .notAuthenticated:    return "You must be signed in."
         case .saveFailed(let m):   return "Save failed: \(m)"
         case .loadFailed(let m):   return "Load failed: \(m)"

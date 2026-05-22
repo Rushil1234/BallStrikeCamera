@@ -11,6 +11,10 @@ final class CourseRoundViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var courseUnavailable: CourseAvailabilityReport?
+    /// Best tier the current course can be played in (rangefinder / scorecard-only / full GPS).
+    @Published var courseTier: CourseModeTier = .fullGPS
+    /// Non-blocking note shown when the course plays in a degraded tier; nil for full GPS.
+    @Published var degradedTierNote: String?
 
     private let backend: AppBackend
     private let userId: UUID
@@ -50,23 +54,40 @@ final class CourseRoundViewModel: ObservableObject {
         // The user picked a generic tee from MapKit search; map it to the authoritative
         // tee box on the enriched course so per-hole yardages resolve correctly.
         let resolvedTee = CourseDataAggregator.shared.resolveTeeBox(teeBox, in: enriched)
-        if let unavailable = CourseAvailability.evaluateCourseMode(course: enriched, teeBox: resolvedTee) {
-            CourseAvailability.recordUnavailable(unavailable, teeBox: resolvedTee)
+        let readiness = CourseAvailability.evaluateReadiness(course: enriched, teeBox: resolvedTee)
+        courseTier = readiness.tier
+
+        // Log + queue backfill for anything short of full verified GPS so coverage keeps improving.
+        if readiness.tier != .fullGPS, let report = readiness.report {
+            CourseAvailability.recordUnavailable(report, teeBox: resolvedTee)
             await CourseDataAggregator.shared.queueBackfill(
                 enriched,
                 backend: backend,
-                reason: unavailable.reasonCode
+                reason: report.reasonCode
             )
+        }
+
+        // Only truly empty courses block. Everything else plays in its best tier.
+        guard readiness.tier.isPlayable else {
             selectedCourse = enriched
             selectedTeeBox = resolvedTee
-            courseUnavailable = unavailable
-            errorMessage = unavailable.message
+            courseUnavailable = readiness.report
+            errorMessage = readiness.report?.message
             isLoading = false
             location.stopUpdating()
             return
         }
+
+        courseUnavailable = nil
+        // Rangefinder tier: synthesize green polygons/front/back from green centers so the round
+        // map renders distance-to-green everywhere it has a center.
+        let playCourse = readiness.tier == .rangefinder
+            ? CourseAvailability.makePlayReady(enriched)
+            : enriched
+        // Show a non-blocking note for degraded tiers; nil for full GPS.
+        degradedTierNote = readiness.tier == .fullGPS ? nil : readiness.report?.message
         isLoading = false
-        await startRound(course: enriched, teeBox: resolvedTee)
+        await startRound(course: playCourse, teeBox: resolvedTee)
     }
 
     /// Resumes a previously-saved round (`endedAt == nil`). Rehydrates the course from the OSM
@@ -238,23 +259,13 @@ final class CourseRoundViewModel: ObservableObject {
             par: currentHole?.par ?? Self.defaultPar(for: holeNumber)
         )
 
-        let heading = Self.bearing(from: tee.clCoordinate, to: green.clCoordinate)
-        let front = Self.project(from: green.clCoordinate, bearingDegrees: heading + 180, distanceMeters: 12)
-        let back = Self.project(from: green.clCoordinate, bearingDegrees: heading, distanceMeters: 12)
-        let left = Self.project(from: green.clCoordinate, bearingDegrees: heading - 90, distanceMeters: 10)
-        let right = Self.project(from: green.clCoordinate, bearingDegrees: heading + 90, distanceMeters: 10)
+        let synth = GolfGeometry.synthesizeGreen(center: green, tee: tee)
 
         hole.teeCoordinate = tee
         hole.greenCenterCoordinate = green
-        hole.greenFrontCoordinate = Coordinate(front)
-        hole.greenBackCoordinate = Coordinate(back)
-        hole.greenPolygon = PolygonRing(coordinates: [
-            Coordinate(front),
-            Coordinate(right),
-            Coordinate(back),
-            Coordinate(left),
-            Coordinate(front)
-        ])
+        hole.greenFrontCoordinate = synth.front
+        hole.greenBackCoordinate = synth.back
+        hole.greenPolygon = synth.polygon
         hole.pathCoordinates = [tee, green]
 
         if let index {
@@ -383,29 +394,4 @@ final class CourseRoundViewModel: ObservableObject {
         )
     }
 
-    private static func bearing(from a: CLLocationCoordinate2D, to b: CLLocationCoordinate2D) -> Double {
-        let lat1 = a.latitude * .pi / 180
-        let lat2 = b.latitude * .pi / 180
-        let dLon = (b.longitude - a.longitude) * .pi / 180
-        let y = sin(dLon) * cos(lat2)
-        let x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-        return atan2(y, x) * 180 / .pi
-    }
-
-    private static func project(from start: CLLocationCoordinate2D,
-                                bearingDegrees: Double,
-                                distanceMeters: Double) -> CLLocationCoordinate2D {
-        let radius = 6_371_000.0
-        let bearing = bearingDegrees * .pi / 180
-        let lat1 = start.latitude * .pi / 180
-        let lon1 = start.longitude * .pi / 180
-        let angularDistance = distanceMeters / radius
-
-        let lat2 = asin(sin(lat1) * cos(angularDistance)
-                        + cos(lat1) * sin(angularDistance) * cos(bearing))
-        let lon2 = lon1 + atan2(sin(bearing) * sin(angularDistance) * cos(lat1),
-                                cos(angularDistance) - sin(lat1) * sin(lat2))
-        return CLLocationCoordinate2D(latitude: lat2 * 180 / .pi,
-                                      longitude: lon2 * 180 / .pi)
-    }
 }

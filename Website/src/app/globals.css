@@ -415,6 +415,104 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
   padding: 12px 14px;
   background: color-mix(in oklab, currentColor 8%, transparent);
 }
+.auth-social {
+  width: 100%;
+  min-height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--elevated) 68%, transparent);
+  color: var(--text);
+  font: 700 13px/1 var(--font-sans), sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease), border-color 0.2s var(--ease), background 0.2s var(--ease), opacity 0.2s var(--ease);
+}
+.auth-social + .auth-social {
+  margin-top: 10px;
+}
+.auth-social:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--text);
+  background: color-mix(in oklab, var(--elevated) 92%, transparent);
+}
+.auth-social:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.auth-apple {
+  background: color-mix(in oklab, var(--ink) 84%, transparent);
+  color: var(--cream);
+  border-color: color-mix(in oklab, var(--cream) 24%, transparent);
+}
+[data-theme="light"] .auth-apple {
+  background: #111610;
+  color: #fffaf0;
+}
+.auth-apple:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--ink) 94%, var(--gold) 6%);
+  border-color: color-mix(in oklab, var(--cream) 54%, transparent);
+}
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 18px 0;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+.auth-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.auth-label-row label {
+  margin-bottom: 9px;
+}
+.auth-forgot {
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  cursor: pointer;
+  font: 700 12px/1 var(--font-sans), sans-serif;
+  letter-spacing: 0.02em;
+}
+.auth-forgot:hover {
+  color: var(--gold-bright);
+}
+.auth-resend {
+  width: 100%;
+  margin: -4px 0 18px;
+  border: 0;
+  background: transparent;
+  color: var(--gold);
+  cursor: pointer;
+  font: 800 12px/1 var(--font-sans), sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.auth-resend:hover:not(:disabled) {
+  color: var(--gold-bright);
+}
+.auth-resend:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
 .auth-form {
   display: flex;
   flex-direction: column;
@@ -1280,6 +1378,7 @@ code {
 .checkout-auth h3{ font-size:26px; margin-bottom:8px; }
 .checkout-auth > p{ color:var(--muted); font-size:14px; margin-bottom:16px; line-height:1.6; }
 .checkout-auth label{ display:block; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:14px 0 7px; }
+.checkout-auth .auth-label-row label{ margin-bottom:7px; }
 .checkout-auth input{ width:100%; background:var(--surface-2); border:1px solid var(--border-strong); border-radius:8px; padding:13px 14px; color:var(--text); font-size:15px; outline:none; transition:border-color .2s; }
 .checkout-auth input:focus{ border-color:var(--text); }
 .checkout-auth .btn{ margin-top:22px; }

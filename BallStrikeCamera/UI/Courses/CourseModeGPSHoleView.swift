@@ -1158,6 +1158,30 @@ struct CourseModeGPSHoleView: View {
                     .zIndex(30)
             }
 
+            if vm.courseUnavailable == nil, let note = vm.degradedTierNote {
+                VStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: vm.courseTier == .rangefinder ? "location.viewfinder" : "list.bullet.rectangle")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(TCTheme.gold)
+                        Text(note)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(Color.black.opacity(0.7))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 96)
+                    Spacer()
+                }
+                .transition(.opacity)
+                .zIndex(6)
+                .allowsHitTesting(false)
+            }
+
             // Top dark gradient
             VStack(spacing: 0) {
                 LinearGradient(

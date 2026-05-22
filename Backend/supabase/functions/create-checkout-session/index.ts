@@ -88,8 +88,7 @@ Deno.serve(async (req: Request) => {
     },
     ...(useEmbeddedCheckout
       ? {
-          // Stripe renamed the embedded Checkout ui_mode to "embedded_page".
-          ui_mode: "embedded_page",
+          ui_mode: "embedded",
           return_url: `${websiteURL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
           redirect_on_completion: "if_required",
         }

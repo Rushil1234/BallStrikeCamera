@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 
 // MARK: - Supabase REST backend
 // URLSession + Supabase REST / Auth APIs (no Swift package required).
@@ -85,10 +86,46 @@ final class SupabaseBackendService: AppBackend {
             logError("createAccount", data: data, response: response)
             throw BackendError.emailAlreadyExists
         }
-        let auth = try decoder.decode(SupabaseAuthResponse.self, from: data)
-        persistSession(auth)
-        print("[TrueCarry][Supabase] createAccount — \(auth.user.email ?? "?")")
-        return appUser(from: auth.user)
+        let auth = try decoder.decode(SupabaseSignUpResponse.self, from: data)
+        if let accessToken = auth.accessToken, let refreshToken = auth.refreshToken {
+            persistSession(accessToken: accessToken, refreshToken: refreshToken)
+            print("[TrueCarry][Supabase] createAccount — \(auth.user.email ?? "?")")
+            return appUser(from: auth.user)
+        }
+        print("[TrueCarry][Supabase] createAccount confirmation required — \(auth.user.email ?? email)")
+        throw BackendError.emailConfirmationRequired(auth.user.email ?? email)
+    }
+
+    func sendPasswordReset(email: String) async throws {
+        var components = URLComponents(url: config.authBaseURL.appendingPathComponent("recover"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "redirect_to", value: AppConfig.websiteURL.appendingPathComponent("reset-password").absoluteString)
+        ]
+        var req = baseRequest(url: components.url!, method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["email": email])
+        let (data, response) = try await session.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 204 else {
+            logError("sendPasswordReset", data: data, response: response)
+            throw BackendError.networkError("Could not send password reset email.")
+        }
+    }
+
+    func resendConfirmationEmail(email: String) async throws {
+        var req = baseRequest(url: config.authBaseURL.appendingPathComponent("resend"), method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "type": "signup",
+            "email": email,
+            "options": [
+                "email_redirect_to": AppConfig.websiteURL.appendingPathComponent("login").absoluteString
+            ]
+        ])
+        let (data, response) = try await session.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 204 else {
+            logError("resendConfirmationEmail", data: data, response: response)
+            throw BackendError.networkError("Could not resend confirmation email.")
+        }
     }
 
     func continueAsGuest() async throws -> AppUser {
@@ -162,13 +199,24 @@ final class SupabaseBackendService: AppBackend {
     // MARK: - Shots
 
     func saveShot(_ shot: SavedShot) async throws {
-        try await upsert(table: "shots", body: try toDict(shot))
+        try await upsert(
+            table: "shots",
+            body: try payloadRowBody(id: shot.id, userId: shot.userId, payload: shot, dateColumn: "timestamp", date: shot.timestamp)
+        )
     }
 
     func loadShots(userId: UUID) async throws -> [SavedShot] {
-        let rows: [SavedShot] = try await selectWhere(
+        let rows: [SupabasePayloadRow<SavedShot>] = try await selectWhere(
             table: "shots", column: "user_id", value: userId.uuidString)
-        return rows.sorted { $0.timestamp > $1.timestamp }
+        return rows
+            .map { row in
+                var shot = row.payload
+                if let id = UUID(uuidString: row.id) { shot.id = id }
+                if let uid = UUID(uuidString: row.userId) { shot.userId = uid }
+                if let timestamp = row.timestamp { shot.timestamp = timestamp }
+                return shot
+            }
+            .sorted { $0.timestamp > $1.timestamp }
     }
 
     func deleteShot(shotId: UUID, userId: UUID) async throws {
@@ -178,7 +226,10 @@ final class SupabaseBackendService: AppBackend {
     // MARK: - Range Sessions
 
     func saveRangeSession(_ session: PracticeSession) async throws {
-        try await upsert(table: "range_sessions", body: try toDict(session))
+        try await upsert(
+            table: "range_sessions",
+            body: try payloadRowBody(id: session.id, userId: session.userId, payload: session, dateColumn: "started_at", date: session.startedAt)
+        )
     }
 
     func deleteRangeSession(sessionId: UUID, userId: UUID) async throws {
@@ -186,33 +237,63 @@ final class SupabaseBackendService: AppBackend {
     }
 
     func loadRangeSessions(userId: UUID) async throws -> [PracticeSession] {
-        let rows: [PracticeSession] = try await selectWhere(
+        let rows: [SupabasePayloadRow<PracticeSession>] = try await selectWhere(
             table: "range_sessions", column: "user_id", value: userId.uuidString)
-        return rows.sorted { $0.startedAt > $1.startedAt }
+        return rows
+            .map { row in
+                var rangeSession = row.payload
+                if let id = UUID(uuidString: row.id) { rangeSession.id = id }
+                if let uid = UUID(uuidString: row.userId) { rangeSession.userId = uid }
+                if let startedAt = row.startedAt { rangeSession.startedAt = startedAt }
+                return rangeSession
+            }
+            .sorted { $0.startedAt > $1.startedAt }
     }
 
     // MARK: - Sim Sessions
 
     func saveSimSession(_ session: SimSession) async throws {
-        try await upsert(table: "sim_sessions", body: try toDict(session))
+        try await upsert(
+            table: "sim_sessions",
+            body: try payloadRowBody(id: session.id, userId: session.userId, payload: session, dateColumn: "started_at", date: session.startedAt)
+        )
     }
 
     func loadSimSessions(userId: UUID) async throws -> [SimSession] {
-        let rows: [SimSession] = try await selectWhere(
+        let rows: [SupabasePayloadRow<SimSession>] = try await selectWhere(
             table: "sim_sessions", column: "user_id", value: userId.uuidString)
-        return rows.sorted { $0.startedAt > $1.startedAt }
+        return rows
+            .map { row in
+                var simSession = row.payload
+                if let id = UUID(uuidString: row.id) { simSession.id = id }
+                if let uid = UUID(uuidString: row.userId) { simSession.userId = uid }
+                if let startedAt = row.startedAt { simSession.startedAt = startedAt }
+                return simSession
+            }
+            .sorted { $0.startedAt > $1.startedAt }
     }
 
     // MARK: - Course Rounds
 
     func saveRound(_ round: CourseRound) async throws {
-        try await upsert(table: "course_rounds", body: try toDict(round))
+        try await upsert(
+            table: "course_rounds",
+            body: try payloadRowBody(id: round.id, userId: round.userId, payload: round, dateColumn: "started_at", date: round.startedAt)
+        )
     }
 
     func loadCourseRounds(userId: UUID) async throws -> [CourseRound] {
-        let rows: [CourseRound] = try await selectWhere(
+        let rows: [SupabasePayloadRow<CourseRound>] = try await selectWhere(
             table: "course_rounds", column: "user_id", value: userId.uuidString)
-        return rows.sorted { $0.startedAt > $1.startedAt }
+        return rows
+            .map { row in
+                var round = row.payload
+                if let id = UUID(uuidString: row.id) { round.id = id }
+                if let uid = UUID(uuidString: row.userId) { round.userId = uid }
+                if let startedAt = row.startedAt { round.startedAt = startedAt }
+                return round
+            }
+            .sorted { $0.startedAt > $1.startedAt }
     }
 
     // MARK: - Shared Course Geometry
@@ -244,6 +325,8 @@ final class SupabaseBackendService: AppBackend {
         if let confidence = metadata.confidence { body["confidence"] = confidence }
         if let generatedBy = metadata.generatedBy { body["generated_by"] = generatedBy }
         if let imagerySource = metadata.imagerySource { body["imagery_source"] = imagerySource }
+        if let lat = course.latitude { body["latitude"] = lat }
+        if let lon = course.longitude { body["longitude"] = lon }
         if let user = try? await currentUser() {
             body["submitted_by"] = user.id.uuidString
         }
@@ -254,6 +337,62 @@ final class SupabaseBackendService: AppBackend {
         let rows: [SupabaseCourseGeometryRow] = try await selectWhere(
             table: "course_geometries", column: "course_id", value: courseId)
         return rows.map { $0.toGolfCourse() }.first(where: { $0.hasTrustedGeometry })
+    }
+
+    /// Fuzzy fallback: bounding-box query on accepted geometry, then best name + distance match.
+    /// Absorbs id drift between Apple Maps and the bulk OSM pre-bake (which can't always reproduce
+    /// the exact MapKit synthetic id).
+    func findCourseGeometryNear(name: String, coordinate: CLLocationCoordinate2D?) async throws -> GolfCourse? {
+        guard let coordinate else { return nil }
+        // ~0.12° ≈ 13 km at mid-latitudes — generous enough to absorb coordinate rounding drift.
+        let delta = 0.12
+        var components = URLComponents(url: restURL("course_geometries"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "geometry_state", value: "eq.accepted"),
+            URLQueryItem(name: "latitude",  value: "gte.\(coordinate.latitude - delta)"),
+            URLQueryItem(name: "latitude",  value: "lte.\(coordinate.latitude + delta)"),
+            URLQueryItem(name: "longitude", value: "gte.\(coordinate.longitude - delta)"),
+            URLQueryItem(name: "longitude", value: "lte.\(coordinate.longitude + delta)"),
+            URLQueryItem(name: "limit", value: "40")
+        ]
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await session.data(for: req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:course_geometries(near)", data: data, response: response)
+            throw BackendError.loadFailed("course_geometries")
+        }
+        let rows = try decoder.decode([SupabaseCourseGeometryRow].self, from: data)
+        let candidates = rows.map { $0.toGolfCourse() }.filter { $0.hasTrustedGeometry }
+        return Self.bestGeometryMatch(candidates, name: name, coordinate: coordinate)
+    }
+
+    /// Picks the closest trusted candidate whose name overlaps the query, falling back to the
+    /// nearest by distance. Mirrors CourseDataAggregator.bestMatch so client + shared agree.
+    static func bestGeometryMatch(_ candidates: [GolfCourse],
+                                  name: String,
+                                  coordinate: CLLocationCoordinate2D) -> GolfCourse? {
+        guard !candidates.isEmpty else { return nil }
+        let origin = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let scored = candidates.map { c -> (GolfCourse, Double) in
+            var penalty = 0.0
+            if !namesOverlap(c.name, name) { penalty += 3_000 }
+            let dist: Double = {
+                guard let lat = c.latitude, let lon = c.longitude else { return 10_000 }
+                return origin.distance(from: CLLocation(latitude: lat, longitude: lon))
+            }()
+            return (c, dist + penalty)
+        }
+        return scored.min(by: { $0.1 < $1.1 })?.0
+    }
+
+    private static func namesOverlap(_ a: String, _ b: String) -> Bool {
+        let ignored: Set<String> = ["the", "golf", "club", "course", "country", "links"]
+        func tokens(_ s: String) -> Set<String> {
+            Set(s.lowercased()
+                .components(separatedBy: CharacterSet.alphanumerics.inverted)
+                .filter { $0.count > 2 && !ignored.contains($0) })
+        }
+        return !tokens(a).isDisjoint(with: tokens(b))
     }
 
     func requestCourseGeometryBackfill(_ course: GolfCourse, reason: String = "missing_geometry") async throws {
@@ -575,6 +714,28 @@ final class SupabaseBackendService: AppBackend {
         return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
+    private func payloadToDict<T: Encodable>(_ value: T) throws -> [String: Any] {
+        let payloadEncoder = JSONEncoder()
+        payloadEncoder.dateEncodingStrategy = .iso8601
+        let data = try payloadEncoder.encode(value)
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    private func payloadRowBody<T: Encodable>(
+        id: UUID,
+        userId: UUID,
+        payload: T,
+        dateColumn: String,
+        date: Date
+    ) throws -> [String: Any] {
+        [
+            "id": id.uuidString,
+            "user_id": userId.uuidString,
+            "payload": try payloadToDict(payload),
+            dateColumn: ISO8601DateFormatter().string(from: date)
+        ]
+    }
+
     private func profileToDict(_ p: UserProfile) -> [String: Any] {
         var d: [String: Any] = [
             "id": p.id.uuidString,
@@ -605,10 +766,14 @@ final class SupabaseBackendService: AppBackend {
     // MARK: - Session persistence
 
     private func persistSession(_ auth: SupabaseAuthResponse) {
-        accessToken  = auth.accessToken
-        refreshToken = auth.refreshToken
-        UserDefaults.standard.set(auth.accessToken,  forKey: "sb_access_token")
-        UserDefaults.standard.set(auth.refreshToken, forKey: "sb_refresh_token")
+        persistSession(accessToken: auth.accessToken, refreshToken: auth.refreshToken)
+    }
+
+    private func persistSession(accessToken: String, refreshToken: String) {
+        self.accessToken  = accessToken
+        self.refreshToken = refreshToken
+        UserDefaults.standard.set(accessToken,  forKey: "sb_access_token")
+        UserDefaults.standard.set(refreshToken, forKey: "sb_refresh_token")
     }
 
     private func clearSession() {
@@ -618,16 +783,20 @@ final class SupabaseBackendService: AppBackend {
         UserDefaults.standard.removeObject(forKey: "sb_refresh_token")
     }
 
-    private func refreshSession() async throws {
-        guard let rt = refreshToken else { return }
+    func refreshSession() async throws {
+        guard let rt = refreshToken else { throw BackendError.notAuthenticated }
         let url = config.authBaseURL
             .appendingPathComponent("token")
             .appending(queryItems: [URLQueryItem(name: "grant_type", value: "refresh_token")])
         var req = baseRequest(url: url, method: "POST")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["refresh_token": rt])
         let (data, response) = try await session.data(for: req)
-        guard (response as? HTTPURLResponse)?.statusCode == 200,
-              let auth = try? decoder.decode(SupabaseAuthResponse.self, from: data) else { return }
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("refreshSession", data: data, response: response)
+            clearSession()
+            throw BackendError.notAuthenticated
+        }
+        let auth = try decoder.decode(SupabaseAuthResponse.self, from: data)
         persistSession(auth)
         print("[TrueCarry][Supabase] token refreshed")
     }

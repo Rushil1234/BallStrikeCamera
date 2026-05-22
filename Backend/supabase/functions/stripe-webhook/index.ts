@@ -24,7 +24,7 @@ const CORS_HEADERS = {
 const PRICE_TO_TIER: Record<string, string> = {
   [Deno.env.get("STRIPE_BASIC_MONTHLY_PRICE_ID") ?? ""]: "basic",
   [Deno.env.get("STRIPE_PRO_MONTHLY_PRICE_ID")   ?? ""]: "pro",
-  [Deno.env.get("STRIPE_ATLAS_MONTHLY_PRICE_ID") ?? ""]: "atlas",
+  [Deno.env.get("STRIPE_ATLAS_MONTHLY_PRICE_ID") ?? ""]: "unlimited",
 };
 
 Deno.serve(async (req: Request) => {
@@ -169,7 +169,13 @@ async function handlePaymentFailed(inv: Stripe.Invoice) {
 
 function tierFromSubscription(sub: Stripe.Subscription): string {
   const priceId = sub.items.data[0]?.price.id ?? "";
-  return PRICE_TO_TIER[priceId] ?? sub.metadata?.app_tier ?? "basic";
+  return normalizeTier(PRICE_TO_TIER[priceId] ?? sub.metadata?.app_tier ?? "basic");
+}
+
+function normalizeTier(tier: string): string {
+  if (tier === "atlas") return "unlimited";
+  if (tier === "premium") return "pro";
+  return tier;
 }
 
 interface EntitlementRow {

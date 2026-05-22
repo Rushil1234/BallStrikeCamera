@@ -1,0 +1,16 @@
+{
+  "name": "osm-prebake",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bulk-populate Supabase course_geometries from free OpenStreetMap golf data.",
+  "scripts": {
+    "prebake": "node prebake.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

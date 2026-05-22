@@ -380,17 +380,22 @@ struct CourseSearchView: View {
         errorMessage = nil
         defer { isSearching = false }
         do {
-            let provider = CourseProviderFactory.make(userId: userId)
-            let apiResults = try await provider.searchCourses(query: query, near: location.currentLocation)
-            if !apiResults.isEmpty {
-                searchResults = apiResults
-                return
-            }
-
+            // MapKit first — it's location-aware and matches the familiar map-based experience.
+            // GolfCourseAPI search is a global text lookup with no geographic ranking, so it's only
+            // a fallback when MapKit finds nothing. Scorecard + pre-baked GPS geometry are still
+            // resolved on selection (resolveCourseForSetup / CourseDataAggregator.enrich).
             let request = MKLocalSearch.Request()
             request.naturalLanguageQuery = query + " golf"
             let response = try await MKLocalSearch(request: request).start()
-            searchResults = response.mapItems.compactMap { mapKitCourse(from: $0) }
+            let mapKitResults = response.mapItems.compactMap { mapKitCourse(from: $0) }
+            if !mapKitResults.isEmpty {
+                searchResults = mapKitResults
+                return
+            }
+
+            let provider = CourseProviderFactory.make(userId: userId)
+            let apiResults = try await provider.searchCourses(query: query, near: location.currentLocation)
+            searchResults = apiResults
             if searchResults.isEmpty {
                 errorMessage = "No courses found. Try a shorter name."
             }

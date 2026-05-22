@@ -22,6 +22,8 @@ const supabase = createClient(
 const TIER_MAP: Record<string, string> = {
   basic:     "basic",
   pro:       "pro",
+  premium:   "pro",
+  atlas:     "unlimited",
   unlimited: "unlimited",
 };
 

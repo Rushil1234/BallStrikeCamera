@@ -127,7 +127,7 @@ export async function getAccountDashboard(userId: string): Promise<AccountDashbo
   const simSessions = (simResult.data ?? []) as RecordRow[];
   const rounds = (roundsResult.data ?? []) as RecordRow[];
   const carryValues = shots
-    .map((shot) => numberFromPath(payloadFor(shot), ["metrics", "carryYards"]))
+    .map((shot) => numberFromAnyPath(payloadFor(shot), [["metrics", "carryYards"], ["metrics", "carry_yards"]]))
     .filter((value): value is number => typeof value === "number" && Number.isFinite(value) && value > 0);
 
   const recentActivity = [
@@ -160,8 +160,8 @@ export async function getAccountDashboard(userId: string): Promise<AccountDashbo
 function activityFromShot(row: RecordRow): RecentActivity {
   const payload = payloadFor(row);
   const club = textFromPath(payload, ["clubName"]) || "Shot";
-  const carry = numberFromPath(payload, ["metrics", "carryYards"]);
-  const ballSpeed = numberFromPath(payload, ["metrics", "ballSpeedMph"]);
+  const carry = numberFromAnyPath(payload, [["metrics", "carryYards"], ["metrics", "carry_yards"]]);
+  const ballSpeed = numberFromAnyPath(payload, [["metrics", "ballSpeedMph"], ["metrics", "ball_speed_mph"]]);
 
   return {
     id: String(row.id),
@@ -244,6 +244,14 @@ function textFromPath(source: unknown, path: string[]): string | null {
 function numberFromPath(source: unknown, path: string[]): number | null {
   const value = valueFromPath(source, path);
   return typeof value === "number" ? value : null;
+}
+
+function numberFromAnyPath(source: unknown, paths: string[][]): number | null {
+  for (const path of paths) {
+    const value = numberFromPath(source, path);
+    if (value !== null) return value;
+  }
+  return null;
 }
 
 function valueFromPath(source: unknown, path: string[]): unknown {

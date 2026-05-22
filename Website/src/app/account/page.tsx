@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
@@ -10,10 +10,12 @@ import {
   supabase,
   type AccountDashboard,
 } from "@/lib/supabase";
+import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
 import SiteFooter from "@/components/SiteFooter";
 import SiteNav from "@/components/SiteNav";
 
 const PORTAL_URL = process.env.NEXT_PUBLIC_CUSTOMER_PORTAL_FUNCTION_URL!;
+const CHECKOUT_URL = process.env.NEXT_PUBLIC_CREATE_CHECKOUT_FUNCTION_URL!;
 
 interface Entitlement {
   tier: string;
@@ -28,44 +30,38 @@ export default function AccountPage() {
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [dashboard, setDashboard] = useState<AccountDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutToken, setCheckoutToken] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  useEffect(() => {
-    let cancelled = false;
+  const loadAccount = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    async function load() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.push("/login?redirect=/account");
-        return;
-      }
-
-      const ent = (await getUserEntitlement(user.id)) as Entitlement | null;
-      const premium = hasPremiumAccess(ent);
-      const accountData = premium ? await getAccountDashboard(user.id) : null;
-
-      if (!cancelled) {
-        setUser(user);
-        setEntitlement(ent);
-        setDashboard(accountData);
-        setLoading(false);
-      }
+    if (!user) {
+      router.push("/login?redirect=/account");
+      return;
     }
 
-    load().catch((err: unknown) => {
+    const ent = (await getUserEntitlement(user.id)) as Entitlement | null;
+    const premium = hasPremiumAccess(ent);
+    const accountData = premium ? await getAccountDashboard(user.id) : null;
+
+    setUser(user);
+    setEntitlement(ent);
+    setDashboard(accountData);
+    setLoading(false);
+  }, [router]);
+
+  useEffect(() => {
+    loadAccount().catch((err: unknown) => {
       setError(err instanceof Error ? err.message : "Unable to load account data");
       setLoading(false);
     });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+  }, [loadAccount]);
 
   async function handleManageBilling() {
     setError(null);
@@ -93,9 +89,36 @@ export default function AccountPage() {
     }
   }
 
+  async function handleUpgrade() {
+    setError(null);
+    setCheckoutLoading(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) {
+        router.push("/login?redirect=/account");
+        return;
+      }
+
+      setCheckoutToken(session.access_token);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not start checkout.");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
+
   async function handleSignOut() {
     await supabase.auth.signOut();
     router.push("/");
+  }
+
+  function handleCloseCheckout() {
+    setCheckoutToken(null);
+    loadAccount().catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : "Unable to refresh account data");
+    });
   }
 
   if (loading) {
@@ -159,9 +182,9 @@ export default function AccountPage() {
                 {portalLoading ? "Opening..." : "Manage Billing"}
               </button>
             ) : (
-              <Link href="/#pricing" className="btn btn-gold">
-                Upgrade to Premium
-              </Link>
+              <button className="btn btn-gold" onClick={handleUpgrade} disabled={checkoutLoading}>
+                {checkoutLoading ? "Preparing checkout..." : "Upgrade to Premium"}
+              </button>
             )}
           </div>
         </section>
@@ -169,7 +192,7 @@ export default function AccountPage() {
         {error && <p className="error-msg account-error">{error}</p>}
 
         {!premium ? (
-          <FreeAccountUpsell userEmail={user?.email ?? ""} />
+          <FreeAccountUpsell userEmail={user?.email ?? ""} onUpgrade={handleUpgrade} loading={checkoutLoading} />
         ) : dashboard ? (
           <PremiumDashboard dashboard={dashboard} userEmail={user?.email ?? ""} />
         ) : (
@@ -178,6 +201,14 @@ export default function AccountPage() {
       </main>
 
       <SiteFooter />
+
+      {checkoutToken && (
+        <EmbeddedCheckoutPanel
+          accessToken={checkoutToken}
+          checkoutUrl={CHECKOUT_URL}
+          onClose={handleCloseCheckout}
+        />
+      )}
     </>
   );
 }
@@ -314,7 +345,15 @@ function PremiumDashboard({ dashboard, userEmail }: { dashboard: AccountDashboar
   );
 }
 
-function FreeAccountUpsell({ userEmail }: { userEmail: string }) {
+function FreeAccountUpsell({
+  userEmail,
+  onUpgrade,
+  loading,
+}: {
+  userEmail: string;
+  onUpgrade: () => void;
+  loading: boolean;
+}) {
   return (
     <section className="account-grid">
       <div className="card account-panel account-panel-wide account-lock">
@@ -326,7 +365,9 @@ function FreeAccountUpsell({ userEmail }: { userEmail: string }) {
         </p>
         <div className="account-lock-row">
           <span>{userEmail}</span>
-          <Link href="/#pricing" className="btn btn-gold">Upgrade to Premium</Link>
+          <button className="btn btn-gold" onClick={onUpgrade} disabled={loading}>
+            {loading ? "Preparing checkout..." : "Upgrade to Premium"}
+          </button>
         </div>
       </div>
       <MetricCard label="Profile" value="Locked" detail="Included with Premium" />

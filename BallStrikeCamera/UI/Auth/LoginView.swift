@@ -77,6 +77,32 @@ struct LoginView: View {
 
             TCAuthTextField(placeholder: "Password", text: $vm.password, icon: "lock", isSecure: true)
 
+            Button {
+                Task { await vm.sendPasswordReset(store: session) }
+            } label: {
+                Text("Forgot password?")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(TCTheme.gold)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.isLoading)
+
+            if let msg = vm.successMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(msg)
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .foregroundColor(TCTheme.gold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(TCTheme.gold.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
             if let err = vm.errorMessage {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -175,6 +201,32 @@ struct CreateAccountView: View {
                             TCAuthTextField(placeholder: "Password (6+ chars)", text: $vm.password, icon: "lock", isSecure: true)
                         }
                         .tcGlassCard(padding: 14)
+
+                        if let msg = vm.successMessage {
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "envelope.badge.shield.half.filled")
+                                        .font(.system(size: 14, weight: .semibold))
+                                    Text(msg)
+                                        .font(.system(size: 13, weight: .medium))
+                                }
+                                Button {
+                                    Task { await vm.resendConfirmation(store: session) }
+                                } label: {
+                                    Text(vm.isLoading ? "Sending…" : "Resend confirmation email")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(TCTheme.gold)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(vm.isLoading)
+                            }
+                            .foregroundColor(TCTheme.gold)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 12)
+                            .background(TCTheme.gold.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
 
                         if let err = vm.errorMessage {
                             HStack(spacing: 8) {
