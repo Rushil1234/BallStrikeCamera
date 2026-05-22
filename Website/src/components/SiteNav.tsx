@@ -16,7 +16,7 @@ export default function SiteNav({ actions }: { actions?: ReactNode }) {
   }, []);
 
   return (
-    <nav className={`nav${scrolled ? " scrolled" : ""}`}>
+    <nav className={`site-nav${scrolled ? " scrolled" : ""}`}>
       <div className="nav-inner">
         <Link href="/" className="brand-logo">
           <img src="/truecarry-logo.png" alt="" aria-hidden />

@@ -125,23 +125,8 @@ export default function HomePage() {
     };
   }, []);
 
-  const tickerItems = (
-    <>
-      <span className="dot">◆</span> <span>Last shot · Maren · 7-iron · <span className="v">172.4 yd</span></span>
-      <span className="dot">◆</span> <span>Wind · SW 8 mph</span>
-      <span className="dot">◆</span> <span>Presidio · 62°F · Dry</span>
-      <span className="dot">◆</span> <span>Now on the tee · <span className="v">You.</span></span>
-      <span className="dot">◆</span> <span>Bear every yard.</span>
-    </>
-  );
-
   return (
     <div className="round">
-      {/* Ticker */}
-      <div className="ticker">
-        <div className="track">{tickerItems}{tickerItems}</div>
-      </div>
-
       {/* Header */}
       <header className="head">
         <div className="row">
@@ -181,7 +166,6 @@ export default function HomePage() {
                   <a className="solid" href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get the app</a>
                   <a className="ghost" href="#h03">See what it does</a>
                 </div>
-                <div className="note">Now on the tee<br /><span className="v">You.</span></div>
               </div>
             </div>
           </section>
@@ -293,7 +277,6 @@ export default function HomePage() {
               <div className="bottom">
                 <span>© 2026 True Carry</span>
                 <span>Made in Pacifica · Bear every yard.</span>
-                <span>Set in Instrument Serif &amp; Manrope</span>
               </div>
             </div>
           </footer>

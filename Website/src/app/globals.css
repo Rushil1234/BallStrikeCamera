@@ -38,7 +38,7 @@
 
   --shadow:      0 40px 90px -45px rgba(0, 0, 0, 0.75);
   --shadow-gold: 0 40px 90px -45px rgba(0, 0, 0, 0.75);
-  --nav-bg: rgba(22, 32, 26, 0.82);
+  --nav-bg: #16201A;
   --button-text: #16201A;
   --overlay: rgba(8, 12, 10, 0.74);
 
@@ -71,7 +71,7 @@
 
   --shadow:      0 30px 72px -46px rgba(30, 42, 34, 0.45);
   --shadow-gold: 0 30px 80px -44px rgba(154, 123, 70, 0.4);
-  --nav-bg: rgba(244, 239, 226, 0.82);
+  --nav-bg: #16201A;
   --button-text: #F4EFE2;
   --overlay: rgba(14, 20, 15, 0.42);
 }
@@ -154,18 +154,20 @@ h1, h2, h3 {
 .brand-logo:hover { color: var(--cream); opacity: 0.82; }
 
 /* ---------- Navigation ---------- */
-.nav {
+.site-nav {
   position: sticky;
   top: 0;
   z-index: 50;
-  transition: background 0.3s var(--ease), border-color 0.3s var(--ease);
-  border-bottom: 1px solid transparent;
-}
-.nav.scrolled {
   background: var(--nav-bg);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--border);
+  transition: background 0.3s var(--ease), border-color 0.3s var(--ease);
+  border-bottom: 1px solid rgba(236, 228, 210, 0.12);
+}
+.site-nav.scrolled {
+  background: var(--nav-bg);
+  border-bottom-color: rgba(236, 228, 210, 0.18);
+  box-shadow: 0 18px 50px -38px rgba(0, 0, 0, 0.85);
 }
 .nav-inner {
   display: flex; align-items: center; justify-content: space-between;
@@ -181,12 +183,20 @@ h1, h2, h3 {
 .nav-logo:hover { color: var(--cream); opacity: 0.8; }
 .nav-logo .mark { display: none; }
 .nav-links { display: flex; gap: 34px; align-items: center; }
-.nav-links a { color: var(--muted); font-size: 14px; font-weight: 400; letter-spacing: 0.01em; position: relative; }
+.site-nav .brand-logo,
+.site-nav .nav-logo {
+  color: #ECE4D2;
+}
+.site-nav .brand-logo:hover,
+.site-nav .nav-logo:hover {
+  color: #ECE4D2;
+}
+.nav-links a { color: rgba(236, 228, 210, 0.76); font-size: 14px; font-weight: 400; letter-spacing: 0.01em; position: relative; }
 .nav-links a:not(.btn)::after {
   content: ""; position: absolute; left: 0; bottom: -5px; width: 0; height: 1px;
-  background: var(--text); transition: width 0.25s var(--ease);
+  background: #ECE4D2; transition: width 0.25s var(--ease);
 }
-.nav-links a:not(.btn):hover { color: var(--text); }
+.nav-links a:not(.btn):hover { color: #ECE4D2; }
 .nav-links a:not(.btn):hover::after { width: 100%; }
 
 /* ---------- Buttons ---------- */
@@ -230,6 +240,16 @@ h1, h2, h3 {
   transition: border-color 0.2s var(--ease), color 0.2s var(--ease), background 0.2s var(--ease);
 }
 .theme-toggle:hover { border-color: var(--text); color: var(--text); background: var(--elevated); }
+.site-nav .theme-toggle {
+  border-color: rgba(236, 228, 210, 0.24);
+  background: rgba(236, 228, 210, 0.08);
+  color: rgba(236, 228, 210, 0.82);
+}
+.site-nav .theme-toggle:hover {
+  border-color: rgba(236, 228, 210, 0.58);
+  background: rgba(236, 228, 210, 0.14);
+  color: #ECE4D2;
+}
 
 /* ---------- Cards (flat, hairline — not bubbles) ---------- */
 .card {
@@ -304,15 +324,17 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: min(1180px, calc(100% - 40px));
-  margin: 0 auto;
-  padding: 28px 0;
+  width: 100%;
+  margin: 0;
+  padding: 20px max(20px, calc((100% - 1180px) / 2));
+  background: #16201A;
+  border-bottom: 1px solid rgba(236, 228, 210, 0.12);
 }
 .auth-brand {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  color: var(--cream);
+  color: #ECE4D2;
   font-family: var(--font-serif), Georgia, serif;
   font-size: 24px;
   line-height: 1;
@@ -333,14 +355,14 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
   gap: 18px;
 }
 .auth-nav-links a {
-  color: var(--muted);
+  color: rgba(236, 228, 210, 0.76);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 .auth-nav-links a:hover {
-  color: var(--text);
+  color: #ECE4D2;
 }
 .auth-main {
   position: relative;
@@ -1197,7 +1219,7 @@ code {
 
 /* ============================================================
    THE ROUND — editorial landing (scoped under .round)
-   Each section is a golf hole; fixed ticker, ball-trail, scorecard.
+   Each section is a golf hole; fixed header, ball-trail, scorecard.
    ============================================================ */
 .round{
   --forest:#1E2A22; --forest-deep:#16201A; --forest-darker:#0E140F;
@@ -1217,21 +1239,14 @@ code {
 
 .round .eyebrow{ font-family:var(--r-mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 60%,transparent); }
 
-/* Ticker */
-.round .ticker{ position:fixed; top:0; left:0; right:0; z-index:60; background:var(--forest-darker); border-bottom:1px solid color-mix(in oklab,var(--bone) 8%,transparent); height:32px; overflow:hidden; }
-.round .ticker .track{ display:inline-flex; white-space:nowrap; align-items:center; gap:48px; padding:0 24px; height:100%; font-family:var(--r-mono); font-size:10.5px; letter-spacing:.14em; color:color-mix(in oklab,var(--bone) 60%,transparent); text-transform:uppercase; animation:round-tick 60s linear infinite; }
-.round .ticker .track .dot{ color:var(--carry-gold); }
-.round .ticker .track .v{ color:var(--bone); font-family:var(--display); font-size:14px; letter-spacing:0; font-style:italic; text-transform:none; }
-@keyframes round-tick{ from{ transform:translateX(0); } to{ transform:translateX(-50%); } }
-
 /* Header */
-.round .head{ position:fixed; top:32px; left:0; right:0; z-index:55; padding:14px 0; background:color-mix(in oklab,var(--forest) 85%,transparent); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid color-mix(in oklab,var(--bone) 8%,transparent); }
+.round .head{ position:fixed; top:0; left:0; right:0; z-index:55; padding:14px 0; background:#16201A; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border-bottom:1px solid rgba(236,228,210,.12); box-shadow:0 18px 50px -38px rgba(0,0,0,.85); }
 .round .head .row{ display:flex; justify-content:space-between; align-items:center; padding:0 var(--gutter); }
 .round .brand{ display:inline-flex; align-items:center; gap:14px; text-decoration:none; color:var(--bone); }
 .round .brand img{ width:52px; height:52px; object-fit:contain; margin:-10px 0; }
 .round .brand .n{ font-family:var(--display); font-size:22px; line-height:1; }
 .round .head .nav{ display:inline-flex; align-items:center; gap:24px; }
-.round .head .nav .l{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.22em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 72%,transparent); text-decoration:none; transition:color .2s ease; background:none; border:none; cursor:pointer; }
+.round .head .nav .l{ font-family:var(--r-sans); font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 72%,transparent); text-decoration:none; transition:color .2s ease, background .2s ease, border-color .2s ease; background:none; border:none; cursor:pointer; }
 .round .head .nav .l:hover{ color:var(--bone); }
 .round .head .nav .l.btn{ border:1px solid color-mix(in oklab,var(--bone) 32%,transparent); padding:9px 14px; border-radius:2px; color:var(--bone); }
 .round .head .nav .l.btn:hover{ background:var(--bone); color:var(--ink); border-color:var(--bone); }
@@ -1254,7 +1269,7 @@ code {
 .round main{ min-width:0; }
 .round .wrap{ width:100%; max-width:980px; margin:0 auto; padding:0 var(--gutter); position:relative; }
 
-.round .scorecard{ position:fixed; top:92px; right:0; width:var(--rail-w); height:calc(100vh - 92px - 30px); z-index:45; background:var(--forest-deep); border-left:1px solid color-mix(in oklab,var(--bone) 10%,transparent); padding:28px 22px 22px; display:flex; flex-direction:column; overflow:hidden; }
+.round .scorecard{ position:fixed; top:60px; right:0; width:var(--rail-w); height:calc(100vh - 60px); z-index:45; background:var(--forest-deep); border-left:1px solid color-mix(in oklab,var(--bone) 10%,transparent); padding:28px 22px 22px; display:flex; flex-direction:column; overflow:hidden; }
 .round .scorecard .sc-head{ display:flex; justify-content:space-between; align-items:baseline; padding-bottom:14px; border-bottom:1px solid color-mix(in oklab,var(--bone) 14%,transparent); }
 .round .scorecard .sc-head .t{ font-family:var(--display); font-size:22px; line-height:1; }
 .round .scorecard .sc-head .date{ font-family:var(--r-mono); font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 50%,transparent); text-align:right; line-height:1.4; }
@@ -1293,19 +1308,17 @@ code {
 @media (max-width:600px){ .round .hole-strip{ grid-template-columns:auto 1fr; gap:12px 16px; } }
 
 /* H01 hero */
-.round .h01{ min-height:100vh; display:flex; flex-direction:column; justify-content:center; padding-top:160px; position:relative; }
+.round .h01{ min-height:100vh; display:flex; flex-direction:column; justify-content:center; padding-top:118px; position:relative; }
 .round .h01 .atlas{ position:absolute; right:-6%; top:50%; transform:translateY(-50%); width:64%; max-width:700px; opacity:.13; filter:saturate(.4) brightness(.85); pointer-events:none; mix-blend-mode:luminosity; }
 .round .h01 h1{ font-family:var(--display); font-weight:400; font-size:clamp(82px,16vw,220px); line-height:.88; letter-spacing:-.035em; margin:32px 0 0; max-width:14ch; position:relative; z-index:2; }
 .round .h01 h1 .yard{ font-style:italic; color:var(--carry-gold); }
-.round .h01 .tee-off{ margin-top:clamp(48px,6vw,80px); display:flex; align-items:flex-end; justify-content:space-between; gap:32px; position:relative; z-index:2; }
+.round .h01 .tee-off{ margin-top:clamp(48px,6vw,80px); display:flex; align-items:flex-end; justify-content:flex-start; gap:32px; position:relative; z-index:2; }
 .round .h01 .tee-off .links{ display:inline-flex; gap:12px; }
-.round .h01 .tee-off .links a{ font-family:var(--r-mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase; padding:14px 22px; border-radius:2px; text-decoration:none; transition:all .2s ease; cursor:pointer; }
+.round .h01 .tee-off .links a{ font-family:var(--r-sans); font-size:12px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; padding:14px 22px; border-radius:2px; text-decoration:none; transition:all .2s ease; cursor:pointer; }
 .round .h01 .tee-off .links a.solid{ background:var(--bone); color:var(--ink); }
 .round .h01 .tee-off .links a.solid:hover{ background:var(--carry-gold); }
 .round .h01 .tee-off .links a.ghost{ border:1px solid color-mix(in oklab,var(--bone) 28%,transparent); color:var(--bone); }
 .round .h01 .tee-off .links a.ghost:hover{ background:var(--bone); color:var(--ink); }
-.round .h01 .tee-off .note{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 55%,transparent); text-align:right; line-height:1.5; }
-.round .h01 .tee-off .note .v{ font-family:var(--display); font-size:22px; font-style:italic; color:var(--carry-gold); text-transform:none; letter-spacing:0; }
 
 /* H03 readings */
 .round .h03 .deck{ font-family:var(--display); font-style:italic; font-size:clamp(22px,2.4vw,30px); line-height:1.4; max-width:28ch; margin-bottom:clamp(48px,7vw,80px); color:color-mix(in oklab,var(--bone) 88%,transparent); }
@@ -1341,10 +1354,10 @@ code {
 }
 
 /* H07 — four-tier pricing */
-.round .plans-head{ margin-bottom:clamp(40px,6vw,72px); }
+.round .plans-head{ margin:0 auto clamp(40px,6vw,72px); text-align:center; max-width:780px; }
 .round .plans-head h2{ font-family:var(--display); font-weight:400; font-size:clamp(40px,6.5vw,88px); line-height:.92; letter-spacing:-.03em; margin:0 0 18px; }
 .round .plans-head h2 .it{ font-style:italic; color:var(--carry-gold); }
-.round .plans-head p{ font-family:var(--display); font-style:italic; font-size:clamp(18px,2vw,24px); line-height:1.4; color:color-mix(in oklab,var(--bone) 80%,transparent); max-width:42ch; }
+.round .plans-head p{ font-family:var(--r-sans); font-size:clamp(16px,1.7vw,20px); line-height:1.55; color:color-mix(in oklab,var(--bone) 76%,transparent); max-width:48ch; margin:0 auto; }
 .round .plans-head p .it{ color:var(--carry-gold); }
 .round .plans{ display:grid; grid-template-columns:repeat(4,1fr); border-top:1px solid color-mix(in oklab,var(--bone) 20%,transparent); }
 .round .plan{ display:flex; flex-direction:column; padding:34px 26px; border-right:1px solid color-mix(in oklab,var(--bone) 14%,transparent); position:relative; }
@@ -1358,7 +1371,7 @@ code {
 .round .plan ul{ list-style:none; margin:0 0 26px; padding:0; display:flex; flex-direction:column; gap:11px; flex:1; }
 .round .plan ul li{ font-family:var(--r-sans); font-size:13px; line-height:1.45; color:color-mix(in oklab,var(--bone) 72%,transparent); padding-left:18px; position:relative; }
 .round .plan ul li::before{ content:"+"; position:absolute; left:0; color:var(--carry-gold); }
-.round .plan-cta{ font-family:var(--r-mono); font-size:11px; letter-spacing:.2em; text-transform:uppercase; padding:14px 16px; border-radius:2px; text-align:center; cursor:pointer; text-decoration:none; transition:all .2s ease; border:1px solid color-mix(in oklab,var(--bone) 28%,transparent); color:var(--bone); }
+.round .plan-cta{ font-family:var(--r-sans); font-size:12px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; padding:14px 16px; border-radius:2px; text-align:center; cursor:pointer; text-decoration:none; transition:all .2s ease; border:1px solid color-mix(in oklab,var(--bone) 28%,transparent); color:var(--bone); }
 .round .plan-cta:hover{ background:var(--bone); color:var(--ink); }
 .round .plan.featured .plan-cta{ background:var(--bone); color:var(--ink); border-color:var(--bone); }
 .round .plan.featured .plan-cta:hover{ background:var(--carry-gold); border-color:var(--carry-gold); }
@@ -1477,13 +1490,10 @@ code {
     --gutter:20px;
     overflow-x:hidden;
   }
-  .round .ticker{
-    display:none;
-  }
   .round .head{
     top:0;
     padding:10px 0;
-    background:color-mix(in oklab,var(--forest) 94%,transparent);
+    background:#16201A;
   }
   .round .head .row{
     gap:14px;
@@ -1576,9 +1586,6 @@ code {
     font-size:9.5px;
     letter-spacing:.18em;
     line-height:1.45;
-  }
-  .round .h01 .tee-off .note{
-    display:none;
   }
   .round .mobile-round-card{
     display:block;

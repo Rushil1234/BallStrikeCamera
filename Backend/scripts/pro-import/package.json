@@ -1,0 +1,14 @@
+{
+  "name": "pro-import",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Import licensed professional course data (clubs/courses/tees/coordinates) into Supabase.",
+  "scripts": {
+    "import": "node import.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0"
+  },
+  "engines": { "node": ">=18" }
+}

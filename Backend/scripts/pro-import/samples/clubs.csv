@@ -1,0 +1,5 @@
+ClubID,ClubName,Address,City,PostalCode,State,Country,Latitude,Longitude,Website,Email,Telephone,Continent
+1200604981160,"La Cala Golf","Urb. La Cala Golf 1","Mijas Costa Malaga",29649,Andalusia,Spain,36.5421602,-4.7222886,https://www.lacala.com/,Lacala@lacala.com,"+34 952 66 90 16",Europe
+141520610397251566,"Pebble Beach Golf Links","1700 17 Mile Drive","Pebble Beach",93953,CA,USA,36.5696553,-121.9497555,https://www.pebblebeach.com/golf/pebble-beach-golf-links,info@pebblebeach.com,"+1 831-574-5609","North America"
+141520610413056394,"Spyglass Hill Golf Course","Spyglass Hill Rd & Stevenson Dr","Pebble Beach",93953,CA,USA,36.5810339,-121.9359339,www.pebblebeach.com,info@pebblebeach.com,"+1 831 625-8563","North America"
+141520610611739653,"Spruce Creek Country Club","1900 Country Club Drive","Port Orange",32128,FL,USA,29.0755886,-81.0487344,https://www.sprucecreekclub.com/,scccmanager@bellsouth.net,"+1 386-756-6116","North America"

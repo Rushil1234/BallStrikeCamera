@@ -216,32 +216,6 @@ private struct SuggestedAimPoint {
     let remainingYards: Int
 }
 
-private enum HoleGeometrySetupStep {
-    case tee
-    case green
-
-    var title: String {
-        switch self {
-        case .tee: return "Tap the tee box"
-        case .green: return "Tap the green or pin"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .tee: return "mappin.circle.fill"
-        case .green: return "flag.circle.fill"
-        }
-    }
-
-    var progressText: String {
-        switch self {
-        case .tee: return "Debug 1/2"
-        case .green: return "Debug 2/2"
-        }
-    }
-}
-
 // MARK: - Tagged Polygon (carries a kind so the renderer can style it)
 
 private final class TaggedPolygon: MKPolygon {
@@ -909,16 +883,11 @@ struct CourseModeGPSHoleView: View {
     @State private var pendingShotEnd: CLLocationCoordinate2D?
     @State private var pendingShotLie: ShotLie = .unknown
     @State private var pendingLaunchMonitorShot: SavedShot?
-    @State private var geometrySetupStep: HoleGeometrySetupStep?
-    @State private var pendingSetupTee: CLLocationCoordinate2D?
     // HUD flight animation state
     @State private var flightRequest: FlightRequest?
     @State private var pendingFlight: FlightRequest?     // held until camera cover dismisses
     @State private var flightStart: Coordinate?
     @State private var flightShot: SavedShot?
-    #if DEBUG
-    @State private var showDiagnostics = false
-    #endif
 
     let initialCourse: GolfCourse?
     let initialTeeBox: TeeBox?
@@ -1027,11 +996,6 @@ struct CourseModeGPSHoleView: View {
                                  remainingYards: max(0, Int((totalYards - targetYards).rounded())))
     }
 
-    private var isMissingHoleGeometry: Bool {
-        guard let hole = currentMapHole else { return true }
-        return hole.teeCoordinate == nil || hole.greenCenterCoordinate == nil
-    }
-
     private var holeHandicap: Int {
         guard let hole = vm.currentHole,
               let gh = vm.selectedCourse?.holes.first(where: { $0.number == hole.holeNumber })
@@ -1125,7 +1089,7 @@ struct CourseModeGPSHoleView: View {
                 pathCoordinates: currentHolePathCoordinates,
                 aimPoint: suggestedAimPoint,
                 trackedShots:   vm.currentHoleTrackedShots,
-                onMapTap:       (trackShotMode || geometrySetupStep != nil) ? { coord in handleMapTap(coord) } : nil,
+                onMapTap:       trackShotMode ? { coord in handleShotTap(coord) } : nil,
                 focusId:        mapFocusId,
                 recenterToken:  recenterToken,
                 flightRequest:  flightRequest,
@@ -1137,16 +1101,15 @@ struct CourseModeGPSHoleView: View {
             if vm.isLoading {
                 VStack {
                     Spacer()
-                    HStack(spacing: 8) {
-                        ProgressView().tint(.white)
+                    HStack(spacing: 10) {
+                        ProgressView().tint(HUDStyle.pin)
                         Text("Loading course map…")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
                             .foregroundColor(.white)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.black.opacity(0.65))
-                    .clipShape(Capsule())
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .hudGlass(22)
                     Spacer()
                 }
                 .transition(.opacity)
@@ -1165,14 +1128,13 @@ struct CourseModeGPSHoleView: View {
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(TCTheme.gold)
                         Text(note)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
                             .foregroundColor(.white)
                             .multilineTextAlignment(.leading)
                     }
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(Color.black.opacity(0.7))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.vertical, 10)
+                    .hudGlass(14)
                     .padding(.horizontal, 16)
                     .padding(.top, 96)
                     Spacer()
@@ -1233,44 +1195,6 @@ struct CourseModeGPSHoleView: View {
 
             // Track-shot mode banner
             placeModeBanner
-
-            // Missing course geometry setup banner
-            geometrySetupBanner
-
-            // OSM attribution — bottom-left, translucent, compliant.
-            VStack {
-                Spacer()
-                HStack {
-                    OSMAttributionBadge()
-                        .padding(.leading, 10)
-                        .padding(.bottom, 96)   // above the bottom bar
-                        // Long-press attribution badge to toggle the dev overlay.
-                        #if DEBUG
-                        .onLongPressGesture(minimumDuration: 0.6) {
-                            showDiagnostics.toggle()
-                        }
-                        #endif
-                    Spacer()
-                }
-            }
-            .allowsHitTesting(true)
-            .ignoresSafeArea(edges: .bottom)
-
-            #if DEBUG
-            if showDiagnostics {
-                VStack {
-                    HStack {
-                        Spacer()
-                        DiagnosticsOverlay(hole: currentCourseHole,
-                                            courseSource: vm.selectedCourse?.source)
-                            .padding(.top, topSafeArea + 60)
-                            .padding(.trailing, 60)
-                    }
-                    Spacer()
-                }
-                .allowsHitTesting(false)
-            }
-            #endif
         }
         // Bottom bar
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -1520,98 +1444,88 @@ struct CourseModeGPSHoleView: View {
     private var topBar: some View {
         HStack(spacing: 0) {
             Button { showFinishAlert = true } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.black.opacity(0.70))
-                        .frame(width: 44, height: 44)
-                        .overlay(Circle().strokeBorder(.white.opacity(0.14), lineWidth: 1))
-                    Image(systemName: "arrow.left")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white.opacity(0.92))
-                }
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white.opacity(0.95))
+                    .hudGlassCircle(44)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HUDPressStyle())
 
             Spacer()
 
-            HStack(spacing: 12) {
+            HStack(spacing: 14) {
                 Button {
                     if vm.currentHoleIndex > 0 { vm.goToHole(vm.currentHoleIndex - 1) }
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.14))
-                            .frame(width: 28, height: 28)
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.white.opacity(0.92))
-                    }
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundColor(.white.opacity(vm.currentHoleIndex > 0 ? 0.95 : 0.32))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HUDPressStyle())
+                .disabled(vm.currentHoleIndex == 0)
 
-                HStack(spacing: 8) {
+                HStack(spacing: 9) {
                     Image(systemName: "flag.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Color(red: 0.72, green: 0.90, blue: 0.22))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(HUDStyle.pin)
+                        .shadow(color: HUDStyle.pin.opacity(0.5), radius: 4)
 
-                    if let hole = vm.currentHole {
-                        HStack(alignment: .firstTextBaseline, spacing: 1) {
-                            Text("\(hole.holeNumber)")
-                                .font(.system(size: 28, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                            Text(ordinalSuffix(hole.holeNumber).uppercased())
-                                .font(.system(size: 12, weight: .black, design: .rounded))
-                                .foregroundColor(.white.opacity(0.90))
-                                .baselineOffset(8)
-                        }
-                    } else {
-                        Text("—")
-                            .font(.system(size: 24, weight: .black, design: .rounded))
+                    VStack(spacing: -2) {
+                        Text("HOLE")
+                            .font(.system(size: 8, weight: .black, design: .rounded))
+                            .tracking(2)
                             .foregroundColor(.white.opacity(0.5))
+                        if let hole = vm.currentHole {
+                            Text("\(hole.holeNumber)")
+                                .font(.system(size: 30, weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                                .contentTransition(.numericText())
+                        } else {
+                            Text("—")
+                                .font(.system(size: 26, weight: .black, design: .rounded))
+                                .foregroundColor(.white.opacity(0.5))
+                        }
                     }
                 }
-                .frame(minWidth: 84)
+                .frame(minWidth: 78)
 
                 Button {
                     if let round = vm.activeRound, vm.currentHoleIndex < round.holes.count - 1 {
                         vm.advanceHole()
                     }
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white.opacity(0.14))
-                            .frame(width: 28, height: 28)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.white.opacity(0.92))
-                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundColor(.white.opacity(canAdvanceHole ? 0.95 : 0.32))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(HUDPressStyle())
+                .disabled(!canAdvanceHole)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.70))
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-            )
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .hudGlass(24)
 
             Spacer()
 
             Button { recenterToken += 1 } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.black.opacity(0.72))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "scope")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
-                }
+                Image(systemName: "location.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(HUDStyle.pin)
+                    .hudGlassCircle(44)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HUDPressStyle())
         }
         .padding(.horizontal, 16)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: vm.currentHoleIndex)
+    }
+
+    private var canAdvanceHole: Bool {
+        guard let round = vm.activeRound else { return false }
+        return vm.currentHoleIndex < round.holes.count - 1
     }
 
     // MARK: - Hole Info Strip
@@ -1619,31 +1533,35 @@ struct CourseModeGPSHoleView: View {
     private var holeInfoStrip: some View {
         Group {
             if let hole = vm.currentHole {
-                HStack(spacing: 8) {
-                    metricPill(title: "PAR", value: "\(hole.par)")
-                    metricPill(title: "YDS", value: scorecardYardage.map(String.init) ?? "—")
-                    metricPill(title: "HCP", value: "\(holeHandicap)")
+                HStack(spacing: 0) {
+                    metricCell(title: "PAR", value: "\(hole.par)")
+                    Rectangle().fill(.white.opacity(0.12)).frame(width: 1, height: 22)
+                    metricCell(title: "YARDS", value: scorecardYardage.map(String.init) ?? "—")
+                    Rectangle().fill(.white.opacity(0.12)).frame(width: 1, height: 22)
+                    metricCell(title: "HCP", value: "\(holeHandicap)")
                 }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 7)
+                .hudGlass(18)
+                .fixedSize()
                 .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func metricPill(title: String, value: String) -> some View {
-        HStack(spacing: 5) {
+    private func metricCell(title: String, value: String) -> some View {
+        VStack(spacing: 1) {
             Text(title)
-                .font(.system(size: 9, weight: .black, design: .rounded))
-                .foregroundColor(.white.opacity(0.48))
+                .font(.system(size: 8.5, weight: .black, design: .rounded))
+                .tracking(1.2)
+                .foregroundColor(.white.opacity(0.5))
             Text(value)
-                .font(.system(size: 13, weight: .heavy, design: .rounded))
-                .foregroundColor(.white.opacity(0.96))
+                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .foregroundColor(.white)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
-        .background(Color.black.opacity(0.56))
-        .clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.10), lineWidth: 1))
+        .frame(minWidth: 56)
+        .padding(.horizontal, 6)
     }
 
     // MARK: - Left Sidebar
@@ -1653,57 +1571,68 @@ struct CourseModeGPSHoleView: View {
             Spacer(minLength: 0)
 
             if mapDistances.isAvailable {
-                sideCard {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(gpsOn && userIsNearCurrentHole ? "LIVE GPS" : "TEE EST.")
+                let isLive = gpsOn && userIsNearCurrentHole
+                VStack(alignment: .leading, spacing: 2) {
+                    // Source label + live pulse
+                    HStack(spacing: 5) {
+                        if isLive { LivePulseDot() }
+                        Text(isLive ? "LIVE • TO PIN" : "EST • TO PIN")
                             .font(.system(size: 9, weight: .black, design: .rounded))
-                            .foregroundColor(.white.opacity(0.52))
-                            .tracking(0.8)
-                        if let f = mapDistances.front {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.up")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(Color(red: 0.67, green: 0.92, blue: 0.25))
-                                Text("\(f)")
-                                    .font(.system(size: 19, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        if let c = mapDistances.center {
+                            .tracking(1.0)
+                            .foregroundColor(isLive ? HUDStyle.live : .white.opacity(0.55))
+                    }
+                    .padding(.bottom, 3)
+
+                    // Back edge (top of stack)
+                    if let b = mapDistances.back {
+                        edgeRow(icon: "arrow.up.to.line.compact", value: b, tint: .white.opacity(0.62), label: "BACK")
+                    }
+
+                    // Center — the hero number
+                    if let c = mapDistances.center {
+                        HStack(alignment: .firstTextBaseline, spacing: 3) {
                             Text("\(c)")
-                                .font(.system(size: 34, weight: .black, design: .rounded))
+                                .font(.system(size: 52, weight: .black, design: .rounded))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
-                        }
-                        if let b = mapDistances.back {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.down")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white.opacity(0.70))
-                                Text("\(b)")
-                                    .font(.system(size: 19, weight: .bold, design: .rounded))
-                                    .foregroundColor(.white.opacity(0.92))
-                            }
+                                .minimumScaleFactor(0.6)
+                                .contentTransition(.numericText())
+                                .shadow(color: .black.opacity(0.5), radius: 6, y: 2)
+                            Text("yd")
+                                .font(.system(size: 15, weight: .heavy, design: .rounded))
+                                .foregroundColor(.white.opacity(0.55))
                         }
                     }
-                    .frame(minWidth: 84, alignment: .leading)
+
+                    // Front edge (bottom)
+                    if let f = mapDistances.front {
+                        edgeRow(icon: "arrow.down.to.line.compact", value: f, tint: HUDStyle.live, label: "FRONT")
+                    }
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .hudGlass(20)
+                .frame(minWidth: 118, alignment: .leading)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: mapDistances.center)
             }
         }
     }
 
-    /// Dark pill card wrapper used in the left sidebar
-    @ViewBuilder
-    private func sideCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(Color.black.opacity(0.58))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-            )
+    private func edgeRow(icon: String, value: Int, tint: Color, label: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(tint)
+                .frame(width: 14)
+            Text("\(value)")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundColor(.white.opacity(0.92))
+            Text(label)
+                .font(.system(size: 8, weight: .black, design: .rounded))
+                .tracking(0.6)
+                .foregroundColor(.white.opacity(0.4))
+                .baselineOffset(1)
+        }
     }
 
     // MARK: - Right Sidebar
@@ -1711,36 +1640,17 @@ struct CourseModeGPSHoleView: View {
     private var rightSidebar: some View {
         VStack {
             Spacer(minLength: 0)
-            VStack(spacing: 18) {
+            VStack(spacing: 14) {
                 railButton("location.fill", isActive: gpsOn) { gpsOn.toggle() }
-                #if DEBUG
-                if isMissingHoleGeometry {
-                    railButton("mappin.and.ellipse", isActive: geometrySetupStep != nil) {
-                        startGeometrySetup()
-                    }
-                }
-                #endif
                 railButton(trackShotMode ? "scope" : "figure.golf", isActive: trackShotMode) {
                     setTrackShotMode(!trackShotMode)
                 }
                 railButton("camera.fill", isActive: false) { showCamera = true }
                 railButton("list.number", isActive: false) { showScorecard = true }
-                railButton("plus", isActive: false) { showScoreEntry = true }
             }
-            .padding(.vertical, 18)
-            .frame(width: 58)
-            .background(
-                LinearGradient(
-                    colors: [Color.black.opacity(0.76), Color.black.opacity(0.54)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-            )
+            .padding(.vertical, 14)
+            .frame(width: 56)
+            .hudGlass(28)
             Spacer(minLength: 0)
         }
     }
@@ -1771,131 +1681,109 @@ struct CourseModeGPSHoleView: View {
             ZStack {
                 if isActive {
                     Circle()
-                        .fill(Color(red: 0.11, green: 0.48, blue: 0.20))
-                        .frame(width: 34, height: 34)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(.white.opacity(0.14), lineWidth: 1)
-                        )
+                        .fill(TCTheme.sage)
+                        .frame(width: 38, height: 38)
+                        .overlay(Circle().strokeBorder(.white.opacity(0.22), lineWidth: 1))
+                        .shadow(color: TCTheme.sage.opacity(0.6), radius: 8)
                 }
-
                 Image(systemName: icon)
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(isActive ? .white : .white.opacity(0.86))
+                    .foregroundColor(isActive ? .white : .white.opacity(0.88))
             }
-            .frame(width: 40, height: 40)
+            .frame(width: 42, height: 42)
+            .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(HUDPressStyle())
+        .animation(.spring(response: 0.3, dampingFraction: 0.65), value: isActive)
     }
 
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
+            // Player + score
             HStack(spacing: 10) {
                 ZStack {
-                    Circle()
-                        .fill(Color(red: 0.31, green: 0.17, blue: 0.21))
-                        .frame(width: 44, height: 44)
-                    Circle()
-                        .strokeBorder(.white.opacity(0.75), lineWidth: 1.5)
-                        .frame(width: 44, height: 44)
+                    Circle().fill(TCTheme.goldGradient).frame(width: 42, height: 42)
+                    Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1).frame(width: 42, height: 42)
                     Text(userInitials)
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
+                        .foregroundColor(TCTheme.deepGreen)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(userName)
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                    HStack(spacing: 5) {
+                        Text(scoreToParString)
+                            .font(.system(size: 14, weight: .heavy, design: .rounded))
+                            .foregroundColor(scoreToParColor)
+                        if let target = suggestedAimPoint {
+                            Text("· aim \(target.targetYards)")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(HUDStyle.pin.opacity(0.95))
+                                .lineLimit(1)
+                        } else {
+                            Text("· \(timeElapsed)")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundColor(.white.opacity(0.6))
+                        }
+                    }
                 }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(userName)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                HStack(spacing: 6) {
-                    Text(scoreToParString)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundColor(scoreToParColor)
-                    Text("Hole \(vm.currentHoleIndex + 1)")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.70))
-                }
-                if let target = suggestedAimPoint {
-                        Text("Target \(target.targetYards) • \(target.remainingYards) in")
-                            .font(.system(size: 10, weight: .black, design: .rounded))
-                            .foregroundColor(Color(red: 0.70, green: 0.95, blue: 0.24).opacity(0.92))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                }
-            }
-            .frame(maxWidth: 124, alignment: .leading)
+                .frame(maxWidth: 112, alignment: .leading)
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
+            // Track + HUD camera — compact icon buttons
             Button { setTrackShotMode(!trackShotMode) } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: trackShotMode ? "scope" : "target")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text(trackShotMode ? "Tap Map" : "Track")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .foregroundColor(trackShotMode ? .black : .white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(trackShotMode ? TCTheme.gold : Color.black.opacity(0.60))
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-                )
+                Image(systemName: trackShotMode ? "scope" : "figure.golf")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(trackShotMode ? TCTheme.deepGreen : .white)
+                    .frame(width: 44, height: 44)
+                    .background(trackShotMode ? AnyShapeStyle(TCTheme.sage) : AnyShapeStyle(.white.opacity(0.12)))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HUDPressStyle())
 
             Button { showCamera = true } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "camera.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("HUD")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.black.opacity(0.60))
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .strokeBorder(.white.opacity(0.18), lineWidth: 1)
-                )
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.white.opacity(0.12))
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HUDPressStyle())
 
+            // Primary: Add Score — gold
             Button { showScoreEntry = true } label: {
-                VStack(alignment: .trailing, spacing: 0) {
-                    Text("Add")
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 14, weight: .bold))
                     Text("Score")
+                        .font(.system(size: 15, weight: .heavy, design: .rounded))
                 }
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.trailing)
+                .foregroundColor(TCTheme.deepGreen)
+                .padding(.horizontal, 16)
+                .frame(height: 44)
+                .background(TCTheme.goldGradient)
+                .clipShape(Capsule())
+                .shadow(color: TCTheme.gold.opacity(0.4), radius: 8, y: 3)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(HUDPressStyle())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(
-            LinearGradient(
-                colors: [Color.black.opacity(0.86), Color.black.opacity(0.76)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
-        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .hudGlass(26, strokeOpacity: 0.12, tintOpacity: 0.42)
         .padding(.horizontal, 8)
         .padding(.top, 8)
         .padding(.bottom, 8)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: trackShotMode)
     }
 
     // MARK: - Place-mode banner
@@ -1929,89 +1817,7 @@ struct CourseModeGPSHoleView: View {
         }
     }
 
-    // MARK: - Geometry setup banner
-
-    @ViewBuilder
-    private var geometrySetupBanner: some View {
-        if let step = geometrySetupStep {
-            VStack {
-                HStack(spacing: 9) {
-                    Image(systemName: step.icon)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.black)
-                    Text(step.title)
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.black)
-                    Spacer()
-                    if vm.location.currentLocation != nil {
-                        Button("Use GPS") { useCurrentLocationForGeometryStep() }
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.black.opacity(0.72))
-                    }
-                    Button("Cancel") { cancelGeometrySetup() }
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.black.opacity(0.58))
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 9)
-                .background(TCTheme.gold)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .padding(.horizontal, 16)
-                .padding(.top, topSafeArea + 76)
-                Spacer()
-            }
-            .allowsHitTesting(true)
-        } else if isMissingHoleGeometry && !vm.isLoading {
-            VStack {
-                Spacer()
-                HStack(spacing: 10) {
-                    Image(systemName: "wand.and.stars")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(TCTheme.gold)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Building this course map")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(.white)
-                        Text("Scorecard GPS is ready. Verified tees, greens, and hazards will appear after auto-backfill.")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.white.opacity(0.72))
-                            .lineLimit(2)
-                    }
-                    Spacer()
-                    #if DEBUG
-                    Button("Debug Set") { startGeometrySetup() }
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.black)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(TCTheme.gold)
-                        .clipShape(Capsule())
-                    #endif
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Color.black.opacity(0.78))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-                )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 112)
-            }
-            .allowsHitTesting(true)
-        }
-    }
-
     // MARK: - Shot tap handler
-
-    private func handleMapTap(_ coord: CLLocationCoordinate2D) {
-        if geometrySetupStep != nil {
-            handleGeometrySetupTap(coord)
-        } else {
-            handleShotTap(coord)
-        }
-    }
 
     private func handleShotTap(_ coord: CLLocationCoordinate2D) {
         guard trackShotMode else { return }
@@ -2020,44 +1826,6 @@ struct CourseModeGPSHoleView: View {
             at: Coordinate(coord),
             hole: currentMapHole
         )
-    }
-
-    private func startGeometrySetup() {
-        setTrackShotMode(false)
-        pendingShotEnd = nil
-        pendingLaunchMonitorShot = nil
-        pendingSetupTee = currentCourseHole?.teeCoordinate?.clCoordinate
-        geometrySetupStep = pendingSetupTee == nil ? .tee : .green
-    }
-
-    private func cancelGeometrySetup() {
-        geometrySetupStep = nil
-        pendingSetupTee = nil
-    }
-
-    private func useCurrentLocationForGeometryStep() {
-        guard let coord = vm.location.currentLocation else { return }
-        handleGeometrySetupTap(coord)
-    }
-
-    private func handleGeometrySetupTap(_ coord: CLLocationCoordinate2D) {
-        guard let step = geometrySetupStep else { return }
-        switch step {
-        case .tee:
-            pendingSetupTee = coord
-            geometrySetupStep = .green
-        case .green:
-            guard let tee = pendingSetupTee,
-                  let holeNumber = vm.currentHole?.holeNumber else { return }
-            vm.saveManualHoleGeometry(
-                holeNumber: holeNumber,
-                tee: Coordinate(tee),
-                green: Coordinate(coord)
-            )
-            geometrySetupStep = nil
-            pendingSetupTee = nil
-            recenterToken += 1
-        }
     }
 
     /// Compute the start coordinate for a new shot:
@@ -2248,5 +2016,92 @@ struct CourseModeGPSHoleView: View {
 
     private func ordinalSuffix(_ n: Int) -> String {
         String(ordinal(n).drop { $0.isNumber })
+    }
+}
+
+// MARK: - On-course HUD styling
+//
+// A premium frosted-glass HUD that floats over the satellite imagery: real material blur
+// (forced dark for legibility over bright fairways), a forest tint, and a hairline bone edge —
+// True Carry's brand applied to the on-course experience. Replaces the old flat black pills.
+
+enum HUDStyle {
+    /// Marker-gold pin accent (flag, primary targets).
+    static let pin = TCTheme.goldLight
+    /// Vivid Fairway green used only for the "live GPS" pulse + front-edge arrow.
+    static let live = Color(red: 0.45, green: 0.80, blue: 0.52)
+    /// Forest tint layered under the blur.
+    static let tint = Color(red: 0.055, green: 0.094, blue: 0.071)
+}
+
+extension View {
+    /// Frosted-glass HUD surface — material blur + forest tint + bone hairline + soft lift.
+    func hudGlass(_ radius: CGFloat = 18,
+                  strokeOpacity: Double = 0.14,
+                  tintOpacity: Double = 0.34) -> some View {
+        self
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: radius, style: .continuous)
+                        .fill(HUDStyle.tint.opacity(tintOpacity))
+                }
+                .environment(\.colorScheme, .dark)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(colors: [Color.white.opacity(strokeOpacity + 0.06),
+                                                Color.white.opacity(strokeOpacity * 0.4)],
+                                       startPoint: .top, endPoint: .bottom),
+                        lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.38), radius: 16, x: 0, y: 8)
+    }
+
+    /// Circular frosted-glass button surface.
+    func hudGlassCircle(_ size: CGFloat) -> some View {
+        self
+            .frame(width: size, height: size)
+            .background(
+                Circle().fill(.ultraThinMaterial)
+                    .overlay(Circle().fill(HUDStyle.tint.opacity(0.34)))
+                    .environment(\.colorScheme, .dark)
+            )
+            .clipShape(Circle())
+            .overlay(Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
+            .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
+    }
+}
+
+/// Tactile press feedback for HUD controls.
+struct HUDPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.9 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .animation(.spring(response: 0.28, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+/// A soft pulsing dot used to signal a live GPS fix.
+struct LivePulseDot: View {
+    var color: Color = HUDStyle.live
+    @State private var on = false
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 7, height: 7)
+            .overlay(
+                Circle().stroke(color.opacity(0.5), lineWidth: 4)
+                    .scaleEffect(on ? 2.1 : 1)
+                    .opacity(on ? 0 : 0.8)
+            )
+            .shadow(color: color.opacity(0.8), radius: 4)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { on = true }
+            }
     }
 }

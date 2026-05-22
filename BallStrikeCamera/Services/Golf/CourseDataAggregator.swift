@@ -32,7 +32,7 @@ final class CourseDataAggregator {
             return cached
         }
 
-        // Exact id, then fuzzy name+proximity (absorbs MapKit-vs-OSM id drift on pre-baked courses).
+        // Licensed pro geometry from Supabase: exact id, then fuzzy name+proximity match.
         var sharedGeometry = await loadSharedGeometry(courseId: course.id, backend: backend)
         if sharedGeometry == nil {
             sharedGeometry = await loadSharedGeometryFuzzy(course, backend: backend)
@@ -42,9 +42,8 @@ final class CourseDataAggregator {
             return sharedGeometry
         }
 
-        // GolfCourseAPI scorecard is the reliable source (par/yardage/handicap) and is the
-        // ONLY accurate data for courses OSM hasn't mapped. Run it in a detached task so a
-        // spurious SwiftUI `.task` cancellation can't drop it. Geometry is best-effort.
+        // No pro geometry for this course yet — fall back to a GolfCourseAPI scorecard so the
+        // round can still be played in scorecard mode (pars/yardages, no live map). No OSM.
         let cachedScorecard = [cached, sharedGeometry].compactMap { $0 }.first(where: isUsableCachedCourse)
         let scorecard: GolfCourse?
         if let cachedScorecard {
@@ -54,21 +53,9 @@ final class CourseDataAggregator {
                 await fetchScorecard(for: course)
             }.value
         }
-        let geometry: GolfCourse
-        if let sharedGeometry, sharedGeometry.hasTrustedGeometry {
-            geometry = sharedGeometry
-        } else {
-            geometry = await OSMGolfService.shared.enrichBestEffort(course)
-        }
 
-        let merged = merge(base: course, osm: geometry, scorecard: scorecard)
+        let merged = merge(base: course, osm: course, scorecard: scorecard)
         OSMGolfService.shared.cacheMergedCourse(merged)
-        if merged.hasTrustedGeometry {
-            try? await sharedGeometryBackend(preferred: backend)?.saveCourseGeometry(merged)
-        } else if isUsableCachedCourse(merged) {
-            try? await sharedGeometryBackend(preferred: backend)?
-                .requestCourseGeometryBackfill(merged, reason: "missing_geometry")
-        }
         return merged
     }
 

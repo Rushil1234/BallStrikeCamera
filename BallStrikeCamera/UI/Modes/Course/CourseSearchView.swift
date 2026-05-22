@@ -415,21 +415,11 @@ struct CourseSearchView: View {
         if hasUsableTees(course) {
             return course
         }
-        guard GolfCourseAPIConfig.isConfigured else { return course }
-        do {
-            let provider = GolfCourseAPIProvider(userId: userId)
-            let results = try await provider.searchCourses(query: course.name, near: course.coordinate)
-            guard let best = bestCourseMatch(results, to: course) else { return course }
-            if best.holes.isEmpty {
-                return (try? await provider.loadCourseDetails(courseId: best.id)) ?? best
-            }
-            return best
-        } catch {
-            #if DEBUG
-            print("[CourseSearch] API tee resolve failed: \(error.localizedDescription)")
-            #endif
-            return course
-        }
+        // Pull the licensed pro course (real named tees + verified geometry) from Supabase so the
+        // tee picker shows Blue / White / Red etc. up front. enrich() falls back to a GolfCourseAPI
+        // scorecard, then the original stub, when a course isn't in the pro dataset yet.
+        let enriched = await CourseDataAggregator.shared.enrich(course)
+        return hasUsableTees(enriched) ? enriched : course
     }
 
     private func hasUsableTees(_ course: GolfCourse) -> Bool {
