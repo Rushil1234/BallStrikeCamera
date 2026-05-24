@@ -523,7 +523,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 // Bias the center slightly toward the green so the forward hole fills more
                 // of the (taller) portrait view, with the tee near the bottom edge.
                 let biasedCenter = Self.interpolate(routeStart, routeEnd, t: 0.55)
-                let camDistance = max(holeMeters * 1.55 + 120, 280)
+                let camDistance = max(holeMeters * 2.2 + 200, 420)
                 let cam = MKMapCamera(lookingAtCenter: biasedCenter,
                                       fromDistance: camDistance,
                                       pitch: 0,
@@ -538,8 +538,8 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setRegion(
                     MKCoordinateRegion(center: green,
-                                       latitudinalMeters: 350,
-                                       longitudinalMeters: 350),
+                                       latitudinalMeters: 580,
+                                       longitudinalMeters: 580),
                     animated: context.coordinator.hasInitializedRegion
                 )
                 context.coordinator.completeRecenter(focusId: focusId, recenterToken: recenterToken)
@@ -551,8 +551,8 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setRegion(
                     MKCoordinateRegion(center: center,
-                                       latitudinalMeters: 400,
-                                       longitudinalMeters: 400),
+                                       latitudinalMeters: 650,
+                                       longitudinalMeters: 650),
                     animated: context.coordinator.hasInitializedRegion
                 )
                 context.coordinator.completeRecenter(focusId: focusId, recenterToken: recenterToken)
@@ -1201,23 +1201,23 @@ struct CourseModeGPSHoleView: View {
 
                 // Top bar
                 topBar
-                    .padding(.top, topSafeArea + 4)
+                    .padding(.top, topSafeArea - 2)
 
                 // Hole info strip
                 holeInfoStrip
-                    .padding(.top, 6)
+                    .padding(.top, 1)
                     .padding(.horizontal, 16)
 
                 Spacer()
             }
             .ignoresSafeArea(edges: .bottom)
 
-            // Left sidebar
+            // Left sidebar — pinned just above the OSM attribution badge
             leftSidebar
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .padding(.leading, 12)
-                .padding(.top, topSafeArea + 84)
-                .padding(.bottom, 170)
+                .padding(.leading, 6)
+                .padding(.top, topSafeArea + 120)
+                .padding(.bottom, 130)
                 .ignoresSafeArea(edges: .bottom)
 
             // Right sidebar
@@ -1505,38 +1505,38 @@ struct CourseModeGPSHoleView: View {
                     if vm.currentHoleIndex > 0 { vm.goToHole(vm.currentHoleIndex - 1) }
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 14, weight: .heavy))
+                        .font(.system(size: 12, weight: .heavy))
                         .foregroundColor(.white.opacity(vm.currentHoleIndex > 0 ? 0.95 : 0.32))
-                        .frame(width: 30, height: 30)
+                        .frame(width: 24, height: 24)
                         .contentShape(Circle())
                 }
                 .buttonStyle(HUDPressStyle())
                 .disabled(vm.currentHoleIndex == 0)
 
-                HStack(spacing: 9) {
+                HStack(spacing: 7) {
                     Image(systemName: "flag.fill")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundColor(HUDStyle.pin)
                         .shadow(color: HUDStyle.pin.opacity(0.5), radius: 4)
 
                     VStack(spacing: -2) {
                         Text("HOLE")
-                            .font(.system(size: 8, weight: .black, design: .rounded))
+                            .font(.system(size: 7, weight: .black, design: .rounded))
                             .tracking(2)
                             .foregroundColor(.white.opacity(0.5))
                         if let hole = vm.currentHole {
                             Text("\(hole.holeNumber)")
-                                .font(.system(size: 30, weight: .black, design: .rounded))
+                                .font(.system(size: 22, weight: .black, design: .rounded))
                                 .foregroundColor(.white)
                                 .contentTransition(.numericText())
                         } else {
                             Text("—")
-                                .font(.system(size: 26, weight: .black, design: .rounded))
+                                .font(.system(size: 20, weight: .black, design: .rounded))
                                 .foregroundColor(.white.opacity(0.5))
                         }
                     }
                 }
-                .frame(minWidth: 78)
+                .frame(minWidth: 62)
 
                 Button {
                     if let round = vm.activeRound, vm.currentHoleIndex < round.holes.count - 1 {
@@ -1544,17 +1544,17 @@ struct CourseModeGPSHoleView: View {
                     }
                 } label: {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .heavy))
+                        .font(.system(size: 12, weight: .heavy))
                         .foregroundColor(.white.opacity(canAdvanceHole ? 0.95 : 0.32))
-                        .frame(width: 30, height: 30)
+                        .frame(width: 24, height: 24)
                         .contentShape(Circle())
                 }
                 .buttonStyle(HUDPressStyle())
                 .disabled(!canAdvanceHole)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .hudGlass(24)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .hudGlass(20)
 
             Spacer()
 
@@ -1587,11 +1587,11 @@ struct CourseModeGPSHoleView: View {
                     Rectangle().fill(.white.opacity(0.12)).frame(width: 1, height: 22)
                     metricCell(title: "HCP", value: "\(holeHandicap)")
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 7)
-                .hudGlass(18)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 5)
+                .hudGlass(16)
                 .fixedSize()
-                .padding(.top, 2)
+                .padding(.top, 1)
             }
         }
         .frame(maxWidth: .infinity)
@@ -1600,15 +1600,15 @@ struct CourseModeGPSHoleView: View {
     private func metricCell(title: String, value: String) -> some View {
         VStack(spacing: 1) {
             Text(title)
-                .font(.system(size: 8.5, weight: .black, design: .rounded))
-                .tracking(1.2)
+                .font(.system(size: 7.5, weight: .black, design: .rounded))
+                .tracking(1.0)
                 .foregroundColor(.white.opacity(0.5))
             Text(value)
-                .font(.system(size: 17, weight: .heavy, design: .rounded))
+                .font(.system(size: 14, weight: .heavy, design: .rounded))
                 .foregroundColor(.white)
         }
-        .frame(minWidth: 56)
-        .padding(.horizontal, 6)
+        .frame(minWidth: 46)
+        .padding(.horizontal, 5)
     }
 
     // MARK: - Left Sidebar
@@ -1622,37 +1622,37 @@ struct CourseModeGPSHoleView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     // Hero: distance to pin (center)
                     if let c = mapDistances.center {
-                        HStack(alignment: .firstTextBaseline, spacing: 3) {
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text("\(c)")
-                                .font(.system(size: 54, weight: .black, design: .rounded))
+                                .font(.system(size: 42, weight: .black, design: .rounded))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.6)
                                 .contentTransition(.numericText())
                                 .shadow(color: .black.opacity(0.5), radius: 6, y: 2)
                             Text("yd")
-                                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                                .font(.system(size: 13, weight: .heavy, design: .rounded))
                                 .foregroundColor(.white.opacity(0.55))
                         }
                     }
 
                     // Confidence line: GPS live vs estimate
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         if isLive {
                             LivePulseDot()
                             Text("Pin · GPS live")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
                                 .foregroundColor(HUDStyle.live)
                         } else {
                             Text("Pin · estimate")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
                                 .foregroundColor(.white.opacity(0.55))
                         }
                     }
 
                     // Compact front · back row
                     if mapDistances.front != nil || mapDistances.back != nil {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 6) {
                             if let f = mapDistances.front {
                                 frontBackChip(label: "F", value: f, tint: HUDStyle.live)
                             }
@@ -1660,25 +1660,25 @@ struct CourseModeGPSHoleView: View {
                                 frontBackChip(label: "B", value: b, tint: .white.opacity(0.55))
                             }
                         }
-                        .padding(.top, 2)
+                        .padding(.top, 1)
                     }
                 }
-                .padding(.horizontal, 15)
-                .padding(.vertical, 12)
-                .hudGlass(20)
-                .frame(minWidth: 116, alignment: .leading)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 9)
+                .hudGlass(18)
+                .frame(minWidth: 96, alignment: .leading)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: mapDistances.center)
             }
         }
     }
 
     private func frontBackChip(label: String, value: Int, tint: Color) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             Text(label)
-                .font(.system(size: 9, weight: .black, design: .rounded))
+                .font(.system(size: 8, weight: .black, design: .rounded))
                 .foregroundColor(tint)
             Text("\(value)")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: 13, weight: .bold, design: .rounded))
                 .foregroundColor(.white.opacity(0.9))
         }
     }

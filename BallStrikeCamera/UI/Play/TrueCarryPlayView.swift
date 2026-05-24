@@ -79,29 +79,18 @@ struct TrueCarryPlayView: View {
                 SimModeView(userId: uid, backend: session.backend)
             }
         }
-        .sheet(isPresented: $showCourseSearch) {
+        .sheet(isPresented: $showCourseSearch, onDismiss: {
+            // onDismiss fires after the sheet is fully gone — safe to present fullScreenCover now.
+            if selectedCourse != nil && selectedTeeBox != nil {
+                showCourseMode = true
+            }
+        }) {
             if let uid = session.currentUser?.id {
                 NavigationStack {
                     CourseSearchView(userId: uid) { course, tee in
                         selectedCourse = course
                         selectedTeeBox = tee
                         showCourseSearch = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            showRoundSetup = true
-                        }
-                    }
-                }
-                .tcAppearance()
-            }
-        }
-        .sheet(isPresented: $showRoundSetup) {
-            if let course = selectedCourse, let tee = selectedTeeBox {
-                NavigationStack {
-                    RoundSetupView(course: course, teeBox: tee) {
-                        showRoundSetup = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                            showCourseMode = true
-                        }
                     }
                 }
                 .tcAppearance()

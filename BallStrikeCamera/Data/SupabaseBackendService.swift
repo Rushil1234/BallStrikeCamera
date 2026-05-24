@@ -363,6 +363,33 @@ final class SupabaseBackendService: AppBackend {
         }
         let rows = try decoder.decode([SupabaseCourseGeometryRow].self, from: data)
         let candidates = rows.map { $0.toGolfCourse() }.filter { $0.hasTrustedGeometry }
+        if let match = Self.bestGeometryMatch(candidates, name: name, coordinate: coordinate) {
+            return match
+        }
+
+        // Fallback: courses saved before lat/lon columns were backfilled have NULL coords and won't
+        // appear in the bounding-box query above. Search by name instead so they're still found.
+        return try await findCourseGeometryByName(name, coordinate: coordinate)
+    }
+
+    private func findCourseGeometryByName(_ name: String, coordinate: CLLocationCoordinate2D) async throws -> GolfCourse? {
+        // Extract the most distinctive token (longest word, ignoring common golf terms).
+        let ignored: Set<String> = ["the", "golf", "club", "course", "country", "links"]
+        let token = name.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count > 2 && !ignored.contains($0) }
+            .max(by: { $0.count < $1.count }) ?? name
+        var components = URLComponents(url: restURL("course_geometries"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "geometry_state", value: "eq.accepted"),
+            URLQueryItem(name: "course_name", value: "ilike.*\(token)*"),
+            URLQueryItem(name: "limit", value: "20")
+        ]
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await session.data(for: req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        let rows = try decoder.decode([SupabaseCourseGeometryRow].self, from: data)
+        let candidates = rows.map { $0.toGolfCourse() }.filter { $0.hasTrustedGeometry }
         return Self.bestGeometryMatch(candidates, name: name, coordinate: coordinate)
     }
 

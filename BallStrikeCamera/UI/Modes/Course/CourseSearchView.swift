@@ -411,7 +411,24 @@ struct CourseSearchView: View {
     private func selectCourse(_ course: GolfCourse) async {
         resolvingCourseId = course.id
         defer { resolvingCourseId = nil }
-        selectedCourse = await resolveCourseForSetup(course)
+        // MapKit stubs have synthetic non-UUID ids. Resolve them through the Supabase catalog
+        // first to get a real UUID so geometry fetch works the same as when searching by name.
+        let resolved = course.source == .mapKit
+            ? await resolveToCatalogCourse(course)
+            : course
+        selectedCourse = await resolveCourseForSetup(resolved)
+    }
+
+    /// Looks the MapKit stub up in the Supabase course catalog by name + location so the
+    /// selected course has a UUID that CourseCatalog.geometry can fetch directly from Storage.
+    private func resolveToCatalogCourse(_ course: GolfCourse) async -> GolfCourse {
+        let matches = await CourseCatalog.search(
+            query: course.name,
+            near: course.coordinate,
+            limit: 5
+        )
+        let best = matches.first { namesOverlap($0.name, course.name) } ?? matches.first
+        return best ?? course
     }
 
     private func resolveCourseForSetup(_ course: GolfCourse) async -> GolfCourse {
