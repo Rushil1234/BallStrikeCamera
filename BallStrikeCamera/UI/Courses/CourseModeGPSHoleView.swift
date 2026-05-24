@@ -476,6 +476,20 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
     func updateUIView(_ map: MKMapView, context: Context) {
         context.coordinator.parent = self
+
+        // The drawn content (polygons, tee line, flag, aim, shots) depends only on the HOLE — not
+        // the live GPS dot, which SwiftUI re-renders many times a second. Skip the expensive
+        // overlay teardown/rebuild when nothing visual changed; this is the key to a smooth map.
+        let g = greenCoord.map { "\($0.latitude),\($0.longitude)" } ?? "-"
+        let t = teeCoord.map { "\($0.latitude),\($0.longitude)" } ?? "-"
+        let aimKey = aimPoint.map { "\($0.targetYards)-\($0.remainingYards)" } ?? "-"
+        let renderKey = "\(focusId)|\(g)|\(t)|\(trackedShots.count)|\(aimKey)|\(recenterToken)"
+        let flightPending = flightRequest != nil && flightRequest!.id != context.coordinator.lastFlightId
+        if renderKey == context.coordinator.lastRenderKey && !flightPending {
+            return
+        }
+        context.coordinator.lastRenderKey = renderKey
+
         // Preserve any in-flight transient ball/trail across SwiftUI re-renders.
         map.removeOverlays(map.overlays.filter { !($0 is FlightTrailPolyline) })
         map.removeAnnotations(map.annotations.filter {
@@ -618,6 +632,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
         var parent: SatelliteMapBackground?
         var hasInitializedRegion = false
+        var lastRenderKey = ""
         private var lastFocusId = ""
         private var lastRecenterToken = -1
         private var isProgrammaticRegionChange = false

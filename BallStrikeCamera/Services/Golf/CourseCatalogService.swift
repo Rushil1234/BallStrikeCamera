@@ -19,7 +19,14 @@ enum CourseCatalog {
     private static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
-        d.dateDecodingStrategy = .iso8601
+        // Lenient ISO-8601: handles timestamps WITH or WITHOUT fractional seconds (the feed emits
+        // millis, which the stock .iso8601 strategy rejects — that silently broke every decode).
+        let withFrac = ISO8601DateFormatter(); withFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let noFrac = ISO8601DateFormatter(); noFrac.formatOptions = [.withInternetDateTime]
+        d.dateDecodingStrategy = .custom { dec in
+            let s = try dec.singleValueContainer().decode(String.self)
+            return withFrac.date(from: s) ?? noFrac.date(from: s) ?? Date()
+        }
         return d
     }()
 
