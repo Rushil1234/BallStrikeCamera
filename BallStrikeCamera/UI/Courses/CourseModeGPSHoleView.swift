@@ -471,7 +471,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         // Limit zoom: min 50m (green detail) → max 2500m (~5× a long par-5, keeps view on-hole).
         map.cameraZoomRange = MKMapView.CameraZoomRange(
             minCenterCoordinateDistance: 50,
-            maxCenterCoordinateDistance: 2500
+            maxCenterCoordinateDistance: 1500
         )
         let tap = UITapGestureRecognizer(target: context.coordinator,
                                           action: #selector(Coordinator.handleTap(_:)))
@@ -1521,24 +1521,17 @@ struct CourseModeGPSHoleView: View {
                 HStack(spacing: 7) {
                     Image(systemName: "flag.fill")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(HUDStyle.pin)
-                        .shadow(color: HUDStyle.pin.opacity(0.5), radius: 4)
+                        .foregroundColor(TCTheme.sageDeep)
 
-                    VStack(spacing: -2) {
-                        Text("HOLE")
-                            .font(.system(size: 7, weight: .black, design: .rounded))
-                            .tracking(2)
+                    if let hole = vm.currentHole {
+                        Text(ordinal(hole.holeNumber))
+                            .font(.system(size: 20, weight: .semibold, design: .serif))
+                            .foregroundColor(.white)
+                            .contentTransition(.numericText())
+                    } else {
+                        Text("—")
+                            .font(.system(size: 20, weight: .semibold, design: .serif))
                             .foregroundColor(.white.opacity(0.5))
-                        if let hole = vm.currentHole {
-                            Text("\(hole.holeNumber)")
-                                .font(.system(size: 22, weight: .black, design: .rounded))
-                                .foregroundColor(.white)
-                                .contentTransition(.numericText())
-                        } else {
-                            Text("—")
-                                .font(.system(size: 20, weight: .black, design: .rounded))
-                                .foregroundColor(.white.opacity(0.5))
-                        }
                     }
                 }
                 .frame(minWidth: 62)
@@ -1578,6 +1571,18 @@ struct CourseModeGPSHoleView: View {
     private var canAdvanceHole: Bool {
         guard let round = vm.activeRound else { return false }
         return vm.currentHoleIndex < round.holes.count - 1
+    }
+
+    private func ordinal(_ n: Int) -> String {
+        let suffix: String
+        let mod100 = n % 100
+        let mod10  = n % 10
+        if mod100 >= 11 && mod100 <= 13 { suffix = "th" }
+        else if mod10 == 1              { suffix = "st" }
+        else if mod10 == 2              { suffix = "nd" }
+        else if mod10 == 3             { suffix = "rd" }
+        else                            { suffix = "th" }
+        return "\(n)\(suffix)"
     }
 
     // MARK: - Hole Info Strip
