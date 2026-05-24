@@ -45,7 +45,7 @@ final class CourseDataAggregator {
 
         // Course catalog (Supabase): search the 40k-course DB by name+location and fetch the
         // matched course's geometry from Storage. Our primary data source.
-        if let catalog = await CourseCatalog.findGeometry(name: course.name, coordinate: course.coordinate),
+        if let catalog = await CourseCatalog.geometry(for: course),
            catalog.hasTrustedGeometry {
             var merged = catalog
             merged.id = course.id            // keep the app's id so caching/resume line up

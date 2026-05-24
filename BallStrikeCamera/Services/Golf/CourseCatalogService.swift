@@ -27,24 +27,54 @@ enum CourseCatalog {
     struct Match: Decodable {
         let id: String
         let name: String
+        let city: String?
+        let state: String?
         let latitude: Double?
         let longitude: Double?
         let dataTier: String?
+
+        var hasGeometry: Bool { dataTier == "gps_ready" }
     }
 
-    /// Find a course in the catalog and load its geometry from Storage. Returns nil when there's
-    /// no geometry-bearing match (caller falls back to live OSM).
-    static func findGeometry(name: String, coordinate: CLLocationCoordinate2D?) async -> GolfCourse? {
+    /// Search the full 42k-course catalog for the search screen. Returns ALL matching courses
+    /// (with or without geometry) as lightweight stubs — so users always see a course exists,
+    /// even when we don't have its map yet.
+    static func search(query: String, near: CLLocationCoordinate2D?, limit: Int = 25) async -> [GolfCourse] {
+        guard let config = SupabaseConfig.load() else { return [] }
+        let matches = await runSearch(q: query, coordinate: near, onlyGeometry: false, limit: limit, config: config)
+        return matches.map { m in
+            GolfCourse(
+                id: m.id, name: m.name,
+                city: m.city ?? "", state: m.state ?? "", country: "US",
+                latitude: m.latitude, longitude: m.longitude,
+                holes: [],
+                teeBoxes: [TeeBox(id: "\(m.id)-gps", name: "Course GPS", color: "Gray", totalYards: 0)],
+                source: m.hasGeometry ? .merged : .mapKit
+            )
+        }
+    }
+
+    /// Load a course's geometry: by catalog id directly when we have it, else by name+proximity.
+    /// Returns nil when there's no geometry-bearing match (caller falls back to live OSM).
+    static func geometry(for course: GolfCourse) async -> GolfCourse? {
         guard let config = SupabaseConfig.load() else { return nil }
-        guard let match = await searchBest(name: name, coordinate: coordinate, config: config) else { return nil }
+        if isUUID(course.id), let g = await loadGeometry(courseId: course.id, config: config) { return g }
+        guard let match = await runSearch(q: course.name, coordinate: course.coordinate, onlyGeometry: true, limit: 1, config: config).first
+        else { return nil }
         return await loadGeometry(courseId: match.id, config: config)
+    }
+
+    private static func isUUID(_ s: String) -> Bool {
+        s.count == 36 && s.filter { $0 == "-" }.count == 4
     }
 
     // MARK: - Search RPC
 
-    private static func searchBest(name: String,
-                                   coordinate: CLLocationCoordinate2D?,
-                                   config: SupabaseConfig) async -> Match? {
+    private static func runSearch(q: String,
+                                  coordinate: CLLocationCoordinate2D?,
+                                  onlyGeometry: Bool,
+                                  limit: Int,
+                                  config: SupabaseConfig) async -> [Match] {
         let url = config.rpcBaseURL.appendingPathComponent("search_courses")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -52,20 +82,19 @@ enum CourseCatalog {
         req.setValue("Bearer \(config.anonKey)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 12
-        var body: [String: Any] = ["q": name, "only_geometry": true, "lim": 1]
+        var body: [String: Any] = ["q": q, "only_geometry": onlyGeometry, "lim": limit]
         if let c = coordinate { body["lat"] = c.latitude; body["lon"] = c.longitude }
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
             let (data, response) = try await URLSession.shared.data(for: req)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            let rows = (try? decoder.decode([Match].self, from: data)) ?? []
-            return rows.first
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+            return (try? decoder.decode([Match].self, from: data)) ?? []
         } catch {
             #if DEBUG
             print("[CourseCatalog] search failed: \(error.localizedDescription)")
             #endif
-            return nil
+            return []
         }
     }
 

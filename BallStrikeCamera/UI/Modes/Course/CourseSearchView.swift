@@ -255,16 +255,15 @@ struct CourseSearchView: View {
                             .font(.system(size: 12))
                             .foregroundColor(TCTheme.textMuted)
                         HStack(spacing: 6) {
-                            if !course.teeBoxes.isEmpty {
-                                courseBadge("\(course.teeBoxes.count) Tees", TCTheme.gold)
-                            }
-                            if !course.holes.isEmpty {
-                                courseBadge("Scorecard", TCTheme.sage)
-                            }
-                            if course.holes.contains(where: { $0.greenCenterCoordinate != nil }) {
+                            let hasGPS = course.source == .merged
+                                || course.holes.contains(where: { $0.greenCenterCoordinate != nil })
+                            if hasGPS {
                                 courseBadge("GPS Map", TCTheme.gold)
                             } else {
-                                courseBadge("Map Check", TCTheme.textMuted)
+                                courseBadge("Map coming soon", TCTheme.textMuted)
+                            }
+                            if course.teeBoxes.contains(where: { $0.totalYards > 0 }) {
+                                courseBadge("\(course.teeBoxes.count) Tees", TCTheme.sage)
                             }
                         }
                     }
@@ -380,10 +379,15 @@ struct CourseSearchView: View {
         errorMessage = nil
         defer { isSearching = false }
         do {
-            // MapKit first — it's location-aware and matches the familiar map-based experience.
-            // GolfCourseAPI search is a global text lookup with no geographic ranking, so it's only
-            // a fallback when MapKit finds nothing. Scorecard + pre-baked GPS geometry are still
-            // resolved on selection (resolveCourseForSetup / CourseDataAggregator.enrich).
+            // Our course catalog first — 42k+ courses, so the user can find ANY course (geometry
+            // loads on open for the ones we've mapped; others still appear, "map coming soon").
+            let catalog = await CourseCatalog.search(query: query, near: location.currentLocation)
+            if !catalog.isEmpty {
+                searchResults = catalog
+                return
+            }
+
+            // Fallback: MapKit (location-aware), then GolfCourseAPI text search.
             let request = MKLocalSearch.Request()
             request.naturalLanguageQuery = query + " golf"
             let response = try await MKLocalSearch(request: request).start()
@@ -394,8 +398,7 @@ struct CourseSearchView: View {
             }
 
             let provider = CourseProviderFactory.make(userId: userId)
-            let apiResults = try await provider.searchCourses(query: query, near: location.currentLocation)
-            searchResults = apiResults
+            searchResults = try await provider.searchCourses(query: query, near: location.currentLocation)
             if searchResults.isEmpty {
                 errorMessage = "No courses found. Try a shorter name."
             }
