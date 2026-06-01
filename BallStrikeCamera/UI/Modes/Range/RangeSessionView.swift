@@ -94,7 +94,76 @@ struct RangeSessionView: View {
         }
         .task {
             await vm.loadClubs()
+            publishWatchRangeState()
         }
+        .onAppear {
+            registerWatchRangeControls()
+        }
+        .onDisappear {
+            WatchConnectivityBridge.shared.unregisterRangeCommandHandler()
+        }
+        .onChange(of: vm.activeSession?.id) { _ in
+            publishWatchRangeState()
+        }
+        .onChange(of: vm.shots.count) { _ in
+            publishWatchRangeState()
+        }
+        .onChange(of: vm.selectedClub?.id) { _ in
+            publishWatchRangeState()
+        }
+    }
+
+    private func registerWatchRangeControls() {
+        WatchConnectivityBridge.shared.registerRangeCommandHandler { command in
+            await handleWatchRangeCommand(command)
+        }
+        publishWatchRangeState()
+    }
+
+    private func handleWatchRangeCommand(_ command: WatchCommand) async -> WatchCommandResult {
+        switch command.kind {
+        case .refresh, .rangeRefresh:
+            publishWatchRangeState()
+            return .success()
+        case .rangeStart:
+            if !vm.sessionActive {
+                await vm.startSession()
+            }
+            publishWatchRangeState()
+            return .success()
+        case .rangeEnd:
+            if vm.sessionActive {
+                await vm.endSession()
+            }
+            publishWatchRangeState()
+            return .success()
+        case .roundNextHole, .roundPreviousHole, .roundSetScore:
+            return .failure("That command is for Round mode.")
+        }
+    }
+
+    private func publishWatchRangeState() {
+        let summary = vm.summary
+        WatchConnectivityBridge.shared.publishRange(
+            WatchCompanionRangeSnapshot(
+                isActive: vm.sessionActive,
+                selectedClubName: vm.selectedClub?.name,
+                shotCount: summary.shotCount,
+                averageCarryYards: Int(summary.avgCarry.rounded()),
+                bestCarryYards: Int(summary.bestCarry.rounded()),
+                averageBallSpeedMph: Int(summary.avgBallSpeed.rounded())
+            ),
+            latestShot: vm.shots.last.map { shot in
+                WatchCompanionShotSnapshot(
+                    clubName: shot.clubName,
+                    carryYards: Int(shot.metrics.carryYards.rounded()),
+                    totalYards: Int(shot.metrics.totalYards.rounded()),
+                    ballSpeedMph: Int(shot.metrics.ballSpeedMph.rounded()),
+                    smashFactor: shot.metrics.smashFactor,
+                    timestamp: shot.timestamp
+                )
+            }
+        )
     }
 
     // MARK: - Sub-views

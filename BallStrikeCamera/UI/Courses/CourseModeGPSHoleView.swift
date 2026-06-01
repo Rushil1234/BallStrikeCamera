@@ -1509,6 +1509,7 @@ struct CourseModeGPSHoleView: View {
     private func pushWidgetData() {
         guard let round = vm.activeRound, let hole = vm.currentHole else {
             WidgetBridge.clear()
+            WatchConnectivityBridge.shared.clearRound()
             if #available(iOS 16.2, *) { ActivityBridge.end() }
             return
         }
@@ -1522,6 +1523,20 @@ struct CourseModeGPSHoleView: View {
             frontYards: front, centerYards: center, backYards: back,
             courseName: round.courseName, hasActiveRound: true
         ))
+        WatchConnectivityBridge.shared.publishRound(WatchCompanionRoundSnapshot(
+            courseName: round.courseName,
+            holeNumber: hole.holeNumber,
+            holeCount: round.holes.count,
+            par: hole.par,
+            score: hole.score,
+            scoreToPar: scoreToPar,
+            totalScore: round.scoreSummary.totalScore,
+            frontYards: front,
+            centerYards: center,
+            backYards: back,
+            canGoPrevious: vm.currentHoleIndex > 0,
+            canGoNext: vm.currentHoleIndex < round.holes.count - 1
+        ))
         if #available(iOS 16.2, *) {
             ActivityBridge.updateOrStart(
                 courseId: round.courseId,
@@ -1532,6 +1547,61 @@ struct CourseModeGPSHoleView: View {
                     courseName: round.courseName
                 )
             )
+        }
+    }
+
+    private func registerWatchRoundControls() {
+        WatchConnectivityBridge.shared.registerRoundCommandHandler { command in
+            await handleWatchRoundCommand(command)
+        }
+        pushWidgetData()
+    }
+
+    private func handleWatchRoundCommand(_ command: WatchCommand) async -> WatchCommandResult {
+        switch command.kind {
+        case .refresh:
+            pushWidgetData()
+            return .success()
+        case .roundNextHole:
+            guard let round = vm.activeRound else {
+                return .failure("No active round on iPhone.")
+            }
+            guard vm.currentHoleIndex < round.holes.count - 1 else {
+                return .success("Already on the last hole.")
+            }
+            vm.advanceHole()
+            pushWidgetData()
+            return .success()
+        case .roundPreviousHole:
+            guard vm.activeRound != nil else {
+                return .failure("No active round on iPhone.")
+            }
+            guard vm.currentHoleIndex > 0 else {
+                return .success("Already on the first hole.")
+            }
+            vm.goToHole(vm.currentHoleIndex - 1)
+            pushWidgetData()
+            return .success()
+        case .roundSetScore:
+            guard let round = vm.activeRound else {
+                return .failure("No active round on iPhone.")
+            }
+            guard let holeNumber = command.holeNumber,
+                  let score = command.score,
+                  (1...12).contains(score) else {
+                return .failure("Choose a score from 1 to 12.")
+            }
+            guard let index = round.holes.firstIndex(where: { $0.holeNumber == holeNumber }) else {
+                return .failure("That hole is not in the active round.")
+            }
+            await vm.setScore(holeIndex: index, score: score)
+            if index != vm.currentHoleIndex {
+                vm.goToHole(index)
+            }
+            pushWidgetData()
+            return .success()
+        case .rangeStart, .rangeEnd, .rangeRefresh:
+            return .failure("That command is for Range mode.")
         }
     }
 
@@ -1848,6 +1918,12 @@ struct CourseModeGPSHoleView: View {
                 await vm.startRoundEnriching(course: course, teeBox: tee)
             }
             pushWidgetData()
+        }
+        .onAppear {
+            registerWatchRoundControls()
+        }
+        .onDisappear {
+            WatchConnectivityBridge.shared.unregisterRoundCommandHandler()
         }
         .onChange(of: vm.activeRound?.id) { _ in
             pushWidgetData()

@@ -51,6 +51,7 @@ struct RangeCameraScreen: View {
                     // Empty session — just discard silently
                     Task {
                         await rangeVM.discardSession()
+                        publishWatchRangeState()
                         exitClean()
                     }
                 } else {
@@ -73,6 +74,8 @@ struct RangeCameraScreen: View {
                 Task {
                     await loadClubs()
                     await rangeVM.startSession()
+                    registerWatchRangeControls()
+                    publishWatchRangeState()
                 }
             } else {
                 Task { await loadClubs() }
@@ -81,6 +84,9 @@ struct RangeCameraScreen: View {
         .onDisappear {
             OrientationManager.shared.lockPortrait()
             camera.stop()
+            if !isCourseMode {
+                WatchConnectivityBridge.shared.unregisterRangeCommandHandler()
+            }
         }
         // Phase 1: Save / Delete / Continue choice
         .confirmationDialog(
@@ -97,6 +103,7 @@ struct RangeCameraScreen: View {
             Button("Delete Session", role: .destructive) {
                 Task {
                     await rangeVM.discardSession()
+                    publishWatchRangeState()
                     exitClean()
                 }
             }
@@ -117,6 +124,7 @@ struct RangeCameraScreen: View {
             ) { name, desc in
                 Task {
                     await rangeVM.endSessionWithDetails(name: name, description: desc)
+                    publishWatchRangeState()
                     exitClean()
                 }
             }
@@ -126,6 +134,7 @@ struct RangeCameraScreen: View {
                 Button(club.name) {
                     selectedClub = club.name
                     selectedClubId = club.id
+                    publishWatchRangeState()
                 }
             }
             Button("Cancel", role: .cancel) {}
@@ -145,6 +154,60 @@ struct RangeCameraScreen: View {
             sessionId: rangeVM.activeSession?.id
         ) else { return }
         await rangeVM.addShot(shot)
+        publishWatchRangeState()
+    }
+
+    private func registerWatchRangeControls() {
+        WatchConnectivityBridge.shared.registerRangeCommandHandler { command in
+            await handleWatchRangeCommand(command)
+        }
+    }
+
+    private func handleWatchRangeCommand(_ command: WatchCommand) async -> WatchCommandResult {
+        switch command.kind {
+        case .refresh, .rangeRefresh:
+            publishWatchRangeState()
+            return .success()
+        case .rangeStart:
+            if !rangeVM.sessionActive {
+                await rangeVM.startSession()
+            }
+            publishWatchRangeState()
+            return .success()
+        case .rangeEnd:
+            if rangeVM.sessionActive {
+                await rangeVM.endSession()
+            }
+            publishWatchRangeState()
+            return .success()
+        case .roundNextHole, .roundPreviousHole, .roundSetScore:
+            return .failure("That command is for Round mode.")
+        }
+    }
+
+    private func publishWatchRangeState() {
+        guard !isCourseMode else { return }
+        let summary = rangeVM.summary
+        WatchConnectivityBridge.shared.publishRange(
+            WatchCompanionRangeSnapshot(
+                isActive: rangeVM.sessionActive,
+                selectedClubName: selectedClub,
+                shotCount: summary.shotCount,
+                averageCarryYards: Int(summary.avgCarry.rounded()),
+                bestCarryYards: Int(summary.bestCarry.rounded()),
+                averageBallSpeedMph: Int(summary.avgBallSpeed.rounded())
+            ),
+            latestShot: rangeVM.shots.last.map { shot in
+                WatchCompanionShotSnapshot(
+                    clubName: shot.clubName,
+                    carryYards: Int(shot.metrics.carryYards.rounded()),
+                    totalYards: Int(shot.metrics.totalYards.rounded()),
+                    ballSpeedMph: Int(shot.metrics.ballSpeedMph.rounded()),
+                    smashFactor: shot.metrics.smashFactor,
+                    timestamp: shot.timestamp
+                )
+            }
+        )
     }
 
     private func exitClean() {

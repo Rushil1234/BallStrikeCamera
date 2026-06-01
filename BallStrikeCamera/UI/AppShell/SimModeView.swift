@@ -125,7 +125,78 @@ struct SimModeView: View {
                 }
             }
         }
-        .task { await simVM.loadClubs() }
+        .task {
+            await simVM.loadClubs()
+            publishWatchRangeState()
+        }
+        .onAppear {
+            registerWatchRangeControls()
+        }
+        .onDisappear {
+            WatchConnectivityBridge.shared.unregisterRangeCommandHandler()
+        }
+        .onChange(of: simVM.activeSession?.id) { _ in
+            publishWatchRangeState()
+        }
+        .onChange(of: simVM.shots.count) { _ in
+            publishWatchRangeState()
+        }
+        .onChange(of: simVM.selectedClub?.id) { _ in
+            publishWatchRangeState()
+        }
+    }
+
+    private func registerWatchRangeControls() {
+        WatchConnectivityBridge.shared.registerRangeCommandHandler { command in
+            await handleWatchRangeCommand(command)
+        }
+        publishWatchRangeState()
+    }
+
+    private func handleWatchRangeCommand(_ command: WatchCommand) async -> WatchCommandResult {
+        switch command.kind {
+        case .refresh, .rangeRefresh:
+            publishWatchRangeState()
+            return .success()
+        case .rangeStart:
+            if !simVM.sessionActive {
+                await simVM.startSession(provider: .ogs, usedOGS: ogsVM.connectionState.isConnected)
+            }
+            publishWatchRangeState()
+            return .success()
+        case .rangeEnd:
+            if simVM.sessionActive {
+                await simVM.endSession()
+            }
+            publishWatchRangeState()
+            return .success()
+        case .roundNextHole, .roundPreviousHole, .roundSetScore:
+            return .failure("That command is for Round mode.")
+        }
+    }
+
+    private func publishWatchRangeState() {
+        let summary = simVM.summary
+        WatchConnectivityBridge.shared.publishRange(
+            WatchCompanionRangeSnapshot(
+                isActive: simVM.sessionActive,
+                selectedClubName: simVM.selectedClub?.name,
+                shotCount: summary.shotCount,
+                averageCarryYards: Int(summary.avgCarry.rounded()),
+                bestCarryYards: Int(summary.bestCarry.rounded()),
+                averageBallSpeedMph: Int(summary.avgBallSpeed.rounded())
+            ),
+            latestShot: simVM.shots.last.map { shot in
+                WatchCompanionShotSnapshot(
+                    clubName: shot.clubName,
+                    carryYards: Int(shot.metrics.carryYards.rounded()),
+                    totalYards: Int(shot.metrics.totalYards.rounded()),
+                    ballSpeedMph: Int(shot.metrics.ballSpeedMph.rounded()),
+                    smashFactor: shot.metrics.smashFactor,
+                    timestamp: shot.timestamp
+                )
+            }
+        )
     }
 
     // MARK: - Subheader

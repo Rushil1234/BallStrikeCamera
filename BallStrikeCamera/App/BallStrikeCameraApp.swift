@@ -7,6 +7,10 @@ struct BallStrikeCameraApp: App {
     @StateObject private var session = AuthSessionStore()
     @StateObject private var camera  = CameraController()
 
+    init() {
+        WatchConnectivityBridge.shared.activate()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
