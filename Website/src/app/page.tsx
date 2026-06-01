@@ -157,10 +157,14 @@ export default function HomePage() {
         <main>
           {/* H01 — hero */}
           <section className="hole h01" id="h01">
-            <img className="atlas" src="/truecarry-logo.png" alt="" />
+            <video className="hero-video" autoPlay muted loop playsInline preload="metadata" aria-hidden="true">
+              <source src="/hero-golf-course.mp4" type="video/mp4" />
+            </video>
+            <div className="hero-shade" aria-hidden="true" />
             <div className="wrap">
               <HoleStrip hole={HOLES[0]} />
-              <h1>Bear<br />every <span className="yard">yard.</span></h1>
+              <h1>Turn your<br />iPhone into a<br /><span className="yard">launch monitor.</span></h1>
+              <p className="hero-copy">Measure ball speed, launch angle, and carry distance from the phone in your pocket.</p>
               <div className="tee-off">
                 <div className="links">
                   <a className="solid" href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get the app</a>
