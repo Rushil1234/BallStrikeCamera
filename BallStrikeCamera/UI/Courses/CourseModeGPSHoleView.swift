@@ -251,18 +251,20 @@ private final class AimPointAnnotation: NSObject, MKAnnotation {
 private final class AimPointAnnotationView: MKAnnotationView {
     private let ring = UIView()
     private let dot  = UIView()
-    /// Called every animation frame while the user drags this aim point.
+    /// Called every display-link frame while dragging, with the view's current screen center.
     var onCenterChanged: ((CGPoint) -> Void)?
+
+    private var displayLink: CADisplayLink?
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-        // 64pt frame — larger invisible hit area makes the ring much easier to grab
-        frame = CGRect(x: 0, y: 0, width: 64, height: 64)
+        // 100pt invisible hit area — ring stays 44pt at center, easy to grab
+        frame = CGRect(x: 0, y: 0, width: 100, height: 100)
         centerOffset = .zero
         backgroundColor = .clear
         isDraggable = true
 
-        ring.frame = CGRect(x: 10, y: 10, width: 44, height: 44)
+        ring.frame = CGRect(x: 28, y: 28, width: 44, height: 44)
         ring.backgroundColor = UIColor.white.withAlphaComponent(0.15)
         ring.layer.cornerRadius = 22
         ring.layer.borderColor = UIColor.white.withAlphaComponent(0.92).cgColor
@@ -273,7 +275,7 @@ private final class AimPointAnnotationView: MKAnnotationView {
         ring.layer.shadowOffset = .zero
         addSubview(ring)
 
-        dot.frame = CGRect(x: 29, y: 29, width: 6, height: 6)
+        dot.frame = CGRect(x: 47, y: 47, width: 6, height: 6)
         dot.backgroundColor = .white
         dot.layer.cornerRadius = 3
         addSubview(dot)
@@ -281,12 +283,30 @@ private final class AimPointAnnotationView: MKAnnotationView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    // MapKit updates `center` each frame during drag but only sets `coordinate`
-    // at drag-end, so observe center instead for real-time line rebuilds.
-    override var center: CGPoint {
-        didSet {
-            if dragState == .dragging { onCenterChanged?(center) }
+    // Use CADisplayLink polling instead of overriding `center` — MapKit moves
+    // the annotation view's CALayer directly during drag, bypassing UIView setters.
+    override func setDragState(_ newDragState: MKAnnotationView.DragState, animated: Bool) {
+        super.setDragState(newDragState, animated: animated)
+        switch newDragState {
+        case .starting, .dragging:
+            guard displayLink == nil else { break }
+            let dl = CADisplayLink(target: self, selector: #selector(pollPosition))
+            dl.add(to: .main, forMode: .common)
+            displayLink = dl
+        case .ending, .canceling, .none:
+            displayLink?.invalidate()
+            displayLink = nil
+        @unknown default:
+            break
         }
+    }
+
+    @objc private func pollPosition() {
+        // layer.presentation() gives the actual on-screen position mid-animation
+        guard let pos = layer.presentation()?.position,
+              let sv  = superview else { return }
+        let screenCenter = sv.convert(pos, to: nil)
+        onCenterChanged?(screenCenter)
     }
 }
 
@@ -1004,14 +1024,15 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             guard let aim = view.annotation as? AimPointAnnotation else { return }
 
             switch newState {
-            case .starting:
-                // MapKit only updates annotation.coordinate at drag-end, not each frame.
-                // Hook into the annotation view's `center` instead — it tracks the finger live.
+            case .starting, .dragging:
+                // CADisplayLink fires pollPosition() every frame; onCenterChanged delivers
+                // a window-space point — convert to map coordinate for live segment rebuild.
                 if let aimView = view as? AimPointAnnotationView {
                     let idx = aim.index
-                    aimView.onCenterChanged = { [weak self, weak mapView] screenCenter in
+                    aimView.onCenterChanged = { [weak self, weak mapView] windowPt in
                         guard let self, let map = mapView else { return }
-                        let coord = map.convert(screenCenter, toCoordinateFrom: map)
+                        let mapPt = map.convert(windowPt, from: nil)
+                        let coord = map.convert(mapPt, toCoordinateFrom: map)
                         self.rebuildAimSegments(on: map, movingIndex: idx, to: coord)
                     }
                 }
