@@ -720,20 +720,10 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                     minY = min(minY, sy); maxY = max(maxY, sy)
                 }
                 // Extra bottom padding so the tee isn't hidden behind the HUD.
-                let vertExtent  = (maxY - minY) + kPad + max(Double(bottomUIInset) * 0.5, kPad)
-                // For par 5s: expand horizExtent to match the screen's aspect ratio so the hole
-                // fills the full screen width instead of appearing as a skinny central strip.
-                let fairwayHoriz = max((maxX - minX) + 2 * kPad, kPad * 2)
-                let horizExtent: Double
-                if aimPoints.count >= 2 {
-                    let screenW = Double(UIScreen.main.bounds.width)
-                    let usableH = screenH * usableF
-                    let stretch  = Double(SatelliteMapBackground.kHorizStretchPar5)
-                    let aspectHoriz = vertExtent * (screenW / stretch) / usableH
-                    horizExtent = max(fairwayHoriz, aspectHoriz)
-                } else {
-                    horizExtent = fairwayHoriz
-                }
+                // Par 5s: modest vertical cap + slightly wider corridor padding.
+                let rawVert    = (maxY - minY) + kPad + max(Double(bottomUIInset) * 0.5, kPad)
+                let vertExtent = aimPoints.count >= 2 ? min(rawVert, 450.0) : rawVert
+                let horizExtent = max((maxX - minX) + 2 * kPad, kPad * 2)
                 let midX        = (minX + maxX) / 2.0
 
                 let centerOnPath = Self.interpolate(routeStart, routeEnd, t: centerT)
