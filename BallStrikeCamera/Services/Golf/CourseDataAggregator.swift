@@ -28,30 +28,35 @@ final class CourseDataAggregator {
     /// Best-effort: never throws. Returns the richest course it can assemble.
     func enrich(_ course: GolfCourse, backend: AppBackend? = nil) async -> GolfCourse {
         let cached = OSMGolfService.shared.loadCached(courseId: course.id)
+        print("[Aggregator] enrich '\(course.name)' id=\(course.id) cached=\(cached != nil ? "trusted=\(cached!.hasTrustedGeometry)" : "nil")")
         if let cached, cached.hasTrustedGeometry {
+            print("[Aggregator] returning cached geometry")
             return cached
         }
 
-        // Our shared geometry DB first (exact id, then fuzzy name+proximity). This is populated by
-        // the OSM pre-bake pipeline, so well-mapped courses load instantly without a live call.
         var sharedGeometry = await loadSharedGeometry(courseId: course.id, backend: backend)
         if sharedGeometry == nil {
             sharedGeometry = await loadSharedGeometryFuzzy(course, backend: backend)
         }
+        print("[Aggregator] sharedGeometry=\(sharedGeometry == nil ? "nil" : "trusted=\(sharedGeometry!.hasTrustedGeometry)")")
         if let sharedGeometry, sharedGeometry.hasTrustedGeometry, isUsableCachedCourse(sharedGeometry) {
             OSMGolfService.shared.cacheMergedCourse(sharedGeometry)
+            print("[Aggregator] returning sharedGeometry")
             return sharedGeometry
         }
 
         // Course catalog (Supabase): search the 40k-course DB by name+location and fetch the
         // matched course's geometry from Storage. Our primary data source.
-        if let catalog = await CourseCatalog.geometry(for: course),
-           catalog.hasTrustedGeometry {
+        let catalog = await CourseCatalog.geometry(for: course)
+        print("[Aggregator] catalog=\(catalog == nil ? "nil" : "trusted=\(catalog!.hasTrustedGeometry) holes=\(catalog!.holes.count)")")
+        if let catalog, catalog.hasTrustedGeometry {
             var merged = catalog
-            merged.id = course.id            // keep the app's id so caching/resume line up
+            merged.id = course.id
             OSMGolfService.shared.cacheMergedCourse(merged)
+            print("[Aggregator] returning catalog geometry ✓")
             return merged
         }
+        print("[Aggregator] falling through to OSM for '\(course.name)'")
 
         // GolfCourseAPI scorecard is the reliable source (par/yardage/handicap). Run it detached so
         // a spurious SwiftUI `.task` cancellation can't drop it. Geometry is best-effort from OSM.

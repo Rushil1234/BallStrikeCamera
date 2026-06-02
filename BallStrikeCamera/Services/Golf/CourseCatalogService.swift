@@ -64,10 +64,16 @@ enum CourseCatalog {
     /// Load a course's geometry: by catalog id directly when we have it, else by name+proximity.
     /// Returns nil when there's no geometry-bearing match (caller falls back to live OSM).
     static func geometry(for course: GolfCourse) async -> GolfCourse? {
-        guard let config = SupabaseConfig.load() else { return nil }
-        if isUUID(course.id), let g = await loadGeometry(courseId: course.id, config: config) { return g }
+        print("[CourseCatalog] geometry(for:) called — id=\(course.id) name=\(course.name) isUUID=\(isUUID(course.id))")
+        guard let config = SupabaseConfig.load() else { print("[CourseCatalog] no config"); return nil }
+        if isUUID(course.id) {
+            let g = await loadGeometry(courseId: course.id, config: config)
+            print("[CourseCatalog] direct id load → \(g == nil ? "nil" : "OK hasReal=\(g!.hasRealGeometry) trusted=\(g!.hasTrustedGeometry) holes=\(g!.holes.count)")")
+            if let g { return g }
+        }
         guard let match = await runSearch(q: course.name, coordinate: course.coordinate, onlyGeometry: true, limit: 1, config: config).first
-        else { return nil }
+        else { print("[CourseCatalog] name search found no match for '\(course.name)'"); return nil }
+        print("[CourseCatalog] name search matched id=\(match.id)")
         return await loadGeometry(courseId: match.id, config: config)
     }
 
@@ -114,16 +120,18 @@ enum CourseCatalog {
             .appendingPathComponent("\(courseId).json.gz")
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-            // Storage serves raw gzip bytes (no Content-Encoding header), so gunzip ourselves.
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            print("[CourseCatalog] loadGeometry \(courseId) — HTTP \(status) bytes=\(data.count) isGzip=\(data.isGzip)")
+            guard status == 200 else { return nil }
             let json = data.isGzip ? (data.gunzipped() ?? data) : data
             var course = try decoder.decode(GolfCourse.self, from: json)
             course.cachedAt = Date()
-            return course.hasRealGeometry ? course : nil
+            let real = course.hasRealGeometry
+            print("[CourseCatalog] decoded \(courseId) — holes=\(course.holes.count) hasRealGeometry=\(real) hasTrusted=\(course.hasTrustedGeometry)")
+            if !real { print("[CourseCatalog] ⚠️ hasRealGeometry=false: first hole tee=\(String(describing: course.holes.first?.teeCoordinate)) green=\(String(describing: course.holes.first?.greenCenterCoordinate)) poly=\(String(describing: course.holes.first?.greenPolygon))") }
+            return real ? course : nil
         } catch {
-            #if DEBUG
-            print("[CourseCatalog] geometry fetch failed (\(courseId)): \(error.localizedDescription)")
-            #endif
+            print("[CourseCatalog] geometry fetch failed (\(courseId)): \(error)")
             return nil
         }
     }
