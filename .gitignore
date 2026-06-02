@@ -43,3 +43,10 @@ courses_*.csv
 # Service role key — never commit
 Config/service_role.key
 *.key
+
+# Data pipeline scripts (not app code)
+worker.py
+deploy.py
+normalizer.py
+birdies_client.py
+__pycache__/
