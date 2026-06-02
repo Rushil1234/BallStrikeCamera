@@ -713,7 +713,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 }
                 // Extra bottom padding so the tee isn't hidden behind the HUD.
                 // Par 5s (2 aim points) get a touch more vertical space to show the full hole.
-                let vertScale   = aimPoints.count >= 2 ? 1.05 : 1.0
+                let vertScale   = aimPoints.count >= 2 ? 1.02 : 1.0
                 let vertExtent  = ((maxY - minY) + kPad + max(Double(bottomUIInset) * 0.5, kPad)) * vertScale
                 let horizExtent = max((maxX - minX) + 2 * kPad, kPad * 2)
                 let midX        = (minX + maxX) / 2.0
@@ -2277,7 +2277,7 @@ struct CourseModeGPSHoleView: View {
                 .foregroundColor(isHero ? .white : .white.opacity(0.5))
                 .frame(width: 10, alignment: .leading)
             Text("\(yards)")
-                .font(.system(size: isHero ? 28 : 12, weight: isHero ? .black : .semibold,
+                .font(.system(size: isHero ? 31 : 13, weight: isHero ? .black : .semibold,
                               design: .rounded))
                 .foregroundColor(isHero ? .white : .white.opacity(0.75))
                 .contentTransition(.numericText())
