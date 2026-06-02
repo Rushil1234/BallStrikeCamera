@@ -27,27 +27,13 @@ final class CourseDataAggregator {
     /// Enrich a discovered (MapKit) course stub with merged scorecard + geometry.
     /// Best-effort: never throws. Returns the richest course it can assemble.
     func enrich(_ course: GolfCourse, backend: AppBackend? = nil) async -> GolfCourse {
+        // Skip disk cache entirely — stale cache caused repeated tee/geometry bugs.
+        // enrich() is called at most twice per session (tee setup + round start) so
+        // the ~500ms parallel network fetch is imperceptible on a golf course.
+        // Disk cache is still written so offline fallbacks work at the end of this function.
         let cached = OSMGolfService.shared.loadCached(courseId: course.id)
 
-        // Cache fast-path: requires full hole data AND more than one named tee (meaning
-        // it was already scorecard-enriched). A cache with only one tee gets bypassed so
-        // the scorecard fetch can add all named tees (Blue/White/Black/Red etc.).
-        let cachedTeeCount = cached?.teeBoxes.filter({ $0.totalYards > 0 }).count ?? 0
-        if let cached, cached.hasTrustedGeometry, cached.hasFullHoleData, cachedTeeCount > 1 {
-            return cached
-        }
-
-        var sharedGeometry = await loadSharedGeometry(courseId: course.id, backend: backend)
-        if sharedGeometry == nil {
-            sharedGeometry = await loadSharedGeometryFuzzy(course, backend: backend)
-        }
-        if let sharedGeometry, sharedGeometry.hasTrustedGeometry,
-           sharedGeometry.hasFullHoleData, isUsableCachedCourse(sharedGeometry) {
-            OSMGolfService.shared.cacheMergedCourse(sharedGeometry)
-            return sharedGeometry
-        }
-
-        // Fetch catalog geometry and scorecard in parallel — no extra latency.
+        // Fetch catalog geometry and scorecard in parallel.
         async let catalogFetch = CourseCatalog.geometry(for: course)
         async let scorecardFetch = fetchScorecard(for: course)
         let (catalog, scorecard) = await (catalogFetch, scorecardFetch)
@@ -55,8 +41,6 @@ final class CourseDataAggregator {
         if let catalog, catalog.hasTrustedGeometry {
             var withId = catalog
             withId.id = course.id
-            // Always merge scorecard so all named tees (White/Blue/Black/Red etc.)
-            // and their per-hole yardages appear in the tee picker.
             if let sc = scorecard, !sc.teeBoxes.isEmpty {
                 withId = merge(base: course, osm: withId, scorecard: sc)
                 withId.id = course.id
@@ -65,10 +49,8 @@ final class CourseDataAggregator {
             return withId
         }
 
-        // Catalog missed — fall back to stale cache (partial data beats nothing).
-        if let cached, cached.hasTrustedGeometry {
-            return cached
-        }
+        // Network failed — fall back to anything cached (partial data beats nothing).
+        if let cached, cached.hasTrustedGeometry { return cached }
 
         // GolfCourseAPI scorecard is the reliable source (par/yardage/handicap). Run it detached so
         // a spurious SwiftUI `.task` cancellation can't drop it. Geometry is best-effort from OSM.
