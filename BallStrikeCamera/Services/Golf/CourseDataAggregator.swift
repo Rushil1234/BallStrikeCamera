@@ -436,12 +436,9 @@ enum CourseAvailability {
     }
 
     private static func isHoleGeometryPlayable(_ hole: GolfHole) -> Bool {
-        guard hole.number > 0,
-              hole.teeCoordinate != nil,
-              hole.greenCenterCoordinate != nil,
-              let green = hole.greenPolygon?.coordinates,
-              green.count >= 3 else { return false }
-        return true
+        hole.number > 0 &&
+        hole.teeCoordinate != nil &&
+        hole.greenCenterCoordinate != nil
     }
 
     private static func hasAuthoritativeScorecard(_ holes: [GolfHole],

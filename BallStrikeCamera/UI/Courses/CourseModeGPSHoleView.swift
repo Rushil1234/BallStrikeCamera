@@ -1296,9 +1296,17 @@ struct CourseModeGPSHoleView: View {
     }
 
     private var scorecardYardage: Int? {
-        guard let gh = currentCourseHole,
-              let tee = vm.selectedTeeBox else { return nil }
-        return gh.teeYardsByTeeBox[tee.id]
+        guard let gh = currentCourseHole else { return nil }
+        // Match by selected tee box id, then by name, then fall back to any available yardage
+        if let tee = vm.selectedTeeBox {
+            if let y = gh.teeYardsByTeeBox[tee.id], y > 0 { return y }
+            let nameKey = gh.teeYardsByTeeBox.keys.first(where: {
+                $0.caseInsensitiveCompare(tee.name) == .orderedSame ||
+                $0.caseInsensitiveCompare(tee.color) == .orderedSame
+            })
+            if let k = nameKey, let y = gh.teeYardsByTeeBox[k], y > 0 { return y }
+        }
+        return gh.teeYardsByTeeBox.values.first(where: { $0 > 0 })
     }
 
     private var gpsDistances: GreenDistances {

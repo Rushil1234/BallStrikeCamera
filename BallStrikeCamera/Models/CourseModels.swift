@@ -24,7 +24,10 @@ struct GolfCourse: Codable, Identifiable {
     }
 
     var hasRealGeometry: Bool {
-        holes.contains(where: { $0.greenPolygon != nil })
+        holes.contains(where: {
+            $0.greenPolygon != nil ||
+            ($0.teeCoordinate != nil && $0.greenCenterCoordinate != nil)
+        })
     }
 
     /// True when geometry is good enough to render as course truth. This prevents
