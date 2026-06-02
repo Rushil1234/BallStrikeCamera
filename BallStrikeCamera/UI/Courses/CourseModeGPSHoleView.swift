@@ -712,8 +712,8 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                     minY = min(minY, sy); maxY = max(maxY, sy)
                 }
                 // Extra bottom padding so the tee isn't hidden behind the HUD.
-                // Par 5s (2 aim points) get 12% more vertical space to show the full hole.
-                let vertScale   = aimPoints.count >= 2 ? 1.12 : 1.0
+                // Par 5s (2 aim points) get a touch more vertical space to show the full hole.
+                let vertScale   = aimPoints.count >= 2 ? 1.05 : 1.0
                 let vertExtent  = ((maxY - minY) + kPad + max(Double(bottomUIInset) * 0.5, kPad)) * vertScale
                 let horizExtent = max((maxX - minX) + 2 * kPad, kPad * 2)
                 let midX        = (minX + maxX) / 2.0
@@ -743,7 +743,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setVisibleMapRect(fittingRect, edgePadding: edgePad, animated: false)
                 // Par 5s zoom in slightly less to keep the full hole visible.
-                let altMultiplier = aimPoints.count >= 2 ? 0.96 : 0.92
+                let altMultiplier = aimPoints.count >= 2 ? 0.93 : 0.92
                 let fittedAlt = max(map.camera.altitude * altMultiplier, 150.0)
 
                 let cam = MKMapCamera(lookingAtCenter: biasedCenter,
