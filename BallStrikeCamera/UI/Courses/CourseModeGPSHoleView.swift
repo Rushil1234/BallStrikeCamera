@@ -305,12 +305,15 @@ private final class AimPointAnnotationView: MKAnnotationView {
         guard let map  = mapView,
               let aim  = annotation as? AimPointAnnotation else { return }
         let coord = map.convert(gesture.location(in: map), toCoordinateFrom: map)
-        // Update the annotation coordinate so MapKit repositions the view live.
         aim.coordinate = coord
         switch gesture.state {
+        case .began:
+            // Prevent MapKit's own pan gesture from competing and stealing events.
+            map.isScrollEnabled = false
         case .changed:
             onDragChanged?(aim.index, coord)
         case .ended, .cancelled:
+            map.isScrollEnabled = true
             onDragEnded?(aim.index, coord)
         default:
             break
@@ -1039,7 +1042,8 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         // Annotation views (aim rings, tee dot, flag) are untouched to avoid any flicker.
         private func rebuildAimSegments(on mapView: MKMapView,
                                         movingIndex: Int,
-                                        to newCoord: CLLocationCoordinate2D) {
+                                        to newCoord: CLLocationCoordinate2D,
+                                        isDragging: Bool = true) {
             var waypoints = currentAimWaypoints
             let wi = movingIndex + 1
             guard wi > 0, wi < waypoints.count - 1 else { return }
@@ -1054,7 +1058,11 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
             for i in 0..<waypoints.count - 1 {
                 var pts = [waypoints[i], waypoints[i + 1]]
-                mapView.addOverlay(AimSegmentCasingPolyline(coordinates: &pts, count: 2), level: .aboveLabels)
+                // Skip dark casing while dragging — it flashes black before the
+                // white renderer fires. Re-added on drag end via the static render.
+                if !isDragging {
+                    mapView.addOverlay(AimSegmentCasingPolyline(coordinates: &pts, count: 2), level: .aboveLabels)
+                }
                 mapView.addOverlay(AimSegmentPolyline(coordinates: &pts, count: 2), level: .aboveLabels)
                 let mid   = SatelliteMapBackground.midpoint(waypoints[i], waypoints[i + 1])
                 let yards = Int((MKMapPoint(waypoints[i]).distance(to: MKMapPoint(waypoints[i + 1])) * 1.09361).rounded())
