@@ -28,9 +28,10 @@ final class CourseDataAggregator {
     /// Best-effort: never throws. Returns the richest course it can assemble.
     func enrich(_ course: GolfCourse, backend: AppBackend? = nil) async -> GolfCourse {
         let cached = OSMGolfService.shared.loadCached(courseId: course.id)
-        // Only short-circuit on cache when it has complete hole data (tee+green every hole).
-        // Partial/old cache is bypassed so the catalog can supply better geometry.
-        if let cached, cached.hasTrustedGeometry, cached.hasFullHoleData {
+        // Only short-circuit on cache when it has complete hole data AND real named tee boxes.
+        // Bypassing stale cache (no tee boxes, or pre-fix geometry) forces a fresh catalog fetch.
+        let cachedHasRealTees = cached?.teeBoxes.contains(where: { $0.totalYards > 0 }) ?? false
+        if let cached, cached.hasTrustedGeometry, cached.hasFullHoleData, cachedHasRealTees {
             return cached
         }
 
