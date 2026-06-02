@@ -713,7 +713,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 }
                 // Extra bottom padding so the tee isn't hidden behind the HUD.
                 // Par 5s (2 aim points) get a touch more vertical space to show the full hole.
-                let vertScale   = aimPoints.count >= 2 ? 1.02 : 1.0
+                let vertScale   = 1.0
                 let vertExtent  = ((maxY - minY) + kPad + max(Double(bottomUIInset) * 0.5, kPad)) * vertScale
                 let horizExtent = max((maxX - minX) + 2 * kPad, kPad * 2)
                 let midX        = (minX + maxX) / 2.0
