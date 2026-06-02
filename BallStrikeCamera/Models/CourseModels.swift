@@ -103,8 +103,8 @@ struct TeeBox: Codable, Identifiable {
 // MARK: - Golf Hole
 
 struct GolfHole: Codable, Identifiable {
-    var id: String
-    var courseId: String
+    var id: String       = ""
+    var courseId: String = ""
     var number: Int
     var par: Int
     var handicap: Int?
