@@ -2250,7 +2250,7 @@ struct CourseModeGPSHoleView: View {
             Spacer(minLength: 0)
 
             if mapDistances.isAvailable {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 3) {
                     if let f = mapDistances.front {
                         distanceRow(label: "F", yards: f, isHero: false)
                     }
@@ -2261,30 +2261,30 @@ struct CourseModeGPSHoleView: View {
                         distanceRow(label: "B", yards: b, isHero: false)
                     }
                 }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 9)
-                .hudGlass(18)
-                .frame(minWidth: 90, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .hudGlass(14)
+                .frame(minWidth: 70, alignment: .leading)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: mapDistances.center)
             }
         }
     }
 
     private func distanceRow(label: String, yards: Int, isHero: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
             Text(label)
-                .font(.system(size: isHero ? 11 : 9, weight: .black, design: .rounded))
+                .font(.system(size: isHero ? 9 : 8, weight: .black, design: .rounded))
                 .foregroundColor(isHero ? .white : .white.opacity(0.5))
-                .frame(width: 12, alignment: .leading)
+                .frame(width: 10, alignment: .leading)
             Text("\(yards)")
-                .font(.system(size: isHero ? 38 : 15, weight: isHero ? .black : .semibold,
+                .font(.system(size: isHero ? 28 : 12, weight: isHero ? .black : .semibold,
                               design: .rounded))
                 .foregroundColor(isHero ? .white : .white.opacity(0.75))
                 .contentTransition(.numericText())
                 .shadow(color: .black.opacity(isHero ? 0.5 : 0.2), radius: isHero ? 5 : 2, y: 1)
             if isHero {
                 Text("yd")
-                    .font(.system(size: 12, weight: .heavy, design: .rounded))
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
                     .foregroundColor(.white.opacity(0.5))
             }
         }
