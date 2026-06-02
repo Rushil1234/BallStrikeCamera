@@ -73,11 +73,11 @@ final class CourseDataAggregator {
         // GolfCourseAPI scorecard is the reliable source (par/yardage/handicap). Run it detached so
         // a spurious SwiftUI `.task` cancellation can't drop it. Geometry is best-effort from OSM.
         let cachedScorecard = [cached, sharedGeometry].compactMap { $0 }.first(where: isUsableCachedCourse)
-        let scorecard: GolfCourse?
+        let osmScorecard: GolfCourse?
         if let cachedScorecard {
-            scorecard = cachedScorecard
+            osmScorecard = cachedScorecard
         } else {
-            scorecard = await Task.detached(priority: .userInitiated) { [self] in
+            osmScorecard = await Task.detached(priority: .userInitiated) { [self] in
                 await fetchScorecard(for: course)
             }.value
         }
@@ -90,7 +90,7 @@ final class CourseDataAggregator {
             geometry = await OSMGolfService.shared.enrichBestEffort(course)
         }
 
-        let merged = merge(base: course, osm: geometry, scorecard: scorecard)
+        let merged = merge(base: course, osm: geometry, scorecard: osmScorecard)
         OSMGolfService.shared.cacheMergedCourse(merged)
         // Persist good geometry to our shared DB; queue weak coverage for pre-bake backfill.
         if merged.hasTrustedGeometry {
