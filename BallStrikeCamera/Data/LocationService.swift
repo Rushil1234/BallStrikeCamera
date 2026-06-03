@@ -87,7 +87,6 @@ extension LocationService: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager,
                                      didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
-        print("[Location] received \(loc.coordinate.latitude), \(loc.coordinate.longitude)")
         Task { @MainActor in
             currentLocation = loc.coordinate
             locationError = nil
@@ -95,7 +94,6 @@ extension LocationService: CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("[Location] FAILED: \(error)")
         Task { @MainActor in
             locationError = error.localizedDescription
         }

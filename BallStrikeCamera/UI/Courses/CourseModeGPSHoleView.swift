@@ -610,10 +610,9 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
     func makeUIView(context: Context) -> MKMapView {
         let map = MKMapView()
-        // Simulator note: .satellite tiles often fail to load in the iOS simulator;
-        // use .hybrid in DEBUG so the map always renders during development.
-        #if DEBUG
-        map.mapType = .hybrid
+        // Simulator uses .standard (vector, always available); device uses .satellite.
+        #if targetEnvironment(simulator)
+        map.mapType = .standard
         #else
         map.mapType = .satellite
         #endif
@@ -1701,7 +1700,6 @@ struct CourseModeGPSHoleView: View {
     // MARK: - Body
 
     var body: some View {
-        let _ = print("[CourseMode] body rendered — hole=\(vm.currentHoleIndex) trusted=\(vm.selectedCourse?.hasTrustedGeometry ?? false) mapHole=\(currentMapHole?.number.description ?? "nil") gpsOn=\(gpsOn) location=\(vm.location.currentLocation.map { "\($0.latitude),\($0.longitude)" } ?? "nil")")
         ZStack(alignment: .top) {
 
             // Full-screen satellite map
