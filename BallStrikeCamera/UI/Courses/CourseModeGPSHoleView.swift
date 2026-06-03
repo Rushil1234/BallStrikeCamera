@@ -1440,19 +1440,37 @@ struct CourseModeGPSHoleView: View {
         }
     }
 
-    /// Merges default aim points with any user-dragged overrides.
-    /// For par 5s: if aim point 0 is within 225 yards of the green, collapses to a
-    /// single-segment line so the intermediate waypoint disappears automatically.
+    /// Merges default aim points with any user-dragged overrides, then filters
+    /// for the user's current position:
+    /// - Drops any aim point that is behind the user (user is closer to the green)
+    /// - Drops all aim points when user is within 225 yards of the green
     private var activeAimPoints: [CLLocationCoordinate2D] {
         let pts = suggestedAimPoints.enumerated().map { i, def in
             userAimPointOverrides[i] ?? def
         }
-        if pts.count >= 2,
-           let green = currentMapHole?.greenCenterCoordinate?.clCoordinate {
-            let yardsToGreen = Self.metersBetween(pts[0], green) * 1.09361
-            if yardsToGreen <= 225 {
-                return [pts[0]]
+        guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate else { return pts }
+
+        // When we have a live GPS position, filter aim points relative to the user.
+        if let user = vm.location.currentLocation, userIsNearCurrentHole {
+            let userToGreen = Self.metersBetween(user, green) * 1.09361
+            // User is within 225 yards — show a direct line, no aim points.
+            if userToGreen <= 225 { return [] }
+            // Keep only aim points that are ahead of the user (closer to green than user).
+            let ahead = pts.filter { ap in
+                Self.metersBetween(ap, green) < Self.metersBetween(user, green)
             }
+            // Par-5 collapse: if only one aim point remains and it's within 225y of green, drop it.
+            if ahead.count >= 2 {
+                let yardsToGreen = Self.metersBetween(ahead[0], green) * 1.09361
+                if yardsToGreen <= 225 { return [ahead[0]] }
+            }
+            return ahead
+        }
+
+        // No live GPS — apply the original par-5 collapse only.
+        if pts.count >= 2 {
+            let yardsToGreen = Self.metersBetween(pts[0], green) * 1.09361
+            if yardsToGreen <= 225 { return [pts[0]] }
         }
         return pts
     }
