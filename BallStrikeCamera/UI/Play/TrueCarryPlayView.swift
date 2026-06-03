@@ -87,16 +87,14 @@ struct TrueCarryPlayView: View {
                 showCourseMode = true
             }
         }) {
-            if let uid = session.currentUser?.id {
-                NavigationStack {
-                    CourseSearchView(userId: uid) { course, tee in
-                        selectedCourse = course
-                        selectedTeeBox = tee
-                        showCourseSearch = false
-                    }
+            NavigationStack {
+                CourseSearchView(userId: session.currentUser?.id ?? "guest") { course, tee in
+                    selectedCourse = course
+                    selectedTeeBox = tee
+                    showCourseSearch = false
                 }
-                .tcAppearance()
             }
+            .tcAppearance()
         }
         .alert("Course Mode", isPresented: $showUpgradeAlert) {
             Button("Upgrade") {
@@ -109,11 +107,10 @@ struct TrueCarryPlayView: View {
             Text("Course Mode is available with Basic, Pro, or Unlimited plans.")
         }
         .fullScreenCover(isPresented: $showCourseMode) {
-            if let uid = session.currentUser?.id,
-               let course = selectedCourse,
+            if let course = selectedCourse,
                let tee = selectedTeeBox {
                 CourseModeGPSHoleView(
-                    userId: uid,
+                    userId: session.currentUser?.id ?? "guest",
                     backend: session.backend,
                     initialCourse: course,
                     initialTeeBox: tee
@@ -121,9 +118,8 @@ struct TrueCarryPlayView: View {
             }
         }
         .fullScreenCover(item: $resumeRound) { round in
-            if let uid = session.currentUser?.id {
-                CourseModeGPSHoleView(
-                    userId: uid,
+            CourseModeGPSHoleView(
+                    userId: session.currentUser?.id ?? "guest",
                     backend: session.backend,
                     initialRound: round
                 )
