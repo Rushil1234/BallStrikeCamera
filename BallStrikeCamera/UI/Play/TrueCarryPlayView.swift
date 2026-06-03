@@ -81,17 +81,18 @@ struct TrueCarryPlayView: View {
                 SimModeView(userId: uid, backend: session.backend)
             }
         }
-        .sheet(isPresented: $showCourseSearch, onDismiss: {
-            // onDismiss fires after the sheet is fully gone — safe to present fullScreenCover now.
-            if selectedCourse != nil && selectedTeeBox != nil {
-                showCourseMode = true
-            }
-        }) {
+        .sheet(isPresented: $showCourseSearch) {
             NavigationStack {
                 CourseSearchView(userId: session.currentUser?.id ?? UUID()) { course, tee in
                     selectedCourse = course
                     selectedTeeBox = tee
                     showCourseSearch = false
+                    // Delay so the sheet fully dismisses before fullScreenCover opens.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                        if selectedCourse != nil && selectedTeeBox != nil {
+                            showCourseMode = true
+                        }
+                    }
                 }
             }
             .tcAppearance()
