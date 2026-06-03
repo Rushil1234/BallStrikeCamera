@@ -3,6 +3,10 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject var session: AuthSessionStore
     @StateObject private var vm = AuthViewModel()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// When true, the page plays its staggered entrance. Driven by the launch
+    /// handoff on cold start, so the animation isn't wasted behind the splash.
+    var startEntrance: Bool = true
     @State private var showCreate = false
     @State private var hasAppeared = false
 
@@ -13,24 +17,30 @@ struct LoginView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 88)
-                    logoSection
-                    Spacer(minLength: 40)
+                    brandCrest
+                        .modifier(AppearMod(active: hasAppeared, delay: 0, rise: 0, scaleFrom: 0.98, reduceMotion: reduceMotion))
+                    Spacer(minLength: 14)
+                    brandWordmark
+                        .modifier(AppearMod(active: hasAppeared, delay: 0.12, rise: 14, reduceMotion: reduceMotion))
+                    Spacer(minLength: 34)
                     formCard
+                        .modifier(AppearMod(active: hasAppeared, delay: 0.22, rise: 18, reduceMotion: reduceMotion))
                     Spacer(minLength: 18)
                     createAccountButton
+                        .modifier(AppearMod(active: hasAppeared, delay: 0.32, rise: 14, reduceMotion: reduceMotion))
                     Spacer(minLength: 12)
                     guestButton
+                        .modifier(AppearMod(active: hasAppeared, delay: 0.40, rise: 14, reduceMotion: reduceMotion))
                     Spacer(minLength: 48)
                 }
                 .padding(.horizontal, TCTheme.hPad)
-                .opacity(hasAppeared ? 1 : 0)
-                .offset(y: hasAppeared ? 0 : 18)
             }
         }
         .onAppear {
-            withAnimation(.easeOut(duration: 0.65)) {
-                hasAppeared = true
-            }
+            if startEntrance { hasAppeared = true }
+        }
+        .onChange(of: startEntrance) { now in
+            if now { hasAppeared = true }
         }
         .sheet(isPresented: $showCreate) {
             CreateAccountView()
@@ -41,34 +51,30 @@ struct LoginView: View {
 
     // MARK: Logo
 
-    private var logoSection: some View {
-        VStack(spacing: 24) {
-            TCFramedCrest(size: 196)
+    private var brandCrest: some View {
+        TCFramedCrest(size: 196)
+            .frame(maxWidth: .infinity)
+    }
 
-            VStack(spacing: 10) {
-                TrueCarryLogo(size: 30)
-                Text("PRECISION GOLF ANALYTICS")
-                    .font(.system(size: 10, weight: .medium))
-                    .tracking(3.4)
-                    .foregroundColor(TCTheme.gold)
-            }
-        }
-        .frame(maxWidth: .infinity)
+    private var brandWordmark: some View {
+        Text("True Carry")
+            .font(.system(size: 30, weight: .medium, design: .serif))
+            .tracking(-0.25)
+            .foregroundColor(TCTheme.cream)
+            .frame(maxWidth: .infinity)
     }
 
     // MARK: Form
 
     private var formCard: some View {
         VStack(spacing: 18) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Welcome back")
-                    .font(.system(size: 19, weight: .medium, design: .serif))
-                    .foregroundColor(TCTheme.textPrimary)
-                Spacer()
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(TCTheme.gold)
-            }
+            Text("Welcome back")
+                .font(.system(size: 19, weight: .medium, design: .serif))
+                .foregroundColor(TCTheme.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            googleSignInButton
+            orDivider
 
             TCAuthTextField(placeholder: "Email", text: $vm.email, icon: "envelope")
                 .keyboardType(.emailAddress)
@@ -130,6 +136,57 @@ struct LoginView: View {
         .tcGlassCard(padding: 18)
     }
 
+    // MARK: Google sign-in
+
+    private var googleSignInButton: some View {
+        Button {
+            Task {
+                vm.errorMessage = nil
+                do {
+                    try await session.signInWithGoogle()
+                } catch {
+                    vm.errorMessage = error.localizedDescription
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Text("G")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(Color(red: 0.26, green: 0.52, blue: 0.96))
+                    .frame(width: 22, height: 22)
+                    .background(Color.white)
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5))
+                Text("Continue with Google")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(TCTheme.textPrimary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 13)
+            .background(TCTheme.background)
+            .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
+                    .strokeBorder(TCTheme.borderMedium, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(vm.isLoading)
+        .opacity(vm.isLoading ? 0.6 : 1)
+    }
+
+    private var orDivider: some View {
+        HStack(spacing: 12) {
+            Rectangle().fill(TCTheme.borderMedium).frame(height: 1)
+            Text("OR")
+                .font(.system(size: 10, weight: .semibold))
+                .tracking(1.2)
+                .foregroundColor(TCTheme.textMuted)
+            Rectangle().fill(TCTheme.borderMedium).frame(height: 1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     // MARK: Create / Guest
 
     private var createAccountButton: some View {
@@ -165,6 +222,26 @@ struct LoginView: View {
         .buttonStyle(.plain)
     }
 
+}
+
+// MARK: - Staggered entrance modifier
+
+/// Fades + rises (and optionally scales) a view into place once `active` flips
+/// true, with a per-element `delay` to stagger the page in. Honors Reduce Motion.
+private struct AppearMod: ViewModifier {
+    let active: Bool
+    var delay: Double = 0
+    var rise: CGFloat = 16
+    var scaleFrom: CGFloat = 1
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(active ? 1 : 0)
+            .offset(y: active ? 0 : rise)
+            .scaleEffect(active ? 1 : scaleFrom, anchor: .center)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.55).delay(delay), value: active)
+    }
 }
 
 // MARK: - Create Account View

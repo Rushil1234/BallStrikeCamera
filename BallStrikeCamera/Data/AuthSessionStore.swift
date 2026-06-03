@@ -1,5 +1,7 @@
 import Foundation
 import SwiftUI
+import AuthenticationServices
+import UIKit
 
 @MainActor
 final class AuthSessionStore: ObservableObject {
@@ -114,6 +116,37 @@ final class AuthSessionStore: ObservableObject {
         userProfile = nil
     }
 
+    // MARK: - Google Sign-In
+
+    /// Opens an ASWebAuthenticationSession against Supabase's `/auth/v1/authorize`
+    /// endpoint for Google, parses the tokens out of the callback URL, and
+    /// completes the session through the Supabase backend.
+    func signInWithGoogle() async throws {
+        guard let supabase = configuredBackend as? SupabaseBackendService else {
+            // Guest/local backends can't do OAuth.
+            throw BackendError.notAuthenticated
+        }
+
+        let redirectTo = "com.rushilkakkad.BallStrikeCamera://login-callback"
+        guard let authorizeURL = supabase.oauthAuthorizeURL(provider: "google", redirectTo: redirectTo) else {
+            throw BackendError.networkError("Could not build Google authorize URL.")
+        }
+
+        let (accessToken, refreshToken) = try await AuthBrowserSession.shared.run(
+            authorizeURL: authorizeURL,
+            callbackScheme: "com.rushilkakkad.BallStrikeCamera"
+        )
+
+        activateBackend(configuredBackend)
+        let user = try await supabase.completeOAuthSession(
+            accessToken: accessToken,
+            refreshToken: refreshToken
+        )
+        currentUser = user
+        userProfile = await ensureProfileAndBag(for: user)
+        await entitlementVM.load(userId: user.id)
+    }
+
     // MARK: - Profile Updates
 
     func saveProfile(_ profile: UserProfile) async {
@@ -159,5 +192,90 @@ final class AuthSessionStore: ObservableObject {
     private func activateBackend(_ nextBackend: AppBackend) {
         backend = nextBackend
         entitlementVM = EntitlementViewModel(backend: nextBackend)
+    }
+}
+
+// MARK: - ASWebAuthenticationSession helper for OAuth web flows
+
+@MainActor
+private final class AuthBrowserSession: NSObject, ASWebAuthenticationPresentationContextProviding {
+    static let shared = AuthBrowserSession()
+
+    /// Opens `authorizeURL` in a web auth session and resolves once the system
+    /// redirects to a URL matching `callbackScheme`. Returns the access/refresh
+    /// tokens from the callback URL's fragment (Supabase implicit flow).
+    func run(authorizeURL: URL, callbackScheme: String) async throws
+        -> (accessToken: String, refreshToken: String)
+    {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<(String, String), Error>) in
+            let session = ASWebAuthenticationSession(
+                url: authorizeURL,
+                callbackURLScheme: callbackScheme
+            ) { url, error in
+                if let error = error {
+                    cont.resume(throwing: error)
+                    return
+                }
+                guard let url = url else {
+                    cont.resume(throwing: NSError(
+                        domain: "TrueCarry.OAuth", code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "No callback URL from Google sign-in."]
+                    ))
+                    return
+                }
+
+                let pairs = Self.parseTokenPairs(from: url)
+
+                if let desc = pairs["error_description"] ?? pairs["error"] {
+                    cont.resume(throwing: NSError(
+                        domain: "TrueCarry.OAuth", code: -2,
+                        userInfo: [NSLocalizedDescriptionKey: desc]
+                    ))
+                    return
+                }
+
+                guard let at = pairs["access_token"], let rt = pairs["refresh_token"] else {
+                    cont.resume(throwing: NSError(
+                        domain: "TrueCarry.OAuth", code: -3,
+                        userInfo: [NSLocalizedDescriptionKey: "Google sign-in returned no tokens."]
+                    ))
+                    return
+                }
+                cont.resume(returning: (at, rt))
+            }
+            session.presentationContextProvider = self
+            // Show the user's existing Google sign-in cookie rather than forcing
+            // an ephemeral window — gives the native "choose your account" UX.
+            session.prefersEphemeralWebBrowserSession = false
+
+            if !session.start() {
+                cont.resume(throwing: NSError(
+                    domain: "TrueCarry.OAuth", code: -4,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not start Google sign-in."]
+                ))
+            }
+        }
+    }
+
+    /// Supabase returns tokens in the URL fragment for the implicit flow and in
+    /// query parameters for the PKCE flow — read both, with fragment winning.
+    private static func parseTokenPairs(from url: URL) -> [String: String] {
+        let raw = (url.fragment?.isEmpty == false ? url.fragment : url.query) ?? ""
+        var dict: [String: String] = [:]
+        for pair in raw.split(separator: "&") {
+            let kv = pair.split(separator: "=", maxSplits: 1).map(String.init)
+            guard kv.count == 2 else { continue }
+            dict[kv[0]] = kv[1].removingPercentEncoding ?? kv[1]
+        }
+        return dict
+    }
+
+    nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        MainActor.assumeIsolated {
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first(where: { $0.isKeyWindow }) ?? ASPresentationAnchor()
+        }
     }
 }

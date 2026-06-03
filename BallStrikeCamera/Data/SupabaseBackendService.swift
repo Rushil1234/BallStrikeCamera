@@ -149,6 +149,31 @@ final class SupabaseBackendService: AppBackend {
         return user
     }
 
+    // MARK: - OAuth (Google, etc.)
+
+    /// Builds the Supabase `/auth/v1/authorize` URL for a given provider.
+    /// AuthSessionStore opens this in ASWebAuthenticationSession.
+    func oauthAuthorizeURL(provider: String, redirectTo: String) -> URL? {
+        var comps = URLComponents(url: config.authBaseURL.appendingPathComponent("authorize"),
+                                  resolvingAgainstBaseURL: false)
+        comps?.queryItems = [
+            URLQueryItem(name: "provider",    value: provider),
+            URLQueryItem(name: "redirect_to", value: redirectTo),
+        ]
+        return comps?.url
+    }
+
+    /// Completes an OAuth web flow by persisting the tokens returned in the
+    /// callback URL fragment and fetching the resulting user.
+    func completeOAuthSession(accessToken: String, refreshToken: String) async throws -> AppUser {
+        persistSession(accessToken: accessToken, refreshToken: refreshToken)
+        guard let user = try await currentUser() else {
+            throw BackendError.notAuthenticated
+        }
+        print("[TrueCarry][Supabase] completeOAuthSession — \(user.email ?? "?")")
+        return user
+    }
+
     func signOut() async throws {
         if let token = accessToken {
             let url = config.authBaseURL.appendingPathComponent("logout")
@@ -487,6 +512,76 @@ final class SupabaseBackendService: AppBackend {
         }
         let rows = try decoder.decode([SupabaseFeedPostRow].self, from: data)
         return rows.compactMap { $0.toFeedPost() }.sorted { $0.timestamp > $1.timestamp }
+    }
+
+    func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage {
+        var queryItems = [
+            URLQueryItem(name: "order", value: "timestamp.desc"),
+            URLQueryItem(name: "limit", value: "\(max(1, limit + 1))")
+        ]
+        if let cursor {
+            queryItems.append(URLQueryItem(name: "timestamp", value: "lt.\(ISO8601DateFormatter().string(from: cursor))"))
+        }
+
+        var components = URLComponents(url: restURL("feed_posts"), resolvingAgainstBaseURL: false)!
+        components.queryItems = queryItems
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await session.data(for: req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:feed_posts:page", data: data, response: response)
+            throw BackendError.loadFailed("feed_posts")
+        }
+
+        let rows = try decoder.decode([SupabaseFeedPostRow].self, from: data)
+        let decoded = rows.compactMap { $0.toFeedPost() }.sorted { $0.timestamp > $1.timestamp }
+        let pagePosts = Array(decoded.prefix(limit))
+        return FeedPage(posts: pagePosts, nextCursor: decoded.count > limit ? pagePosts.last?.timestamp : nil, hasMore: decoded.count > limit)
+    }
+
+    func loadEngagement(postIds: [UUID], userId: UUID) async throws -> FeedEngagementSummary {
+        guard !postIds.isEmpty else { return FeedEngagementSummary() }
+        let idList = postIds.map(\.uuidString).joined(separator: ",")
+
+        var reactionsComponents = URLComponents(url: restURL("feed_reactions"), resolvingAgainstBaseURL: false)!
+        reactionsComponents.queryItems = [
+            URLQueryItem(name: "post_id", value: "in.(\(idList))"),
+            URLQueryItem(name: "emoji", value: "eq.gimme")
+        ]
+        let reactionsRequest = authorizedRequest(url: reactionsComponents.url!)
+        let (reactionData, reactionResponse) = try await session.data(for: reactionsRequest)
+        guard (reactionResponse as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:feed_reactions:batch", data: reactionData, response: reactionResponse)
+            throw BackendError.loadFailed("feed_reactions")
+        }
+
+        var summary = FeedEngagementSummary()
+        let reactionRows = try decoder.decode([SupabaseReactionRow].self, from: reactionData)
+        for row in reactionRows {
+            guard let postId = UUID(uuidString: row.postId), let reactingUserId = UUID(uuidString: row.userId) else { continue }
+            summary.gimmeCounts[postId, default: 0] += 1
+            if reactingUserId == userId {
+                summary.gimmedByMe.insert(postId)
+            }
+        }
+
+        var commentsComponents = URLComponents(url: restURL("feed_comments"), resolvingAgainstBaseURL: false)!
+        commentsComponents.queryItems = [
+            URLQueryItem(name: "post_id", value: "in.(\(idList))"),
+            URLQueryItem(name: "select", value: "id,post_id")
+        ]
+        let commentsRequest = authorizedRequest(url: commentsComponents.url!)
+        let (commentData, commentResponse) = try await session.data(for: commentsRequest)
+        guard (commentResponse as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:feed_comments:batch", data: commentData, response: commentResponse)
+            throw BackendError.loadFailed("feed_comments")
+        }
+
+        let commentRows = try decoder.decode([SupabaseCommentCountRow].self, from: commentData)
+        for row in commentRows {
+            guard let postId = UUID(uuidString: row.postId) else { continue }
+            summary.commentCounts[postId, default: 0] += 1
+        }
+        return summary
     }
 
     // MARK: - Gimmes (feed reactions)
