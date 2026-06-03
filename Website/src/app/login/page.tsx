@@ -172,10 +172,6 @@ function LoginForm() {
                 <GoogleIcon />
                 {oauthLoading === "google" ? "Connecting…" : "Continue with Google"}
               </button>
-              <button type="button" className="auth-social auth-apple" onClick={() => handleOAuth("apple")} disabled={Boolean(oauthLoading)}>
-                <AppleIcon />
-                {oauthLoading === "apple" ? "Connecting…" : "Continue with Apple"}
-              </button>
               <div className="auth-divider"><span>or</span></div>
             </>
           )}
