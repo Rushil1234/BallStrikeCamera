@@ -1459,10 +1459,13 @@ struct CourseModeGPSHoleView: View {
             let ahead = pts.filter { ap in
                 Self.metersBetween(ap, green) < Self.metersBetween(user, green)
             }
-            // Par-5 collapse: if only one aim point remains and it's within 225y of green, drop it.
             if ahead.count >= 2 {
-                let yardsToGreen = Self.metersBetween(ahead[0], green) * 1.09361
-                if yardsToGreen <= 225 { return [ahead[0]] }
+                // Par-5: if user is within 225y of aim[1], skip aim[0] — jump straight to aim[1].
+                let userToAim1 = Self.metersBetween(user, ahead[1]) * 1.09361
+                if userToAim1 <= 225 { return [ahead[1]] }
+                // Par-5 collapse: if aim[0] is within 225y of green, drop it too.
+                let aim0ToGreen = Self.metersBetween(ahead[0], green) * 1.09361
+                if aim0ToGreen <= 225 { return [ahead[0]] }
             }
             return ahead
         }
