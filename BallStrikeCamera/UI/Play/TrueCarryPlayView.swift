@@ -119,11 +119,10 @@ struct TrueCarryPlayView: View {
         }
         .fullScreenCover(item: $resumeRound) { round in
             CourseModeGPSHoleView(
-                    userId: session.currentUser?.id ?? "guest",
-                    backend: session.backend,
-                    initialRound: round
-                )
-            }
+                userId: session.currentUser?.id ?? "guest",
+                backend: session.backend,
+                initialRound: round
+            )
         }
         .task {
             applyDefaultModeIfNeeded()
