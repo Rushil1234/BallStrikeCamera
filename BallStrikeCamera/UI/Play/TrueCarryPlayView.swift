@@ -88,7 +88,7 @@ struct TrueCarryPlayView: View {
             }
         }) {
             NavigationStack {
-                CourseSearchView(userId: session.currentUser?.id ?? "guest") { course, tee in
+                CourseSearchView(userId: session.currentUser?.id ?? UUID()) { course, tee in
                     selectedCourse = course
                     selectedTeeBox = tee
                     showCourseSearch = false
@@ -110,7 +110,7 @@ struct TrueCarryPlayView: View {
             if let course = selectedCourse,
                let tee = selectedTeeBox {
                 CourseModeGPSHoleView(
-                    userId: session.currentUser?.id ?? "guest",
+                    userId: session.currentUser?.id ?? UUID(),
                     backend: session.backend,
                     initialCourse: course,
                     initialTeeBox: tee
@@ -119,7 +119,7 @@ struct TrueCarryPlayView: View {
         }
         .fullScreenCover(item: $resumeRound) { round in
             CourseModeGPSHoleView(
-                userId: session.currentUser?.id ?? "guest",
+                userId: session.currentUser?.id ?? UUID(),
                 backend: session.backend,
                 initialRound: round
             )
