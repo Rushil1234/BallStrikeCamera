@@ -1454,7 +1454,7 @@ struct CourseModeGPSHoleView: View {
         if let user = vm.location.currentLocation, userIsNearCurrentHole {
             let userToGreen = Self.metersBetween(user, green) * 1.09361
             // User is within 225 yards — show a direct line, no aim points.
-            if userToGreen <= 225 { return [] }
+            if userToGreen <= 240 { return [] }
             // Keep only aim points that are ahead of the user (closer to green than user).
             let ahead = pts.filter { ap in
                 Self.metersBetween(ap, green) < Self.metersBetween(user, green)
@@ -1462,10 +1462,10 @@ struct CourseModeGPSHoleView: View {
             if ahead.count >= 2 {
                 // Par-5: if user is within 225y of aim[1], skip aim[0] — jump straight to aim[1].
                 let userToAim1 = Self.metersBetween(user, ahead[1]) * 1.09361
-                if userToAim1 <= 225 { return [ahead[1]] }
+                if userToAim1 <= 240 { return [ahead[1]] }
                 // Par-5 collapse: if aim[0] is within 225y of green, drop it too.
                 let aim0ToGreen = Self.metersBetween(ahead[0], green) * 1.09361
-                if aim0ToGreen <= 225 { return [ahead[0]] }
+                if aim0ToGreen <= 240 { return [ahead[0]] }
             }
             return ahead
         }
@@ -1473,7 +1473,7 @@ struct CourseModeGPSHoleView: View {
         // No live GPS — apply the original par-5 collapse only.
         if pts.count >= 2 {
             let yardsToGreen = Self.metersBetween(pts[0], green) * 1.09361
-            if yardsToGreen <= 225 { return [pts[0]] }
+            if yardsToGreen <= 240 { return [pts[0]] }
         }
         return pts
     }
@@ -1734,7 +1734,7 @@ struct CourseModeGPSHoleView: View {
                     guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate,
                           let userLoc = vm.location.currentLocation else { return }
                     let yardsToGreen = SatelliteMapBackground.metersBetween(userLoc, green) * 1.09361
-                    guard yardsToGreen <= 225 else { return }
+                    guard yardsToGreen <= 240 else { return }
                     let tapToGreen = SatelliteMapBackground.metersBetween(coord, green) * 1.09361
                     aimTarget = tapToGreen < 25 ? nil : coord
                 },

@@ -98,7 +98,7 @@ function activeAimPoints(hole, userPos){
   const userToGreen=distY(userPos,green);
 
   // Rule 1: user within 225y → no aim points
-  if(userToGreen<=225)
+  if(userToGreen<=240)
     return {pts:[], reason:`User ${Math.round(userToGreen)}y from green (≤225y) – direct line`};
 
   // Rule 2: filter aim points ahead of user
@@ -109,10 +109,10 @@ function activeAimPoints(hole, userPos){
   if(ahead.length>=2){
     // Par-5: user within 225y of aim[1] → skip aim[0], jump straight to aim[1]
     const u2a1=distY(userPos,ahead[1]);
-    if(u2a1<=225) return {pts:[ahead[1]], reason:`${Math.round(u2a1)}y from Aim 2 (≤225y) – skipping Aim 1`};
+    if(u2a1<=240) return {pts:[ahead[1]], reason:`${Math.round(u2a1)}y from Aim 2 (≤225y) – skipping Aim 1`};
     // Par-5 collapse: aim[0] within 225y of green
     const a0g=distY(ahead[0],green);
-    if(a0g<=225) return {pts:[ahead[0]], reason:`Aim 1 is ${Math.round(a0g)}y from green (≤225y) – collapsed`};
+    if(a0g<=240) return {pts:[ahead[0]], reason:`Aim 1 is ${Math.round(a0g)}y from green (≤225y) – collapsed`};
   }
   return {pts:ahead, reason:`${ahead.length} aim point(s) active`};
 }
