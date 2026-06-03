@@ -130,9 +130,9 @@ struct TrueCarryPlayView: View {
             // Flush any deferred remote writes from prior offline rounds.
             await SyncQueue.shared.flush(using: session.backend)
         }
-        .onChange(of: pendingRound == nil) { isNil in
-            // Recheck unfinished rounds when course mode closes.
-            if isNil { Task { await refreshUnfinishedRound() } }
+        .onChange(of: pendingRound?.id) { _ in
+            // Recheck unfinished rounds when course mode closes (pendingRound cleared).
+            if pendingRound == nil { Task { await refreshUnfinishedRound() } }
         }
         .onChange(of: prewarmLocation.currentLocation?.latitude) { _ in
             guard let loc = prewarmLocation.currentLocation else { return }
