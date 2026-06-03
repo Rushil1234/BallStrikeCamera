@@ -1360,7 +1360,7 @@ struct CourseModeGPSHoleView: View {
     private var userIsNearCurrentHole: Bool {
         guard let user = vm.location.currentLocation,
               let center = currentMapHole?.greenCenterCoordinate?.clCoordinate else { return false }
-        return Self.metersBetween(user, center) < 2_400
+        return Self.metersBetween(user, center) < 1_000
     }
 
     private var estimatedTeeDistances: GreenDistances {
