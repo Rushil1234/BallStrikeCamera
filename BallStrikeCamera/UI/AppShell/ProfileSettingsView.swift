@@ -252,9 +252,6 @@ struct ProfileSettingsView: View {
             LinkSettingsRow(icon: "doc.text.fill", title: "Terms of Service",
                             url: AppConfig.websiteURL.appendingPathComponent("terms"), accent: BSTheme.textMuted)
             BSDivider()
-            ToggleSettingsRow(icon: "ant.fill", title: "Developer Mode", accent: BSTheme.dangerRed,
-                              isOn: $devMode)
-            BSDivider()
             Button { showResetPreferences = true } label: {
                 BSSettingsRow(icon: "arrow.counterclockwise", title: "Reset Preferences", accent: BSTheme.dangerRed)
             }.buttonStyle(.plain)
