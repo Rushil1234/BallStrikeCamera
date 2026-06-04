@@ -191,7 +191,10 @@ final class AuthSessionStore: ObservableObject {
 
     private func activateBackend(_ nextBackend: AppBackend) {
         backend = nextBackend
-        entitlementVM = EntitlementViewModel(backend: nextBackend)
+        // Update the backend on the existing VM rather than replacing it.
+        // Replacing creates a new instance that SwiftUI doesn't re-observe,
+        // so entitlement updates after load() are silently dropped.
+        entitlementVM.backend = nextBackend
     }
 }
 

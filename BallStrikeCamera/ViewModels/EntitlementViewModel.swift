@@ -21,7 +21,7 @@ final class EntitlementViewModel: ObservableObject {
         set { _isDeveloperModeStored = newValue }
     }
 
-    private let backend: AppBackend
+    var backend: AppBackend
 
     init(backend: AppBackend) {
         self.backend = backend
