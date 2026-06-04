@@ -1295,6 +1295,7 @@ struct CourseModeGPSHoleView: View {
     @EnvironmentObject var camera: CameraController
     @StateObject private var vm: CourseRoundViewModel
 
+    @State private var clubs: [UserClub] = []
     @State private var showCamera      = false
     @State private var showScoreEntry  = false
     @State private var showScorecard   = false
@@ -1344,7 +1345,7 @@ struct CourseModeGPSHoleView: View {
     /// Called when an NFC club tag is tapped; records shot and fires haptic silently.
     private func handleNFCClubTap() {
         guard let clubId = NFCManager.shared.lastScannedClubId,
-              let club = session.userProfile?.clubs.first(where: { $0.id == clubId }) else { return }
+              let club = clubs.first(where: { $0.id == clubId }) else { return }
         vm.recordNFCShot(club: club)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
@@ -2015,6 +2016,10 @@ struct CourseModeGPSHoleView: View {
             Text("You're standing at your ball. Confirming will save your current GPS location as where that shot ended.")
         }
         .task {
+            // Load clubs for NFC tag lookup
+            if let uid = session.currentUser?.id {
+                clubs = (try? await session.backend.loadClubs(userId: uid)) ?? []
+            }
             if let round = initialRound {
                 await vm.resumeRound(round)
             } else if let course = initialCourse, let tee = initialTeeBox {

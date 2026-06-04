@@ -206,7 +206,7 @@ final class SupabaseBackendService: AppBackend {
         // Strip columns not yet in the DB schema (apply migration 016 to enable them).
         body.removeValue(forKey: "loft_degrees")
         body.removeValue(forKey: "brand")
-        try await upsert(table: "clubs", body: body, onConflict: "user_id,id")
+        try await upsert(table: "clubs", body: body)
     }
 
     func deleteClub(clubId: UUID, userId: UUID) async throws {
