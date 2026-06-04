@@ -1341,6 +1341,14 @@ struct CourseModeGPSHoleView: View {
         return vm.inferredStrokes(forHole: hole.holeNumber)
     }
 
+    /// Called when an NFC club tag is tapped; records shot and fires haptic silently.
+    private func handleNFCClubTap() {
+        guard let clubId = NFCManager.shared.lastScannedClubId,
+              let club = session.userProfile?.clubs.first(where: { $0.id == clubId }) else { return }
+        vm.recordNFCShot(club: club)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
     private var scorecardYardage: Int? {
         guard let gh = currentCourseHole else { return nil }
         // Match by selected tee box id, then by name, then fall back to any available yardage
@@ -2040,14 +2048,7 @@ struct CourseModeGPSHoleView: View {
         .onChange(of: gpsOn) { _ in
             recenterToken += 1
         }
-        // Silent NFC club tap — record shot location and update inferred score
-        .onChange(of: NFCManager.shared.lastScannedClubId) { clubId in
-            guard let clubId,
-                  let club = session.userProfile?.clubs.first(where: { $0.id == clubId }) else { return }
-            vm.recordNFCShot(club: club)
-            // Brief haptic to confirm detection without any UI
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        }
+        .task(id: NFCManager.shared.lastScannedClubId) { handleNFCClubTap() }
         .onChange(of: showCamera) { showing in
             // Camera cover dismissed — now play the deferred HUD flight on the visible map.
             guard !showing, let pending = pendingFlight else { return }
