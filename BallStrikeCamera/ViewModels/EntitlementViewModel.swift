@@ -17,11 +17,7 @@ final class EntitlementViewModel: ObservableObject {
     ]
 
     var isDeveloperMode: Bool {
-        get {
-            guard _isDeveloperModeStored else { return false }
-            let uid = entitlement.userId.uuidString
-            return Self.authorisedDevUserIds.contains(uid)
-        }
+        get { Self.authorisedDevUserIds.contains(entitlement.userId.uuidString) }
         set { _isDeveloperModeStored = newValue }
     }
 
