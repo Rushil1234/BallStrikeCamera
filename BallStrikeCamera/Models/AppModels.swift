@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 // MARK: - App User
 
@@ -78,6 +79,17 @@ enum ClubType: String, Codable, CaseIterable {
         case .iron:        return "figure.golf"
         case .wedge:       return "figure.golf"
         case .putter:      return "circle.fill"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .driver:      return Color(red: 0.30, green: 0.55, blue: 0.95)  // blue
+        case .fairwayWood: return Color(red: 0.25, green: 0.75, blue: 0.45)  // green
+        case .hybrid:      return Color(red: 0.55, green: 0.38, blue: 0.90)  // purple
+        case .iron:        return Color(red: 0.90, green: 0.65, blue: 0.20)  // gold
+        case .wedge:       return Color(red: 0.95, green: 0.45, blue: 0.25)  // orange
+        case .putter:      return Color(red: 0.75, green: 0.25, blue: 0.35)  // red
         }
     }
 }

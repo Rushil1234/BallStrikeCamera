@@ -124,11 +124,11 @@ private struct ClubRow: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(BSTheme.fairwayGreen.opacity(0.15))
+                    .fill(club.type.color.opacity(0.18))
                     .frame(width: 40, height: 40)
                 Image(systemName: club.type.icon)
                     .font(.system(size: 16))
-                    .foregroundColor(BSTheme.fairwayGreen)
+                    .foregroundColor(club.type.color)
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(club.name)
