@@ -62,6 +62,14 @@ struct RangeCameraScreen: View {
             onShotSaved: isCourseMode ? externalOnShotSaved : nil,
             onShotComplete: {}
         )
+        // Silent NFC club detection — updates selected club without any UI interruption
+        .onChange(of: NFCManager.shared.lastScannedClubId) { clubId in
+            guard let clubId,
+                  let match = clubs.first(where: { $0.id == clubId }) else { return }
+            selectedClub   = match.name
+            selectedClubId = match.id
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
         .onChange(of: camera.showShotResult) { isShowing in
             guard isShowing, !isCourseMode,
                   let analysis = camera.latestShotAnalysis,

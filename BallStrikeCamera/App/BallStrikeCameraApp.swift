@@ -20,6 +20,11 @@ struct BallStrikeCameraApp: App {
                     guard phase == .active else { return }
                     Task { await session.refreshSessionAndEntitlement() }
                 }
+                // Silent NFC club detection — fires when user taps a tagged club to the phone.
+                // truecarry://nfc/{club-uuid} is written to each NFC sticker during setup.
+                .onOpenURL { url in
+                    NFCManager.shared.handleNFCURL(url)
+                }
         }
     }
 }

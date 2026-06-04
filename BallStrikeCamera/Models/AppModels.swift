@@ -61,6 +61,21 @@ struct UserClub: Codable, Identifiable {
     var sortOrder: Int = 0
     var brand: String? = nil
     var loftDegrees: Double? = nil
+    /// Unique identifier written to the physical NFC sticker attached to this club.
+    var nfcTagId: String? = nil
+}
+
+// MARK: - NFC Shot
+
+/// A single club tap recorded via NFC during a round, paired with GPS coordinates.
+struct NFCShot: Codable, Identifiable {
+    var id: UUID = UUID()
+    var clubId: UUID
+    var clubName: String
+    var holeNumber: Int
+    var latitude: Double
+    var longitude: Double
+    var tappedAt: Date = Date()
 }
 
 enum ClubType: String, Codable, CaseIterable {
@@ -263,6 +278,8 @@ struct CourseRound: Codable, Identifiable {
     var holes: [RoundHole] = []
     var shotIds: [UUID] = []
     var scoreSummary: RoundScoreSummary = RoundScoreSummary()
+    /// NFC-recorded club taps during this round, used for shot location tracking and score inference.
+    var nfcShots: [NFCShot] = []
 }
 
 struct RoundHole: Codable, Identifiable {

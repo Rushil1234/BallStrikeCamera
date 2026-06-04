@@ -26,13 +26,16 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.rushilkakkad.BallStrikeCamera</string>
+			<string>com.noahtobias.BallStrikeCamera</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.rushilkakkad.BallStrikeCamera</string>
+				<string>com.noahtobias.BallStrikeCamera</string>
+				<string>truecarry</string>
 			</array>
 		</dict>
 	</array>
+	<key>NFCScannerUsageDescription</key>
+	<string>True Carry uses NFC to identify which club you're hitting when you tap it to your iPhone.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>

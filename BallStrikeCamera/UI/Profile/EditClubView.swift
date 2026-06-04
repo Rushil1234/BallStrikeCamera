@@ -1,7 +1,9 @@
 import SwiftUI
+import CoreNFC
 
 struct EditClubView: View {
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var nfc = NFCManager.shared
 
     enum Mode {
         case add(userId: UUID)
@@ -18,6 +20,7 @@ struct EditClubView: View {
     @State private var expectedCarry: String
     @State private var expectedTotal: String
     @State private var isActive: Bool
+    @State private var nfcTagId: String?
 
     private var title: String {
         switch mode {
@@ -56,6 +59,7 @@ struct EditClubView: View {
             _expectedCarry  = State(initialValue: String(club.expectedCarryYards))
             _expectedTotal  = State(initialValue: String(club.expectedTotalYards))
             _isActive       = State(initialValue: club.isActive)
+            _nfcTagId       = State(initialValue: club.nfcTagId)
         }
     }
 
@@ -66,6 +70,7 @@ struct EditClubView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
                         formSection
+                        nfcSection
                         if case .edit = mode { activeToggle }
                         Spacer(minLength: 24)
                     }
@@ -167,6 +172,88 @@ struct EditClubView: View {
         .premiumCard(padding: 16)
     }
 
+    // MARK: - NFC Section
+
+    private var nfcSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("NFC TAG")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(BSTheme.textMuted)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    Image(systemName: nfcTagId != nil ? "wave.3.right.circle.fill" : "wave.3.right.circle")
+                        .font(.system(size: 22))
+                        .foregroundColor(nfcTagId != nil ? .green : BSTheme.textMuted)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(nfcTagId != nil ? "NFC Tag Linked" : "No NFC Tag")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(BSTheme.textPrimary)
+                        Text(nfcTagId != nil
+                             ? "Tap your club to your iPhone to auto-select it"
+                             : "Link a sticker so tapping the club selects it automatically")
+                            .font(.system(size: 11))
+                            .foregroundColor(BSTheme.textMuted)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                }
+                .padding(14)
+
+                Divider().padding(.leading, 50)
+
+                Button {
+                    guard let clubId = originalClub?.id ?? (name.isEmpty ? nil : UUID()) else { return }
+                    nfc.writeState = .idle
+                    nfc.beginWriting(clubId: clubId)
+                } label: {
+                    HStack {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                        Text(nfcTagId != nil ? "Re-link NFC Tag" : "Link NFC Tag")
+                            .fontWeight(.medium)
+                    }
+                    .font(.system(size: 14))
+                    .foregroundColor(.accentColor)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .disabled(!NFCNDEFReaderSession.readingAvailable)
+
+                if case .scanning = nfc.writeState {
+                    HStack(spacing: 8) {
+                        ProgressView().scaleEffect(0.8)
+                        Text("Hold iPhone near the NFC sticker…")
+                            .font(.system(size: 12))
+                            .foregroundColor(BSTheme.textMuted)
+                    }
+                    .padding(.horizontal, 14).padding(.bottom, 10)
+                }
+                if case .success = nfc.writeState {
+                    Label("Tag linked!", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 14).padding(.bottom, 10)
+                }
+                if case .failure(let msg) = nfc.writeState {
+                    Text("Failed: \(msg)")
+                        .font(.system(size: 12))
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 14).padding(.bottom, 10)
+                }
+            }
+            .premiumCard(padding: 0)
+        }
+        .onChange(of: nfc.writeState) { state in
+            if case .success = state {
+                // Mark this club as NFC-linked using the club's id written to the tag
+                if let id = originalClub?.id {
+                    nfcTagId = NFCManager.nfcURL(for: id)
+                }
+            }
+        }
+    }
+
     private func save() {
         let trimmedBrand = brand.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -188,6 +275,7 @@ struct EditClubView: View {
         club.expectedCarryYards = carry
         club.expectedTotalYards = total
         club.isActive = isActive
+        club.nfcTagId = nfcTagId
         onSave(club)
         dismiss()
     }

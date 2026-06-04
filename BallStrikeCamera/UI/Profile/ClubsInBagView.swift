@@ -145,6 +145,11 @@ private struct ClubRow: View {
                     .foregroundColor(BSTheme.textMuted)
             }
             Spacer()
+            if club.nfcTagId != nil {
+                Image(systemName: "wave.3.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.green)
+            }
             Image(systemName: "chevron.right")
                 .font(.system(size: 12))
                 .foregroundColor(BSTheme.textMuted)

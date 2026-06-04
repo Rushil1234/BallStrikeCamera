@@ -29,6 +29,33 @@ final class CourseRoundViewModel: ObservableObject {
 
     var roundActive: Bool { activeRound != nil }
 
+    // MARK: - NFC Shot Tracking
+
+    /// Records an NFC club tap at the user's current GPS position for the active hole.
+    func recordNFCShot(club: UserClub) {
+        guard var round = activeRound,
+              let coord = location.currentLocation else { return }
+        let holeNum = currentHole?.holeNumber ?? (currentHoleIndex + 1)
+        let shot = NFCShot(
+            clubId:      club.id,
+            clubName:    club.name,
+            holeNumber:  holeNum,
+            latitude:    coord.latitude,
+            longitude:   coord.longitude
+        )
+        round.nfcShots.append(shot)
+        activeRound = round
+    }
+
+    /// Returns the NFC-inferred stroke count for a hole, capped at par + 10.
+    func inferredStrokes(forHole holeNumber: Int) -> Int? {
+        guard let round = activeRound else { return nil }
+        let shots = round.nfcShots.filter { $0.holeNumber == holeNumber }
+        guard !shots.isEmpty else { return nil }
+        let par = round.holes.first(where: { $0.holeNumber == holeNumber })?.par ?? 4
+        return min(shots.count, par + 10)
+    }
+
     init(userId: UUID, backend: AppBackend) {
         self.userId  = userId
         self.backend = backend
