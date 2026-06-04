@@ -117,7 +117,7 @@ final class SupabaseBackendService: AppBackend {
             "type": "signup",
             "email": email,
             "options": [
-                "email_redirect_to": AppConfig.websiteURL.appendingPathComponent("login").absoluteString
+                "email_redirect_to": AppConfig.websiteURL.appendingPathComponent("auth/callback").absoluteString
             ]
         ])
         let (data, response) = try await session.data(for: req)
