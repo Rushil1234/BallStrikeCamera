@@ -12,12 +12,13 @@ final class EntitlementViewModel: ObservableObject {
 
     /// Only honoured for explicitly authorised user IDs — prevents guests from
     /// keeping developer mode active if they had it toggled before the toggle was removed.
+    // UUID strings in Swift are UPPERCASE — store and compare lowercase to be safe
     private static let authorisedDevUserIds: Set<String> = [
         "35eabe3f-68db-43e1-bf4d-4995ccb3301a"  // noahtobias19@gmail.com
     ]
 
     var isDeveloperMode: Bool {
-        get { Self.authorisedDevUserIds.contains(entitlement.userId.uuidString) }
+        get { Self.authorisedDevUserIds.contains(entitlement.userId.uuidString.lowercased()) }
         set { _isDeveloperModeStored = newValue }
     }
 
@@ -33,7 +34,7 @@ final class EntitlementViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         // Authorised dev accounts always get unlimited regardless of DB state.
-        if Self.authorisedDevUserIds.contains(userId.uuidString) {
+        if Self.authorisedDevUserIds.contains(userId.uuidString.lowercased()) {
             entitlement = UserEntitlement(
                 id: UUID(), userId: userId, tier: .unlimited,
                 paymentStatus: .active,
