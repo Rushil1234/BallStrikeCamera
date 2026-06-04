@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreNFC
 
 struct RangeCameraScreen: View {
     @EnvironmentObject private var camera: CameraController
