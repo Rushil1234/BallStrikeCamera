@@ -1294,6 +1294,7 @@ struct CourseModeGPSHoleView: View {
     @EnvironmentObject var session: AuthSessionStore
     @EnvironmentObject var camera: CameraController
     @StateObject private var vm: CourseRoundViewModel
+    @ObservedObject private var nfcManager = NFCManager.shared
 
     @State private var clubs: [UserClub] = []
     @State private var showCamera      = false
@@ -2053,7 +2054,7 @@ struct CourseModeGPSHoleView: View {
         .onChange(of: gpsOn) { _ in
             recenterToken += 1
         }
-        .task(id: NFCManager.shared.lastScannedClubId) { handleNFCClubTap() }
+        .task(id: nfcManager.lastScannedClubId) { handleNFCClubTap() }
         .onChange(of: showCamera) { showing in
             // Camera cover dismissed — now play the deferred HUD flight on the visible map.
             guard !showing, let pending = pendingFlight else { return }

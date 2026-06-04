@@ -5,6 +5,7 @@ struct RangeCameraScreen: View {
     @EnvironmentObject private var camera: CameraController
     @Environment(\.dismiss) private var dismiss
     @StateObject private var rangeVM: RangeSessionViewModel
+    @ObservedObject private var nfcManager = NFCManager.shared
     @AppStorage("tc_save_original_frames") private var defaultSaveOriginalFrames = false
 
     @State private var selectedClub = "7 Iron"
@@ -46,9 +47,6 @@ struct RangeCameraScreen: View {
             shotCount: isCourseMode ? 0 : rangeVM.shots.count,
             context: context,
             onChooseClub: { showClubPicker = true },
-            onNFCScanClub: NFCNDEFReaderSession.readingAvailable ? {
-                NFCManager.shared.beginReading(alertMessage: "Tap your club's NFC sticker to select it.")
-            } : nil,
             onDismiss: {
                 if !isCourseMode && !rangeVM.shots.isEmpty {
                     showEndConfirmation = true
@@ -66,8 +64,8 @@ struct RangeCameraScreen: View {
             onShotSaved: isCourseMode ? externalOnShotSaved : nil,
             onShotComplete: {}
         )
-        // Silent NFC club detection — updates selected club without any UI interruption
-        .onChange(of: NFCManager.shared.lastScannedClubId) { clubId in
+        // Silent NFC club detection — fires when user taps a tagged club to phone
+        .onChange(of: nfcManager.lastScannedClubId) { clubId in
             guard let clubId,
                   let match = clubs.first(where: { $0.id == clubId }) else { return }
             selectedClub   = match.name
