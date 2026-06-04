@@ -1335,6 +1335,12 @@ struct CourseModeGPSHoleView: View {
         return currentCourseHole
     }
 
+    /// Returns existing score or NFC-inferred tap count for the score entry prefill.
+    private func scoreEntryInitialScore(for hole: RoundHole) -> Int? {
+        if let existing = hole.score { return existing }
+        return vm.inferredStrokes(forHole: hole.holeNumber)
+    }
+
     private var scorecardYardage: Int? {
         guard let gh = currentCourseHole else { return nil }
         // Match by selected tee box id, then by name, then fall back to any available yardage
@@ -1953,14 +1959,10 @@ struct CourseModeGPSHoleView: View {
         }
         .sheet(isPresented: $showScoreEntry) {
             if let hole = vm.currentHole {
-                // Pre-fill score from NFC tap count if user hasn't scored this hole yet
-                let nfcInferred = hole.score == nil
-                    ? vm.inferredStrokes(forHole: hole.holeNumber)
-                    : nil
                 ScoreEntryView(
                     holeNumber:     hole.holeNumber,
                     par:            hole.par,
-                    existingScore:  hole.score ?? nfcInferred,
+                    existingScore:  scoreEntryInitialScore(for: hole),
                     existingPutts:  hole.putts,
                     holeYardage:    scorecardYardage,
                     handicap:       currentCourseHole?.handicap
