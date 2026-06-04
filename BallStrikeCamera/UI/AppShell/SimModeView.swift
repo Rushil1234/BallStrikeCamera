@@ -113,8 +113,8 @@ struct SimModeView: View {
                     type: .sim,
                     defaultName: saveSheetDefaultName,
                     date: simVM.activeSession?.startedAt ?? Date()
-                )
-            ) { name, desc in
+                ),
+                onSave: { name, desc in
                 Task {
                     await simVM.endSessionWithDetails(
                         name: name,
@@ -123,7 +123,11 @@ struct SimModeView: View {
                     )
                     dismiss()
                 }
-            }
+                },
+                onDelete: {
+                    Task { await simVM.discardSession(); dismiss() }
+                }
+            )
         }
         .task {
             await simVM.loadClubs()

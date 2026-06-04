@@ -34,14 +34,19 @@ struct SessionSaveSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let config: SessionSaveConfig
-    let onSave: (String, String?) -> Void
+    let onSave:   (String, String?) -> Void
+    var onDelete: (() -> Void)? = nil
 
     @State private var name: String
     @State private var description: String = ""
+    @State private var showDeleteConfirm = false
 
-    init(config: SessionSaveConfig, onSave: @escaping (String, String?) -> Void) {
+    init(config: SessionSaveConfig,
+         onSave: @escaping (String, String?) -> Void,
+         onDelete: (() -> Void)? = nil) {
         self.config = config
         self.onSave = onSave
+        self.onDelete = onDelete
         _name = State(initialValue: config.defaultName)
     }
 
@@ -83,6 +88,21 @@ struct SessionSaveSheet: View {
                 } header: {
                     Text("Description (Optional)")
                 }
+
+                if onDelete != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            showDeleteConfirm = true
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("Delete Session")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                        }
+                    }
+                }
             }
             .navigationTitle(config.type.title)
             .navigationBarTitleDisplayMode(.inline)
@@ -100,6 +120,19 @@ struct SessionSaveSheet: View {
                     .fontWeight(.semibold)
                     .disabled(!canSave)
                 }
+            }
+            .confirmationDialog(
+                "Delete this session?",
+                isPresented: $showDeleteConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Delete Session", role: .destructive) {
+                    dismiss()
+                    onDelete?()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This cannot be undone.")
             }
         }
     }

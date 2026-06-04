@@ -75,13 +75,14 @@ struct RangeSessionView: View {
                     type: .range,
                     defaultName: saveSheetDefaultName,
                     date: vm.activeSession?.startedAt ?? Date()
-                )
-            ) { name, desc in
-                Task {
-                    await vm.endSessionWithDetails(name: name, description: desc)
-                    dismiss()
+                ),
+                onSave: { name, desc in
+                    Task { await vm.endSessionWithDetails(name: name, description: desc); dismiss() }
+                },
+                onDelete: {
+                    Task { await vm.discardSession(); dismiss() }
                 }
-            }
+            )
         }
         .fullScreenCover(isPresented: $showCamera) {
             RangeCameraScreen(

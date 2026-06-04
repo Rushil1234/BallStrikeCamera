@@ -121,14 +121,14 @@ struct RangeCameraScreen: View {
                     type: .range,
                     defaultName: saveSheetDefaultName,
                     date: rangeVM.activeSession?.startedAt ?? Date()
-                )
-            ) { name, desc in
-                Task {
-                    await rangeVM.endSessionWithDetails(name: name, description: desc)
-                    publishWatchRangeState()
-                    exitClean()
+                ),
+                onSave: { name, desc in
+                    Task { await rangeVM.endSessionWithDetails(name: name, description: desc); publishWatchRangeState(); exitClean() }
+                },
+                onDelete: {
+                    Task { await rangeVM.discardSession(); exitClean() }
                 }
-            }
+            )
         }
         .confirmationDialog("Select Club", isPresented: $showClubPicker, titleVisibility: .visible) {
             ForEach(clubs) { club in
