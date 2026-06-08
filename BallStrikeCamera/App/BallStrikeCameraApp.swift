@@ -10,6 +10,9 @@ struct BallStrikeCameraApp: App {
 
     init() {
         WatchConnectivityBridge.shared.activate()
+        // Touch the singleton so CBCentralManager is created and begins scanning
+        // as soon as Bluetooth is available — before any camera screen opens.
+        _ = RFIDHubManager.shared
     }
 
     var body: some Scene {

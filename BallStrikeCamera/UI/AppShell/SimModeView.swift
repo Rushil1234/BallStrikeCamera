@@ -15,6 +15,7 @@ struct SimModeView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var simVM: SimSessionViewModel
     @StateObject private var ogsVM = OpenGolfSimViewModel()
+    @StateObject private var gsproVM = GSProViewModel()
 
     @State private var selectedProvider = "OGS"
     @State private var showCamera = false
@@ -46,7 +47,8 @@ struct SimModeView: View {
                     VStack(spacing: BSTheme.sectionGap) {
                         subheader
                         providerSection
-                        if selectedProvider == "OGS" { ogsConnectionSection }
+                        if selectedProvider == "OGS"   { ogsConnectionSection }
+                        if selectedProvider == "GSPro" { gsproConnectionSection }
                         sessionSection
                         if simVM.sessionActive { activeSessionSection }
                         Spacer(minLength: 32)
@@ -82,7 +84,7 @@ struct SimModeView: View {
         .tcAppearance()
         // Camera screen for real shots
         .fullScreenCover(isPresented: $showCamera) {
-            SimCameraScreen(simVM: simVM, ogsVM: ogsVM)
+            SimCameraScreen(simVM: simVM, ogsVM: ogsVM, gsproVM: gsproVM)
                 .ignoresSafeArea()
                 .statusBarHidden(true)
         }
@@ -379,6 +381,115 @@ struct SimModeView: View {
         }
     }
 
+    // MARK: - GSPro Connection section
+
+    private var gsproConnectionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BSectionHeader(title: "GSPro Connection")
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Make sure your iPhone and PC are on the same Wi-Fi. Enter your PC's local IP — GSPro Connect listens on port 921.")
+                    .font(.system(size: 12))
+                    .foregroundColor(BSTheme.textMuted)
+                    .lineSpacing(2)
+
+                VStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        Text("Host").font(.system(size: 13, weight: .semibold)).foregroundColor(BSTheme.textMuted).frame(width: 42, alignment: .leading)
+                        TextField("192.168.1.x", text: $gsproVM.host)
+                            .font(.system(size: 15, design: .monospaced))
+                            .foregroundColor(BSTheme.textPrimary)
+                            .keyboardType(.decimalPad)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                    Divider().background(BSTheme.border)
+                    HStack(spacing: 12) {
+                        Text("Port").font(.system(size: 13, weight: .semibold)).foregroundColor(BSTheme.textMuted).frame(width: 42, alignment: .leading)
+                        TextField("921", text: $gsproVM.portString)
+                            .font(.system(size: 15, design: .monospaced))
+                            .foregroundColor(BSTheme.textPrimary)
+                            .keyboardType(.numberPad)
+                    }
+                }
+                .premiumCard(padding: 14)
+
+                gsproStatusRow
+
+                HStack(spacing: 10) {
+                    PremiumActionButton(
+                        title: gsproVM.connectionState.isConnecting ? "Connecting…" : "Connect",
+                        icon: "antenna.radiowaves.left.and.right",
+                        style: .gradient(BSTheme.simGradient),
+                        action: { gsproVM.connect() }
+                    )
+                    .disabled(!gsproVM.canConnect || gsproVM.connectionState.isConnecting || gsproVM.connectionState.isConnected)
+                    .opacity(!gsproVM.canConnect || gsproVM.connectionState.isConnecting || gsproVM.connectionState.isConnected ? 0.45 : 1)
+
+                    if gsproVM.connectionState.isConnected || gsproVM.connectionState.isConnecting {
+                        PremiumActionButton(title: "Disconnect", icon: "xmark.circle", style: .ghost, action: { gsproVM.disconnect() })
+                    }
+                }
+
+                if gsproVM.connectionState.isConnected {
+                    PremiumActionButton(
+                        title: gsproVM.isSending ? "Sending…" : "Send Test Shot",
+                        icon: "paperplane.fill",
+                        style: .ghost,
+                        action: { Task { await gsproVM.sendTestShot() } }
+                    )
+                    .disabled(gsproVM.isSending)
+                    .opacity(gsproVM.isSending ? 0.5 : 1)
+                }
+
+                if let feedback = gsproVM.lastSendFeedback {
+                    Text(feedback)
+                        .font(.system(size: 12))
+                        .foregroundColor(feedback.hasSuffix("GSPro.") ? BSTheme.fairwayGreen : BSTheme.dangerRed)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let info = gsproVM.playerInfo {
+                    gsproPlayerInfoRow(info)
+                }
+            }
+        }
+    }
+
+    private var gsproStatusRow: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(gsproStatusColor.opacity(0.18)).frame(width: 34, height: 34)
+                Circle().fill(gsproStatusColor).frame(width: 9, height: 9)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(gsproVM.connectionState.label).font(.system(size: 14, weight: .semibold)).foregroundColor(BSTheme.textPrimary)
+                if let msg = gsproVM.statusMessage { Text(msg).font(.system(size: 11)).foregroundColor(BSTheme.textMuted) }
+            }
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func gsproPlayerInfoRow(_ info: GSProPlayerInfo) -> some View {
+        HStack(spacing: 10) {
+            if let club = info.clubDisplayName {
+                StatTile(label: "Club in GSPro", value: club, accent: BSTheme.electricCyan)
+            }
+            if let handed = info.handed {
+                StatTile(label: "Handed", value: handed, accent: BSTheme.gold)
+            }
+        }
+    }
+
+    private var gsproStatusColor: Color {
+        switch gsproVM.connectionState {
+        case .connected:    return BSTheme.fairwayGreen
+        case .connecting:   return BSTheme.gold
+        case .disconnected: return BSTheme.textMuted
+        case .failed:       return BSTheme.dangerRed
+        }
+    }
+
     // MARK: - Session section (start / stats)
 
     private var sessionSection: some View {
@@ -433,12 +544,14 @@ struct SimModeView: View {
                 action: {
                     Task {
                         let shot = await simVM.addSimulatedShot()
-                        // Send sim shot to OGS if connected
                         if ogsVM.connectionState.isConnected {
                             await ogsVM.sendMetrics(shot.metrics)
                             simulateFeedback = "Shot sent to OpenGolfSim."
+                        } else if gsproVM.connectionState.isConnected {
+                            await gsproVM.sendMetrics(shot.metrics)
+                            simulateFeedback = "Shot sent to GSPro."
                         } else {
-                            simulateFeedback = "Simulated locally — connect to OpenGolfSim to send shots."
+                            simulateFeedback = "Simulated locally — connect to a simulator to send shots."
                         }
                     }
                 }

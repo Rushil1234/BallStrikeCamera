@@ -46,7 +46,12 @@ struct RangeCameraScreen: View {
             selectedClubId: selectedClubId,
             shotCount: isCourseMode ? 0 : rangeVM.shots.count,
             context: context,
-            onChooseClub: { showClubPicker = true },
+            onChooseClub: {
+                showClubPicker = true
+                if NFCNDEFReaderSession.readingAvailable {
+                    nfcManager.beginReading(alertMessage: "Or tap your NFC club to auto-select")
+                }
+            },
             onDismiss: {
                 if !isCourseMode && !rangeVM.shots.isEmpty {
                     showEndConfirmation = true
@@ -64,18 +69,20 @@ struct RangeCameraScreen: View {
             onShotSaved: isCourseMode ? externalOnShotSaved : nil,
             onShotComplete: {}
         )
-        // Silent NFC club detection — fires when user taps a tagged club to phone
+        // NFC foreground scan — fires when user taps a tagged club during picker session
         .onChange(of: nfcManager.lastScannedClubId) { clubId in
-            print("[NFC] RangeCameraScreen onChange clubId=\(clubId?.uuidString ?? "nil") clubs=\(clubs.count)")
             guard let clubId else { return }
             if let match = clubs.first(where: { $0.id == clubId }) {
-                print("[NFC] matched club: \(match.name)")
                 selectedClub   = match.name
                 selectedClubId = match.id
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } else {
-                print("[NFC] no match — club IDs: \(clubs.map { $0.id.uuidString })")
+                showClubPicker = false
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                publishWatchRangeState()
             }
+        }
+        // Cancel the NFC session if the picker is dismissed without tapping a tag
+        .onChange(of: showClubPicker) { isShowing in
+            if !isShowing { nfcManager.cancelRead() }
         }
         .onChange(of: camera.showShotResult) { isShowing in
             guard isShowing, !isCourseMode,

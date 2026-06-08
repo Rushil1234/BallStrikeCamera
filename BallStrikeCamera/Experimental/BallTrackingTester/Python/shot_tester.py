@@ -127,8 +127,9 @@ _RUNTIME_GROUND_CAL   = None  # ground calibration dict or None
 _RUNTIME_FLIGHT_MODEL = None  # flight_model.json dict or None
 
 _is_updating = False          # matplotlib callback re-entry guard (Part M)
+_BATCH_MODE = _face_args.batch is not None
 
-if not _HEADLESS and not _LABELING_MODE:
+if not _HEADLESS and not _LABELING_MODE and not _BATCH_MODE:
     png_paths = sorted(glob.glob(os.path.join(FOLDER, "frame_*.png")))
     assert png_paths, f"No frame_*.png in {FOLDER}"
     raw_frames = [np.array(Image.open(p).convert("RGB")) for p in png_paths]
@@ -2302,7 +2303,9 @@ def estimate_club_path(club_obs, zero_deg, impact):
                     method="not_enough_data", warnings=["Not enough pre-impact club obs."])
     pre = sorted(pre, key=lambda o: o["idx"])
     times = [rel_times[o["idx"]] for o in pre]
-    xs = [o["cx"] for o in pre]; ys = [o["cy"] for o in pre]
+    # Prefer leading edge (face position) over centroid for path angle — more representative
+    xs = [o.get("lead_x") if o.get("lead_x") is not None else o["cx"] for o in pre]
+    ys = [o.get("lead_y") if o.get("lead_y") is not None else o["cy"] for o in pre]
     n = len(times); mean_t = sum(times)/n
     denom = sum((t-mean_t)**2 for t in times)
     if denom < 1e-12:
@@ -2874,14 +2877,26 @@ def find_club_blob(curr, prev, roi, ball_center, ball_dia, p):
         min_x,max_x = min(pxs),max(pxs); min_y,max_y = min(pys),max(pys)
         cx_ = float(np.mean(pxs)); cy_ = float(np.mean(pys))
         width = max(1, max_x-min_x+stride); height = max(1, max_y-min_y+stride)
+        horiz_asp = width / height  # >1 = horizontal (clubhead), <1 = vertical (shaft)
         elong = max(width/height, height/width)
-        conf = min(1.0, 0.65*min(1,count/max(1,int(p["club_min_area"])*10)) + 0.35*min(1,elong/4))
-        closest_i = int(np.argmin([(pxs[k]-bx)**2+(pys[k]-by)**2 for k in range(count)]))
+        min_hasp = float(p.get("club_min_horiz_asp", 0.0))
+        if min_hasp > 0 and horiz_asp < min_hasp: continue
+        # Confidence: size + elongation + horizontal aspect bonus
+        hasp_bonus = min(0.20, max(0.0, (horiz_asp - 1.0) * 0.08))
+        conf = min(1.0, 0.60*min(1,count/max(1,int(p["club_min_area"])*10))
+                       + 0.30*min(1,elong/4) + hasp_bonus)
+        # Leading edge: centroid of ball-facing third of blob pixels (more stable than single closest pixel)
+        dists_sq = [(pxs[k]-bx)**2+(pys[k]-by)**2 for k in range(count)]
+        face_n = max(1, count // 3)
+        face_idx = sorted(range(count), key=lambda k: dists_sq[k])[:face_n]
+        lead_x_px = float(np.mean([pxs[k] for k in face_idx]))
+        lead_y_px = float(np.mean([pys[k] for k in face_idx]))
         dist = math.hypot(cx_-bx, cy_-by) / max(W,H)
-        score = dist - min(0.04, elong*0.004) - conf*0.02
-        blobs.append(dict(score=score, count=count, conf=conf,
+        shaft_penalty = max(0.0, (1.0/max(horiz_asp, 0.1) - 1.0) * 0.04)  # penalize tall blobs
+        score = dist - min(0.04, elong*0.004) - conf*0.02 + shaft_penalty
+        blobs.append(dict(score=score, count=count, conf=conf, horiz_asp=horiz_asp,
                           cx=cx_/W, cy=cy_/H,
-                          lead_x=pxs[closest_i]/W, lead_y=pys[closest_i]/H,
+                          lead_x=lead_x_px/W, lead_y=lead_y_px/H,
                           bbox=(min_x/W, min_y/H, (max_x-min_x+stride)/W, (max_y-min_y+stride)/H),
                           reason=f"club_{mode}"))
     if not blobs: return None
@@ -2895,7 +2910,8 @@ def nearest_ball_result(results, idx):
 
 def run_club_tracker(frames_norm, results, impact, p):
     if p.get("club_enabled",1.0) < 0.5: return []
-    start, end = max(0,impact-10), min(N-1,impact+1)
+    pre_frames = int(p.get("club_pre_frames", 10))
+    start, end = max(0, impact - pre_frames), min(N-1, impact+1)
     out = []
     for idx in range(start, end+1):
         br = nearest_ball_result(results, idx)
@@ -2912,6 +2928,31 @@ def run_club_tracker(frames_norm, results, impact, p):
                    reason="no_club_blob")
         if blob: obs.update(blob); obs["reason"] = blob["reason"]
         out.append(obs)
+
+    # Temporal consistency filter: reject detections that deviate from a linear trend
+    if p.get("club_temporal_filter", 1.0) >= 0.5:
+        max_resid = float(p.get("club_max_jump_norm", 0.08))
+        found_obs = [(o["idx"], o["cx"], o["cy"]) for o in out
+                     if o.get("found") and o.get("cx") is not None]
+        if len(found_obs) >= 3:
+            fi = np.array([x[0] for x in found_obs], dtype=float)
+            cxs = np.array([x[1] for x in found_obs], dtype=float)
+            cys = np.array([x[2] for x in found_obs], dtype=float)
+            # Fit linear trend through found positions
+            fi_mean = fi.mean(); fi_std = max(fi.std(), 1e-9)
+            fi_n = (fi - fi_mean) / fi_std
+            cx_fit = np.polyfit(fi_n, cxs, 1)
+            cy_fit = np.polyfit(fi_n, cys, 1)
+            cx_pred = np.polyval(cx_fit, fi_n)
+            cy_pred = np.polyval(cy_fit, fi_n)
+            residuals = np.sqrt((cxs - cx_pred)**2 + (cys - cy_pred)**2)
+            for i, o in enumerate(out):
+                if not o.get("found") or o.get("cx") is None: continue
+                match = next((j for j,(fidx,_,_) in enumerate(found_obs) if fidx == o["idx"]), None)
+                if match is not None and residuals[match] > max_resid:
+                    o["found"] = False
+                    o["reason"] = f"temporal_outlier(resid={residuals[match]:.3f})"
+
     found = sum(1 for o in out if o.get("found"))
     print(f"Club tracking complete: {found}/{len(out)} detected")
     return out
@@ -3281,6 +3322,8 @@ params = dict(
     club_diff=34, club_dark=85, club_edge_thresh=20,
     club_min_area=5, club_max_area=6000, club_min_conf=0.20, club_stride=2,
     club_mode="frameDiff",
+    club_pre_frames=10, club_min_horiz_asp=0.0,
+    club_temporal_filter=1.0, club_max_jump_norm=0.08,
     zero_deg=0.0,
     carry_correction_factor=0.75,
     # Candidate scoring weights
@@ -6135,8 +6178,12 @@ slider_defs = [
     ("club_edge_thresh", 1,    100,   params["club_edge_thresh"],   "Club Edge ≥"),
     ("club_min_area",    1,    300,   params["club_min_area"],      "Club MinArea"),
     ("club_max_area",    100,  20000, params["club_max_area"],      "Club MaxArea"),
-    ("club_min_conf",    0,    1,     params["club_min_conf"],      "Club MinConf"),
-    ("club_stride",      1,    4,     params["club_stride"],        "Club Stride"),
+    ("club_min_conf",       0,    1,     params["club_min_conf"],         "Club MinConf"),
+    ("club_stride",         1,    4,     params["club_stride"],           "Club Stride"),
+    ("club_pre_frames",     5,    18,    params["club_pre_frames"],       "Club PreFrames"),
+    ("club_min_horiz_asp",  0,    3.0,   params["club_min_horiz_asp"],    "Club HorizAsp≥"),
+    ("club_temporal_filter",0,    1,     params["club_temporal_filter"],  "Club TmpFilter"),
+    ("club_max_jump_norm",  0.02, 0.25,  params["club_max_jump_norm"],    "Club MaxJump"),
     ("carry_correction_factor", 0.40, 1.20, params["carry_correction_factor"], "Carry Correction"),
     # Candidate scoring
     ("sc_bright_w",          0,    5,    params["sc_bright_w"],           "Sc: Bright W"),
@@ -6817,12 +6864,14 @@ def draw_club_info():
     frame_i = wf[safe_idx]
     co = next((o for o in club_results if o.get("idx")==frame_i), None) if club_results else None
     if co and co.get("found"):
+        hasp = co.get("horiz_asp")
+        hasp_txt = f"  w/h={hasp:.2f}" if hasp is not None else ""
         bbox_txt = ""
         if co.get("bbox"):
             bbx,bby,bbw,bbh = co["bbox"]
             bbox_txt = f"  bbox=({bbx:.3f},{bby:.3f},{bbw:.3f},{bbh:.3f})"
         txt = (f"DETECTED  lead=({co['lead_x']:.4f},{co['lead_y']:.4f})"
-               f"  conf={co['conf']:.2f}  mode={co.get('reason','')} {bbox_txt}")
+               f"  conf={co['conf']:.2f}{hasp_txt}  mode={co.get('reason','')} {bbox_txt}")
         ax_cinfo.text(0.01,0.65,txt,color="#ff9900",fontsize=9,va="center",
                       transform=ax_cinfo.transAxes,family="monospace")
     elif co:

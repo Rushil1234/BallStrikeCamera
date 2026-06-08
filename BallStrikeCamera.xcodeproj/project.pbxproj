@@ -160,6 +160,7 @@
 		BF0000080000000000000014 /* PlatformSeams.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000013 /* PlatformSeams.swift */; };
 		BF0000080000000000000016 /* CourseDataAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000015 /* CourseDataAggregator.swift */; };
 		BF000008000000000000NFC1 /* NFCManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000007000000000000NFC1 /* NFCManager.swift */; };
+		BF000008000000000000BLE1 /* RFIDHubManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000007000000000000BLE1 /* RFIDHubManager.swift */; };
 		BF0000080000000000000C01 /* CourseCatalogService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000C01 /* CourseCatalogService.swift */; };
 		BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000090000000000000001 /* TrueCarryProfileView.swift */; };
 		BF00SECRETS00000000000002 /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = BF00SECRETS00000000000001 /* Secrets.plist */; };
@@ -174,6 +175,9 @@
 		CAFE000000000000000000B1 /* OpenGolfSimModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B0 /* OpenGolfSimModels.swift */; };
 		CAFE000000000000000000B3 /* OpenGolfSimClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B2 /* OpenGolfSimClient.swift */; };
 		CAFE000000000000000000B5 /* OpenGolfSimViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */; };
+		CAFE00000000000000000101 /* GSProModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000100 /* GSProModels.swift */; };
+		CAFE00000000000000000103 /* GSProClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000102 /* GSProClient.swift */; };
+		CAFE00000000000000000105 /* GSProViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000104 /* GSProViewModel.swift */; };
 		CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C0 /* SessionSaveSheet.swift */; };
 		CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C2 /* SimCameraScreen.swift */; };
 		CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C4 /* SessionDetailView.swift */; };
@@ -378,6 +382,7 @@
 		BF0000070000000000000013 /* PlatformSeams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformSeams.swift; sourceTree = "<group>"; };
 		BF0000070000000000000015 /* CourseDataAggregator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseDataAggregator.swift; sourceTree = "<group>"; };
 		BF000007000000000000NFC1 /* NFCManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NFCManager.swift; sourceTree = "<group>"; };
+		BF000007000000000000BLE1 /* RFIDHubManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RFIDHubManager.swift; sourceTree = "<group>"; };
 		BF0000070000000000000C01 /* CourseCatalogService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseCatalogService.swift; sourceTree = "<group>"; };
 		BF000008000000000000000D /* TrackedShotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackedShotModels.swift; sourceTree = "<group>"; };
 		BF0000090000000000000001 /* TrueCarryProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryProfileView.swift; sourceTree = "<group>"; };
@@ -393,6 +398,9 @@
 		CAFE000000000000000000B0 /* OpenGolfSimModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimModels.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000B2 /* OpenGolfSimClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimClient.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimViewModel.swift; sourceTree = "<group>"; };
+		CAFE00000000000000000100 /* GSProModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProModels.swift; sourceTree = "<group>"; };
+		CAFE00000000000000000102 /* GSProClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProClient.swift; sourceTree = "<group>"; };
+		CAFE00000000000000000104 /* GSProViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProViewModel.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C0 /* SessionSaveSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSaveSheet.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C2 /* SimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimCameraScreen.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C4 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
@@ -675,6 +683,8 @@
 				BF000001000000000000013C /* SampleShotLoader.swift */,
 				CAFE000000000000000000B0 /* OpenGolfSimModels.swift */,
 				CAFE000000000000000000B2 /* OpenGolfSimClient.swift */,
+				CAFE00000000000000000100 /* GSProModels.swift */,
+				CAFE00000000000000000102 /* GSProClient.swift */,
 			);
 			path = Simulation;
 			sourceTree = "<group>";
@@ -735,6 +745,7 @@
 				BF0000020000000000000014 /* RangeSessionViewModel.swift */,
 				BF0000020000000000000015 /* SimSessionViewModel.swift */,
 				CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */,
+				CAFE00000000000000000104 /* GSProViewModel.swift */,
 				BF0000020000000000000016 /* CourseRoundViewModel.swift */,
 				BF0000020000000000000017 /* AnalyticsViewModel.swift */,
 				BF0000020000000000000018 /* FeedViewModel.swift */,
@@ -862,6 +873,7 @@
 			isa = PBXGroup;
 			children = (
 				BF0000070000000000000007 /* EntitlementService.swift */,
+				BF000007000000000000BLE1 /* RFIDHubManager.swift */,
 				BF000007000000000000000A /* Golf */,
 			);
 			path = Services;
@@ -1189,6 +1201,9 @@
 				CAFE000000000000000000B1 /* OpenGolfSimModels.swift in Sources */,
 				CAFE000000000000000000B3 /* OpenGolfSimClient.swift in Sources */,
 				CAFE000000000000000000B5 /* OpenGolfSimViewModel.swift in Sources */,
+				CAFE00000000000000000101 /* GSProModels.swift in Sources */,
+				CAFE00000000000000000103 /* GSProClient.swift in Sources */,
+				CAFE00000000000000000105 /* GSProViewModel.swift in Sources */,
 				CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */,
 				CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */,
 				CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */,
@@ -1201,6 +1216,7 @@
 				BF0000080000000000000014 /* PlatformSeams.swift in Sources */,
 				BF0000080000000000000016 /* CourseDataAggregator.swift in Sources */,
 				BF000008000000000000NFC1 /* NFCManager.swift in Sources */,
+				BF000008000000000000BLE1 /* RFIDHubManager.swift in Sources */,
 				BF0000080000000000000C01 /* CourseCatalogService.swift in Sources */,
 				BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */,
 				AA99CCFA875B0F87C1A65A88 /* FeedPostFactory.swift in Sources */,

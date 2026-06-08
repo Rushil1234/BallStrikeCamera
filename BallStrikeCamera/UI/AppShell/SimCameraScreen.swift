@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreNFC
 
 /// Camera screen for Sim Mode. Reuses LaunchMonitorScaffoldView.
 /// Auto-saves each shot (with composite image) as soon as analysis completes,
@@ -10,6 +11,8 @@ struct SimCameraScreen: View {
 
     @ObservedObject var simVM: SimSessionViewModel
     @ObservedObject var ogsVM: OpenGolfSimViewModel
+    @ObservedObject var gsproVM: GSProViewModel
+    @ObservedObject private var nfcManager = NFCManager.shared
 
     @State private var selectedClub = "7 Iron"
     @State private var selectedClubId: UUID?
@@ -23,7 +26,12 @@ struct SimCameraScreen: View {
             selectedClub: $selectedClub,
             selectedClubId: selectedClubId,
             shotCount: simVM.shots.count,
-            onChooseClub: { showClubPicker = true },
+            onChooseClub: {
+            showClubPicker = true
+            if NFCNDEFReaderSession.readingAvailable {
+                nfcManager.beginReading(alertMessage: "Or tap your NFC club to auto-select")
+            }
+        },
             onDismiss: { dismiss() },
             onShotSaved: nil,   // auto-saved below; review screen is informational only
             onShotComplete: {}  // stay armed for next shot
@@ -35,13 +43,29 @@ struct SimCameraScreen: View {
 
             let savedMetrics = SavedShotMetrics(metrics)
 
-            // Send to OGS first so the ball flies without delay.
+            // Send to simulator first so the ball flies without delay.
             if ogsVM.connectionState.isConnected {
                 Task { await ogsVM.sendMetrics(savedMetrics) }
+            } else if gsproVM.connectionState.isConnected {
+                Task { await gsproVM.sendMetrics(savedMetrics) }
             }
 
             // Auto-save the shot (True Carry stats + composite jpg) to the session.
             Task { await autoSave(analysis: analysis, metrics: savedMetrics) }
+        }
+        // Hub or NFC tap while in sim mode — auto-select without opening picker
+        .onChange(of: nfcManager.lastScannedClubId) { clubId in
+            guard let clubId else { return }
+            if let match = clubs.first(where: { $0.id == clubId }) {
+                selectedClub   = match.name
+                selectedClubId = match.id
+                showClubPicker = false
+                simVM.selectedClub = match
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        }
+        .onChange(of: showClubPicker) { isShowing in
+            if !isShowing { nfcManager.cancelRead() }
         }
         .onAppear {
             OrientationManager.shared.lockLandscape()
