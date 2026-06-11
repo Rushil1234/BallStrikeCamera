@@ -16,6 +16,7 @@ struct SimModeView: View {
     @StateObject private var simVM: SimSessionViewModel
     @StateObject private var ogsVM = OpenGolfSimViewModel()
     @StateObject private var gsproVM = GSProViewModel()
+    @StateObject private var bleVM = SimBLEViewModel()
 
     @State private var selectedProvider = "OGS"
     @State private var showCamera = false
@@ -28,8 +29,9 @@ struct SimModeView: View {
     private let backend: AppBackend
 
     private let providers: [SimProviderOption] = [
-        SimProviderOption(name: "OGS",       subtitle: "OpenGolfSim — TCP connection",  icon: "antenna.radiowaves.left.and.right"),
-        SimProviderOption(name: "GSPro",      subtitle: "GSPro — full feature set",      icon: "display"),
+        SimProviderOption(name: "OGS",       subtitle: "OpenGolfSim — same network",    icon: "antenna.radiowaves.left.and.right"),
+        SimProviderOption(name: "GSPro",      subtitle: "GSPro — same network",          icon: "display"),
+        SimProviderOption(name: "Bluetooth",  subtitle: "No Wi-Fi needed — BLE bridge",  icon: "dot.radiowaves.right"),
         SimProviderOption(name: "Local JSON", subtitle: "Export shot data to JSON file", icon: "doc.text"),
     ]
 
@@ -47,8 +49,9 @@ struct SimModeView: View {
                     VStack(spacing: BSTheme.sectionGap) {
                         subheader
                         providerSection
-                        if selectedProvider == "OGS"   { ogsConnectionSection }
-                        if selectedProvider == "GSPro" { gsproConnectionSection }
+                        if selectedProvider == "OGS"        { ogsConnectionSection }
+                        if selectedProvider == "GSPro"       { gsproConnectionSection }
+                        if selectedProvider == "Bluetooth"   { bleConnectionSection }
                         sessionSection
                         if simVM.sessionActive { activeSessionSection }
                         Spacer(minLength: 32)
@@ -84,10 +87,19 @@ struct SimModeView: View {
         .tcAppearance()
         // Camera screen for real shots
         .fullScreenCover(isPresented: $showCamera) {
-            SimCameraScreen(simVM: simVM, ogsVM: ogsVM, gsproVM: gsproVM)
+            SimCameraScreen(simVM: simVM, ogsVM: ogsVM, gsproVM: gsproVM, bleVM: bleVM)
                 .ignoresSafeArea()
                 .statusBarHidden(true)
         }
+        .onChange(of: selectedProvider) { provider in
+            // Start BLE peripheral only when Bluetooth mode is selected; stop otherwise.
+            if provider == "Bluetooth" {
+                bleVM.start()
+            } else {
+                bleVM.stop()
+            }
+        }
+        .onDisappear { bleVM.stop() }
         // Phase 1: Save / Delete / Continue
         .alert("Save Failed", isPresented: Binding(
             get: { simVM.errorMessage != nil },
@@ -637,6 +649,115 @@ struct SimModeView: View {
         .background(BSTheme.panel)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(BSTheme.border, lineWidth: 1))
+    }
+
+    // MARK: - Bluetooth (BLE Bridge) connection section
+
+    private var bleConnectionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BSectionHeader(title: "Bluetooth Bridge")
+            VStack(alignment: .leading, spacing: 14) {
+
+                // Status indicator row
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(bleBridgeStatusColor.opacity(0.18))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: bleBridgeStatusIcon)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(bleBridgeStatusColor)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(bleVM.state.label)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(BSTheme.textPrimary)
+                        if bleVM.state.isReady, let status = bleVM.bridgeStatus {
+                            Text(status.linked
+                                 ? "\(status.gameName) connected on port \(status.port)"
+                                 : "Bridge connected — start \(status.gameName == "—" ? "your game" : status.gameName)")
+                                .font(.system(size: 12))
+                                .foregroundColor(status.linked ? BSTheme.fairwayGreen : BSTheme.gold)
+                        } else if bleVM.state.isActive {
+                            Text("Open TrueCarry Bridge on your PC or Mac")
+                                .font(.system(size: 12))
+                                .foregroundColor(BSTheme.textMuted)
+                        }
+                    }
+                    Spacer()
+                    if bleVM.state.isActive {
+                        ProgressView()
+                            .tint(BSTheme.textMuted)
+                            .scaleEffect(0.75)
+                            .opacity(bleVM.state.isReady ? 0 : 1)
+                    }
+                }
+                .premiumCard(padding: 14)
+
+                // Download instructions
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("First time setup")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(BSTheme.textMuted)
+                    VStack(alignment: .leading, spacing: 5) {
+                        bleStep("1", "Download TrueCarry Bridge on your PC or Mac:")
+                        Text("truecarry.app/bridge")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(BSTheme.electricCyan)
+                            .padding(.leading, 20)
+                        bleStep("2", "Double-click the file to run it — no install needed")
+                        bleStep("3", "Keep that window open while you play")
+                    }
+                }
+                .padding(.top, 2)
+
+                // Test shot (once bridge is ready)
+                if bleVM.state.isReady {
+                    PremiumActionButton(
+                        title: "Send Test Shot",
+                        icon: "paperplane.fill",
+                        style: .ghost,
+                        action: { Task { await bleVM.sendTestShot() } }
+                    )
+                    if let fb = bleVM.lastSendFeedback {
+                        Text(fb)
+                            .font(.system(size: 12))
+                            .foregroundColor(fb.hasPrefix("Shot sent") ? BSTheme.fairwayGreen : BSTheme.dangerRed)
+                    }
+                }
+            }
+        }
+    }
+
+    private var bleBridgeStatusColor: Color {
+        switch bleVM.state {
+        case .ready:           return BSTheme.fairwayGreen
+        case .advertising, .connected: return BSTheme.gold
+        case .unavailable:     return BSTheme.textMuted
+        case .failed:          return BSTheme.dangerRed
+        }
+    }
+
+    private var bleBridgeStatusIcon: String {
+        switch bleVM.state {
+        case .ready:           return "checkmark"
+        case .advertising, .connected: return "dot.radiowaves.right"
+        case .unavailable:     return "dot.radiowaves.right"
+        case .failed:          return "exclamationmark"
+        }
+    }
+
+    private func bleStep(_ number: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(number)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(BSTheme.gold)
+                .frame(width: 14, alignment: .center)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundColor(BSTheme.textMuted)
+                .lineSpacing(2)
+        }
     }
 
     // MARK: - Scan section (shared by OGS + GSPro panels)

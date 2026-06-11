@@ -181,6 +181,8 @@
 		CAFE00000000000000000105 /* GSProViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000104 /* GSProViewModel.swift */; };
 		CAFE00000000000000000107 /* RoundShotLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000106 /* RoundShotLogView.swift */; };
 		CAFE00000000000000000109 /* SimNetworkScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000108 /* SimNetworkScanner.swift */; };
+		CAFE0000000000000000010B /* SimBLEPeripheral.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000010A /* SimBLEPeripheral.swift */; };
+		CAFE0000000000000000010D /* SimBLEViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000010C /* SimBLEViewModel.swift */; };
 		CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C0 /* SessionSaveSheet.swift */; };
 		CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C2 /* SimCameraScreen.swift */; };
 		CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C4 /* SessionDetailView.swift */; };
@@ -412,6 +414,8 @@
 		CAFE000000000000000000C8 /* ShotGIFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotGIFExporter.swift; sourceTree = "<group>"; };
 		CAFE00000000000000000106 /* RoundShotLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundShotLogView.swift; sourceTree = "<group>"; };
 		CAFE00000000000000000108 /* SimNetworkScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimNetworkScanner.swift; sourceTree = "<group>"; };
+		CAFE0000000000000000010A /* SimBLEPeripheral.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimBLEPeripheral.swift; sourceTree = "<group>"; };
+		CAFE0000000000000000010C /* SimBLEViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimBLEViewModel.swift; sourceTree = "<group>"; };
 		D285E96FFA0E9231BA42EF6E /* Appearance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Appearance.swift; sourceTree = "<group>"; };
 		E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchConnectivityBridge.swift; sourceTree = "<group>"; };
 		E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
@@ -693,6 +697,7 @@
 				CAFE00000000000000000100 /* GSProModels.swift */,
 				CAFE00000000000000000102 /* GSProClient.swift */,
 				CAFE00000000000000000108 /* SimNetworkScanner.swift */,
+				CAFE0000000000000000010A /* SimBLEPeripheral.swift */,
 			);
 			path = Simulation;
 			sourceTree = "<group>";
@@ -754,6 +759,7 @@
 				BF0000020000000000000015 /* SimSessionViewModel.swift */,
 				CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */,
 				CAFE00000000000000000104 /* GSProViewModel.swift */,
+				CAFE0000000000000000010C /* SimBLEViewModel.swift */,
 				BF0000020000000000000016 /* CourseRoundViewModel.swift */,
 				BF0000020000000000000017 /* AnalyticsViewModel.swift */,
 				BF0000020000000000000018 /* FeedViewModel.swift */,
@@ -1221,6 +1227,8 @@
 				CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */,
 				CAFE00000000000000000107 /* RoundShotLogView.swift in Sources */,
 				CAFE00000000000000000109 /* SimNetworkScanner.swift in Sources */,
+				CAFE0000000000000000010B /* SimBLEPeripheral.swift in Sources */,
+				CAFE0000000000000000010D /* SimBLEViewModel.swift in Sources */,
 				BF000008000000000000000F /* ClubAnalyticsService.swift in Sources */,
 				BF0000080000000000000010 /* StrokesGained.swift in Sources */,
 				BF0000080000000000000012 /* SyncQueue.swift in Sources */,

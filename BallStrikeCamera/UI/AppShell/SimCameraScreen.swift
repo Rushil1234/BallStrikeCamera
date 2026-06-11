@@ -12,6 +12,7 @@ struct SimCameraScreen: View {
     @ObservedObject var simVM: SimSessionViewModel
     @ObservedObject var ogsVM: OpenGolfSimViewModel
     @ObservedObject var gsproVM: GSProViewModel
+    @ObservedObject var bleVM: SimBLEViewModel
     @ObservedObject private var nfcManager = NFCManager.shared
 
     @State private var selectedClub = "7 Iron"
@@ -43,11 +44,13 @@ struct SimCameraScreen: View {
 
             let savedMetrics = SavedShotMetrics(metrics)
 
-            // Send to simulator first so the ball flies without delay.
+            // Send to simulator — network first, BLE bridge as fallback.
             if ogsVM.connectionState.isConnected {
                 Task { await ogsVM.sendMetrics(savedMetrics) }
             } else if gsproVM.connectionState.isConnected {
                 Task { await gsproVM.sendMetrics(savedMetrics) }
+            } else if bleVM.state.isReady {
+                Task { await bleVM.sendMetrics(savedMetrics) }
             }
 
             // Auto-save the shot (True Carry stats + composite jpg) to the session.
