@@ -61,13 +61,63 @@ final class CourseRoundViewModel: ObservableObject {
         activeRound = round
     }
 
-    /// Returns the NFC-inferred stroke count for a hole, capped at par + 10.
+    // MARK: - Smart Scoring
+
+    struct SmartScoreResult {
+        let score: Int
+        let putts: Int?
+        /// false when there are no NFC taps and score is just the par default.
+        let isInferred: Bool
+    }
+
+    /// Infers score and putts for a hole from NFC tap data.
+    ///
+    /// Rules:
+    ///   No taps           → par default, isInferred = false
+    ///   Putter + other    → score = total taps, putts = putter count
+    ///   Other taps only   → score = other count + 2 (assumed putts), putts = 2
+    ///   Putter taps only  → score = par + (putter count − 2), putts = putter count
+    func smartScore(forHole holeNumber: Int) -> SmartScoreResult {
+        guard let round = activeRound else {
+            return SmartScoreResult(score: 4, putts: nil, isInferred: false)
+        }
+        let par  = round.holes.first(where: { $0.holeNumber == holeNumber })?.par ?? 4
+        let taps = round.nfcShots.filter { $0.holeNumber == holeNumber }
+
+        guard !taps.isEmpty else {
+            return SmartScoreResult(score: par, putts: nil, isInferred: false)
+        }
+
+        let putterTaps = taps.filter { $0.clubName.lowercased().contains("putter") }
+        let otherTaps  = taps.filter { !$0.clubName.lowercased().contains("putter") }
+
+        let score: Int
+        let putts: Int?
+
+        if !putterTaps.isEmpty && !otherTaps.isEmpty {
+            // Full data: trust every tap
+            score = taps.count
+            putts = putterTaps.count
+        } else if !otherTaps.isEmpty {
+            // Non-putter taps only — assume 2 putts to finish
+            score = otherTaps.count + 2
+            putts = 2
+        } else {
+            // Putter taps only — infer approach count from par
+            // e.g. par 4 + 3 putts → score 5; floor at putter count (can't score fewer than putts)
+            let raw = par + (putterTaps.count - 2)
+            score = max(putterTaps.count, raw)
+            putts = putterTaps.count
+        }
+
+        return SmartScoreResult(score: min(score, par + 10), putts: putts, isInferred: true)
+    }
+
+    /// Shim kept for call sites that only need the score integer.
+    /// Returns nil when there are no taps (so the UI can fall back to par itself).
     func inferredStrokes(forHole holeNumber: Int) -> Int? {
-        guard let round = activeRound else { return nil }
-        let shots = round.nfcShots.filter { $0.holeNumber == holeNumber }
-        guard !shots.isEmpty else { return nil }
-        let par = round.holes.first(where: { $0.holeNumber == holeNumber })?.par ?? 4
-        return min(shots.count, par + 10)
+        let result = smartScore(forHole: holeNumber)
+        return result.isInferred ? result.score : nil
     }
 
     init(userId: UUID, backend: AppBackend) {

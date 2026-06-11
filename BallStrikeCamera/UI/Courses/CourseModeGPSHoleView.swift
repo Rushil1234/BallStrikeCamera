@@ -1337,10 +1337,16 @@ struct CourseModeGPSHoleView: View {
         return currentCourseHole
     }
 
-    /// Returns existing score or NFC-inferred tap count for the score entry prefill.
+    /// Returns existing score, or the smart-scored estimate, or nil (→ ScoreEntryView defaults to par).
     private func scoreEntryInitialScore(for hole: RoundHole) -> Int? {
         if let existing = hole.score { return existing }
         return vm.inferredStrokes(forHole: hole.holeNumber)
+    }
+
+    /// Returns existing putts, or the smart-scored putts estimate, or nil (→ ScoreEntryView defaults to 2).
+    private func scoreEntryInitialPutts(for hole: RoundHole) -> Int? {
+        if let existing = hole.putts { return existing }
+        return vm.smartScore(forHole: hole.holeNumber).putts
     }
 
     /// Called when an NFC club tag is tapped; records shot and fires haptic silently.
@@ -1973,7 +1979,7 @@ struct CourseModeGPSHoleView: View {
                     holeNumber:     hole.holeNumber,
                     par:            hole.par,
                     existingScore:  scoreEntryInitialScore(for: hole),
-                    existingPutts:  hole.putts,
+                    existingPutts:  scoreEntryInitialPutts(for: hole),
                     holeYardage:    scorecardYardage,
                     handicap:       currentCourseHole?.handicap
                 ) { s, p, f, g in
