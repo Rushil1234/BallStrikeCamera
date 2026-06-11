@@ -573,6 +573,20 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             movementThresholdNorm = trackingResult.movementThresholdNorm
             for obs  in trackingResult.observations { observationMap[obs.frameIndex]  = obs }
             for info in trackingResult.debugInfos   { debugInfoMap[info.frameIndex]   = info }
+
+            // DEPARTURE CHECK — If zero post-impact frames were tracked the ball didn't
+            // actually launch. Most common cause: user repositioned the ball inside the
+            // detection circle, causing a brief ROI brightness spike. Silently re-arm.
+            let postTrackedCount = trackingResult.observations.filter {
+                $0.frameIndex > effectiveImpactIndex && $0.centerX != nil
+            }.count
+            if postTrackedCount == 0 {
+                print("[ShotValidation] 0 post-impact tracked frames — false trigger, re-arming")
+                isAnalyzingShot = false
+                analysisStatusText = ""
+                resetShotPipeline(to: .searching, status: "Looking for ball")
+                return
+            }
         } else {
             print("PostImpactBallTracker: no lockedBallRect — skipping tracking")
         }
@@ -606,19 +620,32 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         )
 
         if let metrics = ShotMetricsCalculator().calculate(for: result) {
-            result = ShotAnalysisResult(
-                frames: finalFrames,
-                impactFrameIndex: effectiveImpactIndex,
-                lockedBallRect: lockedBallRect,
-                lockedImpactROI: lockedImpactROI,
-                createdAt: analysisCreatedAt,
-                fallbackImpactFrameIndex: fallbackImpactIndex,
-                detectedImpactFrameIndex: effectiveImpactIndex,
-                impactDetectionReason: impactDetectionReason,
-                initialBallCenter: initialBallCenter,
-                movementThresholdNorm: movementThresholdNorm,
-                metrics: metrics
-            )
+            // SANITY CHECK — reject physically impossible readings caused by
+            // tracking noise, glare, or a second ball placement.
+            let speedOK = metrics.ballLaunch.ballSpeedMph.map  { $0 >= 8   && $0 <= 200 } ?? true
+            let hlaOK   = metrics.ballLaunch.hlaDegrees.map    { abs($0) <= 75          } ?? true
+            let carryOK = metrics.distance.carryYards.map      { $0 >= 0   && $0 <= 375 } ?? true
+            if speedOK && hlaOK && carryOK {
+                result = ShotAnalysisResult(
+                    frames: finalFrames,
+                    impactFrameIndex: effectiveImpactIndex,
+                    lockedBallRect: lockedBallRect,
+                    lockedImpactROI: lockedImpactROI,
+                    createdAt: analysisCreatedAt,
+                    fallbackImpactFrameIndex: fallbackImpactIndex,
+                    detectedImpactFrameIndex: effectiveImpactIndex,
+                    impactDetectionReason: impactDetectionReason,
+                    initialBallCenter: initialBallCenter,
+                    movementThresholdNorm: movementThresholdNorm,
+                    metrics: metrics
+                )
+            } else {
+                print(String(format: "[ShotValidation] Implausible metrics suppressed — speed=%.1f hla=%.1f carry=%.1f",
+                             metrics.ballLaunch.ballSpeedMph ?? 0,
+                             metrics.ballLaunch.hlaDegrees ?? 0,
+                             metrics.distance.carryYards ?? 0))
+                // Keep result.metrics = nil; result view shows "--" for all stats
+            }
         }
 
         latestShotAnalysis = result
