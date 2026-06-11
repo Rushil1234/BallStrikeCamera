@@ -622,7 +622,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         if let metrics = ShotMetricsCalculator().calculate(for: result) {
             // SANITY CHECK — reject physically impossible readings caused by
             // tracking noise, glare, or a second ball placement.
-            let speedOK = metrics.ballLaunch.ballSpeedMph.map  { $0 >= 8   && $0 <= 200 } ?? true
+            let speedOK = metrics.ballLaunch.ballSpeedMph.map  { $0 >= 0.5 && $0 <= 200 } ?? true
             let hlaOK   = metrics.ballLaunch.hlaDegrees.map    { abs($0) <= 75          } ?? true
             let carryOK = metrics.distance.carryYards.map      { $0 >= 0   && $0 <= 375 } ?? true
             if speedOK && hlaOK && carryOK {
