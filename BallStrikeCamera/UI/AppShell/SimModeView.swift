@@ -286,7 +286,7 @@ struct SimModeView: View {
         VStack(alignment: .leading, spacing: 12) {
             BSectionHeader(title: "OpenGolfSim Connection")
             VStack(alignment: .leading, spacing: 14) {
-                Text("Make sure your iPhone and computer are on the same Wi-Fi, then enter your computer's local IP address.")
+                Text("Connect your PC to the same Wi-Fi or to this iPhone's personal hotspot, then tap Find PC — or enter the IP manually.")
                     .font(.system(size: 12))
                     .foregroundColor(BSTheme.textMuted)
                     .lineSpacing(2)
@@ -311,6 +311,16 @@ struct SimModeView: View {
                     }
                 }
                 .premiumCard(padding: 14)
+
+                scanSection(isScanning: ogsVM.isScanning,
+                            results: ogsVM.scanResults,
+                            message: ogsVM.scanMessage,
+                            disabled: ogsVM.connectionState.isConnected) {
+                    Task { await ogsVM.scanForHosts() }
+                } onSelect: { ip in
+                    ogsVM.host = ip
+                    ogsVM.scanResults = []
+                }
 
                 ogsStatusRow
 
@@ -395,7 +405,7 @@ struct SimModeView: View {
         VStack(alignment: .leading, spacing: 12) {
             BSectionHeader(title: "GSPro Connection")
             VStack(alignment: .leading, spacing: 14) {
-                Text("Make sure your iPhone and PC are on the same Wi-Fi. Enter your PC's local IP — GSPro Connect listens on port 921.")
+                Text("Connect your PC to the same Wi-Fi or to this iPhone's personal hotspot, then tap Find PC — or enter the IP manually. GSPro Connect listens on port 921.")
                     .font(.system(size: 12))
                     .foregroundColor(BSTheme.textMuted)
                     .lineSpacing(2)
@@ -420,6 +430,16 @@ struct SimModeView: View {
                     }
                 }
                 .premiumCard(padding: 14)
+
+                scanSection(isScanning: gsproVM.isScanning,
+                            results: gsproVM.scanResults,
+                            message: gsproVM.scanMessage,
+                            disabled: gsproVM.connectionState.isConnected) {
+                    Task { await gsproVM.scanForHosts() }
+                } onSelect: { ip in
+                    gsproVM.host = ip
+                    gsproVM.scanResults = []
+                }
 
                 gsproStatusRow
 
@@ -617,6 +637,79 @@ struct SimModeView: View {
         .background(BSTheme.panel)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(BSTheme.border, lineWidth: 1))
+    }
+
+    // MARK: - Scan section (shared by OGS + GSPro panels)
+
+    @ViewBuilder
+    private func scanSection(isScanning: Bool,
+                             results: [String],
+                             message: String?,
+                             disabled: Bool,
+                             onScan: @escaping () -> Void,
+                             onSelect: @escaping (String) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Find PC button / spinner
+            HStack(spacing: 8) {
+                if isScanning {
+                    ProgressView()
+                        .tint(BSTheme.textMuted)
+                        .scaleEffect(0.75)
+                    Text("Scanning network…")
+                        .font(.system(size: 13))
+                        .foregroundColor(BSTheme.textMuted)
+                } else {
+                    Button(action: onScan) {
+                        Label("Find PC on network", systemImage: "network")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(disabled ? BSTheme.textMuted.opacity(0.5) : BSTheme.gold)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(disabled)
+                }
+            }
+
+            // Status / error message (auto-clears after a few seconds)
+            if let msg = message {
+                Text(msg)
+                    .font(.system(size: 11))
+                    .foregroundColor(msg.hasPrefix("Found") ? BSTheme.fairwayGreen : BSTheme.dangerRed)
+                    .lineSpacing(1.5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            // Multiple results — user picks one
+            if !results.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Tap a device to use its IP:")
+                        .font(.system(size: 11))
+                        .foregroundColor(BSTheme.textMuted)
+                    ForEach(results, id: \.self) { ip in
+                        Button { onSelect(ip) } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "desktopcomputer")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(BSTheme.gold)
+                                Text(ip)
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(BSTheme.textPrimary)
+                                Spacer()
+                                Image(systemName: "arrow.up.left")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(BSTheme.textMuted)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(BSTheme.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(BSTheme.gold.opacity(0.45), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Helpers

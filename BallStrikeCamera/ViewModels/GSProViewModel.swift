@@ -23,6 +23,12 @@ final class GSProViewModel: ObservableObject {
     @Published private(set) var isSending = false
     @Published var lastSendFeedback: String?
 
+    // MARK: - Scan state
+
+    @Published private(set) var isScanning = false
+    @Published var scanResults: [String] = []
+    @Published var scanMessage: String?
+
     // MARK: - Private
 
     private let client = GSProClient()
@@ -86,6 +92,31 @@ final class GSProViewModel: ObservableObject {
         client.disconnect()
         connectionState = .disconnected
         playerInfo = nil
+    }
+
+    func scanForHosts() async {
+        guard !isScanning else { return }
+        isScanning = true
+        scanResults = []
+        scanMessage = nil
+        defer { isScanning = false }
+        let p = port ?? GSProClient.defaultPort
+        do {
+            let found = try await SimNetworkScanner().scan(port: p)
+            if found.count == 1 {
+                host = found[0]
+                scanMessage = "Found \(found[0]) — IP filled in."
+            } else if found.isEmpty {
+                scanMessage = "No PC found. Make sure GSPro Connect is running and your PC's firewall allows port \(p)."
+            } else {
+                scanResults = found
+            }
+        } catch {
+            scanMessage = error.localizedDescription
+        }
+        let msg = scanMessage
+        try? await Task.sleep(for: .seconds(6))
+        if scanMessage == msg { scanMessage = nil }
     }
 
     func sendTestShot() async {
