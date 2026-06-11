@@ -423,16 +423,11 @@ struct ShotResultView: View {
             Spacer()
             Text("Shot Result").font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
             Spacer()
-            if !animationFinished {
-                Button("Skip →") { skipToEnd() }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.60))
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.white.opacity(0.10)).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-            } else {
-                Text("Skip →").font(.system(size: 12, weight: .semibold)).opacity(0)
-                    .padding(.horizontal, 10).padding(.vertical, 5)
-            }
+            Button("GO BACK TO HITTING") { onDone() }
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Color.white.opacity(0.15)).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Color(white: 0.10))
