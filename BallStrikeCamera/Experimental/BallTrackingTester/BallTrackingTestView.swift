@@ -2216,7 +2216,7 @@ private struct TunerToggle: View {
 
 // MARK: - Keyboard navigation
 
-private struct KeyboardNavigatorView: UIViewRepresentable {
+struct KeyboardNavigatorView: UIViewRepresentable {
     let onLeft:  () -> Void
     let onRight: () -> Void
     func makeUIView(context: Context) -> _KeyNavView {

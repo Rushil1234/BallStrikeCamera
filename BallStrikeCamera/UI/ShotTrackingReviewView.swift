@@ -419,6 +419,17 @@ struct ShotTrackingReviewView: View {
             let dotRect = CGRect(x: center.x - 2.5, y: center.y - 2.5, width: 5, height: 5)
             ctx.fill(Path(ellipseIn: dotRect), with: .color(Color.green))
         }
+
+        // Club detection result — orange dot at club head center.
+        if let clubObs = analysis.metrics?.clubObservations {
+            let fi = currentFrame.frameIndex
+            for obs in clubObs where obs.frameIndex == fi {
+                guard let cx = obs.centerX, let cy = obs.centerY else { continue }
+                let center = mapPoint(CGPoint(x: cx, y: cy), to: dr)
+                let dotRect = CGRect(x: center.x - 4, y: center.y - 4, width: 8, height: 8)
+                ctx.fill(Path(ellipseIn: dotRect), with: .color(Color.orange))
+            }
+        }
     }
 
     @ViewBuilder
