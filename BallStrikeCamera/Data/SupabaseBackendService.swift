@@ -821,7 +821,13 @@ final class SupabaseBackendService: AppBackend {
             logError("select:\(table)", data: data, response: response)
             throw BackendError.loadFailed(table)
         }
-        return try decoder.decode([T].self, from: data)
+        do {
+            return try decoder.decode([T].self, from: data)
+        } catch {
+            let body = String(data: data, encoding: .utf8) ?? "<binary>"
+            print("[TrueCarry][Supabase] DECODE ERROR select:\(table): \(error) — body: \(body.prefix(300))")
+            throw error
+        }
     }
 
     /// Calls a table-returning Postgres RPC and decodes the JSON array result.

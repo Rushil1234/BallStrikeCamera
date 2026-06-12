@@ -588,6 +588,7 @@ struct PastSessionsView: View {
         } catch {
             shots = []
             failures.append("shots")
+            print("[History] loadShots failed: \(error)")
         }
 
         do {
@@ -595,6 +596,7 @@ struct PastSessionsView: View {
         } catch {
             rangeSessions = []
             failures.append("range sessions")
+            print("[History] loadRangeSessions failed: \(error)")
         }
 
         do {
@@ -602,6 +604,7 @@ struct PastSessionsView: View {
         } catch {
             simSessions = []
             failures.append("sim sessions")
+            print("[History] loadSimSessions failed: \(error)")
         }
 
         do {
@@ -609,6 +612,7 @@ struct PastSessionsView: View {
         } catch {
             rounds = []
             failures.append("rounds")
+            print("[History] loadCourseRounds failed: \(error)")
         }
 
         loadError = failures.isEmpty ? nil : "Could not load \(failures.joined(separator: ", ")). Pull to refresh and try again."
