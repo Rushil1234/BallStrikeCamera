@@ -1891,6 +1891,9 @@ code {
 .sim-full:hover{ color:var(--bone, #f2eee1); }
 .sim-frame{ flex:1; width:100%; border:0; display:block; }
 @media (max-width:600px){ .sim-title{ display:none; } }
+.sim-code-display{ display:flex; flex-direction:column; align-items:center; gap:1px; }
+.sim-code-label{ font-family:var(--r-mono); font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:color-mix(in oklab,var(--bone,#f2eee1) 45%,transparent); }
+.sim-code-value{ font-family:var(--r-mono); font-size:22px; font-weight:700; letter-spacing:.22em; color:var(--carry-gold,#c9a86a); }
 
 /* ============================================================
    Hero video: fade in + slow drift (Ken Burns)

@@ -1,12 +1,14 @@
 "use client";
 
-import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 
-function PlaySim() {
-  const params = useSearchParams();
-  const code = params.get("code");
-  const src = code ? `/sim/index.html?code=${code}` : "/sim/index.html";
+function makeCode() {
+  return String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+}
+
+export default function PlayPage() {
+  const [code] = useState(makeCode);
+  const src = `/sim/index.html?code=${code}`;
 
   return (
     <div className="sim-host">
@@ -14,7 +16,10 @@ function PlaySim() {
         <a className="sim-back" href="/">
           ← True <span className="it">Carry.</span>
         </a>
-        <span className="sim-title">The Sim · Pine Hollow National</span>
+        <div className="sim-code-display">
+          <span className="sim-code-label">Enter in app</span>
+          <span className="sim-code-value">{code}</span>
+        </div>
         <a className="sim-full" href={src} target="_blank" rel="noreferrer">
           Full screen ↗
         </a>
@@ -26,13 +31,5 @@ function PlaySim() {
         allow="autoplay; fullscreen"
       />
     </div>
-  );
-}
-
-export default function PlayPage() {
-  return (
-    <Suspense>
-      <PlaySim />
-    </Suspense>
   );
 }
