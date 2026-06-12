@@ -7,14 +7,15 @@ import Foundation
 final class LiveSimService: ObservableObject {
     @Published var enteredCode: String = "" {
         didSet {
-            // Keep only digits, max 6 characters.
             let digits = String(enteredCode.filter(\.isNumber).prefix(6))
             if digits != enteredCode { enteredCode = digits }
             shotsSent = 0
             lastBroadcastError = nil
+            isConnectedToSim = false
         }
     }
     @Published private(set) var isBroadcasting = false
+    @Published private(set) var isConnectedToSim = false
     @Published private(set) var lastBroadcastError: String?
     @Published private(set) var shotsSent = 0
 
@@ -26,21 +27,27 @@ final class LiveSimService: ObservableObject {
 
     var isReadyToConnect: Bool { enteredCode.count == 6 }
 
+    /// Sends a ping to the website so it advances from the code screen to the course selector.
+    func connect() async {
+        guard isReadyToConnect else { return }
+        await broadcastRaw(event: "ping", payload: [:])
+        isConnectedToSim = true
+    }
+
+    /// Tells the website which club is currently selected.
+    func broadcastClub(_ clubName: String) async {
+        guard isConnectedToSim else { return }
+        await broadcastRaw(event: "club", payload: ["clubName": clubName])
+    }
+
     func broadcast(metrics: SavedShotMetrics) async {
         guard isReadyToConnect else {
             lastBroadcastError = "Enter the 6-digit code shown on screen"
             return
         }
-        guard let config else {
-            lastBroadcastError = "Supabase not configured — check Secrets.plist"
-            return
-        }
 
         isBroadcasting = true
         defer { isBroadcasting = false }
-
-        let broadcastURL = config.baseURL
-            .appendingPathComponent("realtime/v1/api/broadcast")
 
         let payload: [String: Any] = [
             "ballSpeedMph": metrics.ballSpeedMph,
@@ -50,22 +57,33 @@ final class LiveSimService: ObservableObject {
             "backspinRpm":  metrics.backspinRpm,
             "sidespinRpm":  metrics.sidespinRpm,
             "hlaDegrees":   metrics.hlaDegrees,
-            // sidespinRpm sign: positive = fade/slice (right for RH), negative = draw/hook (left)
             "hlaDirection": metrics.sidespinRpm >= 0 ? "right" : "left",
             "smashFactor":  metrics.smashFactor,
         ]
 
+        let ok = await broadcastRaw(event: "shot", payload: payload)
+        if ok {
+            lastBroadcastError = nil
+            shotsSent += 1
+        }
+    }
+
+    // MARK: - Private
+
+    @discardableResult
+    private func broadcastRaw(event: String, payload: [String: Any]) async -> Bool {
+        guard let config else { return false }
+
         let body: [String: Any] = [
             "messages": [[
                 "topic":   "tc-sim-\(enteredCode)",
-                "event":   "shot",
+                "event":   event,
                 "payload": payload,
             ]],
         ]
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else { return false }
 
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else { return }
-
-        var req = URLRequest(url: broadcastURL)
+        var req = URLRequest(url: config.baseURL.appendingPathComponent("realtime/v1/api/broadcast"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
@@ -77,12 +95,12 @@ final class LiveSimService: ObservableObject {
             let (_, response) = try await URLSession.shared.data(for: req)
             if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
                 lastBroadcastError = "Broadcast failed (HTTP \(http.statusCode))"
-            } else {
-                lastBroadcastError = nil
-                shotsSent += 1
+                return false
             }
+            return true
         } catch {
             lastBroadcastError = error.localizedDescription
+            return false
         }
     }
 }

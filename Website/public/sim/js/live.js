@@ -20,8 +20,10 @@ export function getLiveCode() {
  * @param {string} code
  * @param {(metrics: object) => void} onShotReceived
  * @param {(status: string) => void} onStatusChange  – 'connecting' | 'connected' | 'error'
+ * @param {() => void} [onPing]         – called when app taps "Connect"
+ * @param {(name: string) => void} [onClubChanged] – called when app changes club
  */
-export function connectLive(code, onShotReceived, onStatusChange) {
+export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged) {
   if (_channel) {
     _channel.unsubscribe();
     _channel = null;
@@ -37,6 +39,12 @@ export function connectLive(code, onShotReceived, onStatusChange) {
     .channel(`tc-sim-${code}`)
     .on('broadcast', { event: 'shot' }, ({ payload }) => {
       onShotReceived(payload);
+    })
+    .on('broadcast', { event: 'ping' }, () => {
+      if (onPing) onPing();
+    })
+    .on('broadcast', { event: 'club' }, ({ payload }) => {
+      if (onClubChanged && payload?.clubName) onClubChanged(payload.clubName);
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {

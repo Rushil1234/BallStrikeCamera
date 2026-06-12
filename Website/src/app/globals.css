@@ -1891,9 +1891,34 @@ code {
 .sim-full:hover{ color:var(--bone, #f2eee1); }
 .sim-frame{ flex:1; width:100%; border:0; display:block; }
 @media (max-width:600px){ .sim-title{ display:none; } }
+.sim-iframe-wrap{ flex:1; display:flex; flex-direction:column; }
+.sim-iframe-wrap .sim-frame{ flex:1; }
 .sim-code-display{ display:flex; flex-direction:column; align-items:center; gap:1px; }
 .sim-code-label{ font-family:var(--r-mono); font-size:9px; letter-spacing:.18em; text-transform:uppercase; color:color-mix(in oklab,var(--bone,#f2eee1) 45%,transparent); }
 .sim-code-value{ font-family:var(--r-mono); font-size:22px; font-weight:700; letter-spacing:.22em; color:var(--carry-gold,#c9a86a); }
+
+/* Stages (code pairing + course select) */
+.sim-stage{ position:fixed; inset:0; top:41px; display:flex; align-items:center; justify-content:center; background:#0a110c; z-index:10; }
+.sim-stage-inner{ display:flex; flex-direction:column; align-items:center; gap:18px; max-width:420px; width:100%; padding:32px 24px; text-align:center; }
+
+/* Stage 1 — pairing */
+.sim-pairing-icon{ font-size:36px; color:var(--carry-gold,#c9a86a); line-height:1; }
+.sim-pairing-title{ font-family:var(--display); font-size:clamp(28px,5vw,42px); color:var(--bone,#f2eee1); margin:0; }
+.sim-pairing-sub{ font-size:15px; color:color-mix(in oklab,var(--bone,#f2eee1) 65%,transparent); margin:0; line-height:1.6; }
+.sim-pairing-code{ font-family:var(--r-mono); font-size:clamp(48px,10vw,72px); font-weight:700; letter-spacing:.25em; color:var(--carry-gold,#c9a86a); background:rgba(201,168,106,.07); border:1px solid rgba(201,168,106,.25); border-radius:12px; padding:14px 28px; line-height:1; }
+.sim-pairing-hint{ font-family:var(--r-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--bone,#f2eee1) 38%,transparent); margin:0; }
+
+/* Stage 2 — course select */
+.sim-select-kicker{ font-family:var(--r-mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:#8fd49a; margin:0; }
+.sim-select-title{ font-family:var(--display); font-size:clamp(24px,4vw,36px); color:var(--bone,#f2eee1); margin:0; }
+.sim-course-list{ display:flex; flex-direction:column; gap:10px; width:100%; }
+.sim-course-card{ display:flex; align-items:center; gap:14px; background:rgba(255,255,255,.04); border:1px solid rgba(201,168,106,.2); border-radius:10px; padding:14px 18px; cursor:pointer; text-align:left; transition:background .15s,border-color .15s; }
+.sim-course-card:hover:not(.disabled){ background:rgba(201,168,106,.1); border-color:rgba(201,168,106,.5); }
+.sim-course-card.disabled{ opacity:.38; cursor:default; }
+.sim-course-icon{ font-size:22px; flex-shrink:0; }
+.sim-course-info{ display:flex; flex-direction:column; gap:2px; }
+.sim-course-name{ font-family:var(--display); font-size:17px; color:var(--bone,#f2eee1); }
+.sim-course-sub{ font-family:var(--r-mono); font-size:11px; letter-spacing:.08em; color:color-mix(in oklab,var(--bone,#f2eee1) 50%,transparent); }
 
 /* ============================================================
    Hero video: fade in + slow drift (Ken Burns)

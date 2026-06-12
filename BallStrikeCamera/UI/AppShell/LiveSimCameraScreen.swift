@@ -50,6 +50,9 @@ struct LiveSimCameraScreen: View {
             // Auto-save to session history.
             Task { await autoSave(analysis: analysis, metrics: savedMetrics) }
         }
+        .onChange(of: selectedClub) { clubName in
+            Task { await liveSimService.broadcastClub(clubName) }
+        }
         .onChange(of: nfcManager.lastScannedClubId) { clubId in
             guard let clubId else { return }
             if let match = clubs.first(where: { $0.id == clubId }) {

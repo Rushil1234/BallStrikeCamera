@@ -803,6 +803,13 @@ window.parent?.postMessage({ type: 'SIM_READY' }, '*');
 
 // postMessage preview mode: course-builder sends PREVIEW_HOLE with custom holes array.
 window.addEventListener('message', (e) => {
+  // Play page tells the sim to start (dismiss title screen / begin).
+  if (e.data?.type === 'START_SIM') {
+    const btn = document.getElementById('btn-start');
+    if (btn && game.state === 'TITLE') btn.click();
+    return;
+  }
+
   if (!e.data || e.data.type !== 'PREVIEW_HOLE') return;
   const { holes, holeIndex = 0 } = e.data;
   if (!holes?.length) return;
@@ -876,10 +883,13 @@ if (liveCode) {
   // eslint-disable-next-line no-global-assign
   window.__liveMode = true;
 
+  const liveClub = document.getElementById('live-club');
+
   function updateLiveStatus(text, cls) {
     if (!liveStatus) return;
     liveStatus.textContent = text;
     liveStatus.className = 'live-status-badge ' + (cls || '');
+    liveStatus.classList.remove('hidden');
   }
 
   function updateLiveShotNum(n) {
@@ -888,8 +898,11 @@ if (liveCode) {
     liveShotNum.classList.remove('hidden');
   }
 
-  // Show status badge immediately.
-  if (liveStatus) liveStatus.classList.remove('hidden');
+  function updateLiveClub(name) {
+    if (!liveClub) return;
+    liveClub.textContent = name;
+    liveClub.classList.remove('hidden');
+  }
 
   connectLive(liveCode,
     // onShotReceived
@@ -900,15 +913,20 @@ if (liveCode) {
         updateLiveShotNum(game.strokes);
       }
     },
-    // onStatusChange
+    // onStatusChange — only surface errors; don't show "waiting for shot" unsolicited
     function (status) {
-      if (status === 'connecting') {
-        updateLiveStatus('Connecting…', 'live-connecting');
-      } else if (status === 'connected') {
-        updateLiveStatus('● Live — waiting for shot', 'live-connected');
-      } else {
+      if (status === 'error') {
         updateLiveStatus('Connection error — reload to retry', 'live-error');
       }
+      // connecting / connected states are silent; the play page handles the UX
+    },
+    // onPing — app tapped Connect; tell the parent page to advance to course selector
+    function () {
+      window.parent?.postMessage({ type: 'APP_CONNECTED' }, '*');
+    },
+    // onClubChanged — update center badge with current club
+    function (clubName) {
+      updateLiveClub(clubName);
     }
   );
 }

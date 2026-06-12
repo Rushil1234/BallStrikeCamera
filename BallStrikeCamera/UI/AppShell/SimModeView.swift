@@ -311,7 +311,7 @@ struct SimModeView: View {
     private var liveSimSection: some View {
         LiveSimCodeView(liveSimService: liveSimService) {
             if !simVM.sessionActive {
-                Task { await simVM.startSession(provider: .notConnected, usedOGS: false) }
+                Task { await simVM.startSession(provider: .liveSim, usedOGS: false) }
             }
             showLiveCamera = true
         }

@@ -267,6 +267,7 @@ enum SimProvider: String, Codable, CaseIterable {
     case gspro = "GSPro"
     case ogs   = "OGS"
     case localJson = "Local JSON"
+    case liveSim = "TCSim"
     case notConnected = "Not Connected"
 }
 

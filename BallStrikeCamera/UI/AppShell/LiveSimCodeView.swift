@@ -30,7 +30,7 @@ struct LiveSimCodeView: View {
                 Divider()
                     .background(BSTheme.textMuted.opacity(0.3))
 
-                // Step 2 — type in the code shown on the website
+                // Step 2 — type code from website
                 VStack(alignment: .leading, spacing: 8) {
                     Text("ENTER CODE FROM SCREEN")
                         .font(.system(size: 10, weight: .bold))
@@ -49,12 +49,52 @@ struct LiveSimCodeView: View {
                         .overlay(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .strokeBorder(
-                                    liveSimService.isReadyToConnect
-                                        ? BSTheme.electricCyan.opacity(0.55)
-                                        : BSTheme.textMuted.opacity(0.18),
+                                    liveSimService.isConnectedToSim
+                                        ? BSTheme.fairwayGreen.opacity(0.7)
+                                        : liveSimService.isReadyToConnect
+                                            ? BSTheme.electricCyan.opacity(0.55)
+                                            : BSTheme.textMuted.opacity(0.18),
                                     lineWidth: 1
                                 )
                         )
+                        .disabled(liveSimService.isConnectedToSim)
+                }
+
+                // Connect button (shown until connected)
+                if !liveSimService.isConnectedToSim {
+                    Button {
+                        Task { await liveSimService.connect() }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if liveSimService.isBroadcasting {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .tint(BSTheme.electricCyan)
+                            }
+                            Text(liveSimService.isBroadcasting ? "Connecting…" : "Connect")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(liveSimService.isReadyToConnect ? BSTheme.electricCyan.opacity(0.15) : BSTheme.textMuted.opacity(0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(liveSimService.isReadyToConnect ? BSTheme.electricCyan.opacity(0.5) : BSTheme.textMuted.opacity(0.2), lineWidth: 1)
+                        )
+                        .foregroundColor(liveSimService.isReadyToConnect ? BSTheme.electricCyan : BSTheme.textMuted)
+                    }
+                    .disabled(!liveSimService.isReadyToConnect || liveSimService.isBroadcasting)
+                } else {
+                    // Connected confirmation
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(BSTheme.fairwayGreen)
+                        Text("Connected — website should show course selector")
+                            .font(.system(size: 13))
+                            .foregroundColor(BSTheme.fairwayGreen)
+                        Spacer()
+                    }
                 }
 
                 // Status row
@@ -82,14 +122,14 @@ struct LiveSimCodeView: View {
             )
 
             PremiumActionButton(
-                title: liveSimService.isReadyToConnect ? "Hit Shot" : "Enter Code First",
+                title: liveSimService.isConnectedToSim ? "Hit Shot" : "Connect First",
                 icon: "camera.fill",
                 style: .gradient(BSTheme.rangeGradient),
                 action: onStartCamera
             )
             .glowingAccent(BSTheme.electricCyan)
-            .disabled(!liveSimService.isReadyToConnect)
-            .opacity(liveSimService.isReadyToConnect ? 1.0 : 0.4)
+            .disabled(!liveSimService.isConnectedToSim)
+            .opacity(liveSimService.isConnectedToSim ? 1.0 : 0.4)
         }
     }
 
@@ -97,15 +137,17 @@ struct LiveSimCodeView: View {
         if liveSimService.lastBroadcastError != nil { return BSTheme.dangerRed }
         if liveSimService.isBroadcasting            { return BSTheme.gold }
         if liveSimService.shotsSent > 0             { return BSTheme.fairwayGreen }
+        if liveSimService.isConnectedToSim          { return BSTheme.fairwayGreen }
         if liveSimService.isReadyToConnect          { return BSTheme.electricCyan }
         return BSTheme.textMuted
     }
 
     private var statusText: String {
         if let err = liveSimService.lastBroadcastError { return err }
-        if liveSimService.isBroadcasting              { return "Broadcasting…" }
-        if liveSimService.shotsSent > 0               { return "Connected — ready for next shot" }
-        if liveSimService.isReadyToConnect            { return "Ready — tap Hit Shot to start" }
+        if liveSimService.isBroadcasting              { return "Connecting…" }
+        if liveSimService.shotsSent > 0               { return "Streaming — ready for next shot" }
+        if liveSimService.isConnectedToSim            { return "Select a course on the website, then tap Hit Shot" }
+        if liveSimService.isReadyToConnect            { return "Tap Connect to pair with the website" }
         return "Enter the code shown on your screen"
     }
 }
