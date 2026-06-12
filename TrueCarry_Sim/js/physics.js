@@ -194,7 +194,20 @@ export function createShot(opts) {
         const trunkR = (tree.isPine ? 0.30 : 0.36) * tree.s;
         const hd = Math.hypot(sim.pos.x - tree.x, sim.pos.z - tree.z);
         if (hd < trunkR + BALL_R && sim.pos.y > tree.h + 0.1 && sim.pos.y < tree.h + trunkH) {
-          sim.vel.x *= 0.06; sim.vel.z *= 0.06;
+          // reflect off cylinder surface — rigid wood, ~0.45 restitution
+          const tnx = (sim.pos.x - tree.x) / (hd || 0.01);
+          const tnz = (sim.pos.z - tree.z) / (hd || 0.01);
+          const tvn = sim.vel.x * tnx + sim.vel.z * tnz;
+          if (tvn < 0) { // approaching only
+            const overlap = trunkR + BALL_R - hd + 0.01;
+            sim.pos.x += tnx * overlap;
+            sim.pos.z += tnz * overlap;
+            sim.vel.x -= 1.45 * tvn * tnx;
+            sim.vel.z -= 1.45 * tvn * tnz;
+            sim.vel.x *= 0.72; sim.vel.y *= 0.72; sim.vel.z *= 0.72;
+            sim.vel.x += (Math.random() - 0.5) * 1.0;
+            sim.vel.z += (Math.random() - 0.5) * 1.0;
+          }
           sim.events.push({ type: 'tree', pos: { ...sim.pos } });
           break;
         }
