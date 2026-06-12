@@ -89,14 +89,16 @@ struct TrueCarryInsightsView: View {
             NavigationStack { TrueCarryProfileView() }
                 .tcAppearance()
         }
-        .task {
-            guard let uid = session.currentUser?.id else { return }
-            async let s = try? await session.backend.loadShots(userId: uid)
-            async let c = try? await session.backend.loadClubs(userId: uid)
-            shots = await s ?? []
-            clubs = await c ?? []
-            if selectedClub == nil || !availableClubs.contains(selectedClub ?? "") {
-                selectedClub = availableClubs.first
+        .onAppear {
+            Task {
+                guard let uid = session.currentUser?.id else { return }
+                async let s = try? await session.backend.loadShots(userId: uid)
+                async let c = try? await session.backend.loadClubs(userId: uid)
+                shots = (await s ?? []).filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
+                clubs = await c ?? []
+                if selectedClub == nil || !availableClubs.contains(selectedClub ?? "") {
+                    selectedClub = availableClubs.first
+                }
             }
         }
     }
