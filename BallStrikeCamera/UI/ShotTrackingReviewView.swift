@@ -21,9 +21,6 @@ struct ShotTrackingReviewView: View {
     @State private var isSavingShot:     Bool = false
     @State private var savedShot:        SavedShot? = nil
     @State private var saveError:        String? = nil
-    #if DEBUG
-    @State private var showTester: Bool = false
-    #endif
 
     init(analysis: ShotAnalysisResult,
          context: ShotContext? = nil,
@@ -49,7 +46,6 @@ struct ShotTrackingReviewView: View {
         VStack(spacing: 0) {
             topBar
             imageArea   // slider is overlaid inside
-            actionBar   // Save / Bad — compact row above metrics
             metricsPanel
         }
         .background(Color.black.ignoresSafeArea())
@@ -75,11 +71,6 @@ struct ShotTrackingReviewView: View {
         } message: {
             Text(saveError ?? "")
         }
-        #if DEBUG
-        .fullScreenCover(isPresented: $showTester) {
-            BallTrackingTestView { showTester = false }
-        }
-        #endif
     }
 
     // MARK: - Sections
@@ -87,7 +78,7 @@ struct ShotTrackingReviewView: View {
     private var topBar: some View {
         HStack(spacing: 8) {
             Text("Shot Review")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(.white)
                 .layoutPriority(1)
 
@@ -98,24 +89,39 @@ struct ShotTrackingReviewView: View {
                 ForEach(FrameNormalizationMode.allCases, id: \.self) { mode in
                     Button(action: { displayMode = mode }) {
                         Text(mode.displayName)
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(displayMode == mode ? .black : .white.opacity(0.65))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
                             .background(displayMode == mode ? Color.white : Color.clear)
                     }
                 }
             }
             .background(Color.white.opacity(0.15))
-            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+            Button(action: { Task { await saveShot(markBad: true) } }) {
+                Text("Bad Shot")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.orange.opacity(0.90))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.opacity(0.18))
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            }
+            .disabled(saveButtonDisabled)
 
             Button("Done") { onDismiss() }
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundColor(.blue)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .padding(.horizontal, 14)
-        .padding(.top, 9)
-        .padding(.bottom, 9)
+        .padding(.top, 11)
+        .padding(.bottom, 11)
         .background(Color(white: 0.10))
     }
 
@@ -274,17 +280,6 @@ struct ShotTrackingReviewView: View {
                                 }
                                 .disabled(isExporting)
 
-                                #if DEBUG
-                                Button(action: { showTester = true }) {
-                                    Label("Tester", systemImage: "flask")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(Color.purple.opacity(0.7))
-                                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                                }
-                                #endif
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
@@ -350,13 +345,13 @@ struct ShotTrackingReviewView: View {
     }
 
     private var sliderOverlay: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Button(action: { if currentIndex > 0 { currentIndex -= 1 } }) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(currentIndex > 0 ? .white : .white.opacity(0.25))
             }
-            .frame(width: 36, height: 36)
+            .frame(width: 28, height: 28)
 
             Slider(
                 value: Binding(
@@ -370,13 +365,13 @@ struct ShotTrackingReviewView: View {
 
             Button(action: { if currentIndex < lastIndex { currentIndex += 1 } }) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(currentIndex < lastIndex ? .white : .white.opacity(0.25))
             }
-            .frame(width: 36, height: 36)
+            .frame(width: 28, height: 28)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
         .background(.black.opacity(0.45))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
@@ -419,6 +414,17 @@ struct ShotTrackingReviewView: View {
             let dotRect = CGRect(x: center.x - 2.5, y: center.y - 2.5, width: 5, height: 5)
             ctx.fill(Path(ellipseIn: dotRect), with: .color(Color.green))
         }
+
+        // Club detection result — orange dot at club head center.
+        if let clubObs = analysis.metrics?.clubObservations {
+            let fi = currentFrame.frameIndex
+            for obs in clubObs where obs.frameIndex == fi {
+                guard let cx = obs.centerX, let cy = obs.centerY else { continue }
+                let center = mapPoint(CGPoint(x: cx, y: cy), to: dr)
+                let dotRect = CGRect(x: center.x - 4, y: center.y - 4, width: 8, height: 8)
+                ctx.fill(Path(ellipseIn: dotRect), with: .color(Color.orange))
+            }
+        }
     }
 
     @ViewBuilder
@@ -444,26 +450,26 @@ struct ShotTrackingReviewView: View {
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.vertical, 14)
             .background(Color(white: 0.065))
         }
     }
 
     private func metricCell(_ label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 3) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.white.opacity(0.50))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(value)
-                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                .font(.system(size: 22, weight: .bold, design: .monospaced))
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.60)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 
     // MARK: - Export

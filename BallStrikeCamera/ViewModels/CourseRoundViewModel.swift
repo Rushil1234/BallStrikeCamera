@@ -32,28 +32,92 @@ final class CourseRoundViewModel: ObservableObject {
     // MARK: - NFC Shot Tracking
 
     /// Records an NFC club tap at the user's current GPS position for the active hole.
+    /// Captures shot number within the hole and distance to the green center.
     func recordNFCShot(club: UserClub) {
         guard var round = activeRound,
               let coord = location.currentLocation else { return }
-        let holeNum = currentHole?.holeNumber ?? (currentHoleIndex + 1)
+        let holeNum   = currentHole?.holeNumber ?? (currentHoleIndex + 1)
+        let shotNum   = round.nfcShots.filter { $0.holeNumber == holeNum }.count + 1
+
+        var distYards: Double?
+        if let course   = selectedCourse,
+           let golfHole = course.holes.first(where: { $0.number == holeNum }),
+           let pinCoord = golfHole.greenCenterCoordinate?.clCoordinate {
+            let shotLoc = CLLocation(latitude: coord.latitude,    longitude: coord.longitude)
+            let pinLoc  = CLLocation(latitude: pinCoord.latitude, longitude: pinCoord.longitude)
+            distYards = shotLoc.distance(from: pinLoc) * 1.09361  // metres → yards
+        }
+
         let shot = NFCShot(
-            clubId:      club.id,
-            clubName:    club.name,
-            holeNumber:  holeNum,
-            latitude:    coord.latitude,
-            longitude:   coord.longitude
+            clubId:             club.id,
+            clubName:           club.name,
+            holeNumber:         holeNum,
+            shotNumber:         shotNum,
+            latitude:           coord.latitude,
+            longitude:          coord.longitude,
+            distanceToPinYards: distYards
         )
         round.nfcShots.append(shot)
         activeRound = round
     }
 
-    /// Returns the NFC-inferred stroke count for a hole, capped at par + 10.
+    // MARK: - Smart Scoring
+
+    struct SmartScoreResult {
+        let score: Int
+        let putts: Int?
+        /// false when there are no NFC taps and score is just the par default.
+        let isInferred: Bool
+    }
+
+    /// Infers score and putts for a hole from NFC tap data.
+    ///
+    /// Rules:
+    ///   No taps           → par default, isInferred = false
+    ///   Putter + other    → score = total taps, putts = putter count
+    ///   Other taps only   → score = other count + 2 (assumed putts), putts = 2
+    ///   Putter taps only  → score = par + (putter count − 2), putts = putter count
+    func smartScore(forHole holeNumber: Int) -> SmartScoreResult {
+        guard let round = activeRound else {
+            return SmartScoreResult(score: 4, putts: nil, isInferred: false)
+        }
+        let par  = round.holes.first(where: { $0.holeNumber == holeNumber })?.par ?? 4
+        let taps = round.nfcShots.filter { $0.holeNumber == holeNumber }
+
+        guard !taps.isEmpty else {
+            return SmartScoreResult(score: par, putts: nil, isInferred: false)
+        }
+
+        let putterTaps = taps.filter { $0.clubName.lowercased().contains("putter") }
+        let otherTaps  = taps.filter { !$0.clubName.lowercased().contains("putter") }
+
+        let score: Int
+        let putts: Int?
+
+        if !putterTaps.isEmpty && !otherTaps.isEmpty {
+            // Full data: trust every tap
+            score = taps.count
+            putts = putterTaps.count
+        } else if !otherTaps.isEmpty {
+            // Non-putter taps only — assume 2 putts to finish
+            score = otherTaps.count + 2
+            putts = 2
+        } else {
+            // Putter taps only — infer approach count from par
+            // e.g. par 4 + 3 putts → score 5; floor at putter count (can't score fewer than putts)
+            let raw = par + (putterTaps.count - 2)
+            score = max(putterTaps.count, raw)
+            putts = putterTaps.count
+        }
+
+        return SmartScoreResult(score: min(score, par + 10), putts: putts, isInferred: true)
+    }
+
+    /// Shim kept for call sites that only need the score integer.
+    /// Returns nil when there are no taps (so the UI can fall back to par itself).
     func inferredStrokes(forHole holeNumber: Int) -> Int? {
-        guard let round = activeRound else { return nil }
-        let shots = round.nfcShots.filter { $0.holeNumber == holeNumber }
-        guard !shots.isEmpty else { return nil }
-        let par = round.holes.first(where: { $0.holeNumber == holeNumber })?.par ?? 4
-        return min(shots.count, par + 10)
+        let result = smartScore(forHole: holeNumber)
+        return result.isInferred ? result.score : nil
     }
 
     init(userId: UUID, backend: AppBackend) {
@@ -344,6 +408,23 @@ final class CourseRoundViewModel: ObservableObject {
 
     func addShot(_ shot: SavedShot) async {
         guard var round = activeRound else { return }
+
+        // Link this camera shot to the nearest unlinked NFC tap on the same hole
+        // within a 3-minute window. The golfer taps their club then (or just after)
+        // hitting — closest tap in time is almost always the correct match.
+        let holeNum = currentHole?.holeNumber ?? (currentHoleIndex + 1)
+        let candidates = round.nfcShots.indices.filter {
+            round.nfcShots[$0].holeNumber == holeNum &&
+            round.nfcShots[$0].linkedShotId == nil &&
+            abs(round.nfcShots[$0].tappedAt.timeIntervalSince(shot.timestamp)) <= 180
+        }
+        if let bestIdx = candidates.min(by: { i, j in
+            abs(round.nfcShots[i].tappedAt.timeIntervalSince(shot.timestamp)) <
+            abs(round.nfcShots[j].tappedAt.timeIntervalSince(shot.timestamp))
+        }) {
+            round.nfcShots[bestIdx].linkedShotId = shot.id
+        }
+
         if !round.shotIds.contains(shot.id) {
             round.shotIds.append(shot.id)
         }

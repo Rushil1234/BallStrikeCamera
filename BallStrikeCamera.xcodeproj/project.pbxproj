@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		150BB4359DEC31706EAC970A /* WatchCompanionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */; };
 		209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */; };
+		AA0001000000000000000001 /* LightweightBallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001000000000000000101 /* LightweightBallDetector.swift */; };
+		AA0001000000000000000002 /* FrameDiffTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001000000000000000102 /* FrameDiffTrigger.swift */; };
 		2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = D285E96FFA0E9231BA42EF6E /* Appearance.swift */; };
 		3ED54E6FBC4125C8B7DC7BC0 /* WatchConnectivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */; };
 		452252E661FD97C9490B248D /* WatchCompanionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */; };
@@ -88,6 +90,7 @@
 		BF0000010000000000000050 /* AppShellComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000150 /* AppShellComponents.swift */; };
 		BF0000010000000000000051 /* BallStrikeTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000151 /* BallStrikeTheme.swift */; };
 		BF0000010000000000000052 /* BallStrikeBackgroundView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000152 /* BallStrikeBackgroundView.swift */; };
+		BF0000010000000000000053 /* EnsembleBFSClubTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000153 /* EnsembleBFSClubTracker.swift */; };
 		BF000001000000000000A001 /* CourseLandingMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000B001 /* CourseLandingMapView.swift */; };
 		BF0000030000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000001 /* AppDelegate.swift */; };
 		BF0000030000000000000002 /* AppBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000002 /* AppBackend.swift */; };
@@ -175,14 +178,18 @@
 		CAFE000000000000000000B1 /* OpenGolfSimModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B0 /* OpenGolfSimModels.swift */; };
 		CAFE000000000000000000B3 /* OpenGolfSimClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B2 /* OpenGolfSimClient.swift */; };
 		CAFE000000000000000000B5 /* OpenGolfSimViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */; };
+		CAFE00000000000000000101 /* GSProModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000100 /* GSProModels.swift */; };
+		CAFE00000000000000000103 /* GSProClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000102 /* GSProClient.swift */; };
+		CAFE00000000000000000105 /* GSProViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000104 /* GSProViewModel.swift */; };
+		CAFE00000000000000000107 /* RoundShotLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000106 /* RoundShotLogView.swift */; };
+		CAFE00000000000000000109 /* SimNetworkScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000108 /* SimNetworkScanner.swift */; };
+		CAFE0000000000000000010B /* SimBLEPeripheral.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000010A /* SimBLEPeripheral.swift */; };
+		CAFE0000000000000000010D /* SimBLEViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000010C /* SimBLEViewModel.swift */; };
 		CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C0 /* SessionSaveSheet.swift */; };
 		CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C2 /* SimCameraScreen.swift */; };
 		CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C4 /* SessionDetailView.swift */; };
 		CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C6 /* ShotDetailView.swift */; };
 		CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C8 /* ShotGIFExporter.swift */; };
-		CAFE00000000000000000101 /* GSProModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000100 /* GSProModels.swift */; };
-		CAFE00000000000000000103 /* GSProClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000102 /* GSProClient.swift */; };
-		CAFE00000000000000000105 /* GSProViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000104 /* GSProViewModel.swift */; };
 		F87102851E39D771471CCF94 /* BallStrikeCameraWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -233,6 +240,8 @@
 		149AC498EAA5CC0753C5FD3C /* FeedPostFactory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FeedPostFactory.swift; sourceTree = "<group>"; };
 		20830B7C2FD09E3A0041181B /* berkshire_valley_sim.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = berkshire_valley_sim.gpx; path = DataPipeline/berkshire_valley_sim.gpx; sourceTree = "<group>"; };
 		209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImpactDetector.swift; sourceTree = "<group>"; };
+		AA0001000000000000000101 /* LightweightBallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightweightBallDetector.swift; sourceTree = "<group>"; };
+		AA0001000000000000000102 /* FrameDiffTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameDiffTrigger.swift; sourceTree = "<group>"; };
 		5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BallStrikeCameraWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8458BA0A5B9B11F51B8C347F /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchCompanionModels.swift; sourceTree = "<group>"; };
@@ -311,6 +320,7 @@
 		BF0000010000000000000150 /* AppShellComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellComponents.swift; sourceTree = "<group>"; };
 		BF0000010000000000000151 /* BallStrikeTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallStrikeTheme.swift; sourceTree = "<group>"; };
 		BF0000010000000000000152 /* BallStrikeBackgroundView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallStrikeBackgroundView.swift; sourceTree = "<group>"; };
+		BF0000010000000000000153 /* EnsembleBFSClubTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnsembleBFSClubTracker.swift; sourceTree = "<group>"; };
 		BF000001000000000000B001 /* CourseLandingMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseLandingMapView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		BF0000020000000000000002 /* AppBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBackend.swift; sourceTree = "<group>"; };
@@ -406,6 +416,10 @@
 		CAFE00000000000000000100 /* GSProModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProModels.swift; sourceTree = "<group>"; };
 		CAFE00000000000000000102 /* GSProClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProClient.swift; sourceTree = "<group>"; };
 		CAFE00000000000000000104 /* GSProViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProViewModel.swift; sourceTree = "<group>"; };
+		CAFE00000000000000000106 /* RoundShotLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundShotLogView.swift; sourceTree = "<group>"; };
+		CAFE00000000000000000108 /* SimNetworkScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimNetworkScanner.swift; sourceTree = "<group>"; };
+		CAFE0000000000000000010A /* SimBLEPeripheral.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimBLEPeripheral.swift; sourceTree = "<group>"; };
+		CAFE0000000000000000010C /* SimBLEViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimBLEViewModel.swift; sourceTree = "<group>"; };
 		D285E96FFA0E9231BA42EF6E /* Appearance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Appearance.swift; sourceTree = "<group>"; };
 		E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchConnectivityBridge.swift; sourceTree = "<group>"; };
 		E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
@@ -528,6 +542,7 @@
 			children = (
 				BF0000010000000000000106 /* CameraController.swift */,
 				209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */,
+				AA0001000000000000000102 /* FrameDiffTrigger.swift */,
 			);
 			path = Camera;
 			sourceTree = "<group>";
@@ -537,6 +552,7 @@
 			children = (
 				BF0000010000000000000104 /* BallObservation.swift */,
 				BF0000010000000000000105 /* BallDetector.swift */,
+				AA0001000000000000000101 /* LightweightBallDetector.swift */,
 			);
 			path = Detection;
 			sourceTree = "<group>";
@@ -618,6 +634,7 @@
 				BF0000010000000000000129 /* CameraCalibration.swift */,
 				BF000001000000000000012A /* ShotMetricsCalculator.swift */,
 				BF000001000000000000012B /* ClubTracker.swift */,
+				BF0000010000000000000153 /* EnsembleBFSClubTracker.swift */,
 				BF000001000000000000012C /* DistanceEstimator.swift */,
 				BF0000010000000000000120 /* ShotCompositeRenderer.swift */,
 				BF0000010000000000000133 /* DirectionalFormat.swift */,
@@ -685,6 +702,8 @@
 				CAFE000000000000000000B2 /* OpenGolfSimClient.swift */,
 				CAFE00000000000000000100 /* GSProModels.swift */,
 				CAFE00000000000000000102 /* GSProClient.swift */,
+				CAFE00000000000000000108 /* SimNetworkScanner.swift */,
+				CAFE0000000000000000010A /* SimBLEPeripheral.swift */,
 			);
 			path = Simulation;
 			sourceTree = "<group>";
@@ -746,6 +765,7 @@
 				BF0000020000000000000015 /* SimSessionViewModel.swift */,
 				CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */,
 				CAFE00000000000000000104 /* GSProViewModel.swift */,
+				CAFE0000000000000000010C /* SimBLEViewModel.swift */,
 				BF0000020000000000000016 /* CourseRoundViewModel.swift */,
 				BF0000020000000000000017 /* AnalyticsViewModel.swift */,
 				BF0000020000000000000018 /* FeedViewModel.swift */,
@@ -915,6 +935,7 @@
 				CAFE000000000000000000C4 /* SessionDetailView.swift */,
 				CAFE000000000000000000C6 /* ShotDetailView.swift */,
 				CAFE000000000000000000C8 /* ShotGIFExporter.swift */,
+				CAFE00000000000000000106 /* RoundShotLogView.swift */,
 			);
 			path = History;
 			sourceTree = "<group>";
@@ -1064,6 +1085,8 @@
 			files = (
 				BF0000010000000000000001 /* BallStrikeCameraApp.swift in Sources */,
 				209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */,
+				AA0001000000000000000001 /* LightweightBallDetector.swift in Sources */,
+				AA0001000000000000000002 /* FrameDiffTrigger.swift in Sources */,
 				BF0000010000000000000002 /* CameraPhase.swift in Sources */,
 				BF0000010000000000000003 /* PlatformImage.swift in Sources */,
 				BF000001000000000000001B /* ShotAnalysisModels.swift in Sources */,
@@ -1072,6 +1095,7 @@
 				BF0000010000000000000029 /* CameraCalibration.swift in Sources */,
 				BF000001000000000000002A /* ShotMetricsCalculator.swift in Sources */,
 				BF000001000000000000002B /* ClubTracker.swift in Sources */,
+				BF0000010000000000000053 /* EnsembleBFSClubTracker.swift in Sources */,
 				BF000001000000000000002C /* DistanceEstimator.swift in Sources */,
 				BF0000010000000000000020 /* ShotCompositeRenderer.swift in Sources */,
 				BF0000010000000000000004 /* BallObservation.swift in Sources */,
@@ -1209,6 +1233,10 @@
 				CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */,
 				CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */,
 				CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */,
+				CAFE00000000000000000107 /* RoundShotLogView.swift in Sources */,
+				CAFE00000000000000000109 /* SimNetworkScanner.swift in Sources */,
+				CAFE0000000000000000010B /* SimBLEPeripheral.swift in Sources */,
+				CAFE0000000000000000010D /* SimBLEViewModel.swift in Sources */,
 				BF000008000000000000000F /* ClubAnalyticsService.swift in Sources */,
 				BF0000080000000000000010 /* StrokesGained.swift in Sources */,
 				BF0000080000000000000012 /* SyncQueue.swift in Sources */,

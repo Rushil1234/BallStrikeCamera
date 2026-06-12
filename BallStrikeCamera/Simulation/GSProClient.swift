@@ -1,11 +1,16 @@
 import Foundation
 import Network
 
-/// TCP client for GSPro Connect. The UI owns this through GSProViewModel.
+/// Pure networking layer for the GSPro Connect API.
+/// GSPro runs a TCP server on port 921. We connect, send newline-delimited JSON shot
+/// messages, and receive player-info responses (code 201) that tell us the current
+/// club and player handedness selected inside GSPro.
 final class GSProClient {
+
     static let defaultPort: UInt16 = 921
     private static let delimiter = Data("\n".utf8)
 
+    // Callbacks — always invoked on the main queue.
     var onStateChange: ((GSProConnectionState) -> Void)?
     var onPlayerInfo: ((GSProPlayerInfo) -> Void)?
     var onStatusMessage: ((String) -> Void)?
@@ -24,7 +29,6 @@ final class GSProClient {
             notify(.failed("Invalid port."))
             return
         }
-
         let conn = NWConnection(
             to: .hostPort(host: NWEndpoint.Host(host), port: nwPort),
             using: .tcp
@@ -38,8 +42,8 @@ final class GSProClient {
             case .ready:
                 self.notify(.connected)
                 self.startReceiving(conn)
-            case .failed(let error):
-                self.notify(.failed(self.describe(error)))
+            case .failed(let err):
+                self.notify(.failed(self.describe(err)))
                 self.connection = nil
             case .cancelled:
                 self.notify(.disconnected)
@@ -59,9 +63,8 @@ final class GSProClient {
 
     // MARK: - Send
 
-    func encode(_ packet: SimOutputService.SimShotPacket) throws -> Data {
-        let encoder = JSONEncoder()
-        var payload = try encoder.encode(packet)
+    func encode(_ message: GSProShotMessage) throws -> Data {
+        var payload = try JSONEncoder().encode(message)
         payload.append(contentsOf: Self.delimiter)
         return payload
     }
@@ -71,9 +74,8 @@ final class GSProClient {
             completion(GSProError.notConnected)
             return
         }
-
-        conn.send(content: payload, completion: .contentProcessed { error in
-            DispatchQueue.main.async { completion(error) }
+        conn.send(content: payload, completion: .contentProcessed { err in
+            DispatchQueue.main.async { completion(err) }
         })
     }
 
@@ -105,24 +107,16 @@ final class GSProClient {
 
     private func decodeMessage(_ data: Data) {
         #if DEBUG
-        if let text = String(data: data, encoding: .utf8) {
-            print("[GSPro] <- \(text)")
-        }
+        if let s = String(data: data, encoding: .utf8) { print("[GSPro] ← \(s)") }
         #endif
 
-        let decoder = JSONDecoder()
-        guard let message = try? decoder.decode(GSProGenericMessage.self, from: data) else { return }
+        guard let response = try? JSONDecoder().decode(GSProResponse.self, from: data) else { return }
 
-        if let status = message.status ?? message.message ?? message.type {
-            DispatchQueue.main.async { [weak self] in self?.onStatusMessage?(status) }
+        if let player = response.player {
+            DispatchQueue.main.async { [weak self] in self?.onPlayerInfo?(player) }
         }
-
-        let info = GSProPlayerInfo(
-            clubDisplayName: message.clubDisplayName,
-            handed: message.handedDisplayName
-        )
-        if info.clubDisplayName != nil || info.handed != nil {
-            DispatchQueue.main.async { [weak self] in self?.onPlayerInfo?(info) }
+        if let msg = response.message, !msg.isEmpty {
+            DispatchQueue.main.async { [weak self] in self?.onStatusMessage?(msg) }
         }
     }
 
@@ -136,29 +130,15 @@ final class GSProClient {
         switch error {
         case .posix(let code):
             switch code {
-            case .ECONNREFUSED:
-                return "Connection refused. Is GSPro Connect running?"
-            case .ETIMEDOUT:
-                return "Timed out. Check the IP address."
-            case .ENETUNREACH:
-                return "Network unreachable."
-            default:
-                return "Could not connect. Make sure GSPro is open and on the same Wi-Fi."
+            case .ECONNREFUSED: return "Connection refused. Is GSPro running with Connect enabled?"
+            case .ETIMEDOUT:    return "Timed out. Check the IP address."
+            case .ENETUNREACH:  return "Network unreachable."
+            default:            return "Couldn't connect. Make sure GSPro is open and on the same Wi-Fi."
             }
         default:
-            return "Could not connect. Make sure GSPro is open and on the same Wi-Fi."
+            return "Couldn't connect. Make sure GSPro is open and on the same Wi-Fi."
         }
     }
 
     deinit { disconnect() }
-}
-
-private extension GSProGenericMessage {
-    var clubDisplayName: String? {
-        clubName ?? club
-    }
-
-    var handedDisplayName: String? {
-        handedness ?? handed
-    }
 }

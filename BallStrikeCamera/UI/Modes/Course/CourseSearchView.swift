@@ -533,34 +533,44 @@ private struct TeeSelectorSheet: View {
         ZStack {
             TrueCarryBackground()
             VStack(spacing: 0) {
+                // Cancel button row
                 HStack {
                     Button { dismiss() } label: {
                         Text("Cancel")
-                            .font(.system(size: 15))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(TCTheme.textMuted)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(TCTheme.border, lineWidth: 1)
+                            )
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    VStack(spacing: 2) {
-                        Text("Select Tees")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(TCTheme.textPrimary)
-                        Text(course.name)
-                            .font(.system(size: 11))
-                            .foregroundColor(TCTheme.textMuted)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Color.clear.frame(width: 60)
                 }
                 .padding(.horizontal, TCTheme.hPad)
                 .padding(.top, 14)
-                .padding(.bottom, 6)
+                .padding(.bottom, 10)
+
+                // Title + course name
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Select Tees")
+                        .font(.system(size: 26, weight: .bold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text(course.name)
+                        .font(.system(size: 13))
+                        .foregroundColor(TCTheme.textMuted)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, TCTheme.hPad)
+                .padding(.bottom, 12)
 
                 Divider().opacity(0.4)
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         if course.source == .mapKit || !course.teeBoxes.contains(where: { $0.totalYards > 0 }) {
                             HStack(spacing: 8) {
                                 Image(systemName: "info.circle")
@@ -570,7 +580,6 @@ private struct TeeSelectorSheet: View {
                                     .font(.system(size: 11))
                                     .foregroundColor(TCTheme.textMuted)
                             }
-                            .padding(.horizontal, TCTheme.hPad)
                             .padding(.bottom, 2)
                         }
                         ForEach(course.teeBoxes) { tee in
@@ -584,7 +593,7 @@ private struct TeeSelectorSheet: View {
                         }
                     }
                     .padding(.horizontal, TCTheme.hPad)
-                    .padding(.top, 12)
+                    .padding(.top, 10)
                     .padding(.bottom, 40)
                 }
             }

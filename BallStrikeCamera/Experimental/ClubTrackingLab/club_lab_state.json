@@ -1,0 +1,37 @@
+{
+  "shot": "ShotExport_20260504_142042",
+  "frame": 18,
+  "method": "streak",
+  "params": {
+    "diff_thresh": 80.0,
+    "min_area": 90.10714285714289,
+    "max_area": 765.9556878306903,
+    "max_aspect": 2.2,
+    "exclusion": 1.0029761904761898,
+    "roi_x": 22.0,
+    "roi_y": 7.066358024691354,
+    "dilate": 2.0158730158730123,
+    "max_resid_px": 62.390873015873126,
+    "skip_near_impact": 1.979717813051149,
+    "fov_x": 70.0,
+    "fov_y": 45.0,
+    "ball_diam_m": 0.04275793650793652,
+    "zero_deg": 0.0
+  },
+  "impact": 17,
+  "detected": false,
+  "num_blobs": 0,
+  "best_blob": null,
+  "live_metrics": {
+    "club_speed": 90.11831633326379,
+    "points": 2,
+    "method": "mid2_speed+span_path",
+    "club_path": 2.799341311753155,
+    "attack_angle": -2.9364669970645254,
+    "depth_m": 0.8455107017937523,
+    "spd_frames": [
+      16,
+      18
+    ]
+  }
+}

@@ -21,8 +21,8 @@ final class CameraController: NSObject, ObservableObject {
 
     private let sessionQueue = DispatchQueue(label: "com.ballstrike.camera.session")
     private let videoQueue = DispatchQueue(label: "com.ballstrike.camera.video", qos: .userInteractive)
-    private let detector = BallDetector()
-    private let impactDetector = ImpactDetector()
+    private let detector = LightweightBallDetector()
+    private let diffTrigger = FrameDiffTrigger()
     private let ciContext = CIContext()
 
     private var device: AVCaptureDevice?
@@ -31,9 +31,12 @@ final class CameraController: NSObject, ObservableObject {
     private let roiLock = NSLock()
     nonisolated(unsafe) private var _searchROI: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)
 
-    // Impact ROI — set on MainActor when ball locks, read on videoQueue via impactLock.
-    private let impactLock = NSLock()
-    nonisolated(unsafe) private var _impactROI: CGRect? = nil
+    // Trigger state — set on MainActor when ball locks, consumed on videoQueue via triggerLock.
+    private let triggerLock = NSLock()
+    nonisolated(unsafe) private var _shouldCaptureTriggerRef: Bool = false
+    nonisolated(unsafe) private var _triggerCenter: CGPoint = .zero
+    nonisolated(unsafe) private var _triggerRadius: CGFloat = 0
+    nonisolated(unsafe) private var _isReadyForTrigger: Bool = false
     private var lockedImpactROI: CGRect?
 
     func updateSearchROI(_ roi: CGRect) {
@@ -50,8 +53,11 @@ final class CameraController: NSObject, ObservableObject {
 
     private var stableRect: CGRect?
     private var stableFrameCount = 0
+    private var trackingMissCount = 0
+    private let trackingMissLimit = 5   // tolerate brief gaps before resetting stable count
     private var lockedBallRect: CGRect?
-    private let requiredStableFrames = 8
+    private var lockedStateEnteredAt: Date?
+    private let requiredStableFrames = 20
     private let stableCenterThreshold: CGFloat = 0.025
     private let leaveSpotThreshold: CGFloat = 0.035
 
@@ -106,9 +112,6 @@ final class CameraController: NSObject, ObservableObject {
             self?.sessionQueue.async { [weak self] in
                 self?.configureSessionIfNeeded()
                 self?.session.startRunning()
-                Task { @MainActor in
-                    self?.applyShutter(.oneThousand)
-                }
             }
         }
     }
@@ -197,6 +200,9 @@ final class CameraController: NSObject, ObservableObject {
             if camera.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
                 camera.whiteBalanceMode = .continuousAutoWhiteBalance
             }
+            if camera.isExposureModeSupported(.continuousAutoExposure) {
+                camera.exposureMode = .continuousAutoExposure
+            }
             camera.unlockForConfiguration()
         } catch {
             Task { @MainActor in
@@ -239,24 +245,26 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         roiLock.lock()
         let roi = _searchROI
         roiLock.unlock()
-        let raw = detector.detect(in: pixelBuffer, roi: roi)
-        // Discard detections whose center falls in the corners of the bounding rect
-        // but outside the actual circular placement boundary (ellipse equation check).
-        let observation = raw.flatMap { obs -> BallObservation? in
-            guard roi.width > 0, roi.height > 0 else { return obs }
-            let dx = (obs.center.x - roi.midX) / (roi.width  / 2)
-            let dy = (obs.center.y - roi.midY) / (roi.height / 2)
-            return dx * dx + dy * dy <= 1 ? obs : nil
-        }
-        impactLock.lock()
-        let impactROI = _impactROI
-        impactLock.unlock()
+        // Ellipse boundary filter is handled inside LightweightBallDetector.
+        let observation = detector.detect(in: pixelBuffer, roi: roi)
 
-        var impactDetected = false
-        if let impactROI {
-            impactDetector.establishBaselineIfNeeded(pixelBuffer: pixelBuffer, roi: impactROI)
-            impactDetected = impactDetector.checkForImpact(pixelBuffer: pixelBuffer, roi: impactROI)
+        triggerLock.lock()
+        let shouldCapRef = _shouldCaptureTriggerRef
+        let trigCenter   = _triggerCenter
+        let trigRadius   = _triggerRadius
+        let isReady      = _isReadyForTrigger
+        triggerLock.unlock()
+
+        if shouldCapRef {
+            diffTrigger.reset()
+            diffTrigger.captureReference(in: pixelBuffer, roiCenter: trigCenter, roiRadius: trigRadius)
+            triggerLock.lock()
+            _shouldCaptureTriggerRef = false
+            _isReadyForTrigger = true
+            triggerLock.unlock()
         }
+
+        let impactDetected = isReady && diffTrigger.check(in: pixelBuffer, roiCenter: trigCenter, roiRadius: trigRadius)
 
         let frame = makeCapturedFrame(from: pixelBuffer, timestamp: timestamp)
 
@@ -363,6 +371,11 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             statusText = "READY — watching for impact"
 
             if impactDetected {
+                let lockAge = lockedStateEnteredAt.map { Date().timeIntervalSince($0) } ?? 0
+                guard lockAge >= 0.6 else {
+                    // Suppress — ball is still being positioned
+                    return
+                }
                 print("ROI IMPACT DETECTED — triggering capture")
                 triggerHitCapture()
                 return
@@ -390,9 +403,16 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
 
         guard let observation else {
+            // During tracking, tolerate a short run of nil frames (glare flicker, single
+            // bad detection) so one missed frame doesn't reset 7 frames of stable count.
+            if phase == .tracking {
+                trackingMissCount += 1
+                if trackingMissCount <= trackingMissLimit { return }
+            }
             resetShotPipeline(to: .searching, status: "Looking for ball")
             return
         }
+        trackingMissCount = 0
 
         lastPublishedDetectionTime = CACurrentMediaTime()
 
@@ -409,6 +429,26 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         case .tracking:
             currentBallRect = observation.normalizedRect
+            // Ball must be well inside the setup circle — not near the edge or rolling in.
+            // This prevents a ball being slid/rolled across the boundary from accumulating
+            // stable frames and causing a false lock + false trigger.
+            let isWellInsideROI: Bool = {
+                roiLock.lock()
+                let roi = _searchROI
+                roiLock.unlock()
+                guard roi.width > 0, roi.height > 0 else { return true }
+                let dx = (observation.center.x - roi.midX) / (roi.width  / 2)
+                let dy = (observation.center.y - roi.midY) / (roi.height / 2)
+                return dx * dx + dy * dy <= 0.60  // center must be within ~77% of radius
+            }()
+            guard isWellInsideROI else {
+                if stableFrameCount > 0 {
+                    stableFrameCount = 0
+                    stableRect = nil
+                }
+                statusText = "Move ball to center of circle"
+                return
+            }
             updateStability(with: observation.normalizedRect)
             statusText = "Tracking ball: \(stableFrameCount)/\(requiredStableFrames) stable frames"
             if stableFrameCount >= requiredStableFrames {
@@ -419,15 +459,19 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 phase = .ready
                 stableRect = rect
                 readyLostFrameCount = 0
+                lockedStateEnteredAt = Date()
                 statusText = "READY — swing when ready"
 
-                let impactROI = expandedImpactROI(from: rect)
-                lockedImpactROI = impactROI
-                impactLock.lock()
-                _impactROI = impactROI
-                impactLock.unlock()
-                impactDetector.reset()
-                print("Impact ROI: \(impactROI)")
+                lockedImpactROI = expandedImpactROI(from: rect)
+                let trigCenter = CGPoint(x: rect.midX, y: rect.midY)
+                let trigRadius = max(rect.width, rect.height) * 2.5
+                triggerLock.lock()
+                _triggerCenter = trigCenter
+                _triggerRadius = trigRadius
+                _shouldCaptureTriggerRef = true
+                _isReadyForTrigger = false
+                triggerLock.unlock()
+                print("Trigger ROI center: \(trigCenter) radius: \(trigRadius)")
 
                 print("LOCKED valid ball rect: \(rect), aspect: \(String(format: "%.3f", aspect))")
                 print("stableFrameCount: \(stableFrameCount)")
@@ -502,7 +546,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         print("Impact capture config: preHitFrames=\(preHitFrames) postHitFrames=\(postHitFrames) expectedFrameCount=\(expectedFrameCount)")
         print("Impact capture started")
         print("Started hit capture with \(eventFrames.count) pre/impact frames")
-        impactDetector.reset()
+        diffTrigger.reset()
         stableFrameCount = 0
         stableRect = nil
         readyLostFrameCount = 0
@@ -564,6 +608,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             movementThresholdNorm = trackingResult.movementThresholdNorm
             for obs  in trackingResult.observations { observationMap[obs.frameIndex]  = obs }
             for info in trackingResult.debugInfos   { debugInfoMap[info.frameIndex]   = info }
+
         } else {
             print("PostImpactBallTracker: no lockedBallRect — skipping tracking")
         }
@@ -597,19 +642,32 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         )
 
         if let metrics = ShotMetricsCalculator().calculate(for: result) {
-            result = ShotAnalysisResult(
-                frames: finalFrames,
-                impactFrameIndex: effectiveImpactIndex,
-                lockedBallRect: lockedBallRect,
-                lockedImpactROI: lockedImpactROI,
-                createdAt: analysisCreatedAt,
-                fallbackImpactFrameIndex: fallbackImpactIndex,
-                detectedImpactFrameIndex: effectiveImpactIndex,
-                impactDetectionReason: impactDetectionReason,
-                initialBallCenter: initialBallCenter,
-                movementThresholdNorm: movementThresholdNorm,
-                metrics: metrics
-            )
+            // SANITY CHECK — reject physically impossible readings caused by
+            // tracking noise, glare, or a second ball placement.
+            let speedOK = metrics.ballLaunch.ballSpeedMph.map  { $0 >= 0.5 && $0 <= 200 } ?? true
+            let hlaOK   = metrics.ballLaunch.hlaDegrees.map    { abs($0) <= 75          } ?? true
+            let carryOK = metrics.distance.carryYards.map      { $0 >= 0   && $0 <= 375 } ?? true
+            if speedOK && hlaOK && carryOK {
+                result = ShotAnalysisResult(
+                    frames: finalFrames,
+                    impactFrameIndex: effectiveImpactIndex,
+                    lockedBallRect: lockedBallRect,
+                    lockedImpactROI: lockedImpactROI,
+                    createdAt: analysisCreatedAt,
+                    fallbackImpactFrameIndex: fallbackImpactIndex,
+                    detectedImpactFrameIndex: effectiveImpactIndex,
+                    impactDetectionReason: impactDetectionReason,
+                    initialBallCenter: initialBallCenter,
+                    movementThresholdNorm: movementThresholdNorm,
+                    metrics: metrics
+                )
+            } else {
+                print(String(format: "[ShotValidation] Implausible metrics suppressed — speed=%.1f hla=%.1f carry=%.1f",
+                             metrics.ballLaunch.ballSpeedMph ?? 0,
+                             metrics.ballLaunch.hlaDegrees ?? 0,
+                             metrics.distance.carryYards ?? 0))
+                // Keep result.metrics = nil; result view shows "--" for all stats
+            }
         }
 
         latestShotAnalysis = result
@@ -666,13 +724,16 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         currentBallRect = nil
         lockedBallRect = nil
         lockedImpactROI = nil
-        impactLock.lock()
-        _impactROI = nil
-        impactLock.unlock()
-        impactDetector.reset()
+        triggerLock.lock()
+        _shouldCaptureTriggerRef = false
+        _isReadyForTrigger = false
+        triggerLock.unlock()
+        diffTrigger.reset()
         stableRect = nil
         stableFrameCount = 0
+        trackingMissCount = 0
         readyLostFrameCount = 0
+        lockedStateEnteredAt = nil
     }
 
     nonisolated private func normalizedDistance(_ a: CGPoint, _ b: CGPoint) -> CGFloat {

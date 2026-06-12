@@ -34,6 +34,14 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>True Carry uses Bluetooth to auto-detect your club from the NFC hub, and to connect to the TrueCarry Bridge on your PC when Wi-Fi isn't available.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-peripheral</string>
+	</array>
+	<key>NFCReaderUsageDescription</key>
+	<string>True Carry uses NFC to identify which club you're hitting when you tap it to your iPhone.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>

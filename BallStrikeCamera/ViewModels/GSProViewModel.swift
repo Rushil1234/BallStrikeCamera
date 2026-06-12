@@ -8,7 +8,6 @@ final class GSProViewModel: ObservableObject {
     @Published var host: String {
         didSet { UserDefaults.standard.set(host, forKey: "gspro_host") }
     }
-
     @Published var portString: String {
         didSet { UserDefaults.standard.set(portString, forKey: "gspro_port") }
     }
@@ -24,106 +23,187 @@ final class GSProViewModel: ObservableObject {
     @Published private(set) var isSending = false
     @Published var lastSendFeedback: String?
 
+    // MARK: - Scan state
+
+    @Published private(set) var isScanning = false
+    @Published var scanResults: [String] = []
+    @Published var scanMessage: String?
+
+    // MARK: - Private
+
     private let client = GSProClient()
-    private let outputService = SimOutputService()
-    private var shotNumber = 1
+    private var shotCounter = 0
+    private var heartbeatTask: Task<Void, Never>?
+    private var didAutoScanOnFailure = false
+
+    // MARK: - Computed
 
     var port: UInt16? {
-        guard let value = UInt16(portString.trimmingCharacters(in: .whitespaces)), value >= 1 else {
-            return nil
-        }
-        return value
+        guard let v = UInt16(portString.trimmingCharacters(in: .whitespaces)), v >= 1 else { return nil }
+        return v
     }
 
     var canConnect: Bool {
         !host.trimmingCharacters(in: .whitespaces).isEmpty && port != nil
     }
 
+    // MARK: - Init
+
     init() {
-        host = UserDefaults.standard.string(forKey: "gspro_host") ?? ""
-        portString = UserDefaults.standard.string(forKey: "gspro_port") ?? "\(GSProClient.defaultPort)"
+        host       = UserDefaults.standard.string(forKey: "gspro_host") ?? ""
+        portString = UserDefaults.standard.string(forKey: "gspro_port") ?? "921"
 
         client.onStateChange = { [weak self] state in
-            Task { @MainActor [weak self] in self?.connectionState = state }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.connectionState = state
+                switch state {
+                case .connected:
+                    self.sendReadySignal()
+                    self.startHeartbeat()
+                    self.didAutoScanOnFailure = false
+                case .failed:
+                    self.stopHeartbeat()
+                    // Auto-scan once if the saved IP is stale so the user doesn't have to intervene.
+                    guard !self.didAutoScanOnFailure,
+                          !self.host.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    self.didAutoScanOnFailure = true
+                    let prevHost = self.host
+                    await self.scanForHosts()
+                    if self.host != prevHost {
+                        try? await Task.sleep(for: .seconds(0.4))
+                        self.connect()
+                    }
+                default:
+                    self.stopHeartbeat()
+                }
+            }
         }
         client.onPlayerInfo = { [weak self] info in
             Task { @MainActor [weak self] in self?.playerInfo = info }
         }
-        client.onStatusMessage = { [weak self] status in
-            Task { @MainActor [weak self] in self?.statusMessage = status }
+        client.onStatusMessage = { [weak self] msg in
+            Task { @MainActor [weak self] in self?.statusMessage = msg }
         }
     }
 
     // MARK: - Actions
 
     func connect() {
-        let trimmedHost = host.trimmingCharacters(in: .whitespaces)
-        guard !trimmedHost.isEmpty else {
+        let trimmed = host.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
             connectionState = .failed("Enter the computer's local IP address.")
             return
         }
-        guard let port else {
-            connectionState = .failed("Invalid port. Enter a number between 1 and 65535.")
+        guard let p = port else {
+            connectionState = .failed("Invalid port.")
             return
         }
-        client.connect(host: trimmedHost, port: port)
+        shotCounter = 0
+        client.connect(host: trimmed, port: p)
     }
 
     func disconnect() {
+        stopHeartbeat()
         client.disconnect()
         connectionState = .disconnected
-        statusMessage = nil
+        playerInfo = nil
+        didAutoScanOnFailure = false
+    }
+
+    func scanForHosts() async {
+        guard !isScanning else { return }
+        isScanning = true
+        scanResults = []
+        scanMessage = nil
+        defer { isScanning = false }
+        let p = port ?? GSProClient.defaultPort
+        do {
+            let found = try await SimNetworkScanner().scan(port: p)
+            if found.count == 1 {
+                host = found[0]
+                scanMessage = "Found \(found[0]) — IP filled in."
+            } else if found.isEmpty {
+                scanMessage = "No PC found. Make sure GSPro Connect is running and your PC's firewall allows port \(p)."
+            } else {
+                scanResults = found
+            }
+        } catch {
+            scanMessage = error.localizedDescription
+        }
+        let msg = scanMessage
+        try? await Task.sleep(for: .seconds(6))
+        if scanMessage == msg { scanMessage = nil }
     }
 
     func sendTestShot() async {
-        var metrics = SavedShotMetrics()
-        metrics.ballSpeedMph = 145
-        metrics.clubSpeedMph = 96
-        metrics.smashFactor = 1.51
-        metrics.vlaDegrees = 13
-        metrics.hlaDegrees = 0.5
-        metrics.backspinRpm = 2600
-        metrics.sidespinRpm = 120
-        metrics.spinAxisDegrees = -1
-        metrics.carryYards = 238
-        metrics.totalYards = 254
-        await sendMetrics(metrics, label: "Test shot")
+        shotCounter += 1
+        let msg = GSProShotMessage.testShot(number: shotCounter)
+        await send(message: msg, label: "Test shot")
     }
 
     func sendMetrics(_ metrics: SavedShotMetrics) async {
-        await sendMetrics(metrics, label: "Shot")
+        shotCounter += 1
+        let msg = GSProShotMessage.shot(number: shotCounter, metrics: metrics)
+        await send(message: msg, label: "Shot")
     }
 
-    // MARK: - Private
+    // MARK: - Ready signal
 
-    private func sendMetrics(_ metrics: SavedShotMetrics, label: String) async {
+    private func sendReadySignal() {
+        shotCounter += 1
+        let msg = GSProShotMessage.ready(number: shotCounter)
+        guard let payload = try? client.encode(msg) else { return }
+        #if DEBUG
+        if let str = String(data: payload, encoding: .utf8) { print("[GSPro] → ready: \(str)") }
+        #endif
+        client.sendRaw(payload) { _ in }
+    }
+
+    // MARK: - Heartbeat
+
+    private func startHeartbeat() {
+        stopHeartbeat()
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                guard let self, self.connectionState.isConnected else { continue }
+                self.shotCounter += 1
+                let hb = GSProShotMessage.heartbeat(number: self.shotCounter)
+                if let payload = try? self.client.encode(hb) {
+                    self.client.sendRaw(payload) { _ in }
+                }
+            }
+        }
+    }
+
+    private func stopHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+    }
+
+    // MARK: - Private send
+
+    private func send(message: GSProShotMessage, label: String) async {
         guard connectionState.isConnected else {
             lastSendFeedback = "Not connected to GSPro."
             return
         }
-
         isSending = true
         lastSendFeedback = nil
         defer { isSending = false }
 
         do {
-            let packet = outputService.buildGSProPacket(metrics: metrics, shotNumber: shotNumber)
-            let payload = try client.encode(packet)
+            let payload = try client.encode(message)
             #if DEBUG
-            if let text = String(data: payload, encoding: .utf8) {
-                print("[GSPro] -> \(text)")
-            }
+            if let str = String(data: payload, encoding: .utf8) { print("[GSPro] → \(str)") }
             #endif
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
                 client.sendRaw(payload) { error in
-                    if let error {
-                        continuation.resume(throwing: error)
-                    } else {
-                        continuation.resume()
-                    }
+                    if let e = error { cont.resume(throwing: e) }
+                    else             { cont.resume() }
                 }
             }
-            shotNumber += 1
             lastSendFeedback = "\(label) sent to GSPro."
         } catch {
             lastSendFeedback = error.localizedDescription
@@ -133,4 +213,6 @@ final class GSProViewModel: ObservableObject {
         try? await Task.sleep(for: .seconds(4))
         if lastSendFeedback == feedback { lastSendFeedback = nil }
     }
+
+    deinit { heartbeatTask?.cancel() }
 }

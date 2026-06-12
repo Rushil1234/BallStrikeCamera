@@ -9,12 +9,16 @@ final class BallDetector {
     struct Configuration {
         var sampleStride: Int = 6
         var minimumBrightPixels: Int = 18
-        var brightnessThreshold: Int = 165
+        var brightnessThreshold: Int = 155
         var maxChannelSpread: Int = 72
         var minimumAspectRatio: CGFloat = 0.55
         var maximumAspectRatio: CGFloat = 1.85
         var minimumNormalizedArea: CGFloat = 0.00002
         var maximumNormalizedArea: CGFloat = 0.04
+        // Bright pixels must fill at least this fraction of the bounding-box grid cells.
+        // A golf ball fills ~40–70%; scattered glare (tee, mat reflections) fills ~4–10%.
+        // This prevents multiple distant bright spots from merging into one oversized blob.
+        var minimumFillRatio: Double = 0.18
     }
 
     private let configuration: Configuration
@@ -80,6 +84,13 @@ final class BallDetector {
         }
 
         guard count >= configuration.minimumBrightPixels else { return nil }
+
+        // Reject scattered glare: bright pixels must fill a meaningful fraction of their
+        // bounding box. A ball fills ~40–70% of its grid; multiple distant bright spots
+        // (tee, mat glare) fill ~4–10%, causing a huge bounding box and center drift.
+        let gridW = max(1, (maxX - minX) / sampleStride + 1)
+        let gridH = max(1, (maxY - minY) / sampleStride + 1)
+        guard Double(count) / Double(gridW * gridH) >= configuration.minimumFillRatio else { return nil }
 
         let boxWidth = CGFloat(maxX - minX + sampleStride)
         let boxHeight = CGFloat(maxY - minY + sampleStride)

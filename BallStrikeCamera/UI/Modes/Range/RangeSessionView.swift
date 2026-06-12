@@ -50,6 +50,14 @@ struct RangeSessionView: View {
                 .foregroundColor(BSTheme.textMuted)
             }
         }
+        .alert("Save Failed", isPresented: Binding(
+            get: { vm.errorMessage != nil },
+            set: { if !$0 { vm.errorMessage = nil } }
+        )) {
+            Button("OK") { vm.errorMessage = nil }
+        } message: {
+            Text(vm.errorMessage ?? "")
+        }
         .confirmationDialog("End Range Session?", isPresented: $showEndAlert, titleVisibility: .visible) {
             Button("Save Session") {
                 Task {

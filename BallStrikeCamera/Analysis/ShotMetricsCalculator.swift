@@ -68,14 +68,14 @@ struct ShotMetricsCalculator {
     }
 
     let configuration: Configuration
-    let clubTracker: ClubTracker
+    let clubTracker: EnsembleBFSClubTracker
     let distanceEstimator: DistanceEstimator
     let spinEstimator: SpinEstimator
     let clubPathFaceEstimator: ClubPathFaceEstimator
 
     init(
         configuration: Configuration = Configuration(),
-        clubTracker: ClubTracker = ClubTracker(),
+        clubTracker: EnsembleBFSClubTracker = EnsembleBFSClubTracker(),
         distanceEstimator: DistanceEstimator = DistanceEstimator(),
         spinEstimator: SpinEstimator = SpinEstimator(),
         clubPathFaceEstimator: ClubPathFaceEstimator = ClubPathFaceEstimator()
@@ -155,7 +155,10 @@ struct ShotMetricsCalculator {
             ballLaunch.vlaModelWarnings  = ["vla_model.json not found — using physics 3D VLA."]
         }
 
-        let clubObservations = clubTracker.track(analysis: analysis)
+        let ballDepthM = nearestBallDepth(ball3DObservations, impactFrameIndex: analysis.detectedImpactFrameIndex)
+        let clubObservations = clubTracker.track(analysis: analysis,
+                                                  ballSpeedMph: ballLaunch.ballSpeedMph,
+                                                  ballDepthM: ballDepthM)
         let clubMetrics = calculateClubMetrics(
             clubObservations: clubObservations,
             ball3DObservations: ball3DObservations,
@@ -452,8 +455,8 @@ struct ShotMetricsCalculator {
         let points = clubObservations
             .filter { $0.frameIndex <= impactFrameIndex && $0.confidence > 0 }
             .compactMap { observation -> (frameIndex: Int, time: Double, position: SIMD3<Double>, confidence: Double)? in
-                guard let x = observation.leadingEdgeX ?? observation.centerX,
-                      let y = observation.leadingEdgeY ?? observation.centerY,
+                guard let x = observation.centerX ?? observation.leadingEdgeX,
+                      let y = observation.centerY ?? observation.leadingEdgeY,
                       let position = calibration.positionMeters(centerX: x, centerY: y, depthMeters: assumedDepth) else {
                     return nil
                 }

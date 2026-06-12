@@ -73,9 +73,14 @@ struct NFCShot: Codable, Identifiable {
     var clubId: UUID
     var clubName: String
     var holeNumber: Int
+    var shotNumber: Int = 1
     var latitude: Double
     var longitude: Double
+    var distanceToPinYards: Double?
     var tappedAt: Date = Date()
+    /// ID of the SavedShot (camera capture) matched to this tap — set when a
+    /// camera shot is saved within 3 minutes of this tap on the same hole.
+    var linkedShotId: UUID?
 }
 
 enum ClubType: String, Codable, CaseIterable {
@@ -450,4 +455,156 @@ struct FeedChallengePreview: Identifiable, Codable, Hashable {
     var subtitle: String
     var progress: Double
     var icon: String
+}
+
+// MARK: - Backward-compatible decoders
+// Fields added after the initial app release may be absent from rows already stored in Supabase.
+// Using decodeIfPresent + default for those fields prevents a hard DecodingError.keyNotFound crash
+// that would otherwise show "Load Error: The data couldn't be read because it is missing."
+
+extension SavedShotMedia {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        thumbnailPath            = try c.decodeIfPresent(String.self, forKey: .thumbnailPath)
+        compositePath            = try c.decodeIfPresent(String.self, forKey: .compositePath)
+        originalFramesFolderPath = try c.decodeIfPresent(String.self, forKey: .originalFramesFolderPath)
+        metricsJsonPath          = try c.decodeIfPresent(String.self, forKey: .metricsJsonPath)
+        gifPath                  = try c.decodeIfPresent(String.self, forKey: .gifPath)
+        frameCount               = try c.decodeIfPresent(Int.self,    forKey: .frameCount) ?? 41
+        saveOriginalFrames       = try c.decodeIfPresent(Bool.self,   forKey: .saveOriginalFrames) ?? false
+    }
+}
+
+extension SavedShot {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id            = try c.decodeIfPresent(UUID.self,           forKey: .id) ?? UUID()
+        userId        = try c.decode(UUID.self,                    forKey: .userId)
+        source        = try c.decodeIfPresent(ShotSource.self,     forKey: .source) ?? .live
+        mode          = try c.decodeIfPresent(ShotMode.self,       forKey: .mode) ?? .quick
+        clubId        = try c.decodeIfPresent(UUID.self,           forKey: .clubId)
+        clubName      = try c.decodeIfPresent(String.self,         forKey: .clubName)
+        timestamp     = try c.decodeIfPresent(Date.self,           forKey: .timestamp) ?? Date()
+        metrics       = try c.decode(SavedShotMetrics.self,        forKey: .metrics)
+        media         = try c.decodeIfPresent(SavedShotMedia.self, forKey: .media) ?? SavedShotMedia()
+        isBadShot     = try c.decodeIfPresent(Bool.self,           forKey: .isBadShot) ?? false
+        badShotReason = try c.decodeIfPresent(String.self,         forKey: .badShotReason)
+        notes         = try c.decodeIfPresent(String.self,         forKey: .notes)
+        sessionId     = try c.decodeIfPresent(UUID.self,           forKey: .sessionId)
+        roundId       = try c.decodeIfPresent(UUID.self,           forKey: .roundId)
+        holeNumber    = try c.decodeIfPresent(Int.self,            forKey: .holeNumber)
+    }
+}
+
+extension SavedShotMetrics {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        carryYards        = try c.decodeIfPresent(Double.self, forKey: .carryYards) ?? 0
+        totalYards        = try c.decodeIfPresent(Double.self, forKey: .totalYards) ?? 0
+        rolloutYards      = try c.decodeIfPresent(Double.self, forKey: .rolloutYards) ?? 0
+        ballSpeedMph      = try c.decodeIfPresent(Double.self, forKey: .ballSpeedMph) ?? 0
+        clubSpeedMph      = try c.decodeIfPresent(Double.self, forKey: .clubSpeedMph) ?? 0
+        smashFactor       = try c.decodeIfPresent(Double.self, forKey: .smashFactor) ?? 0
+        hlaDegrees        = try c.decodeIfPresent(Double.self, forKey: .hlaDegrees) ?? 0
+        hlaDirection      = try c.decodeIfPresent(String.self, forKey: .hlaDirection) ?? ""
+        vlaDegrees        = try c.decodeIfPresent(Double.self, forKey: .vlaDegrees) ?? 0
+        backspinRpm       = try c.decodeIfPresent(Double.self, forKey: .backspinRpm) ?? 0
+        sidespinRpm       = try c.decodeIfPresent(Double.self, forKey: .sidespinRpm) ?? 0
+        spinAxisDegrees   = try c.decodeIfPresent(Double.self, forKey: .spinAxisDegrees) ?? 0
+        clubPathDegrees   = try c.decodeIfPresent(Double.self, forKey: .clubPathDegrees) ?? 0
+        faceAngleDegrees  = try c.decodeIfPresent(Double.self, forKey: .faceAngleDegrees) ?? 0
+        faceToPathDegrees = try c.decodeIfPresent(Double.self, forKey: .faceToPathDegrees) ?? 0
+    }
+}
+
+extension SessionSummary {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        shotCount     = try c.decodeIfPresent(Int.self,    forKey: .shotCount) ?? 0
+        avgCarry      = try c.decodeIfPresent(Double.self, forKey: .avgCarry) ?? 0
+        avgTotal      = try c.decodeIfPresent(Double.self, forKey: .avgTotal) ?? 0
+        avgBallSpeed  = try c.decodeIfPresent(Double.self, forKey: .avgBallSpeed) ?? 0
+        bestCarry     = try c.decodeIfPresent(Double.self, forKey: .bestCarry) ?? 0
+        hlaDispersion = try c.decodeIfPresent(Double.self, forKey: .hlaDispersion) ?? 0
+    }
+}
+
+extension PracticeSession {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                 = try c.decodeIfPresent(UUID.self,            forKey: .id) ?? UUID()
+        userId             = try c.decode(UUID.self,                     forKey: .userId)
+        name               = try c.decodeIfPresent(String.self,          forKey: .name) ?? ""
+        sessionDescription = try c.decodeIfPresent(String.self,          forKey: .sessionDescription)
+        startedAt          = try c.decodeIfPresent(Date.self,            forKey: .startedAt) ?? Date()
+        endedAt            = try c.decodeIfPresent(Date.self,            forKey: .endedAt)
+        selectedClubId     = try c.decodeIfPresent(UUID.self,            forKey: .selectedClubId)
+        selectedClubName   = try c.decodeIfPresent(String.self,          forKey: .selectedClubName)
+        shotIds            = try c.decodeIfPresent([UUID].self,          forKey: .shotIds) ?? []
+        saveOriginalFrames = try c.decodeIfPresent(Bool.self,            forKey: .saveOriginalFrames) ?? false
+        summary            = try c.decodeIfPresent(SessionSummary.self,  forKey: .summary) ?? SessionSummary()
+    }
+}
+
+extension SimSession {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                 = try c.decodeIfPresent(UUID.self,         forKey: .id) ?? UUID()
+        userId             = try c.decode(UUID.self,                  forKey: .userId)
+        name               = try c.decodeIfPresent(String.self,       forKey: .name) ?? ""
+        sessionDescription = try c.decodeIfPresent(String.self,       forKey: .sessionDescription)
+        provider           = try c.decodeIfPresent(SimProvider.self,  forKey: .provider) ?? .notConnected
+        startedAt          = try c.decodeIfPresent(Date.self,         forKey: .startedAt) ?? Date()
+        endedAt            = try c.decodeIfPresent(Date.self,         forKey: .endedAt)
+        shotIds            = try c.decodeIfPresent([UUID].self,       forKey: .shotIds) ?? []
+        outputLog          = try c.decodeIfPresent([String].self,     forKey: .outputLog) ?? []
+        saveOriginalFrames = try c.decodeIfPresent(Bool.self,         forKey: .saveOriginalFrames) ?? false
+        usedOpenGolfSim    = try c.decodeIfPresent(Bool.self,         forKey: .usedOpenGolfSim) ?? false
+    }
+}
+
+extension RoundScoreSummary {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        totalScore  = try c.decodeIfPresent(Int.self, forKey: .totalScore) ?? 0
+        totalPar    = try c.decodeIfPresent(Int.self, forKey: .totalPar) ?? 0
+        fairwaysHit = try c.decodeIfPresent(Int.self, forKey: .fairwaysHit) ?? 0
+        greensInReg = try c.decodeIfPresent(Int.self, forKey: .greensInReg) ?? 0
+        totalPutts  = try c.decodeIfPresent(Int.self, forKey: .totalPutts) ?? 0
+    }
+}
+
+extension RoundHole {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                = try c.decodeIfPresent(UUID.self,           forKey: .id) ?? UUID()
+        holeNumber        = try c.decode(Int.self,                     forKey: .holeNumber)
+        par               = try c.decode(Int.self,                     forKey: .par)
+        score             = try c.decodeIfPresent(Int.self,            forKey: .score)
+        putts             = try c.decodeIfPresent(Int.self,            forKey: .putts)
+        fairwayHit        = try c.decodeIfPresent(Bool.self,           forKey: .fairwayHit)
+        greenInRegulation = try c.decodeIfPresent(Bool.self,           forKey: .greenInRegulation)
+        penalties         = try c.decodeIfPresent(Int.self,            forKey: .penalties) ?? 0
+        shotIds           = try c.decodeIfPresent([UUID].self,         forKey: .shotIds) ?? []
+        trackedShots      = try c.decodeIfPresent([TrackedShot].self,  forKey: .trackedShots) ?? []
+    }
+}
+
+extension CourseRound {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id                 = try c.decodeIfPresent(UUID.self,               forKey: .id) ?? UUID()
+        userId             = try c.decode(UUID.self,                        forKey: .userId)
+        name               = try c.decodeIfPresent(String.self,             forKey: .name) ?? ""
+        sessionDescription = try c.decodeIfPresent(String.self,             forKey: .sessionDescription)
+        courseId           = try c.decode(String.self,                      forKey: .courseId)
+        courseName         = try c.decode(String.self,                      forKey: .courseName)
+        teeBoxName         = try c.decode(String.self,                      forKey: .teeBoxName)
+        startedAt          = try c.decodeIfPresent(Date.self,               forKey: .startedAt) ?? Date()
+        endedAt            = try c.decodeIfPresent(Date.self,               forKey: .endedAt)
+        holes              = try c.decodeIfPresent([RoundHole].self,        forKey: .holes) ?? []
+        shotIds            = try c.decodeIfPresent([UUID].self,             forKey: .shotIds) ?? []
+        scoreSummary       = try c.decodeIfPresent(RoundScoreSummary.self,  forKey: .scoreSummary) ?? RoundScoreSummary()
+        nfcShots           = try c.decodeIfPresent([NFCShot].self,          forKey: .nfcShots) ?? []
+    }
 }

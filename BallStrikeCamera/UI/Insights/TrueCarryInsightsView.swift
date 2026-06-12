@@ -49,75 +49,6 @@ struct TrueCarryInsightsView: View {
         return decimals > 0 ? String(format: "%.\(decimals)f", v) : "\(Int(v))"
     }
 
-    // MARK: - Robust scaling helpers
-
-    /// Linear interpolation percentile on a pre-sorted array (p in 0.0...1.0).
-    private func percentile(_ sorted: [Double], _ p: Double) -> Double {
-        guard !sorted.isEmpty else { return 0 }
-        if sorted.count == 1 { return sorted[0] }
-        let idx = p * Double(sorted.count - 1)
-        let lo  = Int(idx)
-        let hi  = min(lo + 1, sorted.count - 1)
-        return sorted[lo] + (idx - Double(lo)) * (sorted[hi] - sorted[lo])
-    }
-
-    /// Returns a display domain anchored at the lowerP–upperP percentile range with padding.
-    /// Outliers beyond this range are clamped to the domain edge for display, not hidden.
-    private func robustDomain(values: [Double], lowerP: Double = 0.10, upperP: Double = 0.90,
-                               minSpan: Double = 1) -> ClosedRange<Double> {
-        let sorted = values.sorted()
-        let lo   = percentile(sorted, lowerP)
-        let hi   = percentile(sorted, upperP)
-        let span = max(hi - lo, minSpan)
-        let pad  = span * 0.10
-        return (lo - pad)...(hi + pad)
-    }
-
-    // MARK: - Dispersion dots
-
-    private func dispersionDots(_ shots: [SavedShot]) -> [(x: CGFloat, y: CGFloat)] {
-        let valid = shots.filter { $0.metrics.carryYards > 0 }
-        guard !valid.isEmpty else { return [] }
-
-        let carries   = valid.map { $0.metrics.carryYards }
-        let hlaValues = valid.map { s -> Double in
-            let d = s.metrics.hlaDegrees
-            return s.metrics.hlaDirection.lowercased() == "left" ? -d : d
-        }
-
-        // Robust carry domain: uses 10th–90th percentile so a single shank
-        // doesn't collapse all normal shots into a tiny band.
-        let carryDomain: ClosedRange<Double> = {
-            if carries.count <= 2 {
-                return ((carries.min() ?? 0) - 5)...((carries.max() ?? 0) + 5)
-            }
-            return robustDomain(values: carries, lowerP: 0.10, upperP: 0.90, minSpan: 10)
-        }()
-        let carryMid  = (carryDomain.lowerBound + carryDomain.upperBound) / 2
-        let carryHalf = max((carryDomain.upperBound - carryDomain.lowerBound) / 2, 1)
-
-        // Robust HLA domain: uses 5th–95th percentile.
-        let hlaDomain: ClosedRange<Double> = {
-            if hlaValues.count <= 2 {
-                let m = max(hlaValues.map { abs($0) }.max() ?? 1, 1)
-                return (-m - 1)...(m + 1)
-            }
-            return robustDomain(values: hlaValues, lowerP: 0.05, upperP: 0.95, minSpan: 2)
-        }()
-        let hlaMid  = (hlaDomain.lowerBound + hlaDomain.upperBound) / 2
-        let hlaHalf = max((hlaDomain.upperBound - hlaDomain.lowerBound) / 2, 1)
-
-        return zip(valid, hlaValues).map { shot, hla in
-            // Clamp outliers to the domain edge so they stay visible without
-            // distorting the scale for the majority of shots.
-            let clampedCarry = min(max(shot.metrics.carryYards, carryDomain.lowerBound), carryDomain.upperBound)
-            let clampedHLA   = min(max(hla, hlaDomain.lowerBound), hlaDomain.upperBound)
-            let xOff = CGFloat((clampedHLA   - hlaMid)  / hlaHalf)  * 0.18
-            let yOff = CGFloat((clampedCarry - carryMid) / carryHalf) * 0.15
-            return (x: min(max(0.5 + xOff, 0.15), 0.85),
-                    y: min(max(0.5 - yOff, 0.20), 0.80))
-        }
-    }
 
     // MARK: - Body
 
@@ -295,7 +226,13 @@ struct TrueCarryInsightsView: View {
     // MARK: - Dispersion
 
     private func dispersionCard(_ shots: [SavedShot]) -> some View {
-        let dots = dispersionDots(shots)
+        let rangePoints = shots.compactMap { shot -> TCRangeFinderDispersion.ShotPoint? in
+            guard shot.metrics.carryYards > 0 else { return nil }
+            let hla = shot.metrics.hlaDirection.lowercased() == "left"
+                ? -shot.metrics.hlaDegrees
+                : shot.metrics.hlaDegrees
+            return TCRangeFinderDispersion.ShotPoint(carry: shot.metrics.carryYards, hla: hla)
+        }
 
         let hlaSpread: String = {
             let vals = shots.map { s -> Double in
@@ -313,19 +250,19 @@ struct TrueCarryInsightsView: View {
         }()
 
         return VStack(alignment: .leading, spacing: 16) {
-            cardHeader("Shot Dispersion", "Horizontal launch angle vs. carry")
+            cardHeader("Shot Dispersion", "Carry distance & lateral spread")
 
-            TCDispersionFairwayGraphic(dots: dots, showRings: true)
+            TCRangeFinderDispersion(shots: rangePoints)
                 .frame(maxWidth: .infinity)
-                .frame(height: 220)
+                .frame(height: 240)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             HStack(spacing: 0) {
-                inlineStat(onTarget,                                          "ON TARGET")
+                inlineStat(onTarget,                           "ON TARGET")
                 verticalDivider(height: 28)
-                inlineStat(hlaSpread,                                         "HLA SPREAD")
+                inlineStat(hlaSpread,                          "HLA SPREAD")
                 verticalDivider(height: 28)
-                inlineStat(shots.isEmpty ? "—" : "\(shots.count)",            "SHOTS")
+                inlineStat(shots.isEmpty ? "—" : "\(shots.count)", "SHOTS")
             }
         }
         .tcCard(padding: 16)

@@ -23,9 +23,16 @@ final class OpenGolfSimViewModel: ObservableObject {
     @Published private(set) var isSending = false
     @Published var lastSendFeedback: String?
 
+    // MARK: - Scan state
+
+    @Published private(set) var isScanning = false
+    @Published var scanResults: [String] = []
+    @Published var scanMessage: String?
+
     // MARK: - Private
 
     private let client = OpenGolfSimClient()
+    private var didAutoScanOnFailure = false
 
     // MARK: - Computed
 
@@ -47,7 +54,25 @@ final class OpenGolfSimViewModel: ObservableObject {
         portString = UserDefaults.standard.string(forKey: "ogs_port") ?? "3111"
 
         client.onStateChange = { [weak self] state in
-            Task { @MainActor [weak self] in self?.connectionState = state }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.connectionState = state
+                switch state {
+                case .connected:
+                    self.didAutoScanOnFailure = false
+                case .failed:
+                    guard !self.didAutoScanOnFailure,
+                          !self.host.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+                    self.didAutoScanOnFailure = true
+                    let prevHost = self.host
+                    await self.scanForHosts()
+                    if self.host != prevHost {
+                        try? await Task.sleep(for: .seconds(0.4))
+                        self.connect()
+                    }
+                default: break
+                }
+            }
         }
         client.onResult = { [weak self] result in
             Task { @MainActor [weak self] in self?.lastResult = result }
@@ -75,6 +100,32 @@ final class OpenGolfSimViewModel: ObservableObject {
     func disconnect() {
         client.disconnect()
         connectionState = .disconnected
+        didAutoScanOnFailure = false
+    }
+
+    func scanForHosts() async {
+        guard !isScanning else { return }
+        isScanning = true
+        scanResults = []
+        scanMessage = nil
+        defer { isScanning = false }
+        let p = port ?? OpenGolfSimClient.defaultPort
+        do {
+            let found = try await SimNetworkScanner().scan(port: p)
+            if found.count == 1 {
+                host = found[0]
+                scanMessage = "Found \(found[0]) — IP filled in."
+            } else if found.isEmpty {
+                scanMessage = "No PC found. Make sure OpenGolfSim is running and your PC's firewall allows port \(p)."
+            } else {
+                scanResults = found
+            }
+        } catch {
+            scanMessage = error.localizedDescription
+        }
+        let msg = scanMessage
+        try? await Task.sleep(for: .seconds(6))
+        if scanMessage == msg { scanMessage = nil }
     }
 
     func sendTestShot() async {
