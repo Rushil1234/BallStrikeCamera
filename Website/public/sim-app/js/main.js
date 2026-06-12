@@ -11,6 +11,7 @@ import { loadAssets } from './assets.js';
 import { HUD, toParStr } from './ui.js';
 import { SFX } from './audio.js';
 import { getLiveCode, connectLive } from './live.js';
+import { fetchSimCourses } from './courses.js';
 
 // ---------- boot ----------
 
@@ -793,9 +794,62 @@ function frame() {
 
 frame();
 
-// ---------- live sim mode ----------
-
+// ---------- course selector ----------
+// Hoist liveCode here so the course-selector guard below can reference it.
 const liveCode = getLiveCode();
+
+// Notify parent (course-builder tool) that the sim is ready.
+window.parent?.postMessage({ type: 'SIM_READY' }, '*');
+
+// postMessage preview mode: course-builder sends PREVIEW_HOLE with custom holes array.
+window.addEventListener('message', (e) => {
+  if (!e.data || e.data.type !== 'PREVIEW_HOLE') return;
+  const { holes, holeIndex = 0 } = e.data;
+  if (!holes?.length) return;
+
+  // Inject the custom hole definitions into the game.
+  Object.assign(HOLES, holes);
+  HOLES.length = holes.length;
+
+  // Reset scores for the new course.
+  game.scores = HOLES.map(() => null);
+
+  // If assets aren't ready, wait for them.
+  assetsReady.then(() => {
+    hud.titleHide();
+    startHole(Math.min(holeIndex, HOLES.length - 1));
+    // Skip straight to AIM (bypass flyover) in preview mode.
+    game.flyT = 99;
+  });
+});
+
+// Load real courses from Supabase and populate the course selector.
+const isPreview = new URLSearchParams(location.search).has('preview');
+if (!isPreview && !liveCode) {
+  fetchSimCourses().then(courses => {
+    if (!courses.length) return;
+    const select = document.getElementById('course-select');
+    const wrap   = document.getElementById('course-select-wrap');
+    if (!select || !wrap) return;
+    courses.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.courseId;
+      opt.textContent = c.courseName;
+      opt._holes = c.holes;
+      select.appendChild(opt);
+    });
+    wrap.classList.remove('hidden');
+    select.addEventListener('change', () => {
+      const chosen = courses.find(c => c.courseId === select.value);
+      if (!chosen?.holes?.length) return;
+      Object.assign(HOLES, chosen.holes);
+      HOLES.length = chosen.holes.length;
+      game.scores = HOLES.map(() => null);
+    });
+  });
+}
+
+// ---------- live sim mode ----------
 
 if (liveCode) {
   // Live mode: disable 3-click swing; shots arrive via Supabase Realtime.

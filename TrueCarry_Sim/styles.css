@@ -399,6 +399,56 @@ html, body {
 }
 #btn-again { margin-top: 28px; }
 
+/* ---------------- course selector ---------------- */
+
+.course-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  justify-content: center;
+}
+
+.course-select-wrap.hidden { display: none !important; }
+
+.course-select-label {
+  font-family: 'Rajdhani', 'Helvetica Neue', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--gold);
+  white-space: nowrap;
+}
+
+.course-select {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(201,168,106,0.35);
+  border-radius: 6px;
+  color: #e8e0cf;
+  font-family: 'Rajdhani', 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 6px 28px 6px 10px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23c9a86a'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  cursor: pointer;
+  min-width: 180px;
+  max-width: 260px;
+}
+
+.course-select:focus {
+  outline: none;
+  border-color: rgba(201,168,106,0.7);
+}
+
+.course-select option {
+  background: #121a14;
+  color: #e8e0cf;
+}
+
 /* ---------------- live sim mode ---------------- */
 
 .live-waiting-overlay {

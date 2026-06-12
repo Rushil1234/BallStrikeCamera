@@ -99,9 +99,18 @@
   <div id="title-screen" class="overlay">
     <div class="title-inner">
       <div class="title-kicker">VIRTUAL GOLF SIMULATOR</div>
-      <h1 class="title-logo">GS<span>PRO</span></h1>
-      <div class="title-sub">WEB EDITION · PINE HOLLOW NATIONAL</div>
+      <h1 class="title-logo">TC<span>SIM</span></h1>
+      <div class="title-sub">TRUECARRY · PINE HOLLOW NATIONAL</div>
       <div class="title-rule"></div>
+
+      <!-- Course selector — hidden until sim_courses are loaded -->
+      <div id="course-select-wrap" class="course-select-wrap hidden">
+        <label class="course-select-label" for="course-select">COURSE</label>
+        <select id="course-select" class="course-select">
+          <option value="">Pine Hollow (built-in)</option>
+        </select>
+      </div>
+
       <button id="btn-start" class="gold-btn">TEE OFF</button>
       <div class="title-controls">
         <div><b>AIM</b> drag or ◀ ▶</div>

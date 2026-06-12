@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>True Carry — Course Builder</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Marcellus&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+<style>
+:root {
+  --bg:     #0d1610;
+  --panel:  #131d15;
+  --raised: #1a2820;
+  --border: rgba(201,168,106,0.20);
+  --gold:   #c9a86a;
+  --gold-hi:#ecd9ad;
+  --pine:   #8fd49a;
+  --red:    #e2654f;
+  --cream:  #f2eee1;
+  --muted:  rgba(242,238,225,0.55);
+  --font:   'Rajdhani', sans-serif;
+  --disp:   'Marcellus', serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--cream); font-family: var(--font); font-size: 14px; }
+
+/* ---- layout ---- */
+#shell { display: grid; height: 100vh; grid-template-columns: 300px 1fr; grid-template-rows: 48px 1fr; }
+#topbar { grid-column: 1/-1; display: flex; align-items: center; gap: 16px; padding: 0 18px; background: var(--panel); border-bottom: 1px solid var(--border); }
+#sidebar { display: flex; flex-direction: column; border-right: 1px solid var(--border); overflow: hidden; }
+#main { display: grid; grid-template-rows: 1fr 1fr; overflow: hidden; }
+
+/* ---- topbar ---- */
+.topbar-title { font-family: var(--disp); font-size: 1.05rem; color: var(--gold-hi); letter-spacing: 0.04em; }
+.topbar-title span { color: var(--gold); font-family: var(--font); font-weight: 700; }
+#auth-form { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+#auth-form input { background: var(--raised); border: 1px solid var(--border); border-radius: 6px; color: var(--cream); padding: 6px 10px; font-family: var(--font); font-size: 13px; width: 170px; }
+#auth-form input:focus { outline: none; border-color: var(--gold); }
+.btn { background: transparent; border: 1px solid var(--border); border-radius: 7px; color: var(--gold); font-family: var(--font); font-size: 13px; font-weight: 600; padding: 6px 14px; cursor: pointer; letter-spacing: 0.04em; transition: background .15s, border-color .15s; }
+.btn:hover { background: rgba(201,168,106,0.12); border-color: var(--gold); }
+.btn.primary { background: linear-gradient(135deg,#4d7a55,#2d5534); border-color: var(--pine); color: #fff; }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.danger { border-color: rgba(226,101,79,.5); color: var(--red); }
+#auth-status { font-size: 12px; color: var(--pine); }
+#save-btn { margin-left: 8px; }
+
+/* ---- sidebar ---- */
+#sidebar-header { padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
+#sidebar-header h2 { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: var(--gold); text-transform: uppercase; margin-bottom: 8px; }
+#course-search { width: 100%; background: var(--raised); border: 1px solid var(--border); border-radius: 7px; color: var(--cream); padding: 7px 10px; font-family: var(--font); font-size: 13px; }
+#course-search:focus { outline: none; border-color: var(--gold); }
+#course-list { flex: 1; overflow-y: auto; padding: 8px 8px; }
+.course-card { padding: 10px 12px; border-radius: 9px; border: 1px solid var(--border); margin-bottom: 6px; cursor: pointer; transition: background .15s, border-color .15s; background: var(--panel); }
+.course-card:hover { background: var(--raised); border-color: rgba(201,168,106,.4); }
+.course-card.active { background: rgba(143,212,154,.08); border-color: rgba(143,212,154,.4); }
+.cc-name { font-weight: 700; font-size: 14px; color: var(--cream); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-meta { font-size: 11px; color: var(--muted); margin-bottom: 5px; }
+.cc-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.badge { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 10px; border: 1px solid; text-transform: uppercase; }
+.badge-accepted { color: var(--pine); border-color: rgba(143,212,154,.4); background: rgba(143,212,154,.08); }
+.badge-draft    { color: var(--gold); border-color: rgba(201,168,106,.35); background: rgba(201,168,106,.07); }
+.badge-unknown  { color: var(--muted); border-color: var(--border); }
+.badge-holes    { color: var(--cream); border-color: var(--border); background: rgba(255,255,255,.04); }
+#sidebar-footer { padding: 10px 12px; border-top: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+
+/* ---- main: map ---- */
+#map-pane { position: relative; overflow: hidden; border-bottom: 1px solid var(--border); }
+#map { height: 100%; }
+#map-controls { position: absolute; top: 10px; right: 10px; z-index: 1000; display: flex; flex-direction: column; gap: 6px; }
+#hole-tabs { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; max-width: 90%; }
+.hole-tab { background: rgba(13,22,16,.85); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; color: var(--muted); backdrop-filter: blur(4px); transition: all .15s; }
+.hole-tab:hover { border-color: var(--gold); color: var(--gold); }
+.hole-tab.active { background: rgba(201,168,106,.2); border-color: var(--gold); color: var(--gold-hi); }
+#convert-bar { position: absolute; bottom: 48px; left: 10px; z-index: 1000; display: flex; gap: 8px; }
+#quality-chip { font-size: 11px; font-weight: 600; padding: 5px 12px; border-radius: 12px; background: rgba(13,22,16,.85); border: 1px solid var(--border); color: var(--muted); backdrop-filter: blur(4px); display: none; }
+
+/* ---- main: sim preview ---- */
+#preview-pane { position: relative; overflow: hidden; background: #0a110c; }
+#sim-iframe { width: 100%; height: 100%; border: none; display: block; }
+#preview-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,17,12,.92); }
+#preview-overlay-inner { text-align: center; }
+#preview-overlay-title { font-family: var(--disp); font-size: 1.3rem; color: var(--gold-hi); margin-bottom: 10px; }
+#preview-overlay-sub { font-size: 13px; color: var(--muted); }
+#preview-controls { position: absolute; top: 8px; left: 8px; z-index: 1000; display: flex; gap: 6px; }
+
+/* ---- status toast ---- */
+#toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 9999; background: rgba(13,22,16,.95); border: 1px solid var(--border); border-radius: 12px; padding: 10px 20px; font-size: 13px; color: var(--cream); backdrop-filter: blur(8px); pointer-events: none; opacity: 0; transition: opacity .3s; }
+#toast.show { opacity: 1; }
+#toast.ok   { border-color: rgba(143,212,154,.5); color: var(--pine); }
+#toast.err  { border-color: rgba(226,101,79,.5);  color: var(--red); }
+
+/* ---- empty state ---- */
+.empty-state { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 13px; }
+.empty-state big { display: block; font-size: 2rem; margin-bottom: 12px; }
+
+/* ---- scrollbar ---- */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <div class="topbar-title">True Carry <span>/ Course Builder</span></div>
+    <div id="auth-form">
+      <input type="email"    id="auth-email" placeholder="Email" autocomplete="email">
+      <input type="password" id="auth-pass"  placeholder="Password" autocomplete="current-password">
+      <button class="btn" onclick="doLogin()">Sign In</button>
+      <span id="auth-status"></span>
+    </div>
+    <button class="btn primary" id="convert-btn" onclick="convertSelected()" style="display:none">Convert → Sim</button>
+    <button class="btn primary" id="save-btn"    onclick="saveToSupabase()" style="display:none">Save Course</button>
+  </div>
+
+  <!-- Sidebar: course list -->
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h2>Courses in Backend</h2>
+      <input id="course-search" type="text" placeholder="Search courses…" oninput="filterCourses(this.value)">
+    </div>
+    <div id="course-list">
+      <div class="empty-state"><big>🔐</big>Sign in above to load courses</div>
+    </div>
+    <div id="sidebar-footer" id="course-count"></div>
+  </div>
+
+  <!-- Main area -->
+  <div id="main">
+
+    <!-- Map pane -->
+    <div id="map-pane">
+      <div id="map"></div>
+      <div id="map-controls">
+        <button class="btn" onclick="map.setView(mapCenter,13)" title="Reset view">⌖</button>
+      </div>
+      <div id="hole-tabs"></div>
+      <div id="convert-bar">
+        <div id="quality-chip"></div>
+      </div>
+    </div>
+
+    <!-- Sim preview pane -->
+    <div id="preview-pane">
+      <div id="preview-overlay">
+        <div id="preview-overlay-inner">
+          <div id="preview-overlay-title">Sim Preview</div>
+          <div id="preview-overlay-sub">Select a course and click "Convert → Sim" to preview it here</div>
+        </div>
+      </div>
+      <div id="preview-controls">
+        <button class="btn" id="prev-hole-btn" onclick="previewHole(previewHoleIdx-1)" style="display:none">◀ Hole</button>
+        <button class="btn" id="next-hole-btn" onclick="previewHole(previewHoleIdx+1)" style="display:none">Hole ▶</button>
+      </div>
+      <iframe id="sim-iframe" src="../../TrueCarry_Sim/index.html?preview=1" allow="autoplay"></iframe>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="converter.js"></script>
+<script>
+
+// ─── Supabase client ────────────────────────────────────────────────────────
+const SUPABASE_URL  = 'https://aoxturoezgecwceudeef.supabase.co';
+const SUPABASE_ANON = 'sb_publishable_Qk0gdBkqnTb2PV2bEfW-3A_COWs5lOU';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ─── State ──────────────────────────────────────────────────────────────────
+let allCourses = [];
+let selectedCourse = null;
+let convertedHoles = null;
+let previewHoleIdx = 0;
+let mapCenter = [40.0, -75.0];
+
+// ─── Map setup ──────────────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true, attributionControl: false });
+L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+  subdomains: ['mt0','mt1','mt2','mt3'], maxZoom: 21,
+}).addTo(map);
+map.setView(mapCenter, 5);
+
+const mapLayers = L.layerGroup().addTo(map);
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const email = document.getElementById('auth-email').value.trim();
+  const pass  = document.getElementById('auth-pass').value;
+  if (!email || !pass) { toast('Enter email and password', 'err'); return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) { toast(error.message, 'err'); return; }
+  document.getElementById('auth-status').textContent = '✓ ' + data.user.email;
+  document.getElementById('auth-email').style.display = 'none';
+  document.getElementById('auth-pass').style.display  = 'none';
+  document.querySelector('#auth-form .btn').style.display = 'none';
+  toast('Signed in — loading courses…', 'ok');
+  loadCourses();
+}
+
+// ─── Course list ─────────────────────────────────────────────────────────────
+async function loadCourses() {
+  const { data, error } = await sb
+    .from('course_geometries')
+    .select('course_id, course_name, city, state, latitude, longitude, geometry_state, confidence, generated_by, updated_at, payload')
+    .order('updated_at', { ascending: false })
+    .limit(300);
+
+  if (error) { toast('Load failed: ' + error.message, 'err'); return; }
+  allCourses = data || [];
+  renderCourseList(allCourses);
+  document.getElementById('sidebar-footer').textContent =
+    `${allCourses.length} course${allCourses.length !== 1 ? 's' : ''} in backend`;
+}
+
+function renderCourseList(courses) {
+  const list = document.getElementById('course-list');
+  if (!courses.length) {
+    list.innerHTML = '<div class="empty-state"><big>🏌️</big>No courses found</div>';
+    return;
+  }
+  list.innerHTML = courses.map(c => {
+    const state  = c.geometry_state || 'unknown';
+    const badgeClass = state === 'accepted' ? 'badge-accepted' : state === 'auto_draft' ? 'badge-draft' : 'badge-unknown';
+    const badgeLabel = state === 'auto_draft' ? 'Draft' : state.charAt(0).toUpperCase() + state.slice(1);
+    const holes  = (c.payload?.holes || []).filter(h => h.number > 0);
+    const holesWithGeo = holes.filter(h => h.teeCoordinate || h.greenCenterCoordinate);
+    const pct = holes.length ? Math.round(holesWithGeo.length / holes.length * 100) : 0;
+    const conf = c.confidence != null ? ` · ${Math.round(c.confidence * 100)}% conf` : '';
+    return `
+      <div class="course-card" data-id="${c.course_id}" onclick="selectCourse('${c.course_id}')">
+        <div class="cc-name">${c.course_name || c.course_id}</div>
+        <div class="cc-meta">${[c.city, c.state].filter(Boolean).join(', ')}${conf}</div>
+        <div class="cc-badges">
+          <span class="badge ${badgeClass}">${badgeLabel}</span>
+          <span class="badge badge-holes">${holesWithGeo.length}/${holes.length} holes</span>
+          ${pct === 100 ? '<span class="badge badge-accepted">Complete</span>' : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filterCourses(q) {
+  const lq = q.toLowerCase();
+  renderCourseList(q ? allCourses.filter(c =>
+    (c.course_name || '').toLowerCase().includes(lq) ||
+    (c.city || '').toLowerCase().includes(lq) ||
+    (c.state || '').toLowerCase().includes(lq)
+  ) : allCourses);
+}
+
+// ─── Course selection + map render ──────────────────────────────────────────
+async function selectCourse(courseId) {
+  selectedCourse = allCourses.find(c => c.course_id === courseId);
+  if (!selectedCourse) return;
+
+  document.querySelectorAll('.course-card').forEach(el =>
+    el.classList.toggle('active', el.dataset.id === courseId));
+
+  convertedHoles = null;
+  document.getElementById('convert-btn').style.display = '';
+  document.getElementById('save-btn').style.display = 'none';
+
+  renderCourseOnMap(selectedCourse);
+  renderHoleTabs(selectedCourse);
+}
+
+const LAYER_COLORS = {
+  fairway: { color: '#4f8a3c', fillColor: '#4f8a3c', fillOpacity: 0.35, weight: 1 },
+  green:   { color: '#79bb60', fillColor: '#79bb60', fillOpacity: 0.55, weight: 1.5 },
+  bunker:  { color: '#dcc995', fillColor: '#dcc995', fillOpacity: 0.6, weight: 1 },
+  water:   { color: '#2a5d74', fillColor: '#2a5d74', fillOpacity: 0.55, weight: 1 },
+  path:    { color: '#ecd9ad', weight: 1.5, dashArray: '5,5', fill: false },
+};
+
+function renderCourseOnMap(course) {
+  mapLayers.clearLayers();
+  const holes = (course.payload?.holes || []).filter(h => h.number > 0).sort((a,b) => a.number - b.number);
+  const bounds = [];
+
+  holes.forEach(hole => {
+    const addPt = (lat, lng) => bounds.push([lat, lng]);
+
+    // Path / routing
+    if (hole.pathCoordinates?.length > 1) {
+      const pts = hole.pathCoordinates.map(c => [c.latitude, c.longitude]);
+      L.polyline(pts, LAYER_COLORS.path).addTo(mapLayers);
+      pts.forEach(p => addPt(p[0], p[1]));
+    }
+
+    // Fairway polygon
+    if (hole.fairwayPolygon?.coordinates?.length > 2) {
+      const pts = hole.fairwayPolygon.coordinates.map(c => [c.latitude, c.longitude]);
+      L.polygon(pts, LAYER_COLORS.fairway).addTo(mapLayers);
+      pts.forEach(p => addPt(p[0], p[1]));
+    }
+
+    // Water polygons
+    (hole.waterPolygons || []).forEach(wp => {
+      if (wp.coordinates?.length > 2) {
+        L.polygon(wp.coordinates.map(c => [c.latitude, c.longitude]), LAYER_COLORS.water).addTo(mapLayers);
+      }
+    });
+
+    // Bunker polygons
+    (hole.bunkerPolygons || []).forEach(bp => {
+      if (bp.coordinates?.length > 2) {
+        L.polygon(bp.coordinates.map(c => [c.latitude, c.longitude]), LAYER_COLORS.bunker).addTo(mapLayers);
+      }
+    });
+
+    // Green polygon
+    if (hole.greenPolygon?.coordinates?.length > 2) {
+      const gpts = hole.greenPolygon.coordinates.map(c => [c.latitude, c.longitude]);
+      L.polygon(gpts, LAYER_COLORS.green).addTo(mapLayers);
+      gpts.forEach(p => addPt(p[0], p[1]));
+    }
+
+    // Tee marker
+    const tee = hole.teeCoordinate || firstTeeBox(hole);
+    if (tee) {
+      addPt(tee.latitude, tee.longitude);
+      L.circleMarker([tee.latitude, tee.longitude], {
+        radius: 5, color: '#ecd9ad', fillColor: '#ecd9ad', fillOpacity: 1, weight: 2,
+      }).bindTooltip(`H${hole.number} Tee`).addTo(mapLayers);
+    }
+
+    // Green center marker
+    if (hole.greenCenterCoordinate) {
+      addPt(hole.greenCenterCoordinate.latitude, hole.greenCenterCoordinate.longitude);
+      L.circleMarker([hole.greenCenterCoordinate.latitude, hole.greenCenterCoordinate.longitude], {
+        radius: 5, color: '#79bb60', fillColor: '#79bb60', fillOpacity: 1, weight: 2,
+      }).bindTooltip(`H${hole.number} Green`).addTo(mapLayers);
+    }
+  });
+
+  if (bounds.length) {
+    map.fitBounds(bounds, { padding: [30, 30] });
+    mapCenter = map.getCenter();
+  }
+}
+
+function firstTeeBox(hole) {
+  if (!hole.teeCoordinateByTeeBox) return null;
+  return Object.values(hole.teeCoordinateByTeeBox)[0] || null;
+}
+
+function renderHoleTabs(course) {
+  const holes = (course.payload?.holes || []).filter(h => h.number > 0).sort((a,b) => a.number - b.number);
+  const tabs = document.getElementById('hole-tabs');
+  tabs.innerHTML = holes.map(h => `
+    <button class="hole-tab" onclick="zoomToHole(${h.number})">${h.number}</button>
+  `).join('');
+}
+
+function zoomToHole(num) {
+  document.querySelectorAll('.hole-tab').forEach(t =>
+    t.classList.toggle('active', parseInt(t.textContent) === num));
+
+  const course = selectedCourse?.payload;
+  if (!course) return;
+  const hole = (course.holes || []).find(h => h.number === num);
+  if (!hole) return;
+
+  const pts = [];
+  const addPt = (c) => { if (c?.latitude) pts.push([c.latitude, c.longitude]); };
+  addPt(hole.teeCoordinate || firstTeeBox(hole));
+  addPt(hole.greenCenterCoordinate);
+  (hole.pathCoordinates || []).forEach(addPt);
+  if (hole.greenPolygon?.coordinates) hole.greenPolygon.coordinates.forEach(addPt);
+  if (pts.length) map.fitBounds(pts, { padding: [40, 40] });
+}
+
+// ─── Convert + Preview ──────────────────────────────────────────────────────
+function convertSelected() {
+  if (!selectedCourse?.payload) { toast('No course selected', 'err'); return; }
+
+  const course = selectedCourse.payload;
+  const result = convertCourseToSim(course);
+
+  if (!result.holes.length) {
+    toast('No convertible holes — need at least tee + green coordinates', 'err');
+    return;
+  }
+
+  convertedHoles = result.holes;
+
+  // Show quality chip
+  const chip = document.getElementById('quality-chip');
+  chip.textContent = `${result.holes.length} holes · avg confidence ${pct(result.avgConfidence)}`;
+  chip.style.display = '';
+  chip.style.color = result.avgConfidence > 0.7 ? 'var(--pine)' : result.avgConfidence > 0.4 ? 'var(--gold)' : 'var(--red)';
+  chip.style.borderColor = chip.style.color;
+
+  document.getElementById('save-btn').style.display = '';
+  toast(`Converted ${result.holes.length} holes — sending to sim…`, 'ok');
+
+  previewHole(0);
+  document.getElementById('preview-controls').style.display = '';
+  document.getElementById('prev-hole-btn').style.display = '';
+  document.getElementById('next-hole-btn').style.display = '';
+  document.getElementById('preview-overlay').style.display = 'none';
+}
+
+function pct(v) { return `${Math.round((v || 0) * 100)}%`; }
+
+let previewReady = false;
+window.addEventListener('message', (e) => {
+  if (e.data?.type === 'SIM_READY') previewReady = true;
+});
+
+function previewHole(idx) {
+  if (!convertedHoles) return;
+  previewHoleIdx = Math.max(0, Math.min(idx, convertedHoles.length - 1));
+
+  // Update active tab
+  document.querySelectorAll('.hole-tab').forEach((t, i) => {
+    t.classList.toggle('active', parseInt(t.textContent) - 1 === previewHoleIdx);
+  });
+
+  sendToSim({ type: 'PREVIEW_HOLE', holes: convertedHoles, holeIndex: previewHoleIdx });
+}
+
+function sendToSim(msg) {
+  const iframe = document.getElementById('sim-iframe');
+  if (!iframe?.contentWindow) return;
+  // Try immediately, and also after a short delay (for first load)
+  try { iframe.contentWindow.postMessage(msg, '*'); } catch(_) {}
+  setTimeout(() => {
+    try { iframe.contentWindow.postMessage(msg, '*'); } catch(_) {}
+  }, 300);
+}
+
+// ─── Save to Supabase ───────────────────────────────────────────────────────
+async function saveToSupabase() {
+  if (!convertedHoles || !selectedCourse) { toast('Nothing to save', 'err'); return; }
+
+  const { data: { user } } = await sb.auth.getUser();
+  if (!user) { toast('Not signed in', 'err'); return; }
+
+  const payload = {
+    course_id:   selectedCourse.course_id,
+    course_name: selectedCourse.course_name,
+    holes_json:  convertedHoles,
+    latitude:    selectedCourse.latitude,
+    longitude:   selectedCourse.longitude,
+    updated_at:  new Date().toISOString(),
+  };
+
+  const { error } = await sb
+    .from('sim_courses')
+    .upsert(payload, { onConflict: 'course_id' });
+
+  if (error) { toast('Save failed: ' + error.message, 'err'); return; }
+  toast(`✓ Saved "${selectedCourse.course_name}" to sim_courses`, 'ok');
+}
+
+// ─── Toast ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type='') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3200);
+}
+
+</script>
+</body>
+</html>
