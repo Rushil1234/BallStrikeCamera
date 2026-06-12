@@ -44,7 +44,7 @@ struct LiveSimCodeView: View {
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .background(BSTheme.background.opacity(0.5))
+                        .background(BSTheme.backgroundTop.opacity(0.5))
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
