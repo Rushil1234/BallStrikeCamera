@@ -362,8 +362,11 @@ export function buildCourse(hole, assets) {
 
   function surfaceAt(x, z) {
     if (hasWater) {
-      const { core } = waterMask(x, z);
-      if (core && heightAt(x, z) <= waterLevel + 0.06) return SURF.WATER;
+      // any carved ground at or below the waterline is under the visual
+      // water plane — ruling only the hazard "core" as water left a wide
+      // submerged ring that played as rough (ball sat inside the pond)
+      const { m } = waterMask(x, z);
+      if (m > 0.02 && heightAt(x, z) <= waterLevel + 0.04) return SURF.WATER;
     }
     for (const b of hole.bunkers) {
       if (ellipseVal(b, x, z) < 1) return SURF.SAND;
@@ -860,7 +863,7 @@ export function buildCourse(hole, assets) {
   }
 
   return {
-    group, heightAt, surfaceAt, normalAt, waterLevel,
+    group, heightAt, surfaceAt, normalAt, waterLevel, waterMask,
     pinPos, teePos: { x: tee.x, y: teeH, z: tee.z },
     pointAtAlong, pathInfo, isOB, updateFlag, updateWater, dispose,
     greenGrid: group ? group.userData.greenGrid : null,

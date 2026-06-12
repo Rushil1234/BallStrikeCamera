@@ -280,4 +280,38 @@ export function simulateCarry(speed, launchDeg, backspinRpm, wind = { x: 0, z: 0
   return { carry, total, apex, time };
 }
 
+/**
+ * Penalty-drop placement after a water ball. Walks the flight path
+ * backward and returns the first spot that is genuinely ashore: not a
+ * WATER surface AND clearly above the waterline. (The carved bank around
+ * a hazard sits below the water plane, so a plain surface check used to
+ * drop the ball "inside" the pond.)
+ */
+export function findDropPoint(course, pts, start) {
+  const wl = course.waterLevel ?? -1e9;
+  // Ashore = not water, and either outside the hazard's carved footprint
+  // or clearly above its waterline. (Plain "above the waterline" is wrong
+  // on holes where the pond sits uphill of dry low ground.)
+  const dry = (x, z) => {
+    if (course.surfaceAt(x, z) === SURF.WATER) return false;
+    if (!course.waterMask) return true;
+    return course.waterMask(x, z).m < 0.02 || course.heightAt(x, z) > wl + 0.25;
+  };
+
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const x = pts[i].x, z = pts[i].z;
+    const bx = start.x - x, bz = start.z - z;
+    const L = Math.hypot(bx, bz) || 1;
+    const ux = bx / L, uz = bz / L;
+    // back away from the hazard toward where the shot was played
+    for (let step = 0; step <= 14; step++) {
+      const back = 3 + step * 1.5;
+      if (back >= L) break;
+      const dx = x + ux * back, dz = z + uz * back;
+      if (dry(dx, dz)) return { x: dx, z: dz };
+    }
+  }
+  return { x: start.x, z: start.z };
+}
+
 export { BALL_R, CUP_R };

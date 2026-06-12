@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js';
-import { createShot, simulateCarry, SURF } from './physics.js';
+import { createShot, simulateCarry, findDropPoint, SURF } from './physics.js';
 import { HOLES, holeLength } from './holes.js';
 import { buildCourse } from './terrain.js';
 import { makeSky } from './sky.js';
@@ -387,18 +387,12 @@ function resolveShot() {
 
   if (sim.state === 'water') {
     game.strokes += 1; // penalty
-    // drop at the last dry point along the flight
-    let drop = game.shotStart;
-    for (let i = tracerCount - 1; i >= 0; i--) {
-      const x = tracerPos[i * 3], z = tracerPos[i * 3 + 2];
-      if (game.course.surfaceAt(x, z) !== SURF.WATER) {
-        // nudge back toward the shot origin, out of the hazard line
-        const bx = game.shotStart.x - x, bz = game.shotStart.z - z;
-        const L = Math.hypot(bx, bz) || 1;
-        const dx = x + (bx / L) * 3, dz = z + (bz / L) * 3;
-        if (game.course.surfaceAt(dx, dz) !== SURF.WATER) { drop = { x: dx, z: dz }; break; }
-      }
+    // drop at the last point along the flight that is genuinely ashore
+    const pts = [];
+    for (let i = 0; i < tracerCount; i++) {
+      pts.push({ x: tracerPos[i * 3], z: tracerPos[i * 3 + 2] });
     }
+    const drop = findDropPoint(game.course, pts, game.shotStart);
     game.ballPos = { x: drop.x, y: game.course.heightAt(drop.x, drop.z) + 0.0214, z: drop.z };
     game.lie = game.course.surfaceAt(drop.x, drop.z);
     hud.toast(`<span class="t-gold">WATER</span><span class="t-sub">+1 PENALTY · DROP</span>`, 2600);
