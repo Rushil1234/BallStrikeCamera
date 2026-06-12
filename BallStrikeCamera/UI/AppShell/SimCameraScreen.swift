@@ -135,13 +135,18 @@ struct SimCameraScreen: View {
     private func autoSave(analysis: ShotAnalysisResult, metrics: SavedShotMetrics) async {
         guard let uid = session.currentUser?.id else { return }
 
-        // Render the ball-flight composite so it appears in History.
         let composite = ShotCompositeRenderer().render(analysis: analysis, mode: .darkenedHighContrast)
+        let impact = analysis.detectedImpactFrameIndex
+        let frames = analysis.frames
+            .sorted { $0.frameIndex < $1.frameIndex }
+            .filter { abs($0.frameIndex - impact) <= 5 }
+            .map { $0.originalFrame.image }
 
         let service = ShotPersistenceService(userId: uid, backend: session.backend)
         guard let shot = try? await service.saveShot(
             metrics: metrics,
             compositeImage: composite,
+            originalFrames: frames,
             clubId: selectedClubId,
             clubName: selectedClub,
             mode: .sim,

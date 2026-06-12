@@ -63,18 +63,19 @@ final class ShotPersistenceService {
             }
         }
 
-        // Original frames (41 frames, frame_000 … frame_040)
-        if saveOriginalFrames && !originalFrames.isEmpty {
+        // Impact frames — always saved when provided (enables shot replay)
+        if !originalFrames.isEmpty {
             let framesDir = mediaDir.appendingPathComponent("frames")
             AppStorageManager.ensureDirectory(framesDir)
-            for (idx, frame) in originalFrames.prefix(41).enumerated() {
+            let limit = saveOriginalFrames ? 41 : 11
+            for (idx, frame) in originalFrames.prefix(limit).enumerated() {
                 if let data = frame.pngData() {
                     let name = String(format: "frame_%03d.png", idx)
                     try? data.write(to: framesDir.appendingPathComponent(name))
                 }
             }
             media.originalFramesFolderPath = framesDir.path
-            media.frameCount = min(41, originalFrames.count)
+            media.frameCount = min(limit, originalFrames.count)
         }
 
         // Metrics JSON sidecar

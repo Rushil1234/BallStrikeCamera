@@ -173,9 +173,15 @@ struct ShotTrackingReviewView: View {
 
         do {
             let service = ShotPersistenceService(userId: uid, backend: session.backend)
+            let impact = analysis.detectedImpactFrameIndex
+            let frames = analysis.frames
+                .sorted { $0.frameIndex < $1.frameIndex }
+                .filter { abs($0.frameIndex - impact) <= 5 }
+                .map { $0.originalFrame.image }
             let shot = try await service.saveShot(
                 metrics: SavedShotMetrics(metrics),
                 compositeImage: nil,
+                originalFrames: frames,
                 clubId: selectedClubId,
                 clubName: selectedClubName,
                 mode: context?.shotMode ?? .range,

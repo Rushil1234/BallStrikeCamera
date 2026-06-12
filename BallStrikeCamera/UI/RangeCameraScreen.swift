@@ -195,9 +195,11 @@ struct RangeCameraScreen: View {
         guard metrics.carryYards > 0 || metrics.ballSpeedMph > 0 else { return }
         let composite = ShotCompositeRenderer().render(analysis: analysis, mode: .darkenedHighContrast)
         let service = ShotPersistenceService(userId: userId, backend: backend)
+        let framesToSave = impactFrames(from: analysis, fullSet: rangeVM.saveOriginalFrames)
         guard let shot = try? await service.saveShot(
             metrics: metrics,
             compositeImage: composite,
+            originalFrames: framesToSave,
             clubId: selectedClubId,
             clubName: selectedClub,
             mode: .range,
@@ -259,6 +261,16 @@ struct RangeCameraScreen: View {
                 )
             }
         )
+    }
+
+    /// Returns the 11 frames centered on impact (±5), or all frames if fullSet=true.
+    private func impactFrames(from analysis: ShotAnalysisResult, fullSet: Bool) -> [UIImage] {
+        let sorted = analysis.frames.sorted { $0.frameIndex < $1.frameIndex }
+        if fullSet { return sorted.map { $0.originalFrame.image } }
+        let impact = analysis.detectedImpactFrameIndex
+        return sorted
+            .filter { abs($0.frameIndex - impact) <= 5 }
+            .map { $0.originalFrame.image }
     }
 
     private func exitClean() {
