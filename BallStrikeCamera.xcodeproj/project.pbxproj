@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		150BB4359DEC31706EAC970A /* WatchCompanionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */; };
 		209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */; };
+		AA0001000000000000000001 /* LightweightBallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001000000000000000101 /* LightweightBallDetector.swift */; };
+		AA0001000000000000000002 /* FrameDiffTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001000000000000000102 /* FrameDiffTrigger.swift */; };
 		2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = D285E96FFA0E9231BA42EF6E /* Appearance.swift */; };
 		3ED54E6FBC4125C8B7DC7BC0 /* WatchConnectivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */; };
 		452252E661FD97C9490B248D /* WatchCompanionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */; };
@@ -238,6 +240,8 @@
 		149AC498EAA5CC0753C5FD3C /* FeedPostFactory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FeedPostFactory.swift; sourceTree = "<group>"; };
 		20830B7C2FD09E3A0041181B /* berkshire_valley_sim.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = berkshire_valley_sim.gpx; path = DataPipeline/berkshire_valley_sim.gpx; sourceTree = "<group>"; };
 		209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImpactDetector.swift; sourceTree = "<group>"; };
+		AA0001000000000000000101 /* LightweightBallDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightweightBallDetector.swift; sourceTree = "<group>"; };
+		AA0001000000000000000102 /* FrameDiffTrigger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameDiffTrigger.swift; sourceTree = "<group>"; };
 		5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BallStrikeCameraWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8458BA0A5B9B11F51B8C347F /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchCompanionModels.swift; sourceTree = "<group>"; };
@@ -538,6 +542,7 @@
 			children = (
 				BF0000010000000000000106 /* CameraController.swift */,
 				209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */,
+				AA0001000000000000000102 /* FrameDiffTrigger.swift */,
 			);
 			path = Camera;
 			sourceTree = "<group>";
@@ -547,6 +552,7 @@
 			children = (
 				BF0000010000000000000104 /* BallObservation.swift */,
 				BF0000010000000000000105 /* BallDetector.swift */,
+				AA0001000000000000000101 /* LightweightBallDetector.swift */,
 			);
 			path = Detection;
 			sourceTree = "<group>";
@@ -1079,6 +1085,8 @@
 			files = (
 				BF0000010000000000000001 /* BallStrikeCameraApp.swift in Sources */,
 				209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */,
+				AA0001000000000000000001 /* LightweightBallDetector.swift in Sources */,
+				AA0001000000000000000002 /* FrameDiffTrigger.swift in Sources */,
 				BF0000010000000000000002 /* CameraPhase.swift in Sources */,
 				BF0000010000000000000003 /* PlatformImage.swift in Sources */,
 				BF000001000000000000001B /* ShotAnalysisModels.swift in Sources */,

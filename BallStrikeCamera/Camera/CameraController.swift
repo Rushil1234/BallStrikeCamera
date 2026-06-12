@@ -21,8 +21,8 @@ final class CameraController: NSObject, ObservableObject {
 
     private let sessionQueue = DispatchQueue(label: "com.ballstrike.camera.session")
     private let videoQueue = DispatchQueue(label: "com.ballstrike.camera.video", qos: .userInteractive)
-    private let detector = BallDetector()
-    private let impactDetector = ImpactDetector()
+    private let detector = LightweightBallDetector()
+    private let diffTrigger = FrameDiffTrigger()
     private let ciContext = CIContext()
 
     private var device: AVCaptureDevice?
@@ -31,9 +31,12 @@ final class CameraController: NSObject, ObservableObject {
     private let roiLock = NSLock()
     nonisolated(unsafe) private var _searchROI: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)
 
-    // Impact ROI — set on MainActor when ball locks, read on videoQueue via impactLock.
-    private let impactLock = NSLock()
-    nonisolated(unsafe) private var _impactROI: CGRect? = nil
+    // Trigger state — set on MainActor when ball locks, consumed on videoQueue via triggerLock.
+    private let triggerLock = NSLock()
+    nonisolated(unsafe) private var _shouldCaptureTriggerRef: Bool = false
+    nonisolated(unsafe) private var _triggerCenter: CGPoint = .zero
+    nonisolated(unsafe) private var _triggerRadius: CGFloat = 0
+    nonisolated(unsafe) private var _isReadyForTrigger: Bool = false
     private var lockedImpactROI: CGRect?
 
     func updateSearchROI(_ roi: CGRect) {
@@ -109,9 +112,6 @@ final class CameraController: NSObject, ObservableObject {
             self?.sessionQueue.async { [weak self] in
                 self?.configureSessionIfNeeded()
                 self?.session.startRunning()
-                Task { @MainActor in
-                    self?.applyShutter(.oneThousand)
-                }
             }
         }
     }
@@ -200,6 +200,9 @@ final class CameraController: NSObject, ObservableObject {
             if camera.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
                 camera.whiteBalanceMode = .continuousAutoWhiteBalance
             }
+            if camera.isExposureModeSupported(.continuousAutoExposure) {
+                camera.exposureMode = .continuousAutoExposure
+            }
             camera.unlockForConfiguration()
         } catch {
             Task { @MainActor in
@@ -242,24 +245,26 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         roiLock.lock()
         let roi = _searchROI
         roiLock.unlock()
-        let raw = detector.detect(in: pixelBuffer, roi: roi)
-        // Discard detections whose center falls in the corners of the bounding rect
-        // but outside the actual circular placement boundary (ellipse equation check).
-        let observation = raw.flatMap { obs -> BallObservation? in
-            guard roi.width > 0, roi.height > 0 else { return obs }
-            let dx = (obs.center.x - roi.midX) / (roi.width  / 2)
-            let dy = (obs.center.y - roi.midY) / (roi.height / 2)
-            return dx * dx + dy * dy <= 1 ? obs : nil
-        }
-        impactLock.lock()
-        let impactROI = _impactROI
-        impactLock.unlock()
+        // Ellipse boundary filter is handled inside LightweightBallDetector.
+        let observation = detector.detect(in: pixelBuffer, roi: roi)
 
-        var impactDetected = false
-        if let impactROI {
-            impactDetector.establishBaselineIfNeeded(pixelBuffer: pixelBuffer, roi: impactROI)
-            impactDetected = impactDetector.checkForImpact(pixelBuffer: pixelBuffer, roi: impactROI)
+        triggerLock.lock()
+        let shouldCapRef = _shouldCaptureTriggerRef
+        let trigCenter   = _triggerCenter
+        let trigRadius   = _triggerRadius
+        let isReady      = _isReadyForTrigger
+        triggerLock.unlock()
+
+        if shouldCapRef {
+            diffTrigger.reset()
+            diffTrigger.captureReference(in: pixelBuffer, roiCenter: trigCenter, roiRadius: trigRadius)
+            triggerLock.lock()
+            _shouldCaptureTriggerRef = false
+            _isReadyForTrigger = true
+            triggerLock.unlock()
         }
+
+        let impactDetected = isReady && diffTrigger.check(in: pixelBuffer, roiCenter: trigCenter, roiRadius: trigRadius)
 
         let frame = makeCapturedFrame(from: pixelBuffer, timestamp: timestamp)
 
@@ -457,13 +462,16 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 lockedStateEnteredAt = Date()
                 statusText = "READY — swing when ready"
 
-                let impactROI = expandedImpactROI(from: rect)
-                lockedImpactROI = impactROI
-                impactLock.lock()
-                _impactROI = impactROI
-                impactLock.unlock()
-                impactDetector.reset()
-                print("Impact ROI: \(impactROI)")
+                lockedImpactROI = expandedImpactROI(from: rect)
+                let trigCenter = CGPoint(x: rect.midX, y: rect.midY)
+                let trigRadius = max(rect.width, rect.height) * 2.5
+                triggerLock.lock()
+                _triggerCenter = trigCenter
+                _triggerRadius = trigRadius
+                _shouldCaptureTriggerRef = true
+                _isReadyForTrigger = false
+                triggerLock.unlock()
+                print("Trigger ROI center: \(trigCenter) radius: \(trigRadius)")
 
                 print("LOCKED valid ball rect: \(rect), aspect: \(String(format: "%.3f", aspect))")
                 print("stableFrameCount: \(stableFrameCount)")
@@ -538,7 +546,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         print("Impact capture config: preHitFrames=\(preHitFrames) postHitFrames=\(postHitFrames) expectedFrameCount=\(expectedFrameCount)")
         print("Impact capture started")
         print("Started hit capture with \(eventFrames.count) pre/impact frames")
-        impactDetector.reset()
+        diffTrigger.reset()
         stableFrameCount = 0
         stableRect = nil
         readyLostFrameCount = 0
@@ -716,10 +724,11 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         currentBallRect = nil
         lockedBallRect = nil
         lockedImpactROI = nil
-        impactLock.lock()
-        _impactROI = nil
-        impactLock.unlock()
-        impactDetector.reset()
+        triggerLock.lock()
+        _shouldCaptureTriggerRef = false
+        _isReadyForTrigger = false
+        triggerLock.unlock()
+        diffTrigger.reset()
         stableRect = nil
         stableFrameCount = 0
         trackingMissCount = 0
