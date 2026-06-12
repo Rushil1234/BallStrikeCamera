@@ -40,6 +40,12 @@ struct LaunchMonitorScaffoldView: View {
                                 )
 
                                 Spacer(minLength: 8)
+
+                                ExposureModePickerView(
+                                    selectedShutter: camera.selectedShutter,
+                                    onShutterSelected: camera.applyShutter
+                                )
+                                .padding(.trailing, 12)
                             }
                             .padding(.top, 8)
 

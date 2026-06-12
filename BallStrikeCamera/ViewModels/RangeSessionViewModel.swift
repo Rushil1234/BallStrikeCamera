@@ -55,12 +55,14 @@ final class RangeSessionViewModel: ObservableObject {
             selectedClubName: selectedClub?.name,
             saveOriginalFrames: saveOriginalFrames
         )
+        // Set immediately so the UI is interactive regardless of network status.
+        activeSession = session
+        shots = []
         do {
             try await backend.saveRangeSession(session)
-            activeSession = session
-            shots = []
         } catch {
             errorMessage = error.localizedDescription
+            // Keep activeSession — user can still hit shots; final save retries on end.
         }
     }
 
