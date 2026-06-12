@@ -8,10 +8,15 @@ final class LiveSimService: ObservableObject {
     @Published var enteredCode: String = "" {
         didSet {
             let digits = String(enteredCode.filter(\.isNumber).prefix(6))
-            if digits != enteredCode { enteredCode = digits }
-            shotsSent = 0
-            lastBroadcastError = nil
-            isConnectedToSim = false
+            if digits != enteredCode { enteredCode = digits; return }
+            // Only reset connection state when the actual 6-digit code changes.
+            // Avoids double-reset from SwiftUI re-firing didSet on focus changes.
+            let prevDigits = String(oldValue.filter(\.isNumber).prefix(6))
+            if digits != prevDigits {
+                shotsSent = 0
+                lastBroadcastError = nil
+                isConnectedToSim = false
+            }
         }
     }
     @Published private(set) var isBroadcasting = false
