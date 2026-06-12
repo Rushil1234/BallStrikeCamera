@@ -41,6 +41,13 @@ struct TrueCarryInsightsView: View {
         return f.reduce(0, +) / Double(f.count)
     }
 
+    private func median(_ vals: [Double]) -> Double? {
+        let f = vals.filter { $0 > 0 }.sorted()
+        guard !f.isEmpty else { return nil }
+        let mid = f.count / 2
+        return f.count.isMultiple(of: 2) ? (f[mid - 1] + f[mid]) / 2 : f[mid]
+    }
+
     private func avgCarry(_ shots: [SavedShot]) -> Double {
         avg(shots.map { $0.metrics.carryYards }) ?? 0
     }
@@ -319,18 +326,18 @@ struct TrueCarryInsightsView: View {
     private func metricsCard(_ shots: [SavedShot]) -> some View {
         let carry  = avg(shots.map { $0.metrics.carryYards })
         let best   = shots.map { $0.metrics.carryYards }.filter { $0 > 0 }.max()
-        let speed  = avg(shots.map { $0.metrics.ballSpeedMph })
-        let launch = avg(shots.map { $0.metrics.vlaDegrees })
+        let speed  = avg(shots.map { $0.metrics.ballSpeedMph }.filter { $0 > 0 })
+        let launch = avg(shots.map { $0.metrics.vlaDegrees }.filter { $0 > 0 })
         return VStack(alignment: .leading, spacing: 16) {
             cardHeader("Key Metrics")
             HStack(spacing: 0) {
-                statCol("AVG CARRY",  fmt(carry),               carry  == nil ? "" : "yds")
+                statCol("AVG CARRY",     fmt(carry),               carry  == nil ? "" : "yds")
                 verticalDivider(height: 40)
-                statCol("BEST CARRY", fmt(best),                best   == nil ? "" : "yds")
+                statCol("BEST CARRY",    fmt(best),                best   == nil ? "" : "yds")
                 verticalDivider(height: 40)
-                statCol("BALL SPEED", fmt(speed),               speed  == nil ? "" : "mph")
+                statCol("AVG BALL SPD",  fmt(speed),               speed  == nil ? "" : "mph")
                 verticalDivider(height: 40)
-                statCol("LAUNCH",     fmt(launch, decimals: 1), launch == nil ? "" : "°")
+                statCol("AVG VLA",       fmt(launch, decimals: 1), launch == nil ? "" : "°")
             }
         }
         .tcCard(padding: 16)
@@ -339,21 +346,11 @@ struct TrueCarryInsightsView: View {
     // MARK: - Carry Trend
 
     private func carryTrendCard(_ shots: [SavedShot]) -> some View {
-        let carries = Array(
-            shots.sorted { $0.timestamp < $1.timestamp }
-                .map { $0.metrics.carryYards }.filter { $0 > 0 }.suffix(10)
-        )
-        let avgC  = avg(carries)
-        let bestC = carries.max()
-
-        let changeStr: String = {
-            guard carries.count >= 4 else { return "—" }
-            let half   = carries.count / 2
-            let early  = Array(carries.prefix(half)).reduce(0, +) / Double(half)
-            let recent = Array(carries.suffix(half)).reduce(0, +) / Double(half)
-            let diff   = Int(recent - early)
-            return diff >= 0 ? "+\(diff) yds" : "\(diff) yds"
-        }()
+        let sorted  = shots.sorted { $0.timestamp < $1.timestamp }
+        let carries = Array(sorted.map { $0.metrics.carryYards }.filter { $0 > 0 }.suffix(10))
+        let avgC    = avg(carries)
+        let bestC   = carries.max()
+        let avgSpd  = avg(sorted.suffix(10).map { $0.metrics.ballSpeedMph }.filter { $0 > 0 })
 
         return VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
@@ -375,11 +372,11 @@ struct TrueCarryInsightsView: View {
             }
 
             HStack(spacing: 0) {
-                statCol("BEST",    bestC.map { "\(Int($0))" } ?? "—", bestC == nil ? "" : "yds")
+                statCol("BEST CARRY", bestC.map { "\(Int($0))" } ?? "—", bestC == nil ? "" : "yds")
                 verticalDivider(height: 40)
-                statCol("AVERAGE", avgC.map  { "\(Int($0))" } ?? "—", avgC  == nil ? "" : "yds")
+                statCol("AVG CARRY",  avgC.map  { "\(Int($0))" } ?? "—", avgC  == nil ? "" : "yds")
                 verticalDivider(height: 40)
-                statCol("CHANGE",  changeStr, "")
+                statCol("AVG BALL SPD", avgSpd.map { "\(Int($0))" } ?? "—", avgSpd == nil ? "" : "mph")
             }
         }
         .tcCard(padding: 16)
@@ -388,20 +385,20 @@ struct TrueCarryInsightsView: View {
     // MARK: - Spin / Ball Data
 
     private func spinCard(_ shots: [SavedShot]) -> some View {
-        let spin   = avg(shots.map { $0.metrics.backspinRpm })
-        let smash  = avg(shots.map { $0.metrics.smashFactor })
-        let cSpeed = avg(shots.map { $0.metrics.clubSpeedMph })
-        let total  = avg(shots.map { $0.metrics.totalYards })
+        let spin      = avg(shots.map { $0.metrics.backspinRpm }.filter { $0 > 0 })
+        let smash     = avg(shots.map { $0.metrics.smashFactor }.filter { $0 > 0 })
+        let cSpeed    = avg(shots.map { $0.metrics.clubSpeedMph }.filter { $0 > 0 })
+        let medCarry  = median(shots.map { $0.metrics.carryYards })
         return VStack(alignment: .leading, spacing: 16) {
             cardHeader("Ball Data")
             HStack(spacing: 0) {
-                statCol("BACKSPIN",     fmt(spin),               spin   == nil ? "" : "rpm")
+                statCol("AVG BACKSPIN",    fmt(spin),               spin     == nil ? "" : "rpm")
                 verticalDivider(height: 40)
-                statCol("SMASH FACTOR", fmt(smash, decimals: 2), "")
+                statCol("AVG SMASH",       fmt(smash, decimals: 2), "")
                 verticalDivider(height: 40)
-                statCol("CLUB SPEED",   fmt(cSpeed),             cSpeed == nil ? "" : "mph")
+                statCol("AVG CLUB SPD",    fmt(cSpeed),             cSpeed   == nil ? "" : "mph")
                 verticalDivider(height: 40)
-                statCol("TOTAL DIST",   fmt(total),              total  == nil ? "" : "yds")
+                statCol("MEDIAN CARRY",    fmt(medCarry),           medCarry == nil ? "" : "yds")
             }
         }
         .tcCard(padding: 16)
