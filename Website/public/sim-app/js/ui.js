@@ -261,31 +261,42 @@ export class HUD {
     const sc = this.mapScale;
     ctx.clearRect(0, 0, W, H);
 
-    // rough backdrop
-    ctx.fillStyle = 'rgba(34, 58, 28, 0.85)';
+    // dark-glass backdrop, matching the HUD panels; everything clips to it
+    ctx.save();
     ctx.beginPath();
     ctx.roundRect(0, 0, W, H, 9);
-    ctx.fill();
+    ctx.clip();
+    ctx.fillStyle = 'rgba(13, 19, 14, 0.86)';
+    ctx.fillRect(0, 0, W, H);
 
-    // fairway corridor
-    ctx.strokeStyle = '#4f8a3c';
-    ctx.lineWidth = hole.fairwayHalf * 2 * sc;
+    // rough halo around the corridor, then the fairway itself
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath();
-    hole.path.forEach((p, i) => {
-      const [mx, my] = this.mapPt(p.x, p.z);
-      i ? ctx.lineTo(mx, my) : ctx.moveTo(mx, my);
-    });
-    ctx.stroke();
+    const corridor = () => {
+      ctx.beginPath();
+      hole.path.forEach((p, i) => {
+        const [mx, my] = this.mapPt(p.x, p.z);
+        i ? ctx.lineTo(mx, my) : ctx.moveTo(mx, my);
+      });
+    };
+    ctx.strokeStyle = 'rgba(58, 82, 48, 0.55)';
+    ctx.lineWidth = hole.fairwayHalf * 3.1 * sc;
+    corridor(); ctx.stroke();
+    ctx.strokeStyle = '#456F36';
+    ctx.lineWidth = hole.fairwayHalf * 2 * sc;
+    corridor(); ctx.stroke();
 
-    // water
-    ctx.fillStyle = '#2a5d74'; ctx.strokeStyle = '#2a5d74';
+    // water — deep petrol with a bone hairline shore
+    ctx.fillStyle = '#1C3B47'; ctx.strokeStyle = '#1C3B47';
     for (const w of hole.water) {
       if (w.type === 'pond') {
         const [mx, my] = this.mapPt(w.cx, w.cz);
         ctx.beginPath();
         ctx.ellipse(mx, my, w.rx * sc, w.rz * sc, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = 'rgba(236, 228, 210, 0.16)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.strokeStyle = '#1C3B47';
       } else {
         ctx.lineWidth = w.width * sc;
         ctx.beginPath();
@@ -297,18 +308,22 @@ export class HUD {
       }
     }
 
-    // green
+    // green with a fringe ring
     {
       const g = hole.green;
       const [mx, my] = this.mapPt(g.cx, g.cz);
-      ctx.fillStyle = '#79bb60';
+      const r = ((g.rx + g.rz) / 2) * sc;
+      ctx.fillStyle = '#5F9549';
       ctx.beginPath();
-      ctx.ellipse(mx, my, ((g.rx + g.rz) / 2) * sc, ((g.rx + g.rz) / 2) * sc, 0, 0, Math.PI * 2);
+      ctx.ellipse(mx, my, r, r, 0, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = 'rgba(236, 228, 210, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
     }
 
     // bunkers
-    ctx.fillStyle = '#dcc995';
+    ctx.fillStyle = '#D5C28C';
     for (const b of hole.bunkers) {
       const [mx, my] = this.mapPt(b.cx, b.cz);
       ctx.beginPath();
@@ -316,31 +331,33 @@ export class HUD {
       ctx.fill();
     }
 
-    // aim line
+    // aim line — bone dashes from ball toward target
     if (ball && aimDir) {
       const [bx, by] = this.mapPt(ball.x, ball.z);
       const [ax, ay] = this.mapPt(ball.x + aimDir.x * 400, ball.z + aimDir.z * 400);
-      ctx.strokeStyle = 'rgba(203, 176, 121, 0.6)';
+      ctx.strokeStyle = 'rgba(236, 228, 210, 0.55)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
       ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ax, ay); ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // pin
+    // pin — Marker Gold
     if (pin) {
       const [px, py] = this.mapPt(pin.x, pin.z);
-      ctx.fillStyle = '#e2654f';
+      ctx.fillStyle = '#CBB079';
       ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.fill();
     }
 
-    // ball
+    // ball — Range Bone
     if (ball) {
       const [bx, by] = this.mapPt(ball.x, ball.z);
-      ctx.fillStyle = '#f7f5ec';
+      ctx.fillStyle = '#ECE4D2';
       ctx.strokeStyle = 'rgba(0,0,0,0.6)';
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(bx, by, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
+
+    ctx.restore();
   }
 }

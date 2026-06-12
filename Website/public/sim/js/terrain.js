@@ -250,8 +250,11 @@ function treeKit(assets) {
     };
     return mat;
   };
+  // emissiveMap-as-fill: backlit cards keep ~22% of their texture color
+  // instead of silhouetting black against the sky
   const canopyMat = (map, cut) => addSway(new THREE.MeshLambertMaterial({
     map, alphaTest: cut, side: THREE.DoubleSide,
+    emissive: 0x394633, emissiveMap: map,
   }));
   const depthMat = (map, cut) => new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking, map, alphaTest: cut,
@@ -551,14 +554,18 @@ export function buildCourse(hole, assets) {
     // ponds get an ellipse surface, creeks a ribbon along their course —
     // a rectangle pokes square corners out of the carved shoreline
     const waters = [];
+    // alpha < 1 lets the dark bed read through and distortion breaks the
+    // mirror — otherwise a low camera angle turns the pond into a white
+    // sheet of reflected sky
     const waterOpts = {
       textureWidth: 512,
       textureHeight: 512,
       waterNormals: assets.waterN,
       sunDirection: assets.sunDir.clone(),
-      sunColor: 0xffffff,
-      waterColor: 0x0e3526,
-      distortionScale: 2.6,
+      sunColor: 0xf5ead0,
+      waterColor: 0x10333E,
+      distortionScale: 3.8,
+      alpha: 0.93,
       fog: true,
     };
     for (const w of hole.water) {
@@ -605,6 +612,8 @@ export function buildCourse(hole, assets) {
       const water = new Water(geo, waterOpts);
       water.rotation.x = -Math.PI / 2;
       water.position.set(cx, waterLevel, cz);
+      water.material.transparent = true;
+      if (water.material.uniforms.size) water.material.uniforms.size.value = 2.6;
       group.add(water);
       waters.push(water);
     }

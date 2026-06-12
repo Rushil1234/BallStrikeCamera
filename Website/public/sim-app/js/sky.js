@@ -15,7 +15,7 @@ export function makeSky(scene, renderer, assets) {
   const sunDir = assets.sunDir.clone();
 
   // small fill so foliage (non-PBR materials) isn't flat black in shade
-  const hemi = new THREE.HemisphereLight(0xbdd3e8, 0x44603a, 0.5);
+  const hemi = new THREE.HemisphereLight(0xbdd3e8, 0x44603a, 0.62);
   scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(0xfff1d8, 2.0);
