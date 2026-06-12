@@ -247,7 +247,9 @@ struct TrueCarryInsightsView: View {
             return "\(Int(Double(n) / Double(shots.count) * 100))%"
         }()
 
-        return VStack(alignment: .leading, spacing: 16) {
+        // Manually build the card so the chart can bleed to the card edges (no horizontal padding)
+        return VStack(alignment: .leading, spacing: 0) {
+            // Header — padded
             HStack(alignment: .top) {
                 cardHeader("Shot Dispersion", "Carry distance & lateral spread")
                 Text(shots.isEmpty ? "" : "\(shots.count) Shots")
@@ -256,12 +258,16 @@ struct TrueCarryInsightsView: View {
                     .fixedSize()
                     .padding(.top, 2)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
 
+            // Chart — full card width, no horizontal padding
             dispersion
                 .frame(maxWidth: .infinity)
-                .frame(height: 340)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(height: 420)
 
+            // Stats — padded
             HStack(spacing: 0) {
                 inlineStat(avgDispStr,                             "AVG DISPERSION")
                 verticalDivider(height: 28)
@@ -269,8 +275,17 @@ struct TrueCarryInsightsView: View {
                 verticalDivider(height: 28)
                 inlineStat(shots.isEmpty ? "—" : "\(shots.count)", "SHOTS")
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
-        .tcCard(padding: 16)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
+                .strokeBorder(TCTheme.border, lineWidth: 1)
+        )
+        // Break out of the parent's horizontal padding so the card fills edge-to-edge
+        .padding(.horizontal, -TCTheme.hPad)
     }
 
     // MARK: - Main Metrics

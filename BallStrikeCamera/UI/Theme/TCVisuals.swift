@@ -493,11 +493,11 @@ struct TCRangeFinderDispersion: View {
     var body: some View {
         Canvas { ctx, size in
             let W = size.width, H = size.height
-            // Equal left/right padding so zero-lateral is centered on screen
-            let lPad: CGFloat = 44   // y-axis labels live here
-            let rPad: CGFloat = 44
-            let bPad: CGFloat = 24   // x-axis labels live here
-            let tPad: CGFloat = 8
+            // Equal left/right margins keep 0-lateral dead center
+            let lPad: CGFloat = 48   // carry labels
+            let rPad: CGFloat = 48
+            let bPad: CGFloat = 28   // lateral labels
+            let tPad: CGFloat = 10
 
             let plotW = W - lPad - rPad
             let plotH = H - bPad - tPad
@@ -516,7 +516,7 @@ struct TCRangeFinderDispersion: View {
                 plotBot - CGFloat(carry / mCarry) * plotH
             }
 
-            // Field background
+            // Dark rough background
             ctx.fill(Path(CGRect(x: plotLeft, y: plotTop, width: plotW, height: plotH)),
                      with: .color(Color(red: 0.08, green: 0.18, blue: 0.08)))
 
@@ -527,83 +527,87 @@ struct TCRangeFinderDispersion: View {
             ctx.fill(Path(CGRect(x: fLeft, y: plotTop, width: fRight - fLeft, height: plotH)),
                      with: .color(Color(red: 0.16, green: 0.32, blue: 0.14)))
 
-            // Horizontal carry lines every 5 yds; labelled at every 50 yds
-            var carry: Double = 5
-            while carry <= mCarry - 1 {
-                let y = yCG(carry)
-                guard y >= plotTop && y <= plotBot else { carry += 5; continue }
-                let isMajor = Int(carry) % 50 == 0
+            // ── Horizontal carry lines every 5 yds, labelled every 50 ──────
+            for rawCarry in stride(from: 5.0, through: mCarry - 1, by: 5.0) {
+                let y = yCG(rawCarry)
+                guard y >= plotTop && y <= plotBot else { continue }
+                let isMajor = Int(rawCarry) % 50 == 0
                 var line = Path()
                 line.move(to: CGPoint(x: plotLeft, y: y))
                 line.addLine(to: CGPoint(x: plotRight, y: y))
                 ctx.stroke(line,
-                           with: .color(Color.white.opacity(isMajor ? 0.20 : 0.06)),
-                           lineWidth: isMajor ? 0.7 : 0.35)
+                           with: .color(Color.white.opacity(isMajor ? 0.30 : 0.10)),
+                           lineWidth: isMajor ? 0.8 : 0.4)
                 if isMajor {
                     ctx.draw(
-                        Text("\(Int(carry)) yds")
-                            .font(.system(size: 8, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.55)),
-                        at: CGPoint(x: plotLeft - 5, y: y),
+                        Text("\(Int(rawCarry)) yds")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(Color.white.opacity(0.75)),
+                        at: CGPoint(x: plotLeft - 6, y: y),
                         anchor: .trailing
                     )
                 }
-                carry += 5
             }
 
-            // Vertical lateral lines every 10 yds; labelled at each; center (0) is the straight-shot line
-            var lat: Double = -(mLateral - Double(Int(mLateral) % 10))
-            while lat <= mLateral + 0.1 {
-                let x = xCG(lat)
-                guard x >= plotLeft - 1 && x <= plotRight + 1 else { lat += 10; continue }
-                let isCenter = abs(lat) < 0.5
+            // ── Vertical lateral lines every 10 yds, all labelled ──────────
+            // Start at the nearest multiple of 10 that fits inside the range
+            let latStart = -floor(mLateral / 10) * 10
+            for rawLat in stride(from: latStart, through: mLateral + 0.1, by: 10.0) {
+                let x = xCG(rawLat)
+                guard x >= plotLeft && x <= plotRight else { continue }
+                let isCenter = abs(rawLat) < 0.5
                 var line = Path()
                 line.move(to: CGPoint(x: x, y: plotTop))
                 line.addLine(to: CGPoint(x: x, y: plotBot))
-                ctx.stroke(line,
-                           with: .color(Color.white.opacity(isCenter ? 0.35 : 0.10)),
-                           style: StrokeStyle(lineWidth: isCenter ? 1.2 : 0.4,
-                                              dash: isCenter ? [4, 4] : []))
-                let label: String = isCenter ? "0" : (lat < 0 ? "\(Int(-lat))L" : "\(Int(lat))R")
+                // Center = straight-shot line (0 HLA yards)
+                if isCenter {
+                    ctx.stroke(line,
+                               with: .color(Color.white.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
+                } else {
+                    ctx.stroke(line,
+                               with: .color(Color.white.opacity(0.25)),
+                               lineWidth: 0.6)
+                }
+                let label: String = isCenter ? "0" : (rawLat < 0 ? "\(Int(-rawLat))L" : "\(Int(rawLat))R")
                 ctx.draw(
                     Text(label)
-                        .font(.system(size: 7.5, weight: isCenter ? .semibold : .regular))
-                        .foregroundColor(Color.white.opacity(isCenter ? 0.70 : 0.42)),
-                    at: CGPoint(x: x, y: plotBot + 5),
+                        .font(.system(size: isCenter ? 9 : 8, weight: isCenter ? .bold : .regular))
+                        .foregroundColor(Color.white.opacity(isCenter ? 0.85 : 0.60)),
+                    at: CGPoint(x: x, y: plotBot + 6),
                     anchor: .top
                 )
-                lat += 10
             }
 
-            // Dispersion ellipse (2-sigma)
+            // ── Dispersion ellipse (2-sigma) ────────────────────────────────
             if valid.count > 2 {
                 let pts = valid.map { sp in CGPoint(x: xCG(sp.lateral), y: yCG(sp.carry)) }
-                let meanX  = pts.map { $0.x }.reduce(0, +) / CGFloat(pts.count)
-                let meanY  = pts.map { $0.y }.reduce(0, +) / CGFloat(pts.count)
+                let meanX = pts.map { $0.x }.reduce(0, +) / CGFloat(pts.count)
+                let meanY = pts.map { $0.y }.reduce(0, +) / CGFloat(pts.count)
                 let sdX = sqrt(pts.map { pow($0.x - meanX, 2) }.reduce(0, +) / CGFloat(pts.count))
                 let sdY = sqrt(pts.map { pow($0.y - meanY, 2) }.reduce(0, +) / CGFloat(pts.count))
                 let er = CGRect(x: meanX - sdX * 2, y: meanY - sdY * 2, width: sdX * 4, height: sdY * 4)
-                ctx.fill(Path(ellipseIn: er),   with: .color(Color.white.opacity(0.07)))
-                ctx.stroke(Path(ellipseIn: er), with: .color(Color.white.opacity(0.40)), lineWidth: 1.5)
+                ctx.fill(Path(ellipseIn: er),   with: .color(Color.white.opacity(0.08)))
+                ctx.stroke(Path(ellipseIn: er), with: .color(Color.white.opacity(0.45)), lineWidth: 1.5)
             }
 
-            // Shot dots: green = in fairway, pink = outside
+            // ── Shot dots ───────────────────────────────────────────────────
             for sp in valid {
                 let pt = CGPoint(x: xCG(sp.lateral), y: yCG(sp.carry))
-                guard pt.x >= plotLeft - 6 && pt.x <= plotRight + 6 &&
-                      pt.y >= plotTop - 6  && pt.y <= plotBot + 6 else { continue }
+                guard pt.x >= plotLeft - 8 && pt.x <= plotRight + 8 &&
+                      pt.y >= plotTop - 8  && pt.y <= plotBot + 8 else { continue }
                 let inFairway = abs(sp.lateral) <= fairwayHalfYds
                 let dotColor: Color = inFairway
                     ? Color(red: 0.50, green: 0.85, blue: 0.42)
                     : Color(red: 0.92, green: 0.40, blue: 0.52)
-                let r: CGFloat = 4
+                let r: CGFloat = 5
                 ctx.fill(Path(ellipseIn: CGRect(x: pt.x - r, y: pt.y - r, width: r*2, height: r*2)),
-                         with: .color(dotColor.opacity(0.82)))
+                         with: .color(dotColor.opacity(0.85)))
                 ctx.stroke(Path(ellipseIn: CGRect(x: pt.x - r, y: pt.y - r, width: r*2, height: r*2)),
-                           with: .color(Color.black.opacity(0.30)), lineWidth: 0.8)
+                           with: .color(Color.black.opacity(0.35)), lineWidth: 0.8)
             }
 
-            // Mean dot (gold)
+            // ── Mean dot (gold) ─────────────────────────────────────────────
             if !valid.isEmpty {
                 let avgLat  = valid.map { $0.lateral }.reduce(0, +) / Double(valid.count)
                 let avgCarr = valid.map { $0.carry   }.reduce(0, +) / Double(valid.count)
