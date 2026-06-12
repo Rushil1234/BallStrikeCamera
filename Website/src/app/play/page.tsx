@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import SimHost from "@/components/SimHost";
 
 export const metadata: Metadata = {
   title: "The Sim — Pine Hollow National",
@@ -9,26 +10,8 @@ export const metadata: Metadata = {
 /**
  * Full-screen host for the True Carry Sim (a static three.js app served
  * from /sim/). A slim bar keeps a way back to the site; the game itself
- * owns every other pixel.
+ * owns every other pixel. Focus/loading handled client-side in SimHost.
  */
 export default function PlayPage() {
-  return (
-    <div className="sim-host">
-      <div className="sim-bar">
-        <a className="sim-back" href="/">
-          ← True <span className="it">Carry.</span>
-        </a>
-        <span className="sim-title">The Sim · Pine Hollow National</span>
-        <a className="sim-full" href="/sim/index.html" target="_blank" rel="noreferrer">
-          Full screen ↗
-        </a>
-      </div>
-      <iframe
-        className="sim-frame"
-        src="/sim/index.html"
-        title="True Carry Sim — Pine Hollow National"
-        allow="autoplay; fullscreen"
-      />
-    </div>
-  );
+  return <SimHost />;
 }

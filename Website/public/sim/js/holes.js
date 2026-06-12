@@ -24,19 +24,23 @@ export const HOLES = [
     treeDensity: 1.0, windMax: 5,
   },
   {
-    id: 2, name: 'MIRROR CARRY', par: 3, seed: 2229,
-    path: [{ x: 0, z: 0 }, { x: 8, z: 163 }],
+    // homage: Augusta National 12 ("Golden Bell") — short iron over the
+    // creek to a wide, shallow, angled green; swirling wind decides it
+    id: 2, name: 'GOLDEN BELL', par: 3, seed: 2229,
+    path: [{ x: 0, z: 0 }, { x: 8, z: 155 }],
     fairwayHalf: 12,
-    fairwayProfile: [[0, 9], [120, 10], [163, 13]],
-    green: { cx: 8, cz: 163, rx: 15, rz: 13, rot: 0.35 },
-    pin: { x: 11, z: 166 },
+    fairwayProfile: [[0, 9], [110, 10], [155, 14]],
+    green: { cx: 8, cz: 155, rx: 16, rz: 8, rot: -0.35 },
+    pin: { x: 13, z: 156 },
     bunkers: [
-      { cx: -8, cz: 172, rx: 6, rz: 9, rot: 0.6, depth: 1.2 },
-      { cx: 22, cz: 154, rx: 5, rz: 7, rot: -0.3, depth: 1.0 },
-      { cx: 4, cz: 145, rx: 6, rz: 4, rot: 0.1, depth: 1.0 },
+      { cx: 6, cz: 143, rx: 7, rz: 3.5, rot: -0.3, depth: 1.4 },
+      { cx: 0, cz: 167, rx: 5, rz: 4, rot: 0.2, depth: 1.1 },
+      { cx: 17, cz: 165, rx: 4, rz: 4, rot: -0.2, depth: 1.1 },
     ],
-    water: [{ type: 'pond', cx: 6, cz: 92, rx: 42, rz: 52, rot: 0.15 }],
-    treeDensity: 1.25, windMax: 7,
+    water: [{ type: 'channel', width: 10, pts: [
+      { x: -60, z: 124 }, { x: 8, z: 136 }, { x: 70, z: 124 },
+    ] }],
+    treeDensity: 1.25, windMax: 8,
   },
   {
     id: 3, name: 'CREEKSIDE LONG', par: 5, seed: 3331,
@@ -73,20 +77,23 @@ export const HOLES = [
     treeDensity: 1.1, windMax: 5,
   },
   {
+    // homage: Royal Troon 8 ("Postage Stamp") — a wedge to a tiny green
+    // ringed by pot bunkers deep enough to lose a caddie in
     id: 5, name: 'POSTAGE STAMP', par: 3, seed: 5557,
-    path: [{ x: 0, z: 0 }, { x: -6, z: 139 }],
+    path: [{ x: 0, z: 0 }, { x: -6, z: 112 }],
     fairwayHalf: 9,
-    fairwayProfile: [[0, 7], [100, 8], [139, 11]],
-    green: { cx: -6, cz: 139, rx: 10, rz: 11, rot: 0.2 },
-    pin: { x: -4, z: 141 },
+    fairwayProfile: [[0, 7], [80, 8], [112, 10]],
+    green: { cx: -6, cz: 112, rx: 8.5, rz: 10, rot: 0.2 },
+    pin: { x: -4, z: 114 },
     bunkers: [
-      { cx: -20, cz: 135, rx: 5, rz: 8, rot: 0.5, depth: 1.3 },
-      { cx: 6, cz: 130, rx: 4, rz: 6, rot: -0.4, depth: 1.2 },
-      { cx: -11, cz: 153, rx: 5, rz: 6, rot: 0.1, depth: 1.3 },
-      { cx: -1, cz: 149, rx: 3, rz: 4, rot: 0.3, depth: 1.0 },
+      { cx: -19, cz: 108, rx: 5, rz: 8, rot: 0.5, depth: 1.8 },
+      { cx: 6, cz: 104, rx: 4, rz: 6, rot: -0.4, depth: 1.6 },
+      { cx: -11, cz: 126, rx: 5, rz: 5, rot: 0.1, depth: 1.7 },
+      { cx: 1, cz: 121, rx: 3, rz: 4, rot: 0.3, depth: 1.5 },
+      { cx: -6, cz: 99, rx: 4, rz: 3, rot: 0, depth: 1.6 },
     ],
     water: [],
-    treeDensity: 1.3, windMax: 8,
+    treeDensity: 1.3, windMax: 9,
   },
   {
     id: 6, name: 'TWIN PINES', par: 4, seed: 6661,
@@ -121,19 +128,22 @@ export const HOLES = [
     treeDensity: 1.0, windMax: 6,
   },
   {
-    id: 8, name: 'HIGH NOON', par: 4, seed: 8881,
-    path: [{ x: 0, z: 0 }, { x: 12, z: 180 }, { x: -8, z: 290 }, { x: -2, z: 362 }],
+    // homage: St Andrews 17 ("Road Hole") — blind dogleg right, then a
+    // long, paper-thin green angled across the line with a tiny pot
+    // bunker eating its front-left; OB presses in behind
+    id: 8, name: 'THE ROAD', par: 4, seed: 8881,
+    path: [{ x: 0, z: 0 }, { x: -6, z: 150 }, { x: 30, z: 275 }, { x: 42, z: 358 }],
     fairwayHalf: 15,
-    fairwayProfile: [[0, 12], [150, 18], [250, 13], [310, 15], [364, 11]],
-    green: { cx: -2, cz: 362, rx: 13, rz: 15, rot: -0.3 },
-    pin: { x: 0, z: 365 },
+    fairwayProfile: [[0, 12], [140, 18], [250, 13], [310, 15], [360, 11]],
+    green: { cx: 42, cz: 358, rx: 17, rz: 8, rot: 0.9 },
+    pin: { x: 45, z: 360 },
     bunkers: [
-      { cx: 24, cz: 250, rx: 8, rz: 12, rot: 0.5, depth: 1.1 },
-      { cx: -22, cz: 230, rx: 6, rz: 10, rot: -0.4, depth: 0.9 },
-      { cx: -16, cz: 352, rx: 5, rz: 8, rot: -0.3, depth: 1.2 },
+      { cx: 36, cz: 351, rx: 4, rz: 5, rot: 0.2, depth: 2.2 },
+      { cx: 8, cz: 265, rx: 7, rz: 11, rot: -0.4, depth: 1.1 },
+      { cx: 50, cz: 300, rx: 6, rz: 9, rot: 0.5, depth: 1.0 },
     ],
     water: [],
-    treeDensity: 0.95, windMax: 7,
+    treeDensity: 0.95, windMax: 7, obMargin: 48,
   },
   {
     id: 9, name: 'HOMEWARD', par: 4, seed: 9991,
@@ -232,21 +242,25 @@ export const HOLES = [
     treeDensity: 0.9, windMax: 7,
   },
   {
-    id: 15, name: 'RIVER RUN', par: 5, seed: 15149,
-    path: [{ x: 0, z: 0 }, { x: -10, z: 170 }, { x: 8, z: 330 }, { x: -15, z: 430 }, { x: -22, z: 487 }],
+    // homage: Augusta National 13 ("Azalea") — sweeping par-5 dogleg
+    // left; the tributary creek runs up the left side then crosses right
+    // in front of the green, daring you to go for it in two
+    id: 15, name: 'AZALEA BEND', par: 5, seed: 15149,
+    path: [{ x: 0, z: 0 }, { x: 6, z: 160 }, { x: -30, z: 320 }, { x: -55, z: 440 }, { x: -60, z: 485 }],
     fairwayHalf: 15,
-    fairwayProfile: [[0, 12], [150, 19], [260, 14], [340, 16], [420, 12], [490, 11]],
-    green: { cx: -22, cz: 487, rx: 13, rz: 16, rot: -0.3 },
-    pin: { x: -20, z: 490 },
+    fairwayProfile: [[0, 12], [150, 19], [260, 15], [340, 16], [420, 13], [488, 11]],
+    green: { cx: -60, cz: 485, rx: 14, rz: 13, rot: -0.3 },
+    pin: { x: -58, z: 488 },
     bunkers: [
-      { cx: 12, cz: 250, rx: 8, rz: 12, rot: 0.4, depth: 1.1 },
-      { cx: -28, cz: 300, rx: 6, rz: 9, rot: -0.4, depth: 0.9 },
-      { cx: -8, cz: 478, rx: 5, rz: 8, rot: 0.3, depth: 1.3 },
+      { cx: 16, cz: 245, rx: 8, rz: 12, rot: 0.4, depth: 1.1 },
+      { cx: -74, cz: 500, rx: 4, rz: 5, rot: 0.3, depth: 1.2 },
+      { cx: -62, cz: 505, rx: 4, rz: 4, rot: -0.2, depth: 1.2 },
+      { cx: -50, cz: 502, rx: 4, rz: 5, rot: 0.2, depth: 1.2 },
     ],
-    water: [{ type: 'channel', width: 10, pts: [
-      { x: 60, z: 80 }, { x: 45, z: 260 }, { x: -5, z: 375 }, { x: -90, z: 390 },
+    water: [{ type: 'channel', width: 8, pts: [
+      { x: -100, z: 380 }, { x: -82, z: 430 }, { x: -62, z: 462 }, { x: -20, z: 468 }, { x: 40, z: 455 },
     ] }],
-    treeDensity: 0.95, windMax: 5,
+    treeDensity: 1.1, windMax: 5,
   },
   {
     id: 16, name: 'EDGE OF NIGHT', par: 4, seed: 16157,
@@ -265,34 +279,46 @@ export const HOLES = [
     treeDensity: 1.0, windMax: 6,
   },
   {
-    id: 17, name: 'ISLAND LOOK', par: 3, seed: 17167,
-    path: [{ x: 0, z: 0 }, { x: 5, z: 172 }],
+    // homage: TPC Sawgrass 17 ("The Island") — a true island green:
+    // eight overlapping ponds form an unbroken moat around the putting
+    // surface; there is the green, and there is the water
+    id: 17, name: 'THE ISLAND', par: 3, seed: 17167,
+    path: [{ x: 0, z: 0 }, { x: 5, z: 152 }],
     fairwayHalf: 10,
-    fairwayProfile: [[0, 8], [130, 9], [172, 12]],
-    green: { cx: 5, cz: 172, rx: 13, rz: 12, rot: 0.2 },
-    pin: { x: 7, z: 174 },
-    bunkers: [
-      { cx: 10, cz: 190, rx: 6, rz: 6, rot: 0, depth: 1.1 },
-      { cx: -10, cz: 165, rx: 5, rz: 7, rot: 0.4, depth: 1.2 },
+    fairwayProfile: [[0, 8], [100, 9], [152, 12]],
+    green: { cx: 5, cz: 152, rx: 11, rz: 12, rot: 0.2 },
+    pin: { x: 7, z: 154 },
+    bunkers: [],
+    water: [
+      { type: 'pond', cx: 33, cz: 152, rx: 12.5, rz: 12.5, rot: 0 },
+      { type: 'pond', cx: 24.8, cz: 171.8, rx: 12.5, rz: 12.5, rot: 0 },
+      { type: 'pond', cx: 5, cz: 180, rx: 12.5, rz: 12.5, rot: 0 },
+      { type: 'pond', cx: -14.8, cz: 171.8, rx: 12.5, rz: 12.5, rot: 0 },
+      { type: 'pond', cx: -23, cz: 152, rx: 12.5, rz: 12.5, rot: 0 },
+      { type: 'pond', cx: -14.8, cz: 132.2, rx: 12.5, rz: 12.5, rot: 0 },
+      { type: 'pond', cx: 5, cz: 124, rx: 12.5, rz: 12.5, rot: 0 },
+      { type: 'pond', cx: 24.8, cz: 132.2, rx: 12.5, rz: 12.5, rot: 0 },
     ],
-    water: [{ type: 'pond', cx: 2, cz: 105, rx: 38, rz: 48, rot: 0.1 }],
     treeDensity: 1.2, windMax: 7,
   },
   {
-    id: 18, name: 'CLUBHOUSE TURN', par: 4, seed: 18181,
-    path: [{ x: 0, z: 0 }, { x: 10, z: 175 }, { x: -20, z: 300 }, { x: -30, z: 384 }],
+    // homage: Pebble Beach 18 — the bay runs the entire left side from
+    // tee to green; hug the water line to shorten the home hole
+    id: 18, name: 'CRESCENT BAY', par: 4, seed: 18181,
+    path: [{ x: 0, z: 0 }, { x: 14, z: 160 }, { x: 0, z: 290 }, { x: -12, z: 382 }],
     fairwayHalf: 16,
-    fairwayProfile: [[0, 13], [150, 20], [250, 14], [320, 16], [388, 12]],
-    green: { cx: -30, cz: 384, rx: 14, rz: 16, rot: -0.3 },
-    pin: { x: -28, z: 387 },
+    fairwayProfile: [[0, 13], [150, 20], [250, 16], [320, 16], [386, 12]],
+    green: { cx: -12, cz: 382, rx: 14, rz: 16, rot: -0.3 },
+    pin: { x: -10, z: 385 },
     bunkers: [
-      { cx: 26, cz: 240, rx: 8, rz: 13, rot: 0.5, depth: 1.1 },
-      { cx: -36, cz: 270, rx: 6, rz: 9, rot: -0.4, depth: 0.9 },
-      { cx: -16, cz: 375, rx: 5, rz: 8, rot: -0.2, depth: 1.3 },
-      { cx: -44, cz: 372, rx: 4, rz: 6, rot: 0.3, depth: 1.1 },
+      { cx: 34, cz: 245, rx: 8, rz: 13, rot: 0.5, depth: 1.1 },
+      { cx: 4, cz: 372, rx: 5, rz: 8, rot: -0.2, depth: 1.3 },
+      { cx: 16, cz: 300, rx: 6, rz: 9, rot: 0.4, depth: 1.0 },
     ],
-    water: [{ type: 'pond', cx: -62, cz: 350, rx: 26, rz: 40, rot: 0.15 }],
-    treeDensity: 1.05, windMax: 6,
+    water: [{ type: 'channel', width: 26, pts: [
+      { x: -52, z: -10 }, { x: -40, z: 150 }, { x: -34, z: 290 }, { x: -42, z: 400 },
+    ] }],
+    treeDensity: 1.05, windMax: 7,
   },
 ];
 

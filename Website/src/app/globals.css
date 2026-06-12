@@ -1906,7 +1906,29 @@ code {
 .sim-title{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.24em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 55%,transparent); }
 .sim-full{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--carry-gold); }
 .sim-full:hover{ color:var(--bone); }
+.sim-bar-right{ display:inline-flex; align-items:center; gap:20px; }
+.sim-live{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 62%,transparent); }
+.sim-live:hover{ color:var(--bone); }
+.sim-stage{ position:relative; flex:1; display:flex; }
 .sim-frame{ flex:1; width:100%; border:0; display:block; }
+.sim-loading{
+  position:absolute; inset:0; z-index:2; pointer-events:none;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+  background:var(--forest-darker);
+}
+.sim-loading-ball{
+  width:22px; height:22px; border-radius:50%;
+  background:radial-gradient(circle at 32% 30%, #fff 0 28%, transparent 30%),
+             radial-gradient(circle at 35% 35%, var(--bone), #b8b1a0 90%);
+  box-shadow:0 6px 18px rgba(0,0,0,.5);
+  animation:sim-bounce 0.9s cubic-bezier(.35,0,.65,1) infinite alternate;
+}
+@keyframes sim-bounce{ from{ transform:translateY(-12px); } to{ transform:translateY(8px) scale(1.04,0.96); } }
+.sim-loading-text{
+  font-family:var(--r-mono); font-size:10.5px; letter-spacing:.26em; text-transform:uppercase;
+  color:color-mix(in oklab,var(--bone) 55%,transparent);
+}
+@media (prefers-reduced-motion: reduce){ .sim-loading-ball{ animation:none; } }
 @media (max-width:600px){ .sim-title{ display:none; } }
 
 /* ============================================================
