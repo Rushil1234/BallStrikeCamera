@@ -283,7 +283,9 @@ export function buildCourse(hole, assets) {
   const tee = path[0];
   const fhw = hole.fairwayHalf;
 
-  const baseAt = (x, z) => fbmBase(x * 0.0065, z * 0.0065) * 4.5 + fbmBase(x * 0.018 + 50, z * 0.018) * 1.1;
+  const baseAt = hole.isRange
+    ? (x, z) => fbmBase(x * 0.003, z * 0.003) * 0.35
+    : (x, z) => fbmBase(x * 0.0065, z * 0.0065) * 4.5 + fbmBase(x * 0.018 + 50, z * 0.018) * 1.1;
 
   // water level: relative to terrain near the water features
   let waterLevel = -100;
@@ -430,6 +432,7 @@ export function buildCourse(hole, assets) {
   let group = null;
   let updateFlag = () => {};
   let updateWater = () => {};
+  let spots = [];
 
   if (VISUAL && assets) {
     group = new THREE.Group();
@@ -559,7 +562,7 @@ export function buildCourse(hole, assets) {
 
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
-    const spots = [];
+    spots = [];
     const candidates = Math.floor(1700 * (hole.treeDensity || 1));
     for (let i = 0; i < candidates && spots.length < 460; i++) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
@@ -859,5 +862,6 @@ export function buildCourse(hole, assets) {
     pointAtAlong, pathInfo, isOB, updateFlag, updateWater, dispose,
     greenGrid: group ? group.userData.greenGrid : null,
     bounds: { minX, maxX, minZ, maxZ },
+    trees: spots.map(t => ({ x: t.x, z: t.z, h: t.h, s: t.s, isPine: t.kind <= 1 })),
   };
 }

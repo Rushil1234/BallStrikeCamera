@@ -257,6 +257,20 @@ export const HOLES = [
   },
 ];
 
+// Driving range: flat, straight, no scoring.
+export const RANGE = {
+  id: 0, name: 'RANGE', par: null, seed: 9999, isRange: true,
+  path: [{ x: 0, z: 0 }, { x: 0, z: 350 }],
+  fairwayHalf: 80,
+  obMargin: 9999,
+  green: { cx: 0, cz: 350, rx: 30, rz: 30, rot: 0 },
+  pin: { x: 0, z: 350 },
+  bunkers: [],
+  water: [],
+  treeDensity: 0,
+  windMax: 8,
+};
+
 // Total playing length of a hole along its path, meters.
 export function holeLength(hole) {
   let L = 0;

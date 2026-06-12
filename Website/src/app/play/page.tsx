@@ -33,9 +33,9 @@ export default function PlayPage() {
 
   function selectCourse(courseId: string) {
     setStage("playing");
-    // Give the iframe a moment to be visible, then tell the sim to start.
     setTimeout(() => {
-      iframeRef.current?.contentWindow?.postMessage({ type: "START_SIM" }, "*");
+      const msgType = courseId === "range" ? "START_RANGE" : "START_SIM";
+      iframeRef.current?.contentWindow?.postMessage({ type: msgType }, "*");
     }, 200);
   }
 

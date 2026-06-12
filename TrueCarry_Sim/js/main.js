@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js';
 import { createShot, simulateCarry, SURF } from './physics.js';
-import { HOLES, holeLength } from './holes.js';
+import { HOLES, RANGE, holeLength } from './holes.js';
 import { buildCourse } from './terrain.js';
 import { makeSky } from './sky.js';
 import { loadAssets } from './assets.js';
@@ -142,7 +142,10 @@ const game = {
   greenCamSet: false,
   camLook: new THREE.Vector3(0, 0, 50),
   time: 0,
+  isRange: false,
 };
+
+let rangeMarkers = null;
 
 const club = () => CLUBS[game.clubIdx];
 const onGreen = () => game.lie === SURF.GREEN;
@@ -161,6 +164,9 @@ function totalToPar() {
 // ---------- hole / shot setup ----------
 
 function startHole(idx) {
+  if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
+  game.isRange = false;
+  if (idx === 0) game.scores = HOLES.map(() => null);
   if (game.course) {
     scene.remove(game.course.group);
     game.course.dispose();
@@ -375,6 +381,29 @@ function resolveShot() {
   const sim = game.sim;
   game.ballPos = { x: sim.pos.x, y: sim.pos.y, z: sim.pos.z };
 
+  // Range mode: show carry/total, reset to tee, no scoring
+  if (game.isRange) {
+    const finalLie = sim.state === 'water' ? SURF.WATER
+      : game.course.surfaceAt(sim.pos.x, sim.pos.z);
+    const carry = sim.carryPos
+      ? Math.hypot(sim.carryPos.x - game.shotStart.x, sim.carryPos.z - game.shotStart.z) : 0;
+    const total = Math.hypot(sim.pos.x - game.shotStart.x, sim.pos.z - game.shotStart.z);
+    if (!club().putter) hud.shotDataResult(fmtYards(carry), fmtYards(total));
+    hud.toast(
+      `<span class="t-gold">${fmtYards(carry)}y</span> CARRY · ${fmtYards(total)}y TOTAL` +
+      `<span class="t-sub">RANGE · ${finalLie === SURF.WATER ? 'INTO WATER' : finalLie.toUpperCase()}</span>`,
+      3500);
+    const t = game.course.teePos;
+    game.ballPos = { x: t.x, y: t.y + 0.0214, z: t.z };
+    game.lie = SURF.TEE;
+    game.shotStart = { ...game.ballPos };
+    tracerCount = 0;
+    tracerGeo.setDrawRange(0, 0);
+    ball.visible = true;
+    setupShot();
+    return;
+  }
+
   if (sim.state === 'holed') {
     const def = HOLES[game.holeIdx];
     game.scores[game.holeIdx] = game.strokes;
@@ -440,6 +469,69 @@ function nextHole() {
   } else {
     game.state = 'ROUND_DONE';
     hud.summaryShow(HOLES, game.scores);
+  }
+}
+
+function startRange() {
+  if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
+  game.isRange = true;
+  if (game.course) { scene.remove(game.course.group); game.course.dispose(); }
+  game.course = buildCourse(RANGE, assets);
+  scene.add(game.course.group);
+  game.holeIdx = 0;
+  game.scores = [null];
+  game.strokes = 0;
+  hud.shotDataHide();
+  const t = game.course.teePos;
+  game.ballPos = { x: t.x, y: t.y + 0.0214, z: t.z };
+  game.lie = SURF.TEE;
+  const ang = Math.random() * Math.PI * 2;
+  const spd = Math.random() * RANGE.windMax;
+  game.wind = { x: Math.sin(ang) * spd, z: Math.cos(ang) * spd, speed: spd };
+  tracerCount = 0;
+  tracerGeo.setDrawRange(0, 0);
+  hud.mapSetHole(RANGE);
+  hud.show();
+  // override hole card for range
+  const hcHole = document.getElementById('hc-hole');
+  const hcPar  = document.getElementById('hc-par');
+  const hcYds  = document.getElementById('hc-yds');
+  const hcName = document.getElementById('hc-name');
+  if (hcHole) hcHole.textContent = 'RANGE';
+  if (hcPar)  hcPar.textContent  = 'PRACTICE';
+  if (hcYds)  hcYds.textContent  = '';
+  if (hcName) hcName.textContent = 'DRIVING RANGE';
+  const helpStrip = document.getElementById('help-strip');
+  if (helpStrip && window.__liveMode) {
+    helpStrip.textContent = 'RANGE · LIVE MODE — hit shots on your phone · M MUTE';
+  }
+  const liveWaiting = document.getElementById('live-waiting');
+  if (liveWaiting && window.__liveMode) liveWaiting.classList.remove('hidden');
+  setupShot();
+  buildRangeMarkers();
+}
+
+function buildRangeMarkers() {
+  rangeMarkers = [];
+  const yardages = [50, 100, 150, 200, 250, 300];
+  const ox = game.course.teePos.x, oz = game.course.teePos.z;
+  for (const yd of yardages) {
+    const dist = yd * 0.9144;
+    const mz = oz + dist, mx = ox;
+    const my = game.course.heightAt(mx, mz) + 0.07;
+    const isHundred = yd % 100 === 0;
+    const marker = new THREE.Mesh(
+      new THREE.TorusGeometry(isHundred ? 4 : 2.5, 0.12, 6, 40),
+      new THREE.MeshBasicMaterial({
+        color: isHundred ? 0xffd700 : 0xffffff,
+        transparent: true, opacity: isHundred ? 0.75 : 0.45,
+        depthWrite: false,
+      })
+    );
+    marker.rotation.x = -Math.PI / 2;
+    marker.position.set(mx, my, mz);
+    scene.add(marker);
+    rangeMarkers.push(marker);
   }
 }
 
@@ -700,6 +792,7 @@ function updateFlight() {
     else if (ev.type === 'splash') SFX.splash();
     else if (ev.type === 'holed') SFX.holed();
     else if (ev.type === 'lip') hud.toast('<span class="t-gold">LIP OUT</span>', 1400);
+    else if (ev.type === 'tree') { SFX.bounce(4); hud.toast('<span class="t-sub">TREE</span>', 1100); }
   }
 
   ball.position.set(sim.pos.x, sim.pos.y, sim.pos.z);
@@ -807,6 +900,11 @@ window.addEventListener('message', (e) => {
   if (e.data?.type === 'START_SIM') {
     const btn = document.getElementById('btn-start');
     if (btn && game.state === 'TITLE') btn.click();
+    return;
+  }
+
+  if (e.data?.type === 'START_RANGE') {
+    assetsReady.then(() => { hud.titleHide(); startRange(); });
     return;
   }
 

@@ -15,7 +15,7 @@ export const SURF_PROPS = {
   fairway: { restitution: 0.36, retain: 0.58, decel: 1.7 },
   fringe:  { restitution: 0.30, retain: 0.50, decel: 2.6 },
   rough:   { restitution: 0.20, retain: 0.36, decel: 5.0 },
-  sand:    { restitution: 0.06, retain: 0.12, decel: 8.0 },
+  sand:    { restitution: 0.03, retain: 0.08, decel: 12.0 },
   green:   { restitution: 0.40, retain: 0.62, decel: 0.72 },
   water:   { restitution: 0.0,  retain: 0.0,  decel: 99 },
 };
@@ -54,7 +54,7 @@ const norm = (a) => { const l = len(a) || 1; return scl(a, 1 / l); };
  *   speed                  m/s
  *   launchDeg              vertical launch angle
  *   backspinRpm            backspin (positive = lift)
- *   sidespinRpm            signed; negative curves toward the aim-right
+ *   sidespinRpm            signed; positive = fade/right, negative = draw/left (for RH golfer)
  *   wind {x,z}             m/s
  *   course { heightAt(x,z), surfaceAt(x,z), normalAt(x,z), waterLevel }
  *   pin {x,z}              cup location (capture enabled when provided)
@@ -142,6 +142,50 @@ export function createShot(opts) {
     sim.pos = add(sim.pos, scl(sim.vel, dt));
     omega = scl(omega, Math.exp(-dt / SPIN_DECAY));
 
+    // catch ball at the visual water surface before it sinks to the carved bed
+    if (course.waterLevel > -90 && sim.pos.y - BALL_R <= course.waterLevel) {
+      if (course.surfaceAt(sim.pos.x, sim.pos.z) === SURF.WATER) {
+        enterWater(); return;
+      }
+    }
+
+    // tree canopy + trunk collision
+    if (course.trees?.length && sim.pos.y < 22) {
+      for (const tree of course.trees) {
+        const hdx = Math.abs(sim.pos.x - tree.x);
+        const hdz = Math.abs(sim.pos.z - tree.z);
+        const maxR = 5.0 * tree.s;
+        if (hdx > maxR || hdz > maxR) continue;
+        // canopy sphere
+        const canopyCY = tree.h + (tree.isPine ? 6.0 : 5.2) * tree.s;
+        const canopyR = 3.5 * tree.s;
+        const dx = sim.pos.x - tree.x, dy = sim.pos.y - canopyCY, dz = sim.pos.z - tree.z;
+        const dist2 = dx * dx + dy * dy + dz * dz;
+        if (dist2 < canopyR * canopyR) {
+          const dist = Math.sqrt(dist2) || 0.01;
+          const nx = dx / dist, ny = dy / dist, nz = dz / dist;
+          const pen = canopyR - dist + 0.02;
+          sim.pos.x += nx * pen; sim.pos.y += ny * pen; sim.pos.z += nz * pen;
+          const vn = sim.vel.x * nx + sim.vel.y * ny + sim.vel.z * nz;
+          sim.vel.x -= 1.28 * vn * nx; sim.vel.y -= 1.28 * vn * ny; sim.vel.z -= 1.28 * vn * nz;
+          sim.vel.x *= 0.52; sim.vel.y *= 0.52; sim.vel.z *= 0.52;
+          sim.vel.x += (Math.random() - 0.5) * 1.8;
+          sim.vel.z += (Math.random() - 0.5) * 1.8;
+          sim.events.push({ type: 'tree', pos: { ...sim.pos } });
+          break;
+        }
+        // trunk cylinder
+        const trunkH = (tree.isPine ? 8.6 : 4.8) * tree.s;
+        const trunkR = (tree.isPine ? 0.30 : 0.36) * tree.s;
+        const hd = Math.hypot(sim.pos.x - tree.x, sim.pos.z - tree.z);
+        if (hd < trunkR + BALL_R && sim.pos.y > tree.h + 0.1 && sim.pos.y < tree.h + trunkH) {
+          sim.vel.x *= 0.06; sim.vel.z *= 0.06;
+          sim.events.push({ type: 'tree', pos: { ...sim.pos } });
+          break;
+        }
+      }
+    }
+
     const h = course.heightAt(sim.pos.x, sim.pos.z);
     if (sim.pos.y <= h + BALL_R) {
       sim.pos.y = h + BALL_R;
@@ -179,7 +223,7 @@ export function createShot(opts) {
         omega = scl(omega, 0.62);
 
         // plugged in soft sand
-        if (surf === SURF.SAND && impact > 9) {
+        if (surf === SURF.SAND && impact > 5) {
           sim.vel = v3();
           sim.state = 'roll';
           return;
