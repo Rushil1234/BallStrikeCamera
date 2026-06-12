@@ -10,6 +10,8 @@ import { makeSky } from './sky.js';
 import { loadAssets } from './assets.js';
 import { HUD, toParStr } from './ui.js';
 import { SFX } from './audio.js';
+import { getLiveCode, connectLive } from './live.js';
+import { fetchSimCourses } from './courses.js';
 
 // ---------- boot ----------
 
@@ -123,7 +125,6 @@ scene.add(ring);
 
 const game = {
   state: 'TITLE',           // TITLE FLYOVER AIM METER_POWER METER_ACCURACY FLIGHT HOLE_DONE ROUND_DONE
-  mode: 'round',            // 'round' plays 1-18; 'practice' loops one hole
   holeIdx: 0,
   course: null,
   scores: HOLES.map(() => null),
@@ -159,7 +160,7 @@ function totalToPar() {
 
 // ---------- hole / shot setup ----------
 
-function startHole(idx, skipFly = false) {
+function startHole(idx) {
   if (game.course) {
     scene.remove(game.course.group);
     game.course.dispose();
@@ -189,9 +190,9 @@ function startHole(idx, skipFly = false) {
   hud.mapSetHole(def);
   hud.show();
 
-  // flyover (skipped when re-practicing the same hole)
+  // flyover
   game.state = 'FLYOVER';
-  game.flyT = skipFly ? 99 : 0;
+  game.flyT = 0;
   hud.introShow(def.id, def.name, def.par, yds);
   ball.visible = false;
   blob.visible = false;
@@ -434,9 +435,7 @@ function resolveShot() {
 
 function nextHole() {
   hud.toastHide();
-  if (game.mode === 'practice') {
-    startHole(game.holeIdx, true);      // run it back, no flyover
-  } else if (game.holeIdx + 1 < HOLES.length) {
+  if (game.holeIdx + 1 < HOLES.length) {
     startHole(game.holeIdx + 1);
   } else {
     game.state = 'ROUND_DONE';
@@ -548,6 +547,12 @@ let keys = {};
 let dragInfo = null;
 
 function action() {
+  // In live mode, only allow skipping flyover and advancing after a hole.
+  if (window.__liveMode) {
+    if (game.state === 'FLYOVER') { game.flyT = 99; }
+    if (game.state === 'HOLE_DONE' && game.doneTimer > 0.8) { game.doneTimer = 99; }
+    return;
+  }
   switch (game.state) {
     case 'FLYOVER':
       game.flyT = 99;
@@ -622,11 +627,6 @@ window.addEventListener('keydown', (e) => {
     case 'KeyM':
       SFX.setMuted(!SFX.isMuted());
       break;
-    case 'Escape':
-      if (game.state === 'TITLE' || game.state === 'ROUND_DONE') break;
-      if (!hud.el.holeSelect.classList.contains('hidden')) { hud.holeSelectHide(); break; }
-      if (hud.menuVisible()) hud.menuHide(); else hud.menuShow(SFX.isMuted());
-      break;
     default: break;
   }
 });
@@ -638,45 +638,13 @@ hud.el.btnStart.addEventListener('click', () => {
   if (!assets) return;
   SFX.unlock();
   hud.titleHide();
-  game.mode = 'round';
   startHole(0);
 });
 hud.el.btnAgain.addEventListener('click', () => {
   SFX.unlock();
   hud.summaryHide();
   game.scores = HOLES.map(() => null);
-  game.mode = 'round';
   startHole(0);
-});
-
-// practice hole select + in-game menu
-function openHoleSelect() {
-  hud.holeSelectShow(HOLES, game.scores, (i) => {
-    hud.holeSelectHide();
-    hud.menuHide();
-    hud.titleHide();
-    hud.summaryHide();
-    game.mode = 'practice';
-    startHole(i);
-  });
-}
-hud.el.btnPractice.addEventListener('click', () => {
-  if (!assets) return;
-  SFX.unlock();
-  openHoleSelect();
-});
-hud.el.btnHsBack.addEventListener('click', () => hud.holeSelectHide());
-hud.el.btnResume.addEventListener('click', () => hud.menuHide());
-hud.el.btnHoles.addEventListener('click', () => { hud.menuHide(); openHoleSelect(); });
-hud.el.btnRestart.addEventListener('click', () => {
-  hud.menuHide();
-  game.scores = HOLES.map(() => null);
-  game.mode = 'round';
-  startHole(0);
-});
-hud.el.btnMute.addEventListener('click', () => {
-  SFX.setMuted(!SFX.isMuted());
-  hud.el.btnMute.textContent = SFX.isMuted() ? 'UNMUTE' : 'MUTE';
 });
 
 // ---------- per-frame update ----------
@@ -762,12 +730,6 @@ function frame() {
     game.course.updateFlag(game.time, game.wind.speed);
     game.course.updateWater(game.time, game.wind);
 
-    if (hud.menuVisible()) {            // paused in the menu
-      sky?.update(game.time, camera.position);
-      renderer.render(scene, camera);
-      return;
-    }
-
     switch (game.state) {
       case 'FLYOVER':
         game.flyT += frameDt;
@@ -831,6 +793,172 @@ function frame() {
 }
 
 frame();
+
+// ---------- course selector ----------
+// Hoist liveCode here so the course-selector guard below can reference it.
+const liveCode = getLiveCode();
+
+// Notify parent (course-builder tool) that the sim is ready.
+window.parent?.postMessage({ type: 'SIM_READY' }, '*');
+
+// postMessage preview mode: course-builder sends PREVIEW_HOLE with custom holes array.
+window.addEventListener('message', (e) => {
+  if (!e.data || e.data.type !== 'PREVIEW_HOLE') return;
+  const { holes, holeIndex = 0 } = e.data;
+  if (!holes?.length) return;
+
+  // Inject the custom hole definitions into the game.
+  Object.assign(HOLES, holes);
+  HOLES.length = holes.length;
+
+  // Reset scores for the new course.
+  game.scores = HOLES.map(() => null);
+
+  // If assets aren't ready, wait for them.
+  assetsReady.then(() => {
+    hud.titleHide();
+    startHole(Math.min(holeIndex, HOLES.length - 1));
+    // Skip straight to AIM (bypass flyover) in preview mode.
+    game.flyT = 99;
+  });
+});
+
+// Load real courses from Supabase and populate the course selector.
+const isPreview = new URLSearchParams(location.search).has('preview');
+if (!isPreview && !liveCode) {
+  fetchSimCourses().then(courses => {
+    if (!courses.length) return;
+    const select = document.getElementById('course-select');
+    const wrap   = document.getElementById('course-select-wrap');
+    if (!select || !wrap) return;
+    courses.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.courseId;
+      opt.textContent = c.courseName;
+      opt._holes = c.holes;
+      select.appendChild(opt);
+    });
+    wrap.classList.remove('hidden');
+    select.addEventListener('change', () => {
+      const chosen = courses.find(c => c.courseId === select.value);
+      if (!chosen?.holes?.length) return;
+      Object.assign(HOLES, chosen.holes);
+      HOLES.length = chosen.holes.length;
+      game.scores = HOLES.map(() => null);
+    });
+  });
+}
+
+// ---------- live sim mode ----------
+
+if (liveCode) {
+  // Live mode: disable 3-click swing; shots arrive via Supabase Realtime.
+  // The TEE OFF button still loads the course and begins the flyover;
+  // after that the user's phone sends real shots.
+
+  const liveWaiting = document.getElementById('live-waiting');
+  const liveStatus  = document.getElementById('live-status');
+  const liveShotNum = document.getElementById('live-shot-num');
+  const helpStrip   = document.getElementById('help-strip');
+
+  // Patch the help strip text for live mode.
+  if (helpStrip) helpStrip.textContent = 'LIVE MODE — hit shots on your phone · TAB CARD · M MUTE';
+
+  // Show waiting overlay once the game leaves TITLE.
+  const origTitleHide = hud.titleHide.bind(hud);
+  hud.titleHide = function () {
+    origTitleHide();
+    if (liveWaiting) liveWaiting.classList.remove('hidden');
+  };
+
+  // Disable keyboard/pointer swing actions in live mode.
+  const origAction = action;          // already defined above
+  // eslint-disable-next-line no-global-assign
+  window.__liveMode = true;
+
+  function updateLiveStatus(text, cls) {
+    if (!liveStatus) return;
+    liveStatus.textContent = text;
+    liveStatus.className = 'live-status-badge ' + (cls || '');
+  }
+
+  function updateLiveShotNum(n) {
+    if (!liveShotNum) return;
+    liveShotNum.textContent = `SHOT ${n}`;
+    liveShotNum.classList.remove('hidden');
+  }
+
+  // Show status badge immediately.
+  if (liveStatus) liveStatus.classList.remove('hidden');
+
+  connectLive(liveCode,
+    // onShotReceived
+    function (metrics) {
+      if (liveWaiting) liveWaiting.classList.add('hidden');
+      if (game.state === 'AIM' || game.state === 'METER_POWER' || game.state === 'METER_ACCURACY') {
+        fireLiveShot(metrics);
+        updateLiveShotNum(game.strokes);
+      }
+    },
+    // onStatusChange
+    function (status) {
+      if (status === 'connecting') {
+        updateLiveStatus('Connecting…', 'live-connecting');
+      } else if (status === 'connected') {
+        updateLiveStatus('● Live — waiting for shot', 'live-connected');
+      } else {
+        updateLiveStatus('Connection error — reload to retry', 'live-error');
+      }
+    }
+  );
+}
+
+/**
+ * Fires a shot using metrics from the phone (live sim mode).
+ * Bypasses the 3-click swing meter entirely.
+ */
+function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaDegrees, hlaDirection }) {
+  if (!game.course) return;
+
+  const speed = (ballSpeedMph || 100) * 0.44704; // mph → m/s
+
+  // Adjust aim direction by HLA.
+  const hlaRad = (hlaDirection === 'right' ? 1 : -1) * (hlaDegrees || 0) * Math.PI / 180;
+  const ca = Math.cos(hlaRad), sa = Math.sin(hlaRad);
+  const right = { x: -game.aimDir.z, z: game.aimDir.x };
+  const dir = {
+    x: game.aimDir.x * ca + right.x * sa,
+    z: game.aimDir.z * ca + right.z * sa,
+  };
+
+  game.strokes += 1;
+  hud.setStroke(game.strokes, totalToPar());
+  hud.meterHide();
+  hud.toastHide();
+  hud.shotDataShow({ speedMph: ballSpeedMph, launchDeg: vlaDegrees || 12, spinRpm: Math.abs(backspinRpm || 4000) });
+  game.shotApex = 0;
+  game.shotGroundY = game.course.heightAt(game.ballPos.x, game.ballPos.z);
+
+  game.sim = createShot({
+    pos: { ...game.ballPos },
+    dir,
+    speed,
+    launchDeg: vlaDegrees || 12,
+    backspinRpm: Math.abs(backspinRpm || 4000),
+    sidespinRpm: sidespinRpm || 0,
+    wind: game.wind,
+    course: game.course,
+    pin: { x: game.course.pinPos.x, z: game.course.pinPos.z },
+    mode: 'fly',
+  });
+
+  game.shotStart = { ...game.ballPos };
+  tracerCount = 0;
+  tracerGeo.setDrawRange(0, 0);
+  game.state = 'FLIGHT';
+  setGuides(false);
+  SFX.strike(0.8, false);
+}
 
 // dev hooks: #play skips the title screen, #aim also skips the flyover,
 // an optional digit picks the hole (#aim2 = hole 2)

@@ -283,21 +283,6 @@ export function buildCourse(hole, assets) {
   const tee = path[0];
   const fhw = hole.fairwayHalf;
 
-  // variable fairway width: optional [[along_m, half_m], ...] profile lets
-  // holes pinch at the landing zone and flare at the layup
-  const prof = hole.fairwayProfile;
-  function fhwAt(along) {
-    if (!prof || !prof.length) return fhw;
-    if (along <= prof[0][0]) return prof[0][1];
-    for (let i = 1; i < prof.length; i++) {
-      if (along <= prof[i][0]) {
-        const t = (along - prof[i - 1][0]) / (prof[i][0] - prof[i - 1][0]);
-        return lerp(prof[i - 1][1], prof[i][1], t * t * (3 - 2 * t));
-      }
-    }
-    return prof[prof.length - 1][1];
-  }
-
   const baseAt = (x, z) => fbmBase(x * 0.0065, z * 0.0065) * 4.5 + fbmBase(x * 0.018 + 50, z * 0.018) * 1.1;
 
   // water level: relative to terrain near the water features
@@ -332,23 +317,19 @@ export function buildCourse(hole, assets) {
 
   function heightAt(x, z) {
     const p = distToPolyline(path, x, z);
-    const half = fhwAt(p.along);
-    const fairMask = sstep(half + 20, half - 5, p.dist);
+    const fairMask = sstep(fhw + 20, fhw - 5, p.dist);
 
     let h = baseAt(x, z);
     h += fbmDetail(x * 0.05, z * 0.05) * 0.85 * (1 - fairMask);  // bumpy rough
     h += fairMask * 0.15;                                        // slight fairway crown
 
-    // green plateau with gentle internal contours, ringed by mounding
-    // so the green complex has real shape
+    // green plateau with gentle internal contours
     const gv = ellipseVal(hole.green, x, z);
-    if (gv < 3.6) {
+    if (gv < 3.2) {
       const gm = 1 - sstep(1.05, 2.6, gv);
       const greenH = baseAt(hole.green.cx, hole.green.cz) + 0.4
         + fbmGreen(x * 0.028, z * 0.028) * 0.13;
       h = lerp(h, greenH, gm);
-      const band = sstep(1.1, 1.8, gv) * (1 - sstep(2.5, 3.6, gv));
-      h += band * (fbmGreen(x * 0.085 + 7, z * 0.085) * 0.7 + 0.35);
     }
 
     // tee pad
@@ -358,13 +339,13 @@ export function buildCourse(hole, assets) {
       h = lerp(h, baseAt(tee.x, tee.z) + 0.45, tm);
     }
 
-    // bunkers: deep bowl, flatter floor, raised grass lip
+    // bunkers: bowl + soft lip
     for (const b of hole.bunkers) {
       const bv = ellipseVal(b, x, z);
-      if (bv < 2.4) {
+      if (bv < 2.2) {
         const t = Math.max(0, 1 - bv);
-        h -= b.depth * 1.5 * Math.pow(t, 1.1);
-        h += 0.22 * Math.exp(-((bv - 1.22) ** 2) / 0.045);
+        h -= b.depth * Math.pow(t, 1.25);
+        h += 0.13 * Math.exp(-((bv - 1.18) ** 2) / 0.03);
       }
     }
 
@@ -389,7 +370,7 @@ export function buildCourse(hole, assets) {
     if (gv <= 1.6) return SURF.FRINGE;
     if (Math.hypot(x - tee.x, z - tee.z) < 7) return SURF.TEE;
     const p = distToPolyline(path, x, z);
-    if (p.dist < fhwAt(p.along)) return SURF.FAIRWAY;
+    if (p.dist < fhw) return SURF.FAIRWAY;
     return SURF.ROUGH;
   }
 
@@ -492,13 +473,9 @@ export function buildCourse(hole, assets) {
           tmp.copy(C.bed); sr = 1;
         } else if (surf === SURF.SAND) {
           tmp.copy(C.sand); ss = 1;
-          // shade the bowl floor and darken the rim under the lip
-          let bvMin = Infinity;
-          for (const b of hole.bunkers) bvMin = Math.min(bvMin, ellipseVal(b, x, z));
-          const depthT = Math.max(0, 1 - bvMin);
-          tmp.multiplyScalar(1 - 0.22 * depthT);
-          const rim = Math.exp(-((bvMin - 0.85) ** 2) / 0.02);
-          tmp.multiplyScalar(1 - 0.28 * rim);
+          let depthT = 0;
+          for (const b of hole.bunkers) depthT = Math.max(depthT, 1 - ellipseVal(b, x, z));
+          tmp.multiplyScalar(1 - 0.15 * Math.max(0, depthT));
         } else if (surf === SURF.GREEN || surf === SURF.TEE) {
           const checker = (Math.floor(x / 2.4) + Math.floor(z / 2.4)) % 2 === 0;
           tmp.copy(surf === SURF.TEE ? C.tee : (checker ? C.greenA : C.greenB));
@@ -509,11 +486,10 @@ export function buildCourse(hole, assets) {
           const stripe = Math.floor(p.along / 7) % 2 === 0;
           tmp.copy(stripe ? C.fairA : C.fairB);
           sg = 1;
-        } else if (p.dist < fhwAt(p.along) + 3.5) {
+        } else if (p.dist < fhw + 3.5) {
           tmp.copy(C.firstCut); sg = 0.55; sr = 0.45;
         } else {
-          const halfHere = fhwAt(p.along);
-          const t = sstep(halfHere + 10, halfHere + 45, p.dist);
+          const t = sstep(fhw + 10, fhw + 45, p.dist);
           tmp.copy(C.rough).lerp(C.deep, t);
           sr = 1;
         }
@@ -547,62 +523,33 @@ export function buildCourse(hole, assets) {
     terrain.receiveShadow = true;
     group.add(terrain);
 
-    // ---------- reflective water, shaped to the hazard ----------
-    // ponds get an ellipse surface, creeks a ribbon along their course —
-    // a rectangle pokes square corners out of the carved shoreline
+    // ---------- reflective water ----------
     const waters = [];
-    const waterOpts = {
-      textureWidth: 512,
-      textureHeight: 512,
-      waterNormals: assets.waterN,
-      sunDirection: assets.sunDir.clone(),
-      sunColor: 0xffffff,
-      waterColor: 0x0e3526,
-      distortionScale: 2.6,
-      fog: true,
-    };
     for (const w of hole.water) {
-      let geo, cx = 0, cz = 0;
+      let cx, cz, sx, sz;
       if (w.type === 'pond') {
         cx = w.cx; cz = w.cz;
-        geo = new THREE.CircleGeometry(1, 48);
-        geo.scale(w.rx * 1.16, w.rz * 1.16, 1);
-        geo.rotateZ(-(w.rot || 0));
+        sx = Math.max(w.rx, w.rz) * 2 + 24; sz = sx;
       } else {
-        // ribbon in local XY; local +y maps to world -z after the X rotation
-        const halfW = w.width / 2 + 4;
-        const pos = [], idx = [];
-        const samples = [];
-        for (let i = 0; i < w.pts.length - 1; i++) {
-          const a = w.pts[i], b = w.pts[i + 1];
-          const segLen = Math.hypot(b.x - a.x, b.z - a.z);
-          const steps = Math.max(2, Math.ceil(segLen / 8));
-          for (let s = (i === 0 ? 0 : 1); s <= steps; s++) {
-            const t = s / steps;
-            samples.push({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
-          }
+        let wMinX = Infinity, wMaxX = -Infinity, wMinZ = Infinity, wMaxZ = -Infinity;
+        for (const p of w.pts) {
+          wMinX = Math.min(wMinX, p.x); wMaxX = Math.max(wMaxX, p.x);
+          wMinZ = Math.min(wMinZ, p.z); wMaxZ = Math.max(wMaxZ, p.z);
         }
-        for (let i = 0; i < samples.length; i++) {
-          const p = samples[i];
-          const q = samples[Math.min(i + 1, samples.length - 1)];
-          const r = samples[Math.max(i - 1, 0)];
-          let tx = q.x - r.x, tz = q.z - r.z;
-          const tl = Math.hypot(tx, tz) || 1;
-          tx /= tl; tz /= tl;
-          // world-xz perpendicular is (-tz, tx)
-          pos.push(p.x - -tz * halfW, -(p.z - tx * halfW), 0);
-          pos.push(p.x + -tz * halfW, -(p.z + tx * halfW), 0);
-          if (i > 0) {
-            const k = i * 2;
-            idx.push(k - 2, k - 1, k, k - 1, k + 1, k);
-          }
-        }
-        geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-        geo.setIndex(idx);
-        geo.computeVertexNormals();
+        cx = (wMinX + wMaxX) / 2; cz = (wMinZ + wMaxZ) / 2;
+        sx = wMaxX - wMinX + w.width * 2 + 20;
+        sz = wMaxZ - wMinZ + w.width * 2 + 20;
       }
-      const water = new Water(geo, waterOpts);
+      const water = new Water(new THREE.PlaneGeometry(sx, sz), {
+        textureWidth: 512,
+        textureHeight: 512,
+        waterNormals: assets.waterN,
+        sunDirection: assets.sunDir.clone(),
+        sunColor: 0xffffff,
+        waterColor: 0x0e3526,
+        distortionScale: 2.6,
+        fog: true,
+      });
       water.rotation.x = -Math.PI / 2;
       water.position.set(cx, waterLevel, cz);
       group.add(water);
@@ -618,7 +565,7 @@ export function buildCourse(hole, assets) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
       const z = minZ + 14 + rng() * (maxZ - minZ - 28);
       const p = pathInfo(x, z);
-      if (p.dist < fhwAt(p.along) + 11) continue;
+      if (p.dist < fhw + 11) continue;
       if (ellipseVal(hole.green, x, z) < 3.0) continue;
       if (Math.hypot(x - tee.x, z - tee.z) < 20) continue;
       if (hasWater && waterMask(x, z).m > 0.05) continue;

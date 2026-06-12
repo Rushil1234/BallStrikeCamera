@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>True Carry Sim · Pine Hollow National</title>
+<title>GSPro — Web Edition · Virtual Golf</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -99,13 +99,19 @@
   <div id="title-screen" class="overlay">
     <div class="title-inner">
       <div class="title-kicker">VIRTUAL GOLF SIMULATOR</div>
-      <h1 class="title-logo">True<span>Carry</span></h1>
-      <div class="title-sub">THE SIM · PINE HOLLOW NATIONAL</div>
+      <h1 class="title-logo">TC<span>SIM</span></h1>
+      <div class="title-sub">TRUECARRY · PINE HOLLOW NATIONAL</div>
       <div class="title-rule"></div>
-      <div class="title-actions">
-        <button id="btn-start" class="gold-btn">TEE OFF</button>
-        <button id="btn-practice" class="ghost-btn">PRACTICE A HOLE</button>
+
+      <!-- Course selector — hidden until sim_courses are loaded -->
+      <div id="course-select-wrap" class="course-select-wrap hidden">
+        <label class="course-select-label" for="course-select">COURSE</label>
+        <select id="course-select" class="course-select">
+          <option value="">Pine Hollow (built-in)</option>
+        </select>
       </div>
+
+      <button id="btn-start" class="gold-btn">TEE OFF</button>
       <div class="title-controls">
         <div><b>AIM</b> drag or ◀ ▶</div>
         <div><b>CLUB</b> ▲ ▼ or buttons</div>
@@ -120,25 +126,6 @@
       <div id="intro-name" class="intro-name">PINEHURST BEND</div>
       <div id="intro-meta" class="intro-meta">PAR 4 · 363 YDS</div>
       <div class="intro-skip">click to skip flyover</div>
-    </div>
-  </div>
-
-  <div id="hole-select" class="overlay hidden">
-    <div class="card-inner">
-      <div class="card-title">SELECT A HOLE</div>
-      <div id="hole-grid"></div>
-      <button id="btn-hs-back" class="ghost-btn">BACK</button>
-    </div>
-  </div>
-
-  <div id="game-menu" class="overlay hidden">
-    <div class="card-inner menu-inner">
-      <div class="card-title">MENU</div>
-      <button id="btn-resume" class="gold-btn">RESUME</button>
-      <button id="btn-holes" class="ghost-btn">HOLE SELECT</button>
-      <button id="btn-restart" class="ghost-btn">RESTART ROUND</button>
-      <button id="btn-mute" class="ghost-btn">MUTE</button>
-      <div class="card-hint">ESC to close</div>
     </div>
   </div>
 
@@ -158,6 +145,21 @@
       <button id="btn-again" class="gold-btn">PLAY AGAIN</button>
     </div>
   </div>
+
+  <!-- Live Sim: waiting overlay (shown after TEE OFF in live mode) -->
+  <div id="live-waiting" class="overlay live-waiting-overlay hidden">
+    <div class="live-waiting-inner">
+      <div class="live-waiting-icon">📡</div>
+      <div class="live-waiting-title">LIVE MODE ACTIVE</div>
+      <div class="live-waiting-sub">Hit a shot on your iPhone to start</div>
+    </div>
+  </div>
+
+  <!-- Live Sim: status badge (top-right corner) -->
+  <div id="live-status" class="live-status-badge hidden"></div>
+
+  <!-- Live Sim: shot counter (top-left, below hole card) -->
+  <div id="live-shot-num" class="live-shot-num hidden"></div>
 
 </div>
 <script>

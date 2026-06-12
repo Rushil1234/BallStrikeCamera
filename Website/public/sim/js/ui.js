@@ -34,10 +34,6 @@ export class HUD {
       summary: $('summary'), summaryScore: $('summary-score'),
       summaryTable: $('summary-table'), btnAgain: $('btn-again'),
       minimap: $('minimap'),
-      btnPractice: $('btn-practice'),
-      holeSelect: $('hole-select'), holeGrid: $('hole-grid'), btnHsBack: $('btn-hs-back'),
-      gameMenu: $('game-menu'), btnResume: $('btn-resume'), btnHoles: $('btn-holes'),
-      btnRestart: $('btn-restart'), btnMute: $('btn-mute'),
     };
     this.mapCtx = this.el.minimap.getContext('2d');
     this.toastTimer = null;
@@ -218,34 +214,6 @@ export class HUD {
     this.el.summary.classList.remove('hidden');
   }
   summaryHide() { this.el.summary.classList.add('hidden'); }
-
-  // ---------- hole select / menu ----------
-
-  holeSelectShow(holes, scores, onPick) {
-    const grid = this.el.holeGrid;
-    grid.innerHTML = '';
-    const Y = 1.09361;
-    holes.forEach((h, i) => {
-      const yds = Math.round(h.path.reduce((acc, p, j) => j
-        ? acc + Math.hypot(p.x - h.path[j - 1].x, p.z - h.path[j - 1].z) : 0, 0) * Y);
-      const tile = document.createElement('button');
-      tile.className = 'hole-tile' + (scores[i] != null ? ' played' : '');
-      tile.innerHTML = `<div class="ht-num">${h.id}</div>` +
-        `<div class="ht-meta">PAR ${h.par} · ${yds}y</div>` +
-        `<div class="ht-name">${h.name}</div>`;
-      tile.addEventListener('click', (e) => { e.stopPropagation(); onPick(i); });
-      grid.appendChild(tile);
-    });
-    this.el.holeSelect.classList.remove('hidden');
-  }
-  holeSelectHide() { this.el.holeSelect.classList.add('hidden'); }
-
-  menuShow(muted) {
-    this.el.btnMute.textContent = muted ? 'UNMUTE' : 'MUTE';
-    this.el.gameMenu.classList.remove('hidden');
-  }
-  menuHide() { this.el.gameMenu.classList.add('hidden'); }
-  menuVisible() { return !this.el.gameMenu.classList.contains('hidden'); }
 
   // ---------- minimap ----------
 
