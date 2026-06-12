@@ -1849,3 +1849,45 @@ code {
 .live-burst{ fill:none; stroke:rgba(255,255,255,.55); stroke-width:1.5; opacity:0; }
 .live-ball{ fill:#fff; filter:drop-shadow(0 1px 2px rgba(0,0,0,.55)); }
 .live-foot{ font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--faint); display:flex; align-items:center; gap:6px; }
+
+/* ============================================================
+   H05 — the sim (homepage feature) + /play host page
+   ============================================================ */
+
+.round .h05{ background:var(--forest-darker, #0c1a10); overflow:hidden; }
+.round .h05 .sim-feature{ display:grid; grid-template-columns:0.95fr 1.05fr; gap:clamp(40px,6vw,80px); align-items:center; }
+.round .h05 h2{ font-family:var(--display); font-weight:400; font-size:clamp(44px,7vw,96px); line-height:.9; letter-spacing:-.03em; margin:0 0 24px; }
+.round .h05 h2 .it{ font-style:italic; color:var(--carry-gold); }
+.round .h05 .deck{ font-family:var(--display); font-style:italic; font-size:clamp(20px,2.2vw,27px); line-height:1.4; max-width:30ch; color:color-mix(in oklab,var(--bone) 88%,transparent); margin:0; }
+.round .h05 .sim-points{ list-style:none; margin:clamp(28px,4vw,44px) 0 0; padding:0; }
+.round .h05 .sim-points li{ display:grid; grid-template-columns:1fr auto; align-items:baseline; gap:16px; padding:14px 0; border-top:1px solid color-mix(in oklab,var(--bone) 16%,transparent); }
+.round .h05 .sim-points li:last-child{ border-bottom:1px solid color-mix(in oklab,var(--bone) 16%,transparent); }
+.round .h05 .sim-points li span{ font-family:var(--r-mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 60%,transparent); }
+.round .h05 .sim-points li b{ font-family:var(--display); font-style:italic; font-weight:400; font-size:19px; color:var(--carry-gold); }
+.round .h05 .sim-ctas{ display:flex; gap:14px; margin-top:clamp(28px,4vw,40px); flex-wrap:wrap; }
+.round .h05 .sim-ctas a{ display:inline-block; padding:16px 30px; border-radius:999px; font-family:var(--r-mono); font-size:11.5px; letter-spacing:.22em; text-transform:uppercase; text-decoration:none; transition:background .2s,color .2s,border-color .2s; }
+.round .h05 .sim-ctas a.solid{ background:var(--bone); color:var(--ink); }
+.round .h05 .sim-ctas a.solid:hover{ background:var(--carry-gold); }
+.round .h05 .sim-ctas a.ghost{ border:1px solid color-mix(in oklab,var(--bone) 28%,transparent); color:var(--bone); }
+.round .h05 .sim-ctas a.ghost:hover{ background:var(--bone); color:var(--ink); }
+.round .h05 .sim-shot{ position:relative; display:block; border-radius:18px; overflow:hidden; border:1px solid color-mix(in oklab,var(--carry-gold) 35%,transparent); box-shadow:0 30px 80px rgba(0,0,0,.45); transform:rotate(1.2deg); transition:transform .35s cubic-bezier(.2,.8,.2,1); }
+.round .h05 .sim-shot:hover{ transform:rotate(0deg) translateY(-6px); }
+.round .h05 .sim-shot img{ display:block; width:100%; height:auto; }
+.round .h05 .sim-shot::after{ content:""; position:absolute; inset:0; background:linear-gradient(to top, rgba(7,14,9,.55), transparent 45%); }
+.round .h05 .sim-play{ position:absolute; left:24px; bottom:20px; z-index:2; font-family:var(--r-mono); font-size:11.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--carry-gold); }
+@media (max-width:900px){
+  .round .h05 .sim-feature{ grid-template-columns:1fr; }
+  .round .h05 .sim-shot{ transform:none; }
+}
+
+/* /play — full-screen sim host */
+.sim-host{ position:fixed; inset:0; display:flex; flex-direction:column; background:#0a110c; }
+.sim-bar{ display:flex; align-items:center; justify-content:space-between; gap:16px; padding:10px 18px; background:#0a110c; border-bottom:1px solid color-mix(in oklab,var(--carry-gold, #c9a86a) 30%,transparent); }
+.sim-bar a{ text-decoration:none; }
+.sim-back{ font-family:var(--display); font-size:18px; color:var(--bone, #f2eee1); }
+.sim-back .it{ font-style:italic; color:var(--carry-gold, #c9a86a); }
+.sim-title{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.24em; text-transform:uppercase; color:color-mix(in oklab,var(--bone, #f2eee1) 55%,transparent); }
+.sim-full{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; color:var(--carry-gold, #c9a86a); }
+.sim-full:hover{ color:var(--bone, #f2eee1); }
+.sim-frame{ flex:1; width:100%; border:0; display:block; }
+@media (max-width:600px){ .sim-title{ display:none; } }

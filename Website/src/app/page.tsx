@@ -9,9 +9,10 @@ type Hole = { n: number; name: string; par: number; yd: number; id: string };
 const HOLES: Hole[] = [
   { n: 1, name: "Tee off", par: 4, yd: 372, id: "h01" },
   { n: 2, name: "What it does", par: 5, yd: 542, id: "h03" },
-  { n: 3, name: "One plan", par: 4, yd: 425, id: "h07" },
-  { n: 4, name: "When you're ready", par: 3, yd: 158, id: "h08" },
-  { n: 5, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
+  { n: 3, name: "Play the sim", par: 5, yd: 527, id: "h05" },
+  { n: 4, name: "One plan", par: 4, yd: 425, id: "h07" },
+  { n: 5, name: "When you're ready", par: 3, yd: 158, id: "h08" },
+  { n: 6, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
 ];
 
 type Plan = { id: string; name: string; price: string; per: string; tag: string; features: string[]; featured?: boolean; href?: string; cta?: string };
@@ -136,6 +137,7 @@ export default function HomePage() {
           </a>
           <nav className="nav">
             <a className="l" href="#h03">What it does</a>
+            <a className="l" href="/play">The Sim</a>
             <a className="l" href="#h07">Pricing</a>
             <a className="l btn" href="/login">Sign in</a>
             <a className="l btn primary" href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>
@@ -212,11 +214,37 @@ export default function HomePage() {
             </div>
           </section>
 
+          {/* H05 — the sim */}
+          <section className="hole h05" id="h05">
+            <div className="wrap">
+              <HoleStrip hole={HOLES[2]} />
+              <div className="sim-feature">
+                <div className="sim-copy">
+                  <h2>Play a round.<br /><span className="it">Right here.</span></h2>
+                  <p className="deck">Eighteen holes at Pine Hollow National, in your browser. The same flight model that reads your real shots drives every drive, chip, and putt.</p>
+                  <ul className="sim-points">
+                    <li><span>The course</span><b>18 holes · par 72 · 6,900 yd</b></li>
+                    <li><span>The physics</span><b>True flight — drag, lift, spin</b></li>
+                    <li><span>The numbers</span><b>Launch-monitor data, every swing</b></li>
+                  </ul>
+                  <div className="sim-ctas">
+                    <a className="solid" href="/play">Tee off in the sim</a>
+                    <a className="ghost" href="/sim/index.html" target="_blank" rel="noreferrer">Open full screen</a>
+                  </div>
+                </div>
+                <a className="sim-shot" href="/play" aria-label="Play the True Carry Sim">
+                  <img src="/sim-preview.jpg" alt="Pine Hollow National, hole 1 — the True Carry Sim" loading="lazy" />
+                  <span className="sim-play">Tee off →</span>
+                </a>
+              </div>
+            </div>
+          </section>
+
           {/* H07 — pricing (four tiers) */}
           <span id="pricing" aria-hidden style={{ position: "absolute", marginTop: "-80px" }} />
           <section className="hole h07" id="h07">
             <div className="wrap">
-              <HoleStrip hole={HOLES[2]} />
+              <HoleStrip hole={HOLES[3]} />
               <div className="plans-head">
                 <h2>One round.<br /><span className="it">Four ways to play.</span></h2>
                 <p>Start free. Step up when you want more of the numbers. <span className="it">Cancel anytime, keep your data.</span></p>
@@ -246,7 +274,7 @@ export default function HomePage() {
           <section className="hole h08" id="h08">
             <div className="atlas-bg"><img src="/truecarry-logo.png" alt="" /></div>
             <div className="wrap">
-              <HoleStrip hole={HOLES[3]} />
+              <HoleStrip hole={HOLES[4]} />
               <p className="copy">When you&apos;re ready,<br />we&apos;ll be in the <span className="gold">bag.</span></p>
               <a href="#h07" className="link" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get Premium &nbsp;→</a>
             </div>
@@ -264,6 +292,7 @@ export default function HomePage() {
                 <div className="col">
                   <h4>Product</h4>
                   <a href="#h03">What it does</a>
+                  <a href="/play">Play the sim</a>
                   <a href="#h07">Pricing</a>
                   <a href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get the app</a>
                 </div>
