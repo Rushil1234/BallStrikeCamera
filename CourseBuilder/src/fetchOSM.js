@@ -7,7 +7,7 @@ import { dirname, join } from 'path';
 const __dir = dirname(fileURLToPath(import.meta.url));
 
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
-const CACHE_PATH = join(__dir, 'pinchbrook_osm_cache.json');
+const CACHE_PATH = join(__dir, 'pinchbrook_osm_v2_cache.json'); // v2 adds cart paths
 const BBOX = '40.789,-74.395,40.803,-74.380';
 const BOUNDARY_WAY = 40375147;
 
@@ -55,6 +55,11 @@ export async function fetchPinchbrookOSM() {
   way["natural"="water"](${BBOX});
   way["natural"="wood"](${BBOX});
   node["natural"="tree"](${BBOX});
+  way["golf"="cartpath"](${BBOX});
+  way["highway"="service"]["service"="driveway"](${BBOX});
+  way["highway"="service"](${BBOX});
+  way["surface"="asphalt"](${BBOX});
+  way["surface"="concrete"](${BBOX});
 );
 out body;>;out skel qt;`;
 
@@ -65,15 +70,16 @@ out body;>;out skel qt;`;
   const osmNodes = elems.filter(e => e.type === 'node');
 
   // Separate by type
-  const holes      = [];
-  const greenWays  = [];
-  const teeWays    = [];
-  const bunkerWays = [];
-  const fairwayWays= [];
-  const waterWays  = [];
-  const woodWays   = [];
+  const holes       = [];
+  const greenWays   = [];
+  const teeWays     = [];
+  const bunkerWays  = [];
+  const fairwayWays = [];
+  const waterWays   = [];
+  const woodWays    = [];
+  const cartWays    = [];
   let   boundaryWay = null;
-  const treeNodes  = [];
+  const treeNodes   = [];
 
   for (const w of ways) {
     const t = w.tags || {};
@@ -86,6 +92,8 @@ out body;>;out skel qt;`;
     else if (g === 'fairway')   fairwayWays.push(w);
     else if (g === 'water_hazard' || t.natural === 'water') waterWays.push(w);
     else if (t.natural === 'wood') woodWays.push(w);
+    else if (g === 'cartpath' || t.highway === 'service' ||
+             t.surface === 'asphalt' || t.surface === 'concrete') cartWays.push(w);
   }
   for (const n of osmNodes) {
     if (n.tags?.natural === 'tree') treeNodes.push([n.lat, n.lon]);
@@ -199,8 +207,9 @@ out body;>;out skel qt;`;
     if (ref) holeFairways.set(ref, ring);
   }
 
-  const boundary = boundaryWay ? wayToRing(boundaryWay, nodes) : [];
-  const woods = woodWays.map(w => wayToRing(w, nodes)).filter(r => r.length > 0);
+  const boundary  = boundaryWay ? wayToRing(boundaryWay, nodes) : [];
+  const woods     = woodWays.map(w => wayToRing(w, nodes)).filter(r => r.length > 0);
+  const cartPaths = cartWays.map(w => wayToRing(w, nodes)).filter(r => r.length >= 2);
 
   return {
     holeLines,
@@ -212,5 +221,6 @@ out body;>;out skel qt;`;
     woods,
     treeNodes,
     boundary,
+    cartPaths,
   };
 }

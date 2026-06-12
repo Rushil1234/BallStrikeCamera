@@ -5,7 +5,9 @@ import * as THREE from 'three';
 import { CLUBS, LIE_EFFECT, fmtYards }          from './clubs.js';
 import { SFX }                                   from './audio.js';
 import { HUD, toParStr }                         from './hud.js';
-import { buildWorld, heightAt, surfaceAt, slopeAt, SURF, SURF_PROPS, holeCameraPos, drawMinimapBase } from './terrain.js';
+import { buildWorld, updateWorld, heightAt, surfaceAt, slopeAt, SURF, SURF_PROPS, holeCameraPos, drawMinimapBase } from './terrain.js';
+import { loadAssets }                            from './assets.js';
+import { makeSky }                               from './sky.js';
 import { createShot, stepFly, playsLike, setWind, SURF as PHYS_SURF } from './physics.js';
 import { buildGreenMesh, buildBreakArrows, removeBreakArrows, createPuttingBar } from './green.js';
 import { recordPosition, clearTrajectory, hasTrajectory, startReplay, updateReplay, showReplayButton, hideReplayButton, isReplaying, skipReplay } from './replay.js';
@@ -26,22 +28,9 @@ renderer.domElement.className = 'gl';
 document.getElementById('app').prepend(renderer.domElement);
 
 const scene  = new THREE.Scene();
-scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 600, 1400);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 4000);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 2000);
-
-// Lighting
-const ambient = new THREE.AmbientLight(0xffffff, 0.55);
-const sun     = new THREE.DirectionalLight(0xfffaee, 1.2);
-sun.position.set(200, 300, 100);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far  = 1500;
-sun.shadow.camera.left = sun.shadow.camera.bottom = -600;
-sun.shadow.camera.right = sun.shadow.camera.top = 600;
-scene.add(ambient, sun);
+let sky = null;  // set after assets load
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -113,8 +102,15 @@ async function loadCourse() {
 // ---------- Boot ----------
 async function boot() {
   try {
-    courseData = await loadCourse();
-    buildWorld(courseData, scene);
+    // Load assets + course data in parallel
+    const [assets, data] = await Promise.all([
+      loadAssets(renderer),
+      loadCourse(),
+    ]);
+    courseData = data;
+
+    sky = makeSky(scene, renderer, assets);
+    buildWorld(courseData, scene, assets);
 
     // Build all green meshes (undulation)
     for (const hole of courseData.holes) {
@@ -547,12 +543,19 @@ function onLiveClub(name) {
 
 // ---------- Animation loop ----------
 const clock = new THREE.Clock();
-let simStepsAccum = 0;
 const MAX_SIM_STEPS = 30;
 
 function animate() {
   requestAnimationFrame(animate);
   const dt = clock.getDelta();
+  const t  = clock.elapsedTime;
+
+  // Animate world (water, tree sway, cloud shadows)
+  const windRad = game.wind.dir * (Math.PI / 180);
+  updateWorld(t, { x: Math.sin(windRad) * game.wind.speed * 0.44704, z: Math.cos(windRad) * game.wind.speed * 0.44704 });
+
+  // Sky shadow frustum tracks ball
+  if (sky && game.ballPos) sky.update(t, { x: game.ballPos.x, z: game.ballPos.z });
 
   // Replay mode
   if (isReplaying()) {

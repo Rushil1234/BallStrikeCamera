@@ -15,7 +15,7 @@ async function fetchBatch(locations) {
   return (data.results || []).map(r => r.elevation ?? 0);
 }
 
-export async function sampleElevationGrid(bbox, proj, cellSize = 30) {
+export async function sampleElevationGrid(bbox, proj, cellSize = 10) {
   // bbox: { minX, maxX, minZ, maxZ } in local meters
   const margin = cellSize;
   const x0 = bbox.minX - margin, x1 = bbox.maxX + margin;

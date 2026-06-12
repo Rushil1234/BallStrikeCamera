@@ -21,7 +21,7 @@ const COURSES: Course[] = [
     location: "Florham Park, NJ",
     holes: 18,
     par: 65,
-    path: "/course-sim/",
+    path: "/course-sim/index.html",
     preview: "/sim-preview.jpg",
   },
 ];
@@ -31,20 +31,53 @@ export default function CoursePage() {
 
   if (launched) {
     return (
-      <div className="course-fullscreen">
-        <iframe
-          src={launched.path}
-          className="course-iframe"
-          allow="autoplay; fullscreen"
-          title={launched.name}
-        />
-        <button
-          className="course-back-btn"
-          onClick={() => setLaunched(null)}
-        >
-          ← Courses
-        </button>
-      </div>
+      <>
+        <div className="course-fullscreen">
+          <iframe
+            src={launched.path}
+            className="course-iframe"
+            allow="autoplay; fullscreen"
+            title={launched.name}
+          />
+          <button
+            className="course-back-btn"
+            onClick={() => setLaunched(null)}
+          >
+            ← Courses
+          </button>
+        </div>
+        <style>{`
+          .course-fullscreen {
+            position: fixed;
+            inset: 0;
+            background: #0a110c;
+            z-index: 1000;
+          }
+          .course-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+          }
+          .course-back-btn {
+            position: fixed;
+            top: 14px;
+            left: 14px;
+            z-index: 1001;
+            padding: 7px 16px;
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,0.18);
+            background: rgba(0,0,0,0.58);
+            color: rgba(255,255,255,0.7);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            transition: color 0.15s;
+          }
+          .course-back-btn:hover { color: #fff; }
+        `}</style>
+      </>
     );
   }
 
