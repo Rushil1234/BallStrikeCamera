@@ -28,6 +28,13 @@ Website/.env.production.local
 Website/node_modules/
 Website/.next/
 Website/out/
+CourseBuilder/node_modules/
+
+# Generated build artifacts
+Website/tsconfig.tsbuildinfo
+
+# Satellite tiles (large generated assets, rebuilt by CourseBuilder)
+Website/public/course-sim/assets/satellite/
 
 
 # Supabase CLI temp artifacts
