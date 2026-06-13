@@ -108,18 +108,18 @@ export async function loadAssets(renderer) {
   const rgbe = new RGBELoader().setDataType(THREE.FloatType);
   const hdrPromise = new Promise((res, rej) => rgbe.load('assets/sky/sky_1k.hdr', res, undefined, rej));
 
+  // Load satellite bounds for UV mapping
+  const satBounds = await fetch('assets/satellite/pinchbrook_bounds.json').then(r => r.json()).catch(() => null);
+
   const [
-    grassD, grassN, roughD, roughN, sandD, sandN,
+    grassN, roughN, sandD,
     skyBg, skyEnv,
     twigD, twigA, pineBark, leafD, leafA, leafBark,
-    waterN,
+    waterN, satellite,
   ] = await Promise.all([
-    t('assets/ground/grass_diff.jpg', { srgb: true }),
     t('assets/ground/grass_nor.jpg'),
-    t('assets/ground/rough_diff.jpg', { srgb: true }),
     t('assets/ground/rough_nor.jpg'),
     t('assets/ground/sand_diff.jpg', { srgb: true }),
-    t('assets/ground/sand_nor.jpg'),
     t('assets/sky/sky_bg.jpg', { srgb: true, aniso: maxAniso }),
     hdrPromise,
     t('assets/trees/pine_twig_diff.jpg', { srgb: true }),
@@ -129,6 +129,7 @@ export async function loadAssets(renderer) {
     t('assets/trees/leaf_alpha.jpg'),
     t('assets/trees/leaf_bark_diff.jpg', { srgb: true }),
     t('assets/water/waternormals.jpg'),
+    t('assets/satellite/pinchbrook_sat.jpg', { srgb: true, aniso: maxAniso }),
   ]);
 
   skyBg.mapping = THREE.EquirectangularReflectionMapping;
@@ -136,9 +137,7 @@ export async function loadAssets(renderer) {
 
   return {
     ground: {
-      grassD, grassN, roughD, roughN, sandD, sandN,
-      grassMean: meanColor(grassD),
-      roughMean: meanColor(roughD),
+      grassN, roughN, sandD,
       sandMean: meanColor(sandD),
     },
     trees: {
@@ -149,6 +148,8 @@ export async function loadAssets(renderer) {
     skyBg,
     skyEnv,
     waterN,
+    satellite,
+    satBounds,
     sunDir: sunFromEquirect(skyEnv),
   };
 }

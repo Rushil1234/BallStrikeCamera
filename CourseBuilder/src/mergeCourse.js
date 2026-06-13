@@ -10,17 +10,23 @@ import {
 } from './geoUtils.js';
 import { satCellAt, satFractionInPoly, SAT } from './fetchSatellite.js';
 
-const FAIRWAY_HW = { 3: 12, 4: 20, 5: 24 };
+const FAIRWAY_HW = { 3: 11, 4: 20, 5: 25 };
 
-function buildFairwayCorridor(teeXZ, greenXZ, par) {
+// Build fairway polygon from the actual hole guideline path (may have dogleg waypoints)
+function buildFairwayCorridor(pathXZ, par) {
   const hw = FAIRWAY_HW[par] ?? 18;
-  const dx = greenXZ[0] - teeXZ[0], dz = greenXZ[1] - teeXZ[1];
-  const len = Math.hypot(dx, dz) || 1;
-  const nx = dx / len, nz = dz / len;
-  return corridorPolygon(
-    [[teeXZ[0] + nx * 5, teeXZ[1] + nz * 5], [greenXZ[0] - nx * 12, greenXZ[1] - nz * 12]],
-    hw,
-  );
+  if (pathXZ.length < 2) return [];
+  // Trim: start 6m past first node (into play), stop 14m before green
+  const first = pathXZ[0], second = pathXZ[1];
+  const dx0 = second[0]-first[0], dz0 = second[1]-first[1], l0 = Math.hypot(dx0,dz0)||1;
+  const last = pathXZ[pathXZ.length-1], prev = pathXZ[pathXZ.length-2];
+  const dxL = last[0]-prev[0], dzL = last[1]-prev[1], lL = Math.hypot(dxL,dzL)||1;
+  const trimmedPath = [
+    [first[0]+dx0/l0*6, first[1]+dz0/l0*6],
+    ...pathXZ.slice(1, -1),
+    [last[0]-dxL/lL*14, last[1]-dzL/lL*14],
+  ];
+  return corridorPolygon(trimmedPath, hw);
 }
 
 // Seeded LCG for deterministic tree placement
@@ -214,13 +220,11 @@ export function mergeCourse(osmData, backendData, elevData, satGrid = null) {
     for (const b of bunkerRings) allBunkerPolys.push(b);
     for (const w of waterRings)  allWaterPolys.push(w);
 
-    const osmFw  = osmData.holeFairways.get(ref);
-    const fairway = osmFw ? ringToXZ(osmFw, proj) : buildFairwayCorridor(teeXZ, greenXZ, par);
-    allFairwayPolys.push(fairway);
+    const pathXZ = hl.path.map(p => [proj.toXZ(p[0], p[1]).x, proj.toXZ(p[0], p[1]).z]);
 
-    const pathXZ = hl.path.length > 2
-      ? hl.path.map(p => [proj.toXZ(p[0], p[1]).x, proj.toXZ(p[0], p[1]).z])
-      : [teeXZ, greenXZ];
+    const osmFw  = osmData.holeFairways.get(ref);
+    const fairway = osmFw ? ringToXZ(osmFw, proj) : buildFairwayCorridor(pathXZ, par);
+    allFairwayPolys.push(fairway);
 
     // Compute bunker depths using satellite confirmation
     const bunkersWithDepth = bunkerRings.map(poly => {
@@ -231,10 +235,14 @@ export function mergeCourse(osmData, backendData, elevData, satGrid = null) {
       return { poly, depth };
     });
 
+    const teePoly = osmData.holeTeeRings.get(ref)
+      ? ringToXZ(osmData.holeTeeRings.get(ref), proj) : null;
+
     holes.push({
       number: ref,
       par,
-      tee:    teeXZ,
+      tee:       teeXZ,
+      teePolygon: teePoly || null,
       green: {
         center:         greenXZ,
         polygon:        greenPoly || null,

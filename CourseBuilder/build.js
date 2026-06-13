@@ -16,6 +16,7 @@ import { dirname }                  from 'path';
 const args    = process.argv.slice(2);
 const REFRESH = args.includes('--refresh');
 const OUTPUT  = args.find(a => !a.startsWith('-')) || '../TrueCarry_Course/courses/pinchbrook.json';
+const OUTPUT2 = '../Website/public/course-sim/courses/pinchbrook.json';
 
 async function main() {
   console.log('CourseBuilder v2 — Pinch Brook Golf Course');
@@ -64,11 +65,14 @@ async function main() {
   console.log('  Merging data sources…');
   const course = mergeCourse(osmData, backendData, elevData, satGrid);
 
-  // Step 7: Write output
+  // Step 7: Write output (both sim locations)
+  const json = JSON.stringify(course, null, 2);
   mkdirSync(dirname(OUTPUT), { recursive: true });
-  writeFileSync(OUTPUT, JSON.stringify(course, null, 2));
+  writeFileSync(OUTPUT, json);
+  mkdirSync(dirname(OUTPUT2), { recursive: true });
+  writeFileSync(OUTPUT2, json);
   const stat = (await import('fs')).statSync(OUTPUT);
-  console.log(`\nDone! Written to ${OUTPUT} (${(stat.size / 1024).toFixed(1)} KB)`);
+  console.log(`\nDone! Written to ${OUTPUT} and ${OUTPUT2} (${(stat.size / 1024).toFixed(1)} KB)`);
   console.log(`  ${course.holes.length} holes · par ${course.meta.par} · ${course.trees.length} trees`);
   console.log(`  heightmap: ${course.heightmap.cols}×${course.heightmap.rows} @ ${course.heightmap.cellSize}m`);
   console.log(`  cart paths: ${course.cartPaths.length} segments`);

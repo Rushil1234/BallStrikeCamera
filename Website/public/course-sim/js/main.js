@@ -2,10 +2,16 @@
 // Loads pinchbrook.json, builds world, manages shot lifecycle for all 18 holes.
 
 import * as THREE from 'three';
+import { EffectComposer }   from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass }       from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass }  from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass }       from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass }       from 'three/addons/postprocessing/ShaderPass.js';
+import { FXAAShader }       from 'three/addons/shaders/FXAAShader.js';
 import { CLUBS, LIE_EFFECT, fmtYards }          from './clubs.js';
 import { SFX }                                   from './audio.js';
 import { HUD, toParStr }                         from './hud.js';
-import { buildWorld, updateWorld, heightAt, surfaceAt, slopeAt, SURF, SURF_PROPS, holeCameraPos, drawMinimapBase } from './terrain.js';
+import { buildWorld, updateWorld, heightAt, surfaceAt, slopeAt, SURF, SURF_PROPS, holeCameraPos, drawMinimapBase, setTreeFade } from './terrain.js';
 import { loadAssets }                            from './assets.js';
 import { makeSky }                               from './sky.js';
 import { createShot, stepFly, playsLike, setWind, SURF as PHYS_SURF } from './physics.js';
@@ -17,13 +23,14 @@ import { getLiveCode, connectLive }              from './live.js';
 // ---------- Bootstrap ----------
 const hud = new HUD();
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.15;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.domElement.className = 'gl';
 document.getElementById('app').prepend(renderer.domElement);
 
@@ -32,10 +39,39 @@ const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerH
 
 let sky = null;  // set after assets load
 
+// ── Post-processing composer ──────────────────────────────────────────────────
+let composer, fxaaPass, bloomPass;
+
+function buildComposer() {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+
+  // Subtle bloom — makes grass highlights and water shimmer
+  bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    0.22,   // strength
+    0.5,    // radius
+    0.88,   // threshold — only very bright specular highlights
+  );
+  composer.addPass(bloomPass);
+
+  // FXAA antialiasing — lightweight, single-pass
+  fxaaPass = new ShaderPass(FXAAShader);
+  fxaaPass.material.uniforms['resolution'].value.set(
+    1 / window.innerWidth, 1 / window.innerHeight,
+  );
+  composer.addPass(fxaaPass);
+
+  composer.addPass(new OutputPass());
+}
+
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  const W = window.innerWidth, H = window.innerHeight;
+  camera.aspect = W / H;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(W, H);
+  composer?.setSize(W, H);
+  if (fxaaPass) fxaaPass.material.uniforms['resolution'].value.set(1/W, 1/H);
 });
 
 // ---------- State ----------
@@ -119,6 +155,7 @@ async function boot() {
 
     sky = makeSky(scene, renderer, assets);
     buildWorld(courseData, scene, assets);
+    buildComposer();
 
     // Build all green meshes (undulation)
     for (const hole of courseData.holes) {
@@ -158,6 +195,14 @@ async function boot() {
     document.getElementById('btn-start')?.addEventListener('click', startRound);
     setupControls();
 
+    // Auto-enter explore mode when ?explore is in the URL
+    if (new URLSearchParams(location.search).has('explore')) {
+      // Place camera at a nice overview position, then enter free-fly
+      camera.position.set(100, 80, 50);
+      camera.lookAt(200, 60, -100);
+      enterFreeFly();
+    }
+
   } catch (err) {
     console.error('Boot failed:', err);
     document.title = 'ERR: ' + err.message;
@@ -187,8 +232,8 @@ function startHole() {
   const [gx, gz] = hole.green.center;
   aimAngle = Math.atan2(gx - tx, gz - tz);
 
-  // Camera behind tee
-  const cam = holeCameraPos(hole, 18);
+  // Camera at front of tee box, eye level
+  const cam = holeCameraPos(hole);
   camera.position.set(cam.cx, cam.cy, cam.cz);
   camera.lookAt(cam.tx, cam.ty, cam.tz);
 
@@ -207,6 +252,8 @@ function startHole() {
 
   hud.hideShotData();
   hud.hidePuttMode();
+  _aimIndicator?.classList.add('hidden');
+  aimLine.visible = false;
   removeBreakArrows(scene);
   hideReplayButton();
   clearTrajectory();
@@ -242,6 +289,7 @@ function setupShot() {
 
   state = STATE.SETUP;
   hud.showMeter();
+  _aimIndicator?.classList.remove('hidden');
   meter.phase = 0; meter.pct = 0; meter.dir = 1; meter.snapped = false;
   updateAimLine();
 }
@@ -265,6 +313,7 @@ function fire(power, putter = false) {
   hud.hideShotData();
   hud.hideMeter();
   hud.hidePuttMode();
+  _aimIndicator?.classList.add('hidden');
   hideReplayButton();
   clearTrajectory();
 
@@ -489,6 +538,10 @@ function refreshClub() {
   SFX.tick();
 }
 
+const _aimNeedle = document.getElementById('aim-needle');
+const _aimOffset = document.getElementById('aim-offset');
+const _aimIndicator = document.getElementById('aim-indicator');
+
 function updateAimLine() {
   if (state !== STATE.SETUP) return;
   const [bx, bz] = [game.ballPos.x, game.ballPos.z];
@@ -496,6 +549,23 @@ function updateAimLine() {
   aimLine.position.set(bx + Math.sin(aimAngle) * 5, by, bz + Math.cos(aimAngle) * 5);
   aimLine.rotation.set(0, -aimAngle, Math.PI / 2);
   aimLine.visible = true;
+
+  // Update arc compass
+  const hole = currentHole();
+  const [gx, gz] = hole.green.center;
+  const pinAngle = Math.atan2(gx - bx, gz - bz);
+  const offset = aimAngle - pinAngle;
+  const deg = Math.round(offset * 180 / Math.PI);
+  // Needle: clamped to ±80° visual, pivot at (60,57)
+  const clamp = Math.max(-80, Math.min(80, deg));
+  const rad = clamp * Math.PI / 180;
+  const nx = 60 + Math.sin(rad) * 47;
+  const ny = 57 - Math.cos(rad) * 47;
+  _aimNeedle.setAttribute('x2', nx.toFixed(1));
+  _aimNeedle.setAttribute('y2', ny.toFixed(1));
+  _aimNeedle.setAttribute('stroke', Math.abs(deg) < 5 ? '#44ff77' : Math.abs(deg) < 15 ? '#ffcc33' : '#ff5533');
+  _aimOffset.textContent = deg === 0 ? '0°' : (deg > 0 ? `+${deg}°R` : `${-deg}°L`);
+  _aimOffset.style.color = Math.abs(deg) < 5 ? '#44ff77' : Math.abs(deg) < 15 ? '#ffcc33' : '#ff5533';
 }
 
 // ---------- Live mode ----------
@@ -546,6 +616,104 @@ function onLiveClub(name) {
   if (idx >= 0) { game.clubIdx = idx; refreshClub(); }
 }
 
+// ---------- Free-fly explore mode ----------
+let freeFly = false;
+let ffYaw = 0, ffPitch = -0.15;
+let ffHoleIdx = 0;  // for hole cycling
+const ffKeys    = {};
+const ffDir     = new THREE.Vector3();
+const ffRight   = new THREE.Vector3();
+const ffMove    = new THREE.Vector3();
+let ffDragging  = false, ffLastX = 0, ffLastY = 0;
+
+const ffHint = document.createElement('div');
+ffHint.style.cssText = [
+  'position:fixed', 'top:14px', 'left:50%', 'transform:translateX(-50%)',
+  'background:rgba(0,0,0,0.78)', 'color:#fff', 'font:bold 13px system-ui',
+  'padding:9px 22px', 'border-radius:22px', 'z-index:9999',
+  'pointer-events:none', 'display:none', 'white-space:nowrap',
+].join(';');
+document.body.appendChild(ffHint);
+
+function ffUpdateHint() {
+  if (!courseData) return;
+  const h = courseData.holes[ffHoleIdx];
+  const dist = Math.round(Math.hypot(h.green.center[0]-h.tee[0], h.green.center[1]-h.tee[1]) * 1.09361);
+  ffHint.textContent = `EXPLORE  ·  H${h.number} PAR ${h.par} · ${dist} YDS  ·  [ ] cycle holes  ·  WASD+drag to fly  ·  F to exit`;
+}
+
+function ffSnapToHole(idx) {
+  if (!courseData) return;
+  ffHoleIdx = ((idx % courseData.holes.length) + courseData.holes.length) % courseData.holes.length;
+  const cam = holeCameraPos(courseData.holes[ffHoleIdx]);
+  camera.position.set(cam.cx, cam.cy, cam.cz);
+  const fwd = new THREE.Vector3(cam.tx - cam.cx, cam.ty - cam.cy, cam.tz - cam.cz).normalize();
+  ffYaw   = Math.atan2(fwd.x, fwd.z);
+  ffPitch = Math.asin(Math.max(-0.99, Math.min(0.99, fwd.y)));
+  ffUpdateHint();
+}
+
+function enterFreeFly() {
+  freeFly = true;
+  ffHint.style.display = 'block';
+  _aimIndicator?.classList.add('hidden');
+  aimLine.visible = false;
+  const fwd = new THREE.Vector3();
+  camera.getWorldDirection(fwd);
+  ffYaw   = Math.atan2(fwd.x, fwd.z);
+  ffPitch = Math.asin(Math.max(-0.99, Math.min(0.99, fwd.y)));
+  ffHoleIdx = game.holeIdx;
+  ffUpdateHint();
+}
+function exitFreeFly() {
+  freeFly = false;
+  ffDragging = false;
+  ffHint.style.display = 'none';
+  if (state === STATE.SETUP) { _aimIndicator?.classList.remove('hidden'); updateAimLine(); }
+}
+
+document.addEventListener('keydown', e => {
+  ffKeys[e.code] = true;
+  if (e.code === 'KeyF')   freeFly ? exitFreeFly() : enterFreeFly();
+  if (e.code === 'Escape' && freeFly) exitFreeFly();
+  if (freeFly && e.code === 'BracketLeft')  ffSnapToHole(ffHoleIdx - 1);
+  if (freeFly && e.code === 'BracketRight') ffSnapToHole(ffHoleIdx + 1);
+});
+document.addEventListener('keyup', e => { ffKeys[e.code] = false; });
+
+// Click+drag mouse look — no pointer lock required
+renderer.domElement.addEventListener('mousedown', e => {
+  if (freeFly) { ffDragging = true; ffLastX = e.clientX; ffLastY = e.clientY; }
+});
+window.addEventListener('mouseup', () => { ffDragging = false; });
+window.addEventListener('mousemove', e => {
+  if (!freeFly || !ffDragging) return;
+  ffYaw   -= (e.clientX - ffLastX) * 0.003;
+  ffPitch -= (e.clientY - ffLastY) * 0.003;
+  ffPitch  = Math.max(-1.48, Math.min(1.48, ffPitch));
+  ffLastX  = e.clientX;
+  ffLastY  = e.clientY;
+});
+
+function tickFreeFly(dt) {
+  const speed = (ffKeys['ShiftLeft'] || ffKeys['ShiftRight']) ? 80 : 22;
+  ffDir.set(
+    Math.sin(ffYaw) * Math.cos(ffPitch),
+    Math.sin(ffPitch),
+    Math.cos(ffYaw) * Math.cos(ffPitch),
+  );
+  ffRight.set(Math.cos(ffYaw), 0, -Math.sin(ffYaw));
+  ffMove.set(0, 0, 0);
+  if (ffKeys['KeyW'] || ffKeys['ArrowUp'])    ffMove.addScaledVector(ffDir,    speed * dt);
+  if (ffKeys['KeyS'] || ffKeys['ArrowDown'])  ffMove.addScaledVector(ffDir,   -speed * dt);
+  if (ffKeys['KeyA'] || ffKeys['ArrowLeft'])  ffMove.addScaledVector(ffRight, -speed * dt);
+  if (ffKeys['KeyD'] || ffKeys['ArrowRight']) ffMove.addScaledVector(ffRight,  speed * dt);
+  if (ffKeys['KeyE']) ffMove.y +=  speed * dt;
+  if (ffKeys['KeyQ']) ffMove.y += -speed * dt;
+  camera.position.add(ffMove);
+  camera.lookAt(camera.position.clone().add(ffDir));
+}
+
 // ---------- Animation loop ----------
 const clock = new THREE.Clock();
 const MAX_SIM_STEPS = 30;
@@ -559,13 +727,24 @@ function animate() {
   const windRad = game.wind.dir * (Math.PI / 180);
   updateWorld(t, { x: Math.sin(windRad) * game.wind.speed * 0.44704, z: Math.cos(windRad) * game.wind.speed * 0.44704 });
 
+  // Dissolve tree canopies when camera is inside one
+  setTreeFade(camera.position.x, camera.position.z, courseData?.trees);
+
+  // Free-fly explore mode — takes over camera and skips game logic
+  if (freeFly) {
+    tickFreeFly(dt);
+    if (sky) sky.update(t, { x: camera.position.x, z: camera.position.z });
+    composer ? composer.render() : renderer.render(scene, camera);
+    return;
+  }
+
   // Sky shadow frustum tracks ball
   if (sky && game.ballPos) sky.update(t, { x: game.ballPos.x, z: game.ballPos.z });
 
   // Replay mode
   if (isReplaying()) {
     updateReplay(camera);
-    renderer.render(scene, camera);
+    composer ? composer.render() : renderer.render(scene, camera);
     return;
   }
 
@@ -626,7 +805,7 @@ function animate() {
     if (sim.inFlight) hud.setPinLabel('TO PIN');
   }
 
-  renderer.render(scene, camera);
+  composer ? composer.render() : renderer.render(scene, camera);
 }
 
 function handleEvent(ev) {

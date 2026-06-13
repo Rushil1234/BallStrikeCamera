@@ -10,14 +10,14 @@ export function makeProjector(originLat, originLng) {
   return {
     toXZ(lat, lng) {
       return {
-        x:  (lng - originLng) * mPerDegLng,
-        z: -(lat - originLat) * mPerDegLat,
+        x: (lng - originLng) * mPerDegLng,
+        z: (lat - originLat) * mPerDegLat,
       };
     },
     toLngLat(x, z) {
       return {
         lng: originLng + x / mPerDegLng,
-        lat: originLat - z / mPerDegLat,
+        lat: originLat + z / mPerDegLat,
       };
     },
     mPerDegLat,

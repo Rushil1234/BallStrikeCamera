@@ -102,6 +102,20 @@
         <div class="sd-row"><span class="sd-lbl">TOTAL</span><span class="sd-val" id="sd-total">—</span></div>
       </div>
 
+      <!-- Aim arc indicator (visible during SETUP) -->
+      <div id="aim-indicator" class="aim-indicator hidden">
+        <div class="aim-arc-wrap">
+          <svg viewBox="0 0 120 62" width="120" height="62" style="display:block">
+            <path d="M 10 57 A 50 50 0 0 1 110 57" stroke="rgba(255,255,255,0.14)" stroke-width="3" fill="none"/>
+            <path d="M 57 57 A 3 3 0 1 1 63 57" stroke="none" fill="rgba(255,255,255,0.35)"/>
+            <line id="aim-needle" x1="60" y1="57" x2="60" y2="10"
+                  stroke="#44ff77" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+          <div class="aim-offset-label" id="aim-offset">0°</div>
+        </div>
+        <div class="aim-keys">◀ ▶ aim</div>
+      </div>
+
       <!-- Replay -->
       <button id="replay-btn" class="btn-replay hidden">⏮ REPLAY</button>
       <button id="replay-skip" class="btn-ghost btn-skip hidden">SKIP</button>

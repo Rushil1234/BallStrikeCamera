@@ -93,15 +93,21 @@ function makeSurfaceMap(courseData, hmOriginX, hmOriginZ, hmWidth, hmDepth) {
     }
   }
 
+  // Water first — fairways/greens paint on top of any overlap
+  for (const w of (courseData.globalWater || [])) paint(w, WATER);
+  for (const hole of courseData.holes) {
+    for (const w of (hole.water || [])) paint(w, WATER);
+  }
+  // Playable surfaces on top
   for (const hole of courseData.holes) paint(hole.fairway, FAIRWAY);
+  for (const hole of courseData.holes) if (hole.teePolygon) paint(hole.teePolygon, FAIRWAY);
   for (const hole of courseData.holes) {
     for (const b of hole.bunkers) paint(b, BUNKER);
-    for (const w of hole.water) paint(w, WATER);
   }
   for (const hole of courseData.holes) {
     if (hole.green.polygon) paint(hole.green.polygon, GREEN);
   }
-  // Cart paths painted on top (they overlap fairway/rough)
+  // Cart paths on top of everything
   for (const path of (courseData.cartPaths || [])) {
     paintPath(path, 1.8, CARTPATH);
   }
@@ -116,76 +122,109 @@ function makeSurfaceMap(courseData, hmOriginX, hmOriginZ, hmWidth, hmDepth) {
   return { surfaceAt, grid, cols, rows };
 }
 
-// ---------- PBR splat material (ported from TrueCarry_Sim) ----------
-// vertex colors supply the designed hue; photo textures add structure only.
-function splatMaterial(assets) {
-  const g = assets.ground;
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1.0, metalness: 0 });
-  mat.envMapIntensity = 0.3;
+// ---------- Satellite-based terrain material ----------
+// Base: real ESRI aerial photo of Pinch Brook, geo-registered to world XZ.
+// Overlay: surface-type tint (fairway/green/bunker/rough) for gameplay clarity.
+// Normal: grass normal map for micro-surface detail and anisotropic sheen.
+function splatMaterial(assets, satBounds) {
+  const OLAT = 40.793526, OLNG = -74.38804, COS_LAT = 0.757;
+
+  // Convert satBounds (lat/lng) → world XZ so shader needs no trig
+  const sb = satBounds || { minLat: 40.7868, maxLat: 40.8055, minLng: -74.3994, maxLng: -74.3774 };
+  // satUV.x = (worldX - satMinX) / (satMaxX - satMinX)
+  // where satMinX = (sb.minLng - OLNG)*COS_LAT*111320
+  const satMinX = (sb.minLng - OLNG) * COS_LAT * 111320;
+  const satMaxX = (sb.maxLng - OLNG) * COS_LAT * 111320;
+  const satMinZ = (sb.minLat - OLAT) * 111320;
+  const satMaxZ = (sb.maxLat - OLAT) * 111320;
+
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0 });
+  mat.envMapIntensity = 0.18;
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, {
-      uGrassD: { value: g.grassD }, uGrassN: { value: g.grassN },
-      uRoughD: { value: g.roughD }, uRoughN: { value: g.roughN },
-      uSandD:  { value: g.sandD  }, uSandN:  { value: g.sandN  },
-      uGrassMean: { value: g.grassMean },
-      uRoughMean: { value: g.roughMean },
-      uSandMean:  { value: g.sandMean  },
-      uTime:    { value: 0 },
-      uWindVec: { value: new THREE.Vector2(1, 0) },
+      uSatellite: { value: assets.satellite },
+      uGrassN:    { value: assets.ground.grassN },
+      uSandD:     { value: assets.ground.sandD },
+      uSandMean:  { value: assets.ground.sandMean },
+      uSatMinX:   { value: satMinX },
+      uSatRangeX: { value: satMaxX - satMinX },
+      uSatMinZ:   { value: satMinZ },
+      uSatRangeZ: { value: satMaxZ - satMinZ },
+      uTime:      { value: 0 },
+      uWindVec:   { value: new THREE.Vector2(1, 0) },
     });
     mat.userData.shader = shader;
+
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
-        attribute vec4 splat;
+        attribute vec4 splat;   // x=grass(fair/green), y=rough, z=sand, w=greenMap
         varying vec4 vSplat;
         varying vec3 vWPos;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vSplat = splat;
-        vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+        vWPos  = (modelMatrix * vec4(transformed, 1.0)).xyz;`);
+
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         varying vec4 vSplat;
         varying vec3 vWPos;
-        uniform sampler2D uGrassD, uGrassN, uRoughD, uRoughN, uSandD, uSandN;
-        uniform vec3 uGrassMean, uRoughMean, uSandMean;
+        uniform sampler2D uSatellite, uGrassN, uSandD;
+        uniform vec3 uSandMean;
+        uniform float uSatMinX, uSatRangeX, uSatMinZ, uSatRangeZ;
         uniform float uTime;
-        uniform vec2 uWindVec;
-        vec2 uvFair()  { return vWPos.xz * 0.27; }
-        vec2 uvGreen() { return vWPos.xz * 0.9;  }
-        vec2 uvRough() { return vWPos.xz * 0.16; }
-        vec2 uvSand()  { return vWPos.xz * 0.3;  }`)
+        uniform vec2 uWindVec;`)
+
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
-          vec3 gA = texture2D(uGrassD, uvFair()).rgb  / uGrassMean;
-          vec3 gB = texture2D(uGrassD, uvGreen()).rgb / uGrassMean;
-          vec3 grassC = mix(gA, gB, vSplat.w);
-          vec3 roughC = texture2D(uRoughD, uvRough()).rgb / uRoughMean;
-          vec3 sandC  = texture2D(uSandD,  uvSand()).rgb  / uSandMean;
-          vec3 structure = grassC * vSplat.x + roughC * vSplat.y + sandC * vSplat.z;
-          structure = mix(vec3(1.0), structure, 0.85);
-          diffuseColor.rgb *= clamp(structure, 0.25, 1.9);
-          // drifting cloud shadows
-          vec2 cuv = vWPos.xz * 0.0011 + uWindVec * uTime * 0.0022 + vec2(0.0, uTime * 0.0006);
-          float cn = texture2D(uRoughD, cuv).g * 0.62
-                   + texture2D(uRoughD, cuv * 2.7 + 0.41).g * 0.38;
-          diffuseColor.rgb *= 1.0 - 0.24 * smoothstep(0.48, 0.78, cn);
+          // ── Satellite base ──────────────────────────────────────────
+          vec2 satUV = vec2(
+            (vWPos.x - uSatMinX) / uSatRangeX,
+            (vWPos.z - uSatMinZ) / uSatRangeZ
+          );
+          vec3 satCol = texture2D(uSatellite, satUV).rgb;
+
+          // Lift satellite a bit and boost contrast so grass pops
+          satCol = pow(satCol, vec3(0.88));
+          satCol *= 1.18;
+          satCol = clamp(satCol, 0.0, 1.0);
+
+          // ── Surface-type overlay ────────────────────────────────────
+          // vertex color encodes the designed surface hue (from makeSurfaceMap)
+          // Blend: satellite is the base, vertex color overlays on playable areas
+          float isPlayable = clamp(vSplat.x + vSplat.z, 0.0, 1.0);  // fairway/green/bunker
+          float fairGreen  = vSplat.x;          // grass surfaces (fair + green)
+          float sandSurf   = vSplat.z;          // bunker sand
+
+          // Sand: mix toward real sand color instead of just satellite
+          vec3 sandC = texture2D(uSandD, vWPos.xz * 0.18).rgb / uSandMean;
+          sandC = clamp(sandC * diffuseColor.rgb * 1.6, 0.0, 1.0);
+
+          // On fairway/green: vertex color adds a subtle green tint so
+          // mown areas read clearly vs rough at ground level
+          vec3 grassTint = diffuseColor.rgb;  // bright green vertex color
+          vec3 grassBlend = mix(satCol, satCol * grassTint * 3.0, fairGreen * 0.25);
+          vec3 finalCol = mix(grassBlend, sandC, sandSurf * 0.65);
+
+          // Rough / OOB = pure satellite, no tint
+          finalCol = mix(satCol, finalCol, isPlayable * 0.9 + 0.1);
+
+          diffuseColor.rgb = finalCol;
         }`)
+
       .replace('#include <normal_fragment_maps>', `
         {
-          vec3 nT = texture2D(uGrassN, uvFair()).xyz  * (vSplat.x * (1.0 - vSplat.w * 0.7))
-                  + texture2D(uGrassN, uvGreen()).xyz * (vSplat.x * vSplat.w * 0.7)
-                  + texture2D(uRoughN, uvRough()).xyz * vSplat.y
-                  + texture2D(uSandN,  uvSand()).xyz  * vSplat.z;
-          vec3 mapN = nT * 2.0 - 1.0;
-          mapN.xy *= 0.8;
-          mapN = normalize(mapN);
+          // Grass normal for micro-surface sheen on mown areas
+          vec2 uvN = vWPos.xz * 0.35;
+          vec3 nT  = texture2D(uGrassN, uvN).xyz * 2.0 - 1.0;
+          nT.xy   *= 0.55 * vSplat.x;  // only apply on grass surfaces
+          nT       = normalize(nT);
           vec3 eyePos = -vViewPosition;
-          vec3 q0 = dFdx(eyePos); vec3 q1 = dFdy(eyePos);
-          vec2 st0 = dFdx(uvFair()); vec2 st1 = dFdy(uvFair());
+          vec3 q0 = dFdx(eyePos), q1 = dFdy(eyePos);
+          vec2 s0 = dFdx(uvN),    s1 = dFdy(uvN);
           vec3 Nn = normalize(normal);
-          vec3 Tt = normalize(q0 * st1.t - q1 * st0.t);
+          vec3 Tt = normalize(q0 * s1.t - q1 * s0.t);
           vec3 Bb = -normalize(cross(Nn, Tt));
-          normal = normalize(mat3(Tt, Bb, Nn) * mapN);
+          normal  = normalize(mat3(Tt, Bb, Nn) * nT);
         }`);
   };
   return mat;
@@ -263,6 +302,28 @@ function trunkGeo(rTop, rBot, h, vRepeat) {
   return g;
 }
 
+// Canopy materials stored so main.js can fade them when camera is inside a tree
+const _canopyMats = [];
+
+export function setTreeFade(camX, camZ, treePositions) {
+  if (!_canopyMats.length || !treePositions?.length) return;
+  let minD = Infinity;
+  for (const t of treePositions) {
+    const d = Math.hypot(camX - t.x, camZ - t.z);
+    if (d < minD) minD = d;
+  }
+  // 0 = invisible (≤3 m), 1 = fully opaque (≥14 m)
+  const fade = Math.max(0.06, Math.min(1, (minD - 3) / 11));
+  const near = fade < 1;
+  for (const mat of _canopyMats) {
+    mat.transparent = near;
+    mat.depthWrite  = !near;
+    mat.opacity     = fade;
+    if (near) mat.alphaTest = 0;        // let blending handle cutout when fading
+    else      mat.alphaTest = mat._cut; // restore normal cutout threshold
+  }
+}
+
 let _treeKit = null;
 function getTreeKit(assets) {
   if (_treeKit) return _treeKit;
@@ -293,9 +354,14 @@ function getTreeKit(assets) {
     };
     return mat;
   };
-  const canopyMat = (map, cut) => addSway(new THREE.MeshLambertMaterial({
-    map, alphaTest: cut, side: THREE.DoubleSide,
-  }));
+  const canopyMat = (map, cut) => {
+    const mat = addSway(new THREE.MeshLambertMaterial({
+      map, alphaTest: cut, side: THREE.DoubleSide,
+    }));
+    mat._cut = cut;  // remember original threshold for restore
+    _canopyMats.push(mat);
+    return mat;
+  };
   const depthMat = (map, cut) => new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking, map, alphaTest: cut,
   });
@@ -315,7 +381,7 @@ function getTreeKit(assets) {
   return _treeKit;
 }
 
-// ---------- Terrain mesh with PBR vertex colors ----------
+// ---------- Terrain mesh with satellite base texture ----------
 function buildTerrainMeshPBR(courseData, heightAt, surfaceAt, assets, hmOriginX, hmOriginZ, hmW, hmD) {
   const SEG = 5; // 5m — good detail without excessive verts
   const cols = Math.floor(hmW / SEG) + 1;
@@ -396,7 +462,7 @@ function buildTerrainMeshPBR(courseData, heightAt, surfaceAt, assets, hmOriginX,
   geo.setIndex(indices);
   geo.computeVertexNormals();
 
-  const mesh = new THREE.Mesh(geo, splatMaterial(assets));
+  const mesh = new THREE.Mesh(geo, splatMaterial(assets, assets.satBounds));
   mesh.receiveShadow = true;
   mesh.name = 'terrain';
   return mesh;
@@ -405,31 +471,37 @@ function buildTerrainMeshPBR(courseData, heightAt, surfaceAt, assets, hmOriginX,
 // ---------- Water (Three.js Water addon) ----------
 function buildWaterPBR(courseData, heightAt, scene, assets) {
   const waters = [];
-  for (const hole of courseData.holes) {
-    for (const w of hole.water) {
-      if (!w || w.length < 3) continue;
-      const xs = w.map(p => p[0]), zs = w.map(p => p[1]);
-      const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
-      const cz = (Math.min(...zs) + Math.max(...zs)) / 2;
-      const sx = Math.max(...xs) - Math.min(...xs) + 4;
-      const sz = Math.max(...zs) - Math.min(...zs) + 4;
-      const y  = heightAt(cx, cz) + 0.05;
+  const allWaterPolys = [
+    ...courseData.holes.flatMap(h => h.water || []),
+    ...(courseData.globalWater || []),
+  ];
+  for (const w of allWaterPolys) {
+    if (!w || w.length < 3) continue;
 
-      const water = new Water(new THREE.PlaneGeometry(sx, sz), {
-        textureWidth:  512,
-        textureHeight: 512,
-        waterNormals:  assets.waterN,
-        sunDirection:  assets.sunDir.clone(),
-        sunColor: 0xffffff,
-        waterColor: 0x0e3526,
-        distortionScale: 2.2,
-        fog: true,
-      });
-      water.rotation.x = -Math.PI / 2;
-      water.position.set(cx, y, cz);
-      scene.add(water);
-      waters.push(water);
-    }
+    // Build a Shape that follows the actual pond polygon (not a bounding-box rectangle).
+    // w is [[x,z], ...].  ShapeGeometry is in XY local plane; after rotation.x=-PI/2:
+    //   world_x = shape_x,  world_z = -shape_y  — so negate Z to land at the correct position.
+    const shape = new THREE.Shape();
+    w.forEach((p, i) => i === 0 ? shape.moveTo(p[0], -p[1]) : shape.lineTo(p[0], -p[1]));
+    const geo = new THREE.ShapeGeometry(shape);
+
+    // Water height = minimum terrain elevation at polygon vertices (fill from the low point)
+    const y = Math.min(...w.map(p => heightAt(p[0], p[1]))) - 0.4;
+
+    const water = new Water(geo, {
+      textureWidth:  512,
+      textureHeight: 512,
+      waterNormals:  assets.waterN,
+      sunDirection:  assets.sunDir.clone(),
+      sunColor: 0xffffff,
+      waterColor: 0x0d4f6e,
+      distortionScale: 1.8,
+      fog: true,
+    });
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(0, y, 0);  // shape coords are already in world-space XZ
+    scene.add(water);
+    waters.push(water);
   }
   return waters;
 }
@@ -610,14 +682,16 @@ export function slopeAt(x, z) {
   return { nx: -hpx/len, ny: eps/len, nz: -hpz/len };
 }
 
-export function holeCameraPos(hole, behindMeters = 18) {
+export function holeCameraPos(hole) {
   const [tx, tz] = hole.tee, [gx, gz] = hole.green.center;
-  const dx = tx - gx, dz = tz - gz;
+  // Direction from tee toward green
+  const dx = gx - tx, dz = gz - tz;
   const len = Math.hypot(dx, dz) || 1;
+  // Place camera 2m forward from tee center (front of tee box), at eye level
   return {
-    cx: tx + (dx/len) * behindMeters,
-    cy: heightAt(tx, tz) + 9.0,   // 9m above tee = proper overhead setup view
-    cz: tz + (dz/len) * behindMeters,
+    cx: tx + (dx/len) * 2,
+    cy: heightAt(tx, tz) + 1.7,
+    cz: tz + (dz/len) * 2,
     tx: gx, ty: heightAt(gx, gz) + 0.5, tz: gz,
   };
 }
@@ -682,12 +756,15 @@ export function drawMinimapBase(courseData, canvas, holeIdx = null) {
     }
   }
 
+  // Water under everything on minimap
+  for (const w of (courseData.globalWater || [])) drawPoly(w, '#2060a8');
+
   // Active hole (or full course)
   const holesToDraw = activeHole ? [activeHole] : courseData.holes;
   for (const hole of holesToDraw) {
     drawPoly(hole.fairway, '#3a6a18');
     for (const b of hole.bunkers) drawPoly(b, '#c8a84a');
-    for (const w of hole.water) drawPoly(w, '#2060a8');
+    for (const w of (hole.water || [])) drawPoly(w, '#2060a8');
     if (hole.green.polygon) drawPoly(hole.green.polygon, '#50cc60');
   }
 

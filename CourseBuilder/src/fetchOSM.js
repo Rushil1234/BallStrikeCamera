@@ -7,7 +7,7 @@ import { dirname, join } from 'path';
 const __dir = dirname(fileURLToPath(import.meta.url));
 
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
-const CACHE_PATH = join(__dir, 'pinchbrook_osm_v2_cache.json'); // v2 adds cart paths
+const CACHE_PATH = join(__dir, 'pinchbrook_osm_cache.json');
 const BBOX = '40.789,-74.395,40.803,-74.380';
 const BOUNDARY_WAY = 40375147;
 

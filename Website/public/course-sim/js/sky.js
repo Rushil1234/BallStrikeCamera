@@ -14,19 +14,19 @@ export function makeSky(scene, renderer, assets) {
 
   const sunDir = assets.sunDir.clone();
 
-  // small fill so foliage (non-PBR materials) isn't flat black in shade
   const hemi = new THREE.HemisphereLight(0xbdd3e8, 0x44603a, 0.5);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff1d8, 2.0);
-  sun.position.copy(sunDir).multiplyScalar(300);
+  const sun = new THREE.DirectionalLight(0xfff3e0, 2.4);
+  sun.position.copy(sunDir).multiplyScalar(400);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  const S = 95;
+  sun.shadow.mapSize.set(4096, 4096);
+  const S = 120;
   sun.shadow.camera.left = -S; sun.shadow.camera.right = S;
   sun.shadow.camera.top = S; sun.shadow.camera.bottom = -S;
-  sun.shadow.camera.near = 50; sun.shadow.camera.far = 700;
-  sun.shadow.bias = -0.0006;
+  sun.shadow.camera.near = 50; sun.shadow.camera.far = 900;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.02;
   scene.add(sun);
   scene.add(sun.target);
 
