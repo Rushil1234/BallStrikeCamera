@@ -29,6 +29,8 @@ Website/node_modules/
 Website/.next/
 Website/out/
 CourseBuilder/node_modules/
+Terrain Building Experiment/node_modules/
+Terrain Building Experiment/dist/
 
 # Generated build artifacts
 Website/tsconfig.tsbuildinfo
