@@ -5,6 +5,7 @@ struct PastSessionsView: View {
 
     @State private var selectedFilter: HistoryFilter = .all
     @State private var showSearch = false
+    @State private var showProfile = false
     @State private var searchText = ""
     @State private var shots: [SavedShot] = []
     @State private var rangeSessions: [PracticeSession] = []
@@ -57,6 +58,10 @@ struct PastSessionsView: View {
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { TrueCarryProfileView() }
+                .tcAppearance()
+        }
         .task(id: session.currentUser?.id) { await loadData() }
         .alert(
             "Delete \(itemToDelete?.label ?? "item")?",
@@ -77,17 +82,37 @@ struct PastSessionsView: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        TCHeaderBar(initials: userInitials) {
-            TCIconButton(icon: showSearch ? "xmark" : "magnifyingglass") {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                    showSearch.toggle()
-                    if !showSearch { searchText = "" }
+        HStack(alignment: .center, spacing: 0) {
+            // left: search + refresh
+            HStack(spacing: 6) {
+                TCIconButton(icon: showSearch ? "xmark" : "magnifyingglass") {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        showSearch.toggle()
+                        if !showSearch { searchText = "" }
+                    }
+                }
+                TCIconButton(icon: "arrow.clockwise") {
+                    Task { await loadData() }
                 }
             }
-            TCIconButton(icon: "arrow.clockwise") {
-                Task { await loadData() }
+            .frame(width: 88, height: 44, alignment: .leading)
+
+            TrueCarryLogo(size: 20)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
+
+            // right: profile
+            HStack(spacing: 6) {
+                TCProfileAvatarButton(initials: userInitials,
+                                      devMode: session.entitlementVM.isDeveloperMode) {
+                    showProfile = true
+                }
             }
+            .frame(width: 88, height: 44, alignment: .trailing)
         }
+        .padding(.horizontal, TCTheme.hPad)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 
     private var titleBlock: some View {

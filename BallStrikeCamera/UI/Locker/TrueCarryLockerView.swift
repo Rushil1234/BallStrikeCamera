@@ -5,8 +5,6 @@ struct TrueCarryLockerView: View {
     @State private var showClubs    = false
     @State private var showSessions = false
     @State private var showProfile  = false
-    @State private var showNotesEditor = false
-    @AppStorage("tc_locker_notes") private var lockerNotes = ""
     @State private var clubs: [UserClub]     = []
     @State private var shots: [SavedShot]    = []
     @State private var rounds: [CourseRound] = []
@@ -67,7 +65,6 @@ struct TrueCarryLockerView: View {
                         profileCard
                         clubsInBagCard
                         milestonesCard
-                        notesCard
                         savedShotsCard
                         settingsRowCard
                         signOutButton
@@ -94,29 +91,6 @@ struct TrueCarryLockerView: View {
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
                 .tcAppearance()
-        }
-        .sheet(isPresented: $showNotesEditor) {
-            NavigationStack {
-                VStack(alignment: .leading, spacing: 12) {
-                    TextEditor(text: $lockerNotes)
-                        .scrollContentBackground(.hidden)
-                        .foregroundColor(TCTheme.textPrimary)
-                        .padding(12)
-                        .background(TCTheme.panelRaised)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    Spacer()
-                }
-                .padding(TCTheme.hPad)
-                .background(TrueCarryBackground())
-                .navigationTitle("Notes")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { showNotesEditor = false }
-                    }
-                }
-            }
-            .tcAppearance()
         }
         .task {
             if let uid = user?.id {
@@ -253,30 +227,6 @@ struct TrueCarryLockerView: View {
                 TCMilestoneBadge(icon: "star.fill",           value: bestRoundStr,        label: "Best\nRound",       accent: TCTheme.goldLight)
                 TCMilestoneBadge(icon: "scope",               value: "\(shots.count)",    label: "Shots\nTracked",    accent: TCTheme.silver)
             }
-        }
-        .tcCard()
-    }
-
-    // MARK: - Notes Card
-
-    private var notesCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Notes")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(TCTheme.textPrimary)
-                Spacer()
-                Button { showNotesEditor = true } label: {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 14))
-                        .foregroundColor(TCTheme.textMuted)
-                }
-                .buttonStyle(.plain)
-            }
-            Text(lockerNotes.isEmpty ? "Tap the pencil to add notes about your game." : lockerNotes)
-                .font(.system(size: 13))
-                .foregroundColor(TCTheme.textMuted)
-                .lineSpacing(3)
         }
         .tcCard()
     }
