@@ -206,20 +206,21 @@ async def run():
     # 0. Start the local status server so truecarry.app/connect can see us.
     start_status_server()
 
-    # 1. Find simulator
-    result = await find_simulator()
-    sim_port, sim_name = result if result else (None, None)
-    sim_ok = result is not None
-    detected_port = sim_port
+    # 1. Wait for a simulator — keep running (and keep reporting status) so the
+    #    user can start GSPro / OGS after the bridge, and watch it on /connect.
+    sim_port = sim_name = None
+    while sim_port is None:
+        result = await find_simulator()
+        if result:
+            sim_port, sim_name = result
+            detected_port = sim_port
+            break
+        detected_port = None
+        print_status(None, False, False, False)
+        print("  ⚠️  Waiting for GSPro or OpenGolfSim on this computer…  (Ctrl+C to quit)")
+        await asyncio.sleep(3)
 
-    print_status(sim_name, sim_ok, False, False)
-
-    if not sim_ok:
-        print("  ⚠️  Could not reach GSPro or OpenGolfSim on localhost.")
-        print("     Make sure your simulator is running, then restart TrueCarry Bridge.")
-        print()
-        input("  Press Enter to exit…")
-        return
+    print_status(sim_name, True, False, False)
 
     # 2. Scan for iPhone
     print(f"  Scanning for True Carry iPhone app…  (Ctrl+C to quit)\n")

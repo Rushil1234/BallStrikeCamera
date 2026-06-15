@@ -1,46 +1,40 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import CopyCommand from "./CopyCommand";
 
 export const metadata: Metadata = {
-  title: "TrueCarry Bridge — Bluetooth PC Relay",
+  title: "TrueCarry Bridge — Connect to GSPro or OpenGolfSim",
   description:
-    "Download the TrueCarry Bridge to connect your iPhone to GSPro or OpenGolfSim via Bluetooth when Wi-Fi isn't available.",
+    "One command sets up the TrueCarry Bridge so your iPhone can send shots to GSPro or OpenGolfSim over Bluetooth. No install, no warnings.",
 };
 
-const STEPS_WIN = [
-  "Download both files below into the same folder on your PC.",
-  'Double-click "TrueCarry-Bridge-Windows.bat" — it installs everything automatically.',
-  "Open True Carry → Sim Mode → tap Bluetooth on your iPhone.",
-  "Open truecarry.app/connect on this PC to confirm you're connected — then play.",
-];
-
-const STEPS_MAC = [
-  "Download both files below into the same folder on your Mac.",
-  'Double-click "TrueCarry-Bridge-Mac.command" and allow it in System Settings if prompted.',
-  "Open True Carry → Sim Mode → tap Bluetooth on your iPhone.",
-  "Open truecarry.app/connect on this Mac to confirm you're connected — then play.",
-];
+const MAC_CMD = "curl -fsSL https://truecarry.vercel.app/downloads/install.sh | bash";
+const WIN_CMD = "irm https://truecarry.vercel.app/downloads/install.ps1 | iex";
 
 const FAQ = [
   {
+    q: "Why a command instead of an app I double-click?",
+    a: "macOS and Windows block downloaded apps from unidentified developers — that's the \"could not verify\" warning. Running this command avoids that entirely: nothing is downloaded as a blocked file, so it just runs. It's the same approach used by tools like Homebrew.",
+  },
+  {
+    q: "Is this safe? What does it do?",
+    a: "It sets up a small, self-contained Python helper in a .truecarry folder in your home directory, installs one Bluetooth library, and runs the bridge. Nothing else on your system is touched, and you can read the exact script before running it (see the links at the bottom).",
+  },
+  {
     q: "Does this require Wi-Fi?",
-    a: "No — the bridge uses Bluetooth LE between your iPhone and your PC. Your PC still needs GSPro or OpenGolfSim running on localhost.",
+    a: "No — the bridge talks to your iPhone over Bluetooth LE. Your computer just needs GSPro or OpenGolfSim running.",
   },
   {
     q: "Does it work with both GSPro and OpenGolfSim?",
-    a: "Yes. The bridge auto-detects whichever simulator is running on port 921 (GSPro) or 3111 (OpenGolfSim) when it starts.",
+    a: "Yes. The bridge auto-detects whichever simulator is running on port 921 (GSPro) or 3111 (OpenGolfSim).",
   },
   {
-    q: "Does it work on Mac with GSPro via Crossover?",
-    a: "Yes. Crossover apps still listen on localhost, so the bridge connects to GSPro the same way it does on Windows.",
+    q: "Do I need Python?",
+    a: "Mac usually has it already. If it's missing, the command tells you exactly what to do. On Windows, install Python from python.org (check \"Add to PATH\") and run the command again.",
   },
   {
-    q: "What if Bluetooth permission is denied?",
-    a: 'On Mac: System Settings → Privacy & Security → Bluetooth → allow Terminal or TrueCarry-Bridge. On Windows: Settings → Bluetooth & devices → make sure Bluetooth is on.',
-  },
-  {
-    q: "Can I set it to start automatically?",
-    a: 'Yes — run the bridge from the command line with the "--setup-startup" flag and it will launch automatically every time you log in.',
+    q: "How do I run it next time?",
+    a: "Paste the same command again. It reuses what's installed and always grabs the latest bridge, so you're never out of date.",
   },
 ];
 
@@ -77,21 +71,14 @@ export default function BridgePage() {
             True Carry
           </span>
         </Link>
-        <Link
-          href="/"
-          style={{
-            fontSize: 13,
-            color: "var(--muted)",
-            textDecoration: "none",
-          }}
-        >
+        <Link href="/" style={{ fontSize: 13, color: "var(--muted)", textDecoration: "none" }}>
           ← Back to home
         </Link>
       </nav>
 
-      <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 24px" }}>
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 24px" }}>
         {/* Hero */}
-        <div style={{ textAlign: "center", padding: "64px 0 48px" }}>
+        <div style={{ textAlign: "center", padding: "56px 0 40px" }}>
           <div
             style={{
               display: "inline-flex",
@@ -107,37 +94,65 @@ export default function BridgePage() {
               letterSpacing: "0.4px",
             }}
           >
-            <span>🔵</span> Bluetooth PC Relay
+            <span>🔵</span> Connect to your simulator
           </div>
 
           <h1
             style={{
               fontFamily: "var(--font-serif)",
-              fontSize: "clamp(34px, 6vw, 52px)",
+              fontSize: "clamp(32px, 6vw, 50px)",
               fontWeight: 400,
               lineHeight: 1.1,
-              marginBottom: 20,
+              marginBottom: 18,
               color: "var(--cream)",
             }}
           >
-            TrueCarry Bridge
+            One command.
+            <br />
+            Then just play.
           </h1>
-          <p
-            style={{
-              fontSize: 17,
-              color: "var(--muted)",
-              lineHeight: 1.65,
-              maxWidth: 520,
-              margin: "0 auto 12px",
-            }}
-          >
-            No Wi-Fi at the sim bay? No problem. The TrueCarry Bridge runs on
-            your PC and relays shots from the True Carry app on your iPhone
-            directly to{" "}
+          <p style={{ fontSize: 16, color: "var(--muted)", lineHeight: 1.65, maxWidth: 500, margin: "0 auto" }}>
+            The TrueCarry Bridge relays shots from the app on your iPhone to{" "}
             <strong style={{ color: "var(--text)" }}>GSPro</strong> or{" "}
-            <strong style={{ color: "var(--text)" }}>OpenGolfSim</strong> over
-            Bluetooth — no network required.
+            <strong style={{ color: "var(--text)" }}>OpenGolfSim</strong> over Bluetooth — no Wi-Fi,
+            no install, and no &ldquo;unverified developer&rdquo; warnings.
           </p>
+        </div>
+
+        {/* Mac */}
+        <PlatformCard
+          emoji="🍎"
+          title="On your Mac"
+          openHint="Open Terminal (press ⌘ + Space, type “Terminal”, hit Enter), then paste:"
+          command={MAC_CMD}
+        />
+
+        {/* Windows */}
+        <div style={{ marginTop: 16 }}>
+          <PlatformCard
+            emoji="🪟"
+            title="On Windows"
+            openHint="Open PowerShell (Start menu → type “PowerShell”), then paste:"
+            command={WIN_CMD}
+          />
+        </div>
+
+        {/* Then in the app */}
+        <div
+          style={{
+            marginTop: 28,
+            backgroundColor: "var(--surface)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 16,
+            padding: "24px 26px",
+          }}
+        >
+          <h2 style={{ fontSize: 16, fontWeight: 700, color: "var(--cream)", marginBottom: 16 }}>
+            Then, in the app
+          </h2>
+          <Step n="1" text="Make sure GSPro or OpenGolfSim is open on this computer." />
+          <Step n="2" text="On your iPhone: open True Carry → Sim Mode → tap Bluetooth." />
+          <Step n="3" text="It connects automatically — swing away." />
 
           <Link
             href="/connect"
@@ -145,7 +160,7 @@ export default function BridgePage() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
-              marginTop: 24,
+              marginTop: 18,
               padding: "11px 20px",
               borderRadius: 100,
               border: "1px solid rgba(184,154,94,0.4)",
@@ -156,277 +171,109 @@ export default function BridgePage() {
               textDecoration: "none",
             }}
           >
-            Already installed? Check your connection →
+            Check your connection live →
           </Link>
         </div>
 
-        {/* Download cards */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: 16,
-            marginBottom: 56,
-          }}
-        >
-          {/* Windows */}
-          <div
-            style={{
-              backgroundColor: "var(--surface)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 16,
-              padding: 28,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 36,
-                marginBottom: 12,
-                lineHeight: 1,
-              }}
-            >
-              🪟
-            </div>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                marginBottom: 8,
-                color: "var(--cream)",
-              }}
-            >
-              Windows
-            </h2>
-            <p
-              style={{
-                fontSize: 13,
-                color: "var(--muted)",
-                lineHeight: 1.6,
-                marginBottom: 20,
-              }}
-            >
-              Works with GSPro (port 921) and OpenGolfSim (port 3111).
-              Requires Python 3.9+ — the installer handles the rest.
-            </p>
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: 10 }}
-            >
-              <a
-                href="/downloads/TrueCarry-Bridge-Windows.bat"
-                download
-                style={dlButtonStyle("#B89A5E", "#1E2A22")}
-              >
-                ⬇ Download for Windows
-              </a>
-              <a
-                href="/downloads/bridge.py"
-                download
-                style={dlButtonStyle("rgba(255,255,255,0.07)", "var(--muted)")}
-              >
-                bridge.py (also needed)
-              </a>
-            </div>
-          </div>
-
-          {/* Mac */}
-          <div
-            style={{
-              backgroundColor: "var(--surface)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 16,
-              padding: 28,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 36,
-                marginBottom: 12,
-                lineHeight: 1,
-              }}
-            >
-              🍎
-            </div>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                marginBottom: 8,
-                color: "var(--cream)",
-              }}
-            >
-              Mac
-            </h2>
-            <p
-              style={{
-                fontSize: 13,
-                color: "var(--muted)",
-                lineHeight: 1.6,
-                marginBottom: 20,
-              }}
-            >
-              Works with GSPro via Crossover and OpenGolfSim. Requires
-              Python 3 (pre-installed on most Macs).
-            </p>
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: 10 }}
-            >
-              <a
-                href="/downloads/TrueCarry-Bridge-Mac.command"
-                download
-                style={dlButtonStyle("#B89A5E", "#1E2A22")}
-              >
-                ⬇ Download for Mac
-              </a>
-              <a
-                href="/downloads/bridge.py"
-                download
-                style={dlButtonStyle("rgba(255,255,255,0.07)", "var(--muted)")}
-              >
-                bridge.py (also needed)
-              </a>
-            </div>
-          </div>
-        </div>
-
-        {/* Instructions */}
-        <div style={{ marginBottom: 56 }}>
-          <h2
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: 28,
-              fontWeight: 400,
-              marginBottom: 32,
-              color: "var(--cream)",
-            }}
-          >
-            How to set it up
-          </h2>
-          <div
-            style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32 }}
-          >
-            <StepList title="Windows" steps={STEPS_WIN} />
-            <StepList title="Mac" steps={STEPS_MAC} />
-          </div>
-        </div>
-
         {/* FAQ */}
-        <div>
+        <div style={{ marginTop: 56 }}>
           <h2
             style={{
               fontFamily: "var(--font-serif)",
-              fontSize: 28,
+              fontSize: 26,
               fontWeight: 400,
-              marginBottom: 28,
+              marginBottom: 24,
               color: "var(--cream)",
             }}
           >
             Common questions
           </h2>
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: 1 }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {FAQ.map(({ q, a }) => (
               <div
                 key={q}
-                style={{
-                  backgroundColor: "var(--surface)",
-                  padding: "20px 24px",
-                  borderRadius: 12,
-                  marginBottom: 8,
-                }}
+                style={{ backgroundColor: "var(--surface)", padding: "20px 24px", borderRadius: 12 }}
               >
-                <p
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 700,
-                    color: "var(--cream)",
-                    marginBottom: 8,
-                  }}
-                >
-                  {q}
-                </p>
-                <p
-                  style={{
-                    fontSize: 14,
-                    color: "var(--muted)",
-                    lineHeight: 1.65,
-                  }}
-                >
-                  {a}
-                </p>
+                <p style={{ fontSize: 15, fontWeight: 700, color: "var(--cream)", marginBottom: 8 }}>{q}</p>
+                <p style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.65 }}>{a}</p>
               </div>
             ))}
           </div>
         </div>
+
+        {/* Manual fallback */}
+        <p style={{ fontSize: 12, color: "var(--muted)", textAlign: "center", marginTop: 28, lineHeight: 1.7 }}>
+          Prefer to inspect or run it yourself? View the{" "}
+          <a href="/downloads/install.sh" style={{ color: "var(--gold-bright)" }}>
+            Mac script
+          </a>
+          ,{" "}
+          <a href="/downloads/install.ps1" style={{ color: "var(--gold-bright)" }}>
+            Windows script
+          </a>
+          , or the{" "}
+          <a href="/downloads/bridge.py" style={{ color: "var(--gold-bright)" }}>
+            bridge itself
+          </a>
+          .
+        </p>
       </div>
     </main>
   );
 }
 
-function StepList({ title, steps }: { title: string; steps: string[] }) {
+function PlatformCard({
+  emoji,
+  title,
+  openHint,
+  command,
+}: {
+  emoji: string;
+  title: string;
+  openHint: string;
+  command: string;
+}) {
   return (
-    <div>
-      <p
-        style={{
-          fontSize: 12,
-          fontWeight: 700,
-          letterSpacing: "0.6px",
-          color: "var(--gold)",
-          marginBottom: 16,
-          textTransform: "uppercase",
-        }}
-      >
-        {title}
-      </p>
-      <ol
-        style={{
-          listStyle: "none",
-          display: "flex",
-          flexDirection: "column",
-          gap: 14,
-        }}
-      >
-        {steps.map((step, i) => (
-          <li key={i} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-            <span
-              style={{
-                flexShrink: 0,
-                width: 24,
-                height: 24,
-                borderRadius: "50%",
-                backgroundColor: "rgba(184,154,94,0.15)",
-                border: "1px solid rgba(184,154,94,0.35)",
-                color: "var(--gold)",
-                fontSize: 12,
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {i + 1}
-            </span>
-            <p style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.65, paddingTop: 2 }}>
-              {step}
-            </p>
-          </li>
-        ))}
-      </ol>
+    <div
+      style={{
+        backgroundColor: "var(--surface)",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 16,
+        padding: "24px 26px",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <span style={{ fontSize: 24, lineHeight: 1 }}>{emoji}</span>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--cream)" }}>{title}</h2>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, marginBottom: 14 }}>{openHint}</p>
+      <CopyCommand command={command} />
     </div>
   );
 }
 
-function dlButtonStyle(bg: string, color: string): React.CSSProperties {
-  return {
-    display: "block",
-    textAlign: "center",
-    padding: "12px 16px",
-    borderRadius: 10,
-    backgroundColor: bg,
-    color,
-    fontSize: 14,
-    fontWeight: 600,
-    textDecoration: "none",
-    transition: "opacity 0.15s",
-  };
+function Step({ n, text }: { n: string; text: string }) {
+  return (
+    <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 12 }}>
+      <span
+        style={{
+          flexShrink: 0,
+          width: 24,
+          height: 24,
+          borderRadius: "50%",
+          backgroundColor: "rgba(184,154,94,0.15)",
+          border: "1px solid rgba(184,154,94,0.35)",
+          color: "var(--gold)",
+          fontSize: 12,
+          fontWeight: 700,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {n}
+      </span>
+      <p style={{ fontSize: 14, color: "var(--muted)", lineHeight: 1.6, paddingTop: 2 }}>{text}</p>
+    </div>
+  );
 }
