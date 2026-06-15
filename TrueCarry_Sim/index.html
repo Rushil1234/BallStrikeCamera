@@ -39,6 +39,11 @@
       <div id="hc-name">PINEHURST BEND</div>
     </div>
 
+    <div id="hole-picker-card" class="panel">
+      <label for="hole-picker">PLAY</label>
+      <select id="hole-picker"></select>
+    </div>
+
     <div id="wind" class="panel">
       <div id="wind-rose">
         <svg id="wind-arrow" viewBox="0 0 40 40" width="34" height="34">
@@ -89,9 +94,13 @@
       <div id="meter-readout">0%</div>
     </div>
 
-    <canvas id="minimap" width="170" height="290"></canvas>
+    <div id="map-wrap" class="panel">
+      <button id="map-toggle" title="View all holes (V)">ALL</button>
+      <canvas id="minimap" width="210" height="330"></canvas>
+      <div id="map-caption">HOLE MAP</div>
+    </div>
 
-    <div id="help-strip">DRAG / ◀ ▶ AIM &nbsp;·&nbsp; ▲▼ CLUB &nbsp;·&nbsp; SPACE / CLICK SWING &nbsp;·&nbsp; TAB CARD &nbsp;·&nbsp; M MUTE</div>
+    <div id="help-strip">DRAG / ◀ ▶ AIM &nbsp;·&nbsp; ▲▼ CLUB &nbsp;·&nbsp; SPACE / CLICK SWING &nbsp;·&nbsp; V MAP &nbsp;·&nbsp; TAB CARD &nbsp;·&nbsp; M MUTE</div>
   </div>
 
   <!-- ================= OVERLAYS ================= -->

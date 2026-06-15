@@ -12,6 +12,7 @@ import { HUD, toParStr } from './ui.js';
 import { SFX } from './audio.js';
 import { getLiveCode, connectLive } from './live.js';
 import { fetchSimCourses } from './courses.js';
+import { layoutIslandCourse } from './world.js';
 
 // ---------- boot ----------
 
@@ -29,6 +30,10 @@ document.getElementById('app').prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 6000);
+
+let courseWorld = layoutIslandCourse(HOLES);
+let courseHoles = courseWorld.holes;
+hud.mapSetCourse(courseHoles, courseWorld);
 
 // real-world assets (PBR ground, HDRI sky, tree cards) load while the
 // title screen is up; TEE OFF enables when ready
@@ -127,7 +132,7 @@ const game = {
   state: 'TITLE',           // TITLE FLYOVER AIM METER_POWER METER_ACCURACY FLIGHT HOLE_DONE ROUND_DONE
   holeIdx: 0,
   course: null,
-  scores: HOLES.map(() => null),
+  scores: courseHoles.map(() => null),
   strokes: 0,
   ballPos: { x: 0, y: 0, z: 0 },
   lie: SURF.TEE,
@@ -147,9 +152,32 @@ const game = {
 
 let rangeMarkers = null;
 let lastRangeShot = null;
+const holePickerCard = document.getElementById('hole-picker-card');
+const holePicker = document.getElementById('hole-picker');
 
 const club = () => CLUBS[game.clubIdx];
 const onGreen = () => game.lie === SURF.GREEN;
+
+function populateHolePicker() {
+  if (!holePicker) return;
+  holePicker.innerHTML = '';
+  courseHoles.forEach((h, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = `${h.id}. ${h.name}`;
+    holePicker.appendChild(opt);
+  });
+}
+
+function setActiveCourse(rawHoles) {
+  courseWorld = layoutIslandCourse(rawHoles);
+  courseHoles = courseWorld.holes;
+  game.scores = courseHoles.map(() => null);
+  hud.mapSetCourse(courseHoles, courseWorld);
+  populateHolePicker();
+}
+
+populateHolePicker();
 
 function distToPin() {
   const p = game.course.pinPos;
@@ -157,8 +185,9 @@ function distToPin() {
 }
 
 function totalToPar() {
+  if (game.isRange) return 0;
   let d = 0;
-  HOLES.forEach((h, i) => { if (game.scores[i] != null) d += game.scores[i] - h.par; });
+  courseHoles.forEach((h, i) => { if (game.scores[i] != null) d += game.scores[i] - h.par; });
   return d;
 }
 
@@ -167,13 +196,15 @@ function totalToPar() {
 function startHole(idx) {
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = false;
-  if (idx === 0) game.scores = HOLES.map(() => null);
+  if (idx === 0) game.scores = courseHoles.map(() => null);
   if (game.course) {
     scene.remove(game.course.group);
     game.course.dispose();
   }
   game.holeIdx = idx;
-  const def = HOLES[idx];
+  const def = courseHoles[idx];
+  if (holePicker) holePicker.value = String(idx);
+  holePickerCard?.classList.remove('hidden');
   game.course = buildCourse(def, assets);
   scene.add(game.course.group);
 
@@ -194,7 +225,7 @@ function startHole(idx) {
   const yds = fmtYards(holeLength(def));
   hud.setHole(def.id, def.par, yds, def.name);
   hud.setStroke(1, totalToPar());
-  hud.mapSetHole(def);
+  hud.mapSetHole(def, idx);
   hud.show();
 
   // flyover
@@ -427,7 +458,7 @@ function resolveShot() {
   }
 
   if (sim.state === 'holed') {
-    const def = HOLES[game.holeIdx];
+    const def = courseHoles[game.holeIdx];
     game.scores[game.holeIdx] = game.strokes;
     hud.toast(
       `<span class="t-gold">${scoreName(game.strokes, def.par)}</span>` +
@@ -486,17 +517,18 @@ function resolveShot() {
 
 function nextHole() {
   hud.toastHide();
-  if (game.holeIdx + 1 < HOLES.length) {
+  if (game.holeIdx + 1 < courseHoles.length) {
     startHole(game.holeIdx + 1);
   } else {
     game.state = 'ROUND_DONE';
-    hud.summaryShow(HOLES, game.scores);
+    hud.summaryShow(courseHoles, game.scores);
   }
 }
 
 function startRange() {
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = true;
+  holePickerCard?.classList.add('hidden');
   if (game.course) { scene.remove(game.course.group); game.course.dispose(); }
   game.course = buildCourse(RANGE, assets);
   scene.add(game.course.group);
@@ -512,7 +544,8 @@ function startRange() {
   game.wind = { x: Math.sin(ang) * spd, z: Math.cos(ang) * spd, speed: spd };
   tracerCount = 0;
   tracerGeo.setDrawRange(0, 0);
-  hud.mapSetHole(RANGE);
+  hud.mapSetCourse([RANGE], null);
+  hud.mapSetHole(RANGE, 0);
   hud.show();
   // override hole card for range
   const hcHole = document.getElementById('hc-hole');
@@ -525,7 +558,7 @@ function startRange() {
   if (hcName) hcName.textContent = 'DRIVING RANGE';
   const helpStrip = document.getElementById('help-strip');
   if (helpStrip && window.__liveMode) {
-    helpStrip.textContent = 'RANGE · LIVE MODE — hit shots on your phone · M MUTE';
+    helpStrip.textContent = 'RANGE · LIVE MODE — hit shots on your phone · V MAP · M MUTE';
   }
   const liveWaiting = document.getElementById('live-waiting');
   if (liveWaiting && window.__liveMode) liveWaiting.classList.remove('hidden');
@@ -626,7 +659,7 @@ function flightCamera() {
 }
 
 function flyoverCamera() {
-  const def = HOLES[game.holeIdx];
+  const def = courseHoles[game.holeIdx];
   const pin = game.course.pinPos;
   const tee = game.course.teePos;
   const t = Math.min(game.flyT / 5.2, 1);
@@ -762,7 +795,12 @@ window.addEventListener('keydown', (e) => {
     case 'ArrowDown': e.preventDefault(); changeClub(1); break;
     case 'Tab':
       e.preventDefault();
-      hud.scorecardToggle(HOLES, game.scores);
+      hud.scorecardToggle(courseHoles, game.scores);
+      break;
+    case 'KeyV':
+      e.preventDefault();
+      hud.mapToggleMode();
+      SFX.tick();
       break;
     case 'KeyM':
       SFX.setMuted(!SFX.isMuted());
@@ -774,16 +812,30 @@ window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
 hud.el.clubPrev.addEventListener('click', (e) => { e.stopPropagation(); changeClub(-1); });
 hud.el.clubNext.addEventListener('click', (e) => { e.stopPropagation(); changeClub(1); });
+hud.el.mapToggle?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hud.mapToggleMode();
+  SFX.tick();
+});
+holePicker?.addEventListener('change', () => {
+  const idx = Math.max(0, Math.min(Number(holePicker.value) || 0, courseHoles.length - 1));
+  if (game.state === 'TITLE' || !assets) return;
+  hud.toastHide();
+  hud.summaryHide();
+  hud.scorecardHide();
+  startHole(idx);
+});
 hud.el.btnStart.addEventListener('click', () => {
   if (!assets) return;
   SFX.unlock();
   hud.titleHide();
-  startHole(0);
+  const idx = holePicker ? Math.max(0, Math.min(Number(holePicker.value) || 0, courseHoles.length - 1)) : 0;
+  startHole(idx);
 });
 hud.el.btnAgain.addEventListener('click', () => {
   SFX.unlock();
   hud.summaryHide();
-  game.scores = HOLES.map(() => null);
+  game.scores = courseHoles.map(() => null);
   startHole(0);
 });
 
@@ -985,17 +1037,12 @@ window.addEventListener('message', (e) => {
   const { holes, holeIndex = 0 } = e.data;
   if (!holes?.length) return;
 
-  // Inject the custom hole definitions into the game.
-  Object.assign(HOLES, holes);
-  HOLES.length = holes.length;
-
-  // Reset scores for the new course.
-  game.scores = HOLES.map(() => null);
+  setActiveCourse(holes);
 
   // If assets aren't ready, wait for them.
   assetsReady.then(() => {
     hud.titleHide();
-    startHole(Math.min(holeIndex, HOLES.length - 1));
+    startHole(Math.min(holeIndex, courseHoles.length - 1));
     // Skip straight to AIM (bypass flyover) in preview mode.
     game.flyT = 99;
   });
@@ -1020,9 +1067,10 @@ if (!isPreview && !liveCode) {
     select.addEventListener('change', () => {
       const chosen = courses.find(c => c.courseId === select.value);
       if (!chosen?.holes?.length) return;
-      Object.assign(HOLES, chosen.holes);
-      HOLES.length = chosen.holes.length;
-      game.scores = HOLES.map(() => null);
+      setActiveCourse(chosen.holes);
+      if (game.state !== 'TITLE') {
+        assetsReady.then(() => startHole(0));
+      }
     });
   });
 }
@@ -1040,7 +1088,7 @@ if (liveCode) {
   const helpStrip   = document.getElementById('help-strip');
 
   // Patch the help strip text for live mode.
-  if (helpStrip) helpStrip.textContent = 'LIVE MODE — hit shots on your phone · TAB CARD · M MUTE';
+  if (helpStrip) helpStrip.textContent = 'LIVE MODE — hit shots on your phone · V MAP · TAB CARD · M MUTE';
 
   // Show waiting overlay once the game leaves TITLE.
   const origTitleHide = hud.titleHide.bind(hud);
@@ -1166,7 +1214,7 @@ function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaD
   if (m) {
     assetsReady.then(() => {
       hud.titleHide();
-      startHole(m[2] ? Math.min(parseInt(m[2], 10) - 1, HOLES.length - 1) : 0);
+      startHole(m[2] ? Math.min(parseInt(m[2], 10) - 1, courseHoles.length - 1) : 0);
       if (m[1] === 'aim') { game.flyT = 99; }
     });
   }

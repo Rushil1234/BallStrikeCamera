@@ -87,6 +87,33 @@ html, body {
   color: var(--gold);
 }
 
+#hole-picker-card {
+  top: 128px; left: 22px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+}
+#hole-picker-card label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  color: var(--gold);
+}
+#hole-picker {
+  pointer-events: auto;
+  min-width: 112px;
+  height: 26px;
+  border: 1px solid rgba(201,168,106,0.35);
+  border-radius: 4px;
+  background: rgba(9,16,11,0.75);
+  color: var(--cream);
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
 /* ---------------- wind (top-right) ---------------- */
 
 #wind {
@@ -264,14 +291,46 @@ html, body {
 
 /* ---------------- minimap ---------------- */
 
-#minimap {
+#map-wrap {
   position: absolute;
   right: 22px; top: 50%; transform: translateY(-50%);
+  padding: 26px 8px 20px;
   border: 1px solid var(--glass-edge);
   border-radius: 10px;
   background: rgba(9,16,11,0.66);
   backdrop-filter: blur(8px);
   box-shadow: 0 10px 32px rgba(0,0,0,0.45);
+  pointer-events: none;
+}
+#minimap {
+  display: block;
+  border-radius: 7px;
+}
+#map-toggle {
+  pointer-events: auto;
+  position: absolute;
+  top: 5px; right: 7px;
+  height: 18px;
+  min-width: 42px;
+  border: 1px solid rgba(201,168,106,0.38);
+  border-radius: 4px;
+  background: rgba(201,168,106,0.12);
+  color: var(--gold-hi);
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+#map-toggle:hover { background: rgba(201,168,106,0.24); }
+#map-caption {
+  position: absolute;
+  left: 8px; right: 8px; bottom: 5px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  color: rgba(242,238,225,0.44);
 }
 
 /* ---------------- help strip ---------------- */
@@ -578,7 +637,8 @@ html, body {
 /* ---------------- small screens ---------------- */
 
 @media (max-width: 860px) {
-  #minimap { display: none; }
+  #map-wrap { display: none; }
+  #hole-picker-card { display: none; }
   #help-strip { display: none; }
   #hc-name { display: none; }
   .range-pill { font-size: 11px; padding: 5px 14px; }
