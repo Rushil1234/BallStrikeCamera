@@ -18,6 +18,8 @@ import os
 import struct
 import argparse
 import platform
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from bleak import BleakScanner, BleakClient, BleakError
 
 # ── UUIDs must match SimBLEPeripheral.swift ──────────────────────────────────
@@ -29,11 +31,28 @@ STATUS_UUID  = "12e61729-b41a-436e-a1a4-bf0a6c7ec7bc"   # Write  → bridge send
 GSPRO_PORT = 921
 OGS_PORT   = 3111
 
+# ── Local status server ───────────────────────────────────────────────────────
+# A tiny HTTP server on localhost so truecarry.app/connect can show live status
+# in this computer's browser (the iPhone can't reach this — that's the point of BLE).
+STATUS_HTTP_PORT = 8421
+
 # ── State ────────────────────────────────────────────────────────────────────
 tcp_writer: asyncio.StreamWriter | None = None
 tcp_port: int | None = None
+detected_port: int | None = None
 ble_client: BleakClient | None = None
 shot_count = 0
+
+# Shared snapshot read by the local status server (updated in print_status).
+STATE: dict = {
+    "running": True,
+    "sim": None,
+    "simFound": False,
+    "bleConnected": False,
+    "ready": False,
+    "port": None,
+    "shots": 0,
+}
 
 
 def clear():
@@ -52,6 +71,15 @@ def status_line(label: str, value: str, ok: bool | None = None):
 
 
 def print_status(sim_name: str | None, sim_ok: bool, ble_connected: bool, ble_ready: bool):
+    # Keep the snapshot the local status server serves in sync with the console.
+    STATE.update({
+        "sim": sim_name,
+        "simFound": sim_ok,
+        "bleConnected": ble_connected,
+        "ready": ble_ready,
+        "port": detected_port,
+        "shots": shot_count,
+    })
     clear()
     banner()
     print()
@@ -66,6 +94,49 @@ def print_status(sim_name: str | None, sim_ok: bool, ble_connected: bool, ble_re
     else:
         print("  Open True Carry → Sim Mode → Bluetooth on your iPhone.")
     print()
+
+
+# ── Local status server ─────────────────────────────────────────────────────
+
+class _StatusHandler(BaseHTTPRequestHandler):
+    """Serves the current STATE as JSON so the website can show live status."""
+
+    def _cors(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-store")
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._cors()
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.end_headers()
+
+    def do_GET(self):
+        if self.path.split("?")[0] not in ("/", "/status"):
+            self.send_response(404)
+            self._cors()
+            self.end_headers()
+            return
+        body = json.dumps(STATE).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self._cors()
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass  # keep the console clean
+
+
+def start_status_server():
+    """Best-effort: start the localhost status server in a daemon thread."""
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", STATUS_HTTP_PORT), _StatusHandler)
+    except OSError:
+        return  # port in use (another bridge already running) — not fatal
+    threading.Thread(target=server.serve_forever, daemon=True).start()
 
 
 # ── TCP helpers ───────────────────────────────────────────────────────────────
@@ -130,12 +201,16 @@ async def send_status(client: BleakClient, port: int, linked: bool):
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
 async def run():
-    global ble_client
+    global ble_client, detected_port
+
+    # 0. Start the local status server so truecarry.app/connect can see us.
+    start_status_server()
 
     # 1. Find simulator
     result = await find_simulator()
     sim_port, sim_name = result if result else (None, None)
     sim_ok = result is not None
+    detected_port = sim_port
 
     print_status(sim_name, sim_ok, False, False)
 

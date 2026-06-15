@@ -11,14 +11,14 @@ const STEPS_WIN = [
   "Download both files below into the same folder on your PC.",
   'Double-click "TrueCarry-Bridge-Windows.bat" — it installs everything automatically.',
   "Open True Carry → Sim Mode → tap Bluetooth on your iPhone.",
-  "The bridge connects and you're ready to play.",
+  "Open truecarry.app/connect on this PC to confirm you're connected — then play.",
 ];
 
 const STEPS_MAC = [
   "Download both files below into the same folder on your Mac.",
   'Double-click "TrueCarry-Bridge-Mac.command" and allow it in System Settings if prompted.',
   "Open True Carry → Sim Mode → tap Bluetooth on your iPhone.",
-  "The bridge connects and you're ready to play.",
+  "Open truecarry.app/connect on this Mac to confirm you're connected — then play.",
 ];
 
 const FAQ = [
@@ -138,6 +138,26 @@ export default function BridgePage() {
             <strong style={{ color: "var(--text)" }}>OpenGolfSim</strong> over
             Bluetooth — no network required.
           </p>
+
+          <Link
+            href="/connect"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 24,
+              padding: "11px 20px",
+              borderRadius: 100,
+              border: "1px solid rgba(184,154,94,0.4)",
+              backgroundColor: "rgba(184,154,94,0.10)",
+              color: "var(--gold-bright)",
+              fontSize: 14,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            Already installed? Check your connection →
+          </Link>
         </div>
 
         {/* Download cards */}
