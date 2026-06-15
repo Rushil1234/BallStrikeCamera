@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pebble Beach — Hole 1 | Three.js</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#050d05;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;}
+canvas{display:block;}
+
+#hud{
+  position:absolute;top:0;left:0;right:0;height:56px;
+  background:rgba(5,12,5,0.88);backdrop-filter:blur(20px);
+  border-bottom:1px solid rgba(255,255,255,0.07);
+  display:flex;align-items:center;padding:0 20px;gap:16px;z-index:10;
+}
+.h-badge{font-size:28px;font-weight:800;color:#5aba6e;letter-spacing:-1px;}
+.h-div{width:1px;height:28px;background:rgba(255,255,255,0.07);}
+.h-name{font-size:16px;font-weight:700;color:#e2ece2;}
+.h-desc{font-size:10.5px;color:rgba(190,215,190,0.45);margin-top:2px;}
+.spacer{flex:1;}
+.stat{text-align:right;}
+.stat-v{font-size:22px;font-weight:700;color:#e2ece2;line-height:1;}
+.stat-l{font-size:9px;color:rgba(190,215,190,0.45);text-transform:uppercase;letter-spacing:.5px;}
+.par{font-size:12px;font-weight:700;padding:3px 10px;border-radius:5px;
+  color:#5aba6e;border:1px solid rgba(90,186,110,.3);background:rgba(58,145,80,.08);}
+
+#controls{
+  position:absolute;bottom:20px;left:50%;transform:translateX(-50%);
+  display:flex;gap:8px;z-index:10;
+}
+.vb{
+  background:rgba(5,12,5,0.88);backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,0.1);border-radius:8px;
+  color:rgba(190,215,190,0.65);font-size:12px;padding:8px 16px;
+  cursor:pointer;transition:all .15s;
+}
+.vb:hover{color:#e2ece2;border-color:rgba(255,255,255,0.2);}
+.vb.active{color:#5aba6e;border-color:rgba(90,186,110,.4);background:rgba(58,145,80,.1);}
+
+#legend{
+  position:absolute;bottom:68px;right:14px;
+  background:rgba(5,12,5,0.8);backdrop-filter:blur(20px);
+  border:1px solid rgba(255,255,255,0.07);border-radius:8px;
+  padding:10px 14px;z-index:10;
+}
+.lg-row{display:flex;align-items:center;gap:8px;font-size:10.5px;color:rgba(190,215,190,0.6);margin-bottom:4px;}
+.lg-row:last-child{margin-bottom:0;}
+.swatch{width:12px;height:12px;border-radius:3px;flex-shrink:0;}
+
+#loader{
+  position:absolute;inset:0;background:#050d05;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:200;transition:opacity .8s;
+}
+#loader.gone{opacity:0;pointer-events:none;}
+.lt{font-size:22px;font-weight:800;color:#5aba6e;margin-bottom:6px;}
+.ls{font-size:11px;color:rgba(190,215,190,0.45);margin-bottom:20px;}
+.lbar{width:240px;height:3px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;}
+.lfill{height:100%;background:#3a9150;border-radius:2px;transition:width .4s;width:0%;}
+
+#tmod{
+  position:absolute;inset:0;background:rgba(0,0,0,0.65);backdrop-filter:blur(12px);
+  display:flex;align-items:center;justify-content:center;z-index:300;
+}
+#tmod.gone{display:none;}
+.mbox{background:#0d1f0d;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:32px;width:420px;}
+.mtitle{font-size:18px;font-weight:700;color:#5aba6e;margin-bottom:8px;}
+.msub{font-size:12px;color:rgba(190,215,190,0.5);margin-bottom:20px;line-height:1.65;}
+.minp{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);
+  border-radius:6px;padding:10px 12px;color:#e2ece2;font-size:13px;outline:none;margin-bottom:12px;}
+.mbtn{width:100%;background:#3a9150;border:none;border-radius:6px;color:#fff;
+  font-size:14px;font-weight:600;padding:11px;cursor:pointer;}
+.mbtn:hover{background:#4aaa62;}
+code{color:#5aba6e;}
+
+#info{position:absolute;top:68px;right:14px;
+  font-size:10px;color:rgba(190,215,190,0.3);z-index:10;text-align:right;}
+</style>
+</head>
+<body>
+
+<div id="tmod">
+  <div class="mbox">
+    <div class="mtitle">Mapbox Token Required</div>
+    <div class="msub">Enter your free Mapbox public token to load satellite imagery and terrain data.<br>
+    Get one at <strong style="color:#5aba6e">mapbox.com</strong> — must start with <code>pk.</code></div>
+    <input id="tok" class="minp" type="text" placeholder="pk.eyJ1Ijoi..." autocomplete="off">
+    <button class="mbtn" onclick="boot()">Load Hole 1 — First Light</button>
+  </div>
+</div>
+
+<div id="loader">
+  <div class="lt">⛳ Hole 1 — First Light</div>
+  <div class="ls" id="lstatus">Initializing...</div>
+  <div class="lbar"><div class="lfill" id="lfill"></div></div>
+</div>
+
+<div id="hud">
+  <div class="h-badge">H1</div>
+  <div class="h-div"></div>
+  <div>
+    <div class="h-name">First Light</div>
+    <div class="h-desc">Uphill opener to the clifftop green — Pebble Beach Golf Links</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="stat"><div class="stat-v">380</div><div class="stat-l">Yards</div></div>
+  <div class="h-div"></div>
+  <div class="par">PAR 4</div>
+</div>
+
+<div id="controls">
+  <button class="vb active" id="vb-tee"      onclick="setView('tee',this)">🏌️ Tee</button>
+  <button class="vb"        id="vb-aerial"   onclick="setView('aerial',this)">🛩 Aerial</button>
+  <button class="vb"        id="vb-approach" onclick="setView('approach',this)">🏁 Approach</button>
+  <button class="vb"        id="vb-side"     onclick="setView('side',this)">↔ Side</button>
+</div>
+
+<div id="legend">
+  <div class="lg-row"><div class="swatch" style="background:#16501a"></div>Fairway</div>
+  <div class="lg-row"><div class="swatch" style="background:#0a2208"></div>Rough</div>
+  <div class="lg-row"><div class="swatch" style="background:#d9c87a"></div>Bunker</div>
+  <div class="lg-row"><div class="swatch" style="background:#1a4a0f"></div>Trees</div>
+  <div class="lg-row"><div class="swatch" style="background:#0a2855"></div>Water</div>
+</div>
+
+<div id="info">Drag to orbit &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Right-drag to pan</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+
+// ─── Hole Data ──────────────────────────────────────────────────────────────
+const TEE   = { lat: 36.5694064, lon: -121.9495065 };
+const GREEN = { lat: 36.5705957, lon: -121.946136  };
+
+// World coordinate system: origin = tee box
+// X = East (metres), Z = -North (Z increases south), Y = up
+const MLAT = 111320;
+function mlon(lat) { return 111320 * Math.cos(lat * Math.PI / 180); }
+
+function geo2world(lat, lon) {
+  return new THREE.Vector3(
+    (lon - TEE.lon) * mlon(TEE.lat),
+    0,
+    -(lat - TEE.lat) * MLAT
+  );
+}
+const GREEN_WORLD = geo2world(GREEN.lat, GREEN.lon);
+
+function bearing(la1,lo1,la2,lo2) {
+  const f1=la1*Math.PI/180, f2=la2*Math.PI/180, dl=(lo2-lo1)*Math.PI/180;
+  const y=Math.sin(dl)*Math.cos(f2);
+  const x=Math.cos(f1)*Math.sin(f2)-Math.sin(f1)*Math.cos(f2)*Math.cos(dl);
+  return (Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+const HDG     = bearing(TEE.lat,TEE.lon,GREEN.lat,GREEN.lon);
+const HDG_RAD = HDG * Math.PI / 180;
+const DIR_X   =  Math.sin(HDG_RAD);
+const DIR_Z   = -Math.cos(HDG_RAD);
+
+// ─── Tile Math ───────────────────────────────────────────────────────────────
+function lon2tx(lon,z){ return Math.floor((lon+180)/360*(1<<z)); }
+function lat2ty(lat,z){
+  const r=lat*Math.PI/180;
+  return Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*(1<<z));
+}
+function tileBounds(tx,ty,z){
+  const n=1<<z;
+  const lonL=tx/n*360-180, lonR=(tx+1)/n*360-180;
+  const latT=Math.atan(Math.sinh(Math.PI*(1-2*ty/n)))*180/Math.PI;
+  const latB=Math.atan(Math.sinh(Math.PI*(1-2*(ty+1)/n)))*180/Math.PI;
+  return {lonL,lonR,latT,latB};
+}
+
+// ─── Three.js Bootstrap ──────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.body.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+scene.fog = new THREE.Fog(0x8ab4c8, 800, 3500);
+
+const camera = new THREE.PerspectiveCamera(62, innerWidth/innerHeight, 0.3, 5000);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 3;
+controls.maxDistance = 2000;
+controls.maxPolarAngle = Math.PI / 2 - 0.01;
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ─── Lighting ────────────────────────────────────────────────────────────────
+scene.add(new THREE.HemisphereLight(0xc0d8f0, 0x1a3a10, 0.75));
+const sun = new THREE.DirectionalLight(0xfff2d0, 2.5);
+sun.position.set(400, 500, -300);
+scene.add(sun);
+
+// ─── Sky ─────────────────────────────────────────────────────────────────────
+const sky = new Sky();
+sky.scale.setScalar(8000);
+scene.add(sky);
+const su = sky.material.uniforms;
+su.turbidity.value       = 5;
+su.rayleigh.value        = 1.0;
+su.mieCoefficient.value  = 0.004;
+su.mieDirectionalG.value = 0.90;
+const sunDir = new THREE.Vector3().setFromSphericalCoords(
+  1,
+  THREE.MathUtils.degToRad(72),   // elevation from zenith
+  THREE.MathUtils.degToRad(210)   // azimuth (SW sun, morning light)
+);
+su.sunPosition.value.copy(sunDir);
+sun.position.copy(sunDir).multiplyScalar(800);
+
+// ─── Terrain Shader ──────────────────────────────────────────────────────────
+const VS = /* glsl */`
+varying vec2 vUv;
+varying vec3 vWP;
+varying vec3 vN;
+void main(){
+  vUv = uv;
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWP = wp.xyz;
+  vN  = normalMatrix * normal;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+
+const FS = /* glsl */`
+precision highp float;
+uniform sampler2D uSat;
+uniform float uTime;
+varying vec2 vUv;
+varying vec3 vWP;
+varying vec3 vN;
+
+// ── noise ──────────────────────────────────────────────────────
+vec2 h2(vec2 p){
+  p=vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3)));
+  return -1.0+2.0*fract(sin(p)*43758.5453);
+}
+float n21(vec2 p){
+  vec2 i=floor(p),f=fract(p),u=f*f*(3.0-2.0*f);
+  return mix(mix(dot(h2(i),f),dot(h2(i+vec2(1,0)),f-vec2(1,0)),u.x),
+             mix(dot(h2(i+vec2(0,1)),f-vec2(0,1)),dot(h2(i+vec2(1,1)),f-vec2(1,1)),u.x),u.y);
+}
+float fbm(vec2 p){
+  float v=0.0,a=0.5;
+  for(int i=0;i<5;i++){v+=a*n21(p);p*=2.1;a*=0.5;}
+  return v*0.5+0.5;
+}
+vec3 rgb2hsv(vec3 c){
+  vec4 K=vec4(0.,-1./3.,2./3.,-1.);
+  vec4 p=mix(vec4(c.bg,K.wz),vec4(c.gb,K.xy),step(c.b,c.g));
+  vec4 q=mix(vec4(p.xyw,c.r),vec4(c.r,p.yzx),step(p.x,c.r));
+  float d=q.x-min(q.w,q.y);
+  return vec3(abs(q.z+(q.w-q.y)/(6.*d+1e-10)),d/(q.x+1e-10),q.x);
+}
+
+void main(){
+  // ── classify satellite pixel ─────────────────────────────────
+  vec3 sat = texture2D(uSat, vUv).rgb;
+  vec3 hsv = rgb2hsv(sat);
+  float H=hsv.x, S=hsv.y, V=hsv.z;
+
+  // green range 0.22–0.44 hue
+  float greenHue  = step(0.20,H)*step(H,0.46)*step(0.12,S);
+  float isTree    = greenHue*step(V,0.28);          // dark green = canopy
+  float isGreen_  = greenHue*(1.-isTree);
+  float isFairway = isGreen_*step(0.36,V);          // light mown = fairway/green
+  float isRough   = isGreen_*(1.-isFairway);
+
+  // sand / bunker: tan hue, bright
+  float isBunker  = step(0.04,H)*step(H,0.17)*step(0.55,V)*(1.-greenHue);
+
+  // water/ocean: blue hue
+  float isWater   = step(0.50,H)*step(H,0.72)*step(0.08,S);
+
+  // anything unclassified defaults to rough
+  float classified = min(isFairway+isRough+isBunker+isWater+isTree, 1.0);
+  isRough += 1.0 - classified;
+
+  // ── fairway: mowing stripes ───────────────────────────────────
+  float ang   = 0.785;   // 45° stripe
+  float sw    = 6.0;     // stripe width metres
+  float sx    = vWP.x*cos(ang)+vWP.z*sin(ang);
+  float stripe= mod(sx, sw*2.0)/sw;
+  float sm    = smoothstep(0.0,0.05,stripe)*step(stripe,1.0-0.05)+
+                step(stripe,0.05)*0.0; // alternating dark/light
+  float sf    = stripe < 1.0 ? 1.0 : 0.82; // lighter / darker band
+  float fn    = fbm(vWP.xz*0.25)*0.5+0.5;
+  vec3 fairCol= mix(vec3(0.09,0.34,0.07), vec3(0.15,0.50,0.11), fn*0.6+sf*0.4);
+
+  // ── rough ─────────────────────────────────────────────────────
+  float rn = fbm(vWP.xz*0.15);
+  vec3 roughCol = mix(vec3(0.055,0.155,0.035), vec3(0.10,0.26,0.06), rn);
+
+  // ── bunker / sand ─────────────────────────────────────────────
+  float sn = fbm(vWP.xz*0.7);
+  vec3 sandCol  = mix(vec3(0.80,0.72,0.50), vec3(0.93,0.87,0.68), sn);
+
+  // ── tree floor (under canopy) ─────────────────────────────────
+  float tn = fbm(vWP.xz*0.4);
+  vec3 treeCol  = mix(vec3(0.04,0.10,0.02), vec3(0.08,0.18,0.05), tn);
+
+  // ── water: Pacific Ocean waves ────────────────────────────────
+  float w1 = sin(vWP.x*0.05 + uTime*0.35)*0.5+0.5;
+  float w2 = cos(vWP.z*0.04 + uTime*0.55)*0.5+0.5;
+  float wv = w1*0.6 + w2*0.4;
+  vec3 waterCol = mix(vec3(0.02,0.09,0.28), vec3(0.06,0.30,0.55), wv*0.7);
+  waterCol = mix(waterCol, vec3(0.82,0.92,1.0), smoothstep(0.82,1.0,wv)*0.22);
+
+  // ── combine ───────────────────────────────────────────────────
+  vec3 col = fairCol *isFairway
+           + roughCol*isRough
+           + sandCol *isBunker
+           + treeCol *isTree
+           + waterCol*isWater;
+
+  // ── diffuse lighting ──────────────────────────────────────────
+  vec3 N = normalize(vN);
+  vec3 L = normalize(sun_direction); // injected via define
+  float diff = max(dot(N,L),0.0)*0.75 + 0.4;
+  col *= diff;
+
+  // ── micro-AO in terrain hollows ───────────────────────────────
+  col *= 1.0 - fbm(vWP.xz*0.025)*0.12;
+
+  // ── fog factor ────────────────────────────────────────────────
+  float fogDist = length(vWP - cameraPosition);
+  float fogFac  = smoothstep(600.0, 2500.0, fogDist);
+  col = mix(col, vec3(0.54,0.71,0.78), fogFac*0.75);
+
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+// ─── Progress ────────────────────────────────────────────────────────────────
+function prog(pct, msg) {
+  document.getElementById('lfill').style.width   = pct + '%';
+  document.getElementById('lstatus').textContent = msg;
+}
+
+// ─── Tile Fetch Helpers ───────────────────────────────────────────────────────
+async function imgCanvas(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      c.getContext('2d').drawImage(img, 0, 0);
+      res(c);
+    };
+    img.onerror = () => rej(new Error('Tile load failed: ' + url));
+    img.src = url;
+  });
+}
+
+async function fetchDEM(tx, ty, z, tok) {
+  const url = `https://api.mapbox.com/v4/mapbox.terrain-rgb/${z}/${tx}/${ty}.pngraw?access_token=${tok}`;
+  const c   = await imgCanvas(url);
+  const ctx = c.getContext('2d');
+  const d   = ctx.getImageData(0, 0, c.width, c.height).data;
+  const el  = new Float32Array(c.width * c.height);
+  for (let i = 0; i < el.length; i++) {
+    el[i] = -10000 + (d[i*4]*65536 + d[i*4+1]*256 + d[i*4+2]) * 0.1;
+  }
+  return { el, w: c.width, h: c.height };
+}
+
+async function fetchSat(tx, ty, z, tok) {
+  const url = `https://api.mapbox.com/v4/mapbox.satellite/${z}/${tx}/${ty}@2x.png?access_token=${tok}`;
+  return imgCanvas(url);
+}
+
+// ─── Fetch Grid ───────────────────────────────────────────────────────────────
+async function buildGrid(tok) {
+  const Z = 15, R = 2;           // 5×5 grid, ~5km coverage
+  const cx = lon2tx(TEE.lon, Z);
+  const cy = lat2ty(TEE.lat, Z);
+  const cols = 2*R+1, rows = 2*R+1;
+  const DW = 256, SW = 512;     // DEM tile size / Sat @2x tile size
+  const GW = cols*DW, GH = rows*DW;  // elevation grid dims
+  const SATW = cols*SW, SATH = rows*SW;
+
+  const elevGrid = new Float32Array(GW * GH);
+  const satC = document.createElement('canvas');
+  satC.width = SATW; satC.height = SATH;
+  const satCtx = satC.getContext('2d');
+
+  let done = 0, total = cols*rows;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const tx = cx - R + col, ty = cy - R + row;
+      const [dem, sat] = await Promise.all([
+        fetchDEM(tx, ty, Z, tok),
+        fetchSat(tx, ty, Z, tok)
+      ]);
+      satCtx.drawImage(sat, col*SW, row*SW);
+      for (let py = 0; py < DW; py++) for (let px = 0; px < DW; px++) {
+        elevGrid[(row*DW + py)*GW + (col*DW + px)] = dem.el[py*DW + px];
+      }
+      done++;
+      prog(10 + (done/total)*60, `Fetching tiles (${done}/${total})…`);
+    }
+  }
+
+  const tlb = tileBounds(cx-R, cy-R, Z);
+  const brb = tileBounds(cx+R, cy+R, Z);
+  return {
+    elevGrid, GW, GH, satC, SATW, SATH,
+    bounds: { lonL: tlb.lonL, lonR: brb.lonR, latT: tlb.latT, latB: brb.latB }
+  };
+}
+
+// ─── Build Terrain Mesh ───────────────────────────────────────────────────────
+function buildTerrain(data, tok) {
+  const { elevGrid, GW, GH, satC, bounds } = data;
+  const { lonL, lonR, latT, latB } = bounds;
+  const spanLon = lonR - lonL, spanLat = latT - latB;
+  const worldW  = spanLon * mlon(TEE.lat);
+  const worldH  = spanLat * MLAT;
+
+  // Sample tee elevation (to zero the terrain at tee)
+  const teeFracU = (TEE.lon - lonL) / spanLon;
+  const teeFracV = (latT - TEE.lat) / spanLat;
+  const teeEPx   = Math.round(Math.min(GW-1, Math.max(0, teeFracU * (GW-1))));
+  const teeEPy   = Math.round(Math.min(GH-1, Math.max(0, teeFracV * (GH-1))));
+  const teeElev  = elevGrid[teeEPy * GW + teeEPx];
+
+  const SEGS = 384;
+  const N = SEGS + 1;
+  const pos   = new Float32Array(N * N * 3);
+  const uvArr = new Float32Array(N * N * 2);
+  const idx   = [];
+
+  for (let row = 0; row < N; row++) {
+    for (let col = 0; col < N; col++) {
+      const i  = row * N + col;
+      const u  = col / SEGS;
+      const v  = row / SEGS;
+
+      // Geo coords of this vertex
+      const lon = lonL + u * spanLon;
+      const lat = latT - v * spanLat;   // v=0 → latT (north), v=1 → latB (south)
+
+      // World XZ
+      const wx = (lon - TEE.lon) * mlon(TEE.lat);
+      const wz = -(lat - TEE.lat) * MLAT;
+
+      // Elevation (bilinear sample)
+      const epx = Math.min(GW-1, Math.max(0, Math.round(u * (GW-1))));
+      const epy = Math.min(GH-1, Math.max(0, Math.round(v * (GH-1))));
+      const wy  = elevGrid[epy * GW + epx] - teeElev;
+
+      pos[i*3]   = wx;
+      pos[i*3+1] = wy;
+      pos[i*3+2] = wz;
+
+      // UV: (u, 1-v) with flipY=false so north → top of sat image
+      uvArr[i*2]   = u;
+      uvArr[i*2+1] = 1.0 - v;
+    }
+  }
+
+  // Build triangle indices
+  for (let row = 0; row < SEGS; row++) {
+    for (let col = 0; col < SEGS; col++) {
+      const a = row*N + col, b = a+1, c = (row+1)*N + col, d = c+1;
+      idx.push(a,c,b, b,c,d);
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('uv',       new THREE.BufferAttribute(uvArr, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+
+  // Satellite texture (flipY=false because we already handled Y in UVs)
+  const satTex = new THREE.CanvasTexture(satC);
+  satTex.colorSpace = THREE.SRGBColorSpace;
+  satTex.flipY = false;
+
+  // Sun direction for shader lighting (must match Three.js light)
+  const sd = sunDir.clone().normalize();
+
+  const mat = new THREE.ShaderMaterial({
+    defines: { sun_direction: `vec3(${sd.x.toFixed(4)},${sd.y.toFixed(4)},${sd.z.toFixed(4)})` },
+    vertexShader: VS,
+    fragmentShader: FS,
+    uniforms: {
+      uSat:  { value: satTex },
+      uTime: { value: 0 }
+    }
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+
+  // Compute green world Y
+  const gFracU = (GREEN.lon - lonL) / spanLon;
+  const gFracV = (latT - GREEN.lat) / spanLat;
+  const gEPx   = Math.round(Math.min(GW-1, Math.max(0, gFracU * (GW-1))));
+  const gEPy   = Math.round(Math.min(GH-1, Math.max(0, gFracV * (GH-1))));
+  GREEN_WORLD.y = elevGrid[gEPy * GW + gEPx] - teeElev;
+
+  return { mat, teeElev };
+}
+
+// ─── Satellite Tree Detection ─────────────────────────────────────────────────
+function addTrees(data, teeElev) {
+  const { elevGrid, GW, GH, satC, SATW, SATH, bounds } = data;
+  const { lonL, lonR, latT, latB } = bounds;
+  const spanLon = lonR - lonL, spanLat = latT - latB;
+  const worldW  = spanLon * mlon(TEE.lat);
+  const worldH  = spanLat * MLAT;
+
+  const ctx   = satC.getContext('2d');
+  const imgD  = ctx.getImageData(0, 0, SATW, SATH).data;
+  const pts   = [];
+  const STEP  = 20; // sample every N sat pixels
+
+  for (let sy = 0; sy < SATH; sy += STEP) {
+    for (let sx = 0; sx < SATW; sx += STEP) {
+      const idx = (sy * SATW + sx) * 4;
+      const r = imgD[idx]/255, g = imgD[idx+1]/255, b = imgD[idx+2]/255;
+      const maxC = Math.max(r,g,b), minC = Math.min(r,g,b);
+      const V = maxC;
+      const S = maxC > 0 ? (maxC-minC)/maxC : 0;
+      // Dark saturated green = tree canopy
+      if (V < 0.30 && S > 0.18 && g > r*1.08 && g > b*1.04) {
+        const uFrac = sx / SATW;
+        const vFrac = sy / SATH;
+        const lon_  = lonL + uFrac * spanLon;
+        const lat_  = latT - vFrac * spanLat;
+        const wx = (lon_ - TEE.lon) * mlon(TEE.lat);
+        const wz = -(lat_ - TEE.lat) * MLAT;
+        const epx = Math.min(GW-1, Math.max(0, Math.round(uFrac*(GW-1))));
+        const epy = Math.min(GH-1, Math.max(0, Math.round(vFrac*(GH-1))));
+        const wy  = elevGrid[epy*GW + epx] - teeElev;
+        pts.push({ wx, wy, wz });
+      }
+    }
+  }
+
+  if (!pts.length) return;
+
+  // Pine tree: stacked cones for silhouette
+  const h1 = 10, h2 = 7, h3 = 4.5;
+  const cone1 = new THREE.ConeGeometry(3.2, h1, 7);
+  const cone2 = new THREE.ConeGeometry(2.4, h2, 7);
+  const cone3 = new THREE.ConeGeometry(1.6, h3, 7);
+  const trunk = new THREE.CylinderGeometry(0.28, 0.45, 3, 6);
+
+  const treeMat  = new THREE.MeshLambertMaterial({ color: 0x1a3e0c });
+  const trunkMat = new THREE.MeshLambertMaterial({ color: 0x3a1f0a });
+
+  const I1 = new THREE.InstancedMesh(cone1, treeMat,  pts.length);
+  const I2 = new THREE.InstancedMesh(cone2, treeMat,  pts.length);
+  const I3 = new THREE.InstancedMesh(cone3, treeMat,  pts.length);
+  const IT = new THREE.InstancedMesh(trunk, trunkMat, pts.length);
+
+  const dummy = new THREE.Object3D();
+  pts.forEach((p, i) => {
+    const sc = 0.65 + Math.random()*0.7;
+    const ry = Math.random()*Math.PI*2;
+    const base = p.wy;
+
+    // tier 1 cone (widest, lowest)
+    dummy.position.set(p.wx, base + h1*sc*0.5 + 1.5*sc, p.wz);
+    dummy.scale.setScalar(sc);
+    dummy.rotation.y = ry;
+    dummy.updateMatrix(); I1.setMatrixAt(i, dummy.matrix);
+
+    // tier 2
+    dummy.position.set(p.wx, base + (h1+h2*0.5)*sc + 1.5*sc, p.wz);
+    dummy.scale.setScalar(sc*0.88);
+    dummy.updateMatrix(); I2.setMatrixAt(i, dummy.matrix);
+
+    // tier 3
+    dummy.position.set(p.wx, base + (h1+h2+h3*0.5)*sc + 1.5*sc, p.wz);
+    dummy.scale.setScalar(sc*0.72);
+    dummy.updateMatrix(); I3.setMatrixAt(i, dummy.matrix);
+
+    // trunk
+    dummy.position.set(p.wx, base + 1.5*sc, p.wz);
+    dummy.scale.set(sc, sc, sc);
+    dummy.updateMatrix(); IT.setMatrixAt(i, dummy.matrix);
+  });
+
+  [I1,I2,I3,IT].forEach(m => { m.castShadow=true; scene.add(m); });
+}
+
+// ─── Course Markers ───────────────────────────────────────────────────────────
+function addMarkers() {
+  // Tee box (white rectangle)
+  const teeM = new THREE.Mesh(
+    new THREE.BoxGeometry(4, 0.12, 6),
+    new THREE.MeshLambertMaterial({ color: 0xf0f0f0 })
+  );
+  teeM.position.set(0, 0.06, 0);
+  scene.add(teeM);
+
+  // Flagstick + pin on green
+  const gp = GREEN_WORLD;
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.055, 0.055, 4.5, 7),
+    new THREE.MeshLambertMaterial({ color: 0xdddddd })
+  );
+  pole.position.set(gp.x, gp.y + 2.25, gp.z);
+  scene.add(pole);
+
+  const flag = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.6, 0.95),
+    new THREE.MeshLambertMaterial({ color: 0xff1a00, side: THREE.DoubleSide })
+  );
+  flag.position.set(gp.x + 0.8, gp.y + 4.25, gp.z);
+  scene.add(flag);
+
+  // Pin circle on green
+  const circle = new THREE.Mesh(
+    new THREE.CircleGeometry(4, 32),
+    new THREE.MeshLambertMaterial({ color: 0x1fd45a, side: THREE.DoubleSide })
+  );
+  circle.rotation.x = -Math.PI/2;
+  circle.position.set(gp.x, gp.y + 0.05, gp.z);
+  scene.add(circle);
+}
+
+// ─── Camera Views ─────────────────────────────────────────────────────────────
+window.setView = function(v, el) {
+  document.querySelectorAll('.vb').forEach(b=>b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const gp = GREEN_WORLD;
+  const mid = new THREE.Vector3(gp.x*0.5, (gp.y||0)*0.5, gp.z*0.5);
+
+  if (v === 'tee') {
+    // Stand at tee, look toward green from eye height
+    camera.position.set(-DIR_X*3, 1.75, -DIR_Z*3);
+    controls.target.set(gp.x, gp.y + 1.5, gp.z);
+  } else if (v === 'aerial') {
+    camera.position.set(mid.x - DIR_X*80, 220, mid.z - DIR_Z*80);
+    controls.target.set(mid.x, 0, mid.z);
+  } else if (v === 'approach') {
+    // 60m past green, looking back at pin
+    camera.position.set(gp.x + DIR_X*60, gp.y + 4, gp.z + DIR_Z*60);
+    controls.target.set(gp.x, gp.y + 1, gp.z);
+  } else if (v === 'side') {
+    const px = -DIR_Z, pz = DIR_X; // perpendicular
+    camera.position.set(mid.x + px*220, 70, mid.z + pz*220);
+    controls.target.set(mid.x, (gp.y||0)*0.5, mid.z);
+  }
+  controls.update();
+};
+
+// ─── Animation ────────────────────────────────────────────────────────────────
+let terrainMat = null;
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  if (terrainMat) terrainMat.uniforms.uTime.value = clock.getElapsedTime();
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+
+// ─── Main Boot ────────────────────────────────────────────────────────────────
+let MB_TOKEN = localStorage.getItem('mb_token') || '';
+
+window.boot = function() {
+  const v = document.getElementById('tok').value.trim();
+  if (!v.startsWith('pk.')) { alert('Token must start with pk.'); return; }
+  MB_TOKEN = v;
+  localStorage.setItem('mb_token', v);
+  document.getElementById('tmod').classList.add('gone');
+  run();
+};
+
+async function run() {
+  try {
+    prog(5, 'Calculating tile coordinates…');
+    const data = await buildGrid(MB_TOKEN);
+
+    prog(72, 'Building terrain geometry…');
+    const { mat, teeElev } = buildTerrain(data);
+    terrainMat = mat;
+
+    prog(82, 'Detecting and placing trees…');
+    addTrees(data, teeElev);
+
+    prog(92, 'Adding course markers…');
+    addMarkers();
+
+    setView('tee', document.getElementById('vb-tee'));
+    prog(100, 'Ready!');
+    setTimeout(() => document.getElementById('loader').classList.add('gone'), 600);
+
+  } catch (e) {
+    prog(0, 'Error: ' + e.message);
+    console.error(e);
+  }
+}
+
+// Auto-start if token already saved
+if (MB_TOKEN) {
+  document.getElementById('tmod').classList.add('gone');
+  run();
+}
+</script>
+</body>
+</html>

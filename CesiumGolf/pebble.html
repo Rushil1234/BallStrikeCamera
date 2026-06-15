@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pebble Beach — Hole Viewer</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.121/Build/Cesium/Cesium.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.121/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg:      #070d07;
+      --panel:   rgba(7,13,7,0.88);
+      --border:  rgba(255,255,255,0.07);
+      --green:   #3a9150;
+      --lime:    #5aba6e;
+      --text:    #e2ece2;
+      --muted:   rgba(190,215,190,0.45);
+      --r:       8px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;}
+    #cesiumContainer{position:absolute;inset:0;}
+    .cesium-widget-credits,.cesium-credit-logoContainer,.cesium-credit-expand-link{display:none!important;}
+
+    /* ── left hole list ── */
+    #holeList{
+      position:absolute;top:0;left:0;bottom:0;width:72px;
+      background:var(--panel);backdrop-filter:blur(20px) saturate(1.3);
+      border-right:1px solid var(--border);
+      display:flex;flex-direction:column;align-items:center;
+      padding:12px 0;gap:4px;overflow-y:auto;z-index:100;
+    }
+    #holeList::-webkit-scrollbar{display:none;}
+    .hBtn{
+      width:48px;height:48px;border-radius:var(--r);
+      background:transparent;border:1px solid transparent;
+      cursor:pointer;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:1px;
+      transition:all .15s;flex-shrink:0;
+    }
+    .hBtn:hover{background:rgba(255,255,255,0.05);border-color:var(--border);}
+    .hBtn.active{background:rgba(58,145,80,0.14);border-color:rgba(90,186,110,0.4);}
+    .hNum{font-size:18px;font-weight:700;color:var(--text);}
+    .hBtn.active .hNum{color:var(--lime);}
+    .hPar{font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
+    .hBtn.active .hPar{color:rgba(90,186,110,0.7);}
+    .listDivider{width:32px;height:1px;background:var(--border);margin:4px 0;flex-shrink:0;}
+
+    /* ── top HUD ── */
+    #hud{
+      position:absolute;top:0;left:72px;right:0;height:58px;
+      background:var(--panel);backdrop-filter:blur(20px) saturate(1.3);
+      border-bottom:1px solid var(--border);
+      display:flex;align-items:center;padding:0 20px;gap:20px;z-index:100;
+    }
+    .hudHole{font-size:26px;font-weight:800;color:var(--lime);letter-spacing:-1px;white-space:nowrap;}
+    .hudDivider{width:1px;height:26px;background:var(--border);}
+    .hudName{font-size:15px;font-weight:700;color:var(--text);}
+    .hudSub{font-size:11px;color:var(--muted);margin-top:1px;}
+    .hudSpacer{flex:1;}
+    .hudStat{text-align:right;}
+    .hudStatVal{font-size:22px;font-weight:700;color:var(--text);line-height:1;}
+    .hudStatLbl{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+    .parBadge{
+      font-size:12px;font-weight:700;padding:3px 10px;border-radius:5px;
+      border:1px solid;white-space:nowrap;
+    }
+    .par3{color:#6eb4ff;border-color:rgba(110,180,255,.3);background:rgba(110,180,255,.08);}
+    .par4{color:var(--lime);border-color:rgba(90,186,110,.3);background:rgba(58,145,80,.08);}
+    .par5{color:#ffbd5a;border-color:rgba(255,189,90,.3);background:rgba(255,189,90,.07);}
+
+    /* ── bottom controls hint ── */
+    #hint{
+      position:absolute;bottom:0;left:72px;right:0;height:36px;
+      background:var(--panel);backdrop-filter:blur(20px);
+      border-top:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 18px;z-index:100;
+    }
+    .hintLeft{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
+    .dot{width:5px;height:5px;border-radius:50%;background:var(--green);}
+    #statusTxt{font-size:11px;color:var(--muted);}
+    .hintRight{font-size:11px;color:rgba(255,255,255,0.15);}
+
+    /* ── view toggle ── */
+    #viewToggle{
+      position:absolute;top:70px;right:14px;
+      display:flex;flex-direction:column;gap:6px;z-index:100;
+    }
+    .vBtn{
+      background:var(--panel);backdrop-filter:blur(20px);
+      border:1px solid var(--border);border-radius:var(--r);
+      color:var(--muted);font-size:12px;padding:7px 13px;
+      cursor:pointer;transition:all .15s;white-space:nowrap;
+    }
+    .vBtn:hover{color:var(--text);border-color:rgba(255,255,255,0.15);}
+    .vBtn.active{color:var(--lime);border-color:rgba(90,186,110,.4);background:rgba(58,145,80,.1);}
+
+    /* ── loader ── */
+    #loader{
+      position:absolute;inset:0;background:var(--bg);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      z-index:300;transition:opacity .8s ease;
+    }
+    #loader.gone{opacity:0;pointer-events:none;}
+    .lTitle{font-size:26px;font-weight:800;color:var(--lime);letter-spacing:-0.8px;margin-bottom:18px;}
+    .lSub{font-size:12.5px;color:var(--muted);margin-top:12px;}
+    .dots{display:flex;gap:7px;}
+    .d{width:7px;height:7px;border-radius:50%;background:var(--green);}
+    .d:nth-child(1){animation:p 1.2s .0s infinite}
+    .d:nth-child(2){animation:p 1.2s .2s infinite}
+    .d:nth-child(3){animation:p 1.2s .4s infinite}
+    @keyframes p{0%,100%{opacity:.2;transform:scale(.75)}50%{opacity:1;transform:scale(1)}}
+
+    /* ── flythrough ── */
+    .vBtn.fly{color:#ffbd5a;}
+    .vBtn.fly.active{color:#ffbd5a;border-color:rgba(255,189,90,.45);background:rgba(255,189,90,.07);}
+    #ftOverlay{
+      position:absolute;bottom:36px;left:72px;right:0;height:26px;
+      display:none;align-items:center;padding:0 16px;gap:12px;z-index:101;
+      background:rgba(5,12,5,0.90);backdrop-filter:blur(12px);
+      border-top:1px solid rgba(255,255,255,0.06);
+    }
+    #ftOverlay.on{display:flex;}
+    #ftTrack{flex:1;height:2px;background:rgba(255,255,255,0.08);border-radius:2px;overflow:hidden;}
+    #ftFill{height:100%;background:#ffbd5a;width:0%;border-radius:2px;}
+    #ftLbl{font-size:10px;color:rgba(255,189,90,0.65);white-space:nowrap;letter-spacing:.2px;}
+  </style>
+</head>
+<body>
+<div id="loader">
+  <div class="lTitle">⛳ Pebble Beach Golf Links</div>
+  <div class="dots"><div class="d"></div><div class="d"></div><div class="d"></div></div>
+  <div class="lSub" id="lSub">Loading photorealistic terrain...</div>
+</div>
+
+<div id="cesiumContainer"></div>
+
+<!-- left hole list -->
+<div id="holeList"></div>
+
+<!-- top HUD -->
+<div id="hud">
+  <div class="hudHole" id="hudHole">H1</div>
+  <div class="hudDivider"></div>
+  <div>
+    <div class="hudName" id="hudName">Loading...</div>
+    <div class="hudSub"  id="hudSub">Pebble Beach Golf Links</div>
+  </div>
+  <div class="hudSpacer"></div>
+  <div class="hudStat">
+    <div class="hudStatVal" id="hudYds">—</div>
+    <div class="hudStatLbl">Yards</div>
+  </div>
+  <div class="hudDivider"></div>
+  <div id="hudParBadge" class="parBadge par4">Par 4</div>
+</div>
+
+<!-- view mode buttons -->
+<div id="viewToggle">
+  <button class="vBtn active" id="btnTee" onclick="setView('tee')">🏌️ Tee View</button>
+  <button class="vBtn"        id="btnAir" onclick="setView('aerial')">🛩 Aerial</button>
+  <button class="vBtn"        id="btnGrn" onclick="setView('green')">🏁 Green View</button>
+  <button class="vBtn fly"    id="btnFly" onclick="startFlythrough()">🎬 Flythrough</button>
+  <button class="vBtn"        id="btnBdr"  onclick="toggleBoundary()">⬡ Border</button>
+  <button class="vBtn"        id="btnTree" onclick="toggleTrees()">🌲 Trees</button>
+  <button class="vBtn"        id="btnGrid"    onclick="toggleDensityGrid()">⊞ Grid</button>
+  <button class="vBtn"        id="btnCapture" onclick="openCapturePanel()">📸 Capture</button>
+</div>
+
+<!-- Capture panel -->
+<div id="capturePanel" style="display:none;position:absolute;top:80px;right:16px;width:290px;
+  background:rgba(7,13,7,0.94);border:1px solid rgba(255,255,255,0.09);border-radius:10px;
+  padding:16px;z-index:300;color:#e2ece2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+    <span style="font-weight:700;font-size:13px;">📸 Capture — Hole 7</span>
+    <button onclick="closeCapturePanel()" style="background:none;border:none;color:rgba(190,215,190,0.5);
+      cursor:pointer;font-size:16px;line-height:1;padding:0;">✕</button>
+  </div>
+  <div id="capStatus" style="font-size:11px;color:rgba(190,215,190,0.65);margin-bottom:10px;">
+    Generates ground-level views facing pin at every 5m around the green + tee cluster.
+  </div>
+  <div style="width:100%;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;margin-bottom:10px;">
+    <div id="capFill" style="width:0%;height:100%;background:#3a9150;border-radius:3px;transition:width 0.4s;"></div>
+  </div>
+  <div id="capCount" style="font-size:11px;color:rgba(190,215,190,0.5);margin-bottom:14px;">0 / 0 viewpoints</div>
+  <img id="capPreview" src="" alt="" style="width:100%;height:130px;object-fit:cover;border-radius:6px;
+    background:#0a1a0a;margin-bottom:14px;display:none;">
+  <div style="display:flex;gap:8px;">
+    <button id="capBtn" onclick="startCapture()"
+      style="flex:1;padding:8px;background:#3a9150;border:none;border-radius:6px;
+      color:white;cursor:pointer;font-size:12px;font-weight:600;">▶ Start</button>
+    <button onclick="cancelCapture()"
+      style="padding:8px 14px;background:rgba(255,60,60,0.12);border:1px solid rgba(255,60,60,0.25);
+      border-radius:6px;color:#ff8080;cursor:pointer;font-size:12px;">✕ Stop</button>
+  </div>
+</div>
+<div id="ftOverlay"><div id="ftTrack"><div id="ftFill"></div></div><div id="ftLbl">Flying…</div></div>
+
+<!-- bottom hint -->
+<div id="hint">
+  <div class="hintLeft">
+    <div class="dot"></div>
+    <span id="statusTxt">Initializing...</span>
+  </div>
+  <button id="btnMap" onclick="toggleOverlay()" style="background:rgba(58,145,80,0.18);border:1px solid rgba(90,186,110,0.45);border-radius:6px;color:var(--lime);font-size:11px;font-weight:700;padding:5px 13px;cursor:pointer;white-space:nowrap;transition:all .15s;">🗺 Map On</button>
+  <div class="hintRight">Drag to look · Scroll to zoom · ← → to change holes</div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Pebble Beach hole data — from pro_hole_pois (course_id 141520658891108829)
+// ─────────────────────────────────────────────────────────────────────────────
+const HOLES = [
+  { n:1,  par:4, tee:{lat:36.5694064,lon:-121.9495065}, green:{lat:36.5705957,lon:-121.946136},  name:'First Light',         desc:'Uphill opener to the clifftop green' },
+  { n:2,  par:5, tee:{lat:36.5703434,lon:-121.9471006}, green:{lat:36.5695361,lon:-121.9419568}, name:'The Long Way Home',    desc:'Sweeping par 5 along the Del Monte Forest' },
+  { n:3,  par:4, tee:{lat:36.5691802,lon:-121.9412614}, green:{lat:36.567456, lon:-121.9445025}, name:'The Long One',         desc:'Demanding par 4 with a narrow green complex' },
+  { n:4,  par:4, tee:{lat:36.567375, lon:-121.9439195}, green:{lat:36.5661856,lon:-121.9408725}, name:'Bomb & Gauge',         desc:'Downhill dogleg with ocean beginning to reveal' },
+  { n:5,  par:3, tee:{lat:36.5662451,lon:-121.9405788}, green:{lat:36.565041, lon:-121.9393316}, name:'Five',                 desc:'Short par 3 with a deceiving green' },
+  { n:6,  par:5, tee:{lat:36.5660652,lon:-121.9378858}, green:{lat:36.5621649,lon:-121.9400159}, name:'Cliff Hanger',         desc:'Uphill par 5 — first glimpse of the Pacific' },
+  { n:7,  par:3, tee:{lat:36.5622499,lon:-121.940509},  green:{lat:36.5613496,lon:-121.9403736}, name:"Pebble's Gem",         desc:'The most photographed par 3 in golf — postage-stamp green above the cove' },
+  { n:8,  par:4, tee:{lat:36.5613084,lon:-121.9401376}, green:{lat:36.5630512,lon:-121.936541},  name:'The Cape',             desc:'Dramatic cliffside drive over Stillwater Cove' },
+  { n:9,  par:4, tee:{lat:36.5635296,lon:-121.9368237}, green:{lat:36.560503, lon:-121.9330578}, name:'Fairway Nine',         desc:'Long par 4 hugging the headland' },
+  { n:10, par:4, tee:{lat:36.5616586,lon:-121.9333905}, green:{lat:36.5579533,lon:-121.9314452}, name:'The Turn',             desc:'Back nine opens with a demanding downhill par 4' },
+  { n:11, par:4, tee:{lat:36.5578602,lon:-121.9311173}, green:{lat:36.5607557,lon:-121.9295522}, name:'Eleven',               desc:'Uphill approach to a well-guarded green' },
+  { n:12, par:3, tee:{lat:36.5609863,lon:-121.9290077}, green:{lat:36.5615036,lon:-121.9310677}, name:'Twelve',               desc:'Short par 3 with ocean backdrop' },
+  { n:13, par:4, tee:{lat:36.5610391,lon:-121.9310449}, green:{lat:36.5630733,lon:-121.9347996}, name:'Thirteen',             desc:'Long par 4 back toward the coast' },
+  { n:14, par:5, tee:{lat:36.5630653,lon:-121.935272},  green:{lat:36.5671059,lon:-121.9373125}, name:'Fourteen',             desc:'Reachable par 5 with a classic Monterey cypress run' },
+  { n:15, par:4, tee:{lat:36.56711,  lon:-121.9369685}, green:{lat:36.5691552,lon:-121.9400933}, name:'Fifteen',              desc:'Uphill par 4 to a cliff-edge green' },
+  { n:16, par:4, tee:{lat:36.5696326,lon:-121.9399552}, green:{lat:36.567831, lon:-121.9432687}, name:'Sixteen',              desc:'Downhill par 4 back toward the Lodge' },
+  { n:17, par:3, tee:{lat:36.5671337,lon:-121.9440871}, green:{lat:36.5657924,lon:-121.9449169}, name:'The Quarry',           desc:"Jack's 1-iron in '72 — the most famous shot in major history" },
+  { n:18, par:5, tee:{lat:36.5655406,lon:-121.9451694}, green:{lat:36.5676012,lon:-121.9496363}, name:'Final Challenge',      desc:'Finishing hole along Stillwater Cove — the greatest closing hole in golf' },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Geo utilities
+// ─────────────────────────────────────────────────────────────────────────────
+function bearing(lat1, lon1, lat2, lon2) {
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+
+function haversineYards(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180, Δλ = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)) * 1.09361;
+}
+
+// Add yardage to each hole
+HOLES.forEach(h => {
+  h.yds = Math.round(haversineYards(h.tee.lat, h.tee.lon, h.green.lat, h.green.lon));
+  h.hdg = bearing(h.tee.lat, h.tee.lon, h.green.lat, h.green.lon);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────────
+let viewer     = null;
+let curIdx     = 0;
+let viewMode   = 'tee'; // 'tee' | 'aerial' | 'green'
+let flying     = false;
+const gKey = localStorage.getItem('golf_gkey') || '';
+const cKey = localStorage.getItem('golf_ckey') || '';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Build hole list
+// ─────────────────────────────────────────────────────────────────────────────
+const list = document.getElementById('holeList');
+HOLES.forEach((h, i) => {
+  if (i === 9) { // divider between front/back nine
+    const div = document.createElement('div');
+    div.className = 'listDivider';
+    list.appendChild(div);
+  }
+  const btn = document.createElement('button');
+  btn.className = 'hBtn';
+  btn.id = `hb${i}`;
+  btn.innerHTML = `<span class="hNum">${h.n}</span><span class="hPar">P${h.par}</span>`;
+  btn.addEventListener('click', () => selectHole(i));
+  list.appendChild(btn);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status
+// ─────────────────────────────────────────────────────────────────────────────
+function status(msg) {
+  document.getElementById('statusTxt').textContent = msg;
+  document.getElementById('lSub').textContent = msg;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HUD update
+// ─────────────────────────────────────────────────────────────────────────────
+function updateHUD(h) {
+  document.getElementById('hudHole').textContent = `H${h.n}`;
+  document.getElementById('hudName').textContent = h.name;
+  document.getElementById('hudYds').textContent  = h.yds.toLocaleString();
+  const badge = document.getElementById('hudParBadge');
+  badge.textContent = `Par ${h.par}`;
+  badge.className = `parBadge par${h.par}`;
+  document.querySelectorAll('.hBtn').forEach((b,i) => b.classList.toggle('active', i === curIdx));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// View mode
+// ─────────────────────────────────────────────────────────────────────────────
+function setView(mode) {
+  viewMode = mode;
+  document.getElementById('btnTee').classList.toggle('active', mode === 'tee');
+  document.getElementById('btnAir').classList.toggle('active', mode === 'aerial');
+  document.getElementById('btnGrn').classList.toggle('active', mode === 'green');
+  cameraForHole(HOLES[curIdx], false);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Height sampling — get actual ground elevation at a point
+// ─────────────────────────────────────────────────────────────────────────────
+async function groundHeight(lon, lat, fallback) {
+  try {
+    if (viewer.scene.globe.show) {
+      const pts = [Cesium.Cartographic.fromDegrees(lon, lat)];
+      const res = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, pts);
+      if (res[0] && isFinite(res[0].height)) return res[0].height;
+    } else {
+      // Google 3D tiles — clamp a point above to the tile surface
+      const above = Cesium.Cartesian3.fromDegrees(lon, lat, 200);
+      const clamped = await viewer.scene.clampToHeightMostDetailed([above]);
+      if (clamped[0]) {
+        const h = Cesium.Cartographic.fromCartesian(clamped[0]).height;
+        if (isFinite(h) && h > -100) return h;
+      }
+    }
+  } catch (e) { /* fallthrough */ }
+  return fallback;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Camera positioning
+// ─────────────────────────────────────────────────────────────────────────────
+async function cameraForHole(h, animate) {
+  if (flying) return;
+  if (ftActive) stopFlythrough();
+  flying = true;
+
+  try {
+    if (viewMode === 'tee') {
+      // Step 1: fly to elevated position above tee so tiles load
+      const hdgRad = Cesium.Math.toRadians(h.hdg);
+      await new Promise(resolve => {
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(h.tee.lon, h.tee.lat, 120),
+          orientation: { heading: hdgRad, pitch: Cesium.Math.toRadians(-30), roll: 0 },
+          duration: animate ? 2.5 : 0.8,
+          easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
+          complete: resolve, cancel: resolve,
+        });
+      });
+
+      // Step 2: sample actual ground height, drop to eye level
+      const gh = await groundHeight(h.tee.lon, h.tee.lat, 8);
+      const eyeH = gh + 4.5; // 4.5m = just above photogrammetry mesh artifacts; still feels ground-level
+
+      await new Promise(resolve => {
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(h.tee.lon, h.tee.lat, eyeH),
+          orientation: { heading: hdgRad, pitch: Cesium.Math.toRadians(-8), roll: 0 },
+          duration: 1.8,
+          easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
+          complete: resolve, cancel: resolve,
+        });
+      });
+
+    } else if (viewMode === 'aerial') {
+      // Bird's-eye overview of the hole
+      const midLat = (h.tee.lat + h.green.lat) / 2;
+      const midLon = (h.tee.lon + h.green.lon) / 2;
+      const altM   = Math.max(200, h.yds * 0.7);
+      await new Promise(resolve => {
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(midLon, midLat, altM),
+          orientation: {
+            heading: Cesium.Math.toRadians(h.hdg),
+            pitch:   Cesium.Math.toRadians(-55),
+            roll: 0,
+          },
+          duration: animate ? 3 : 1,
+          easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
+          complete: resolve, cancel: resolve,
+        });
+      });
+
+    } else { // green approach view
+      // Back behind the green looking toward the pin from 50m out
+      const approachHdg = (h.hdg + 180) % 360; // reverse: look back at green from green side
+      const gh = await groundHeight(h.green.lon, h.green.lat, 8);
+
+      await new Promise(resolve => {
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(h.green.lon, h.green.lat, gh + 60),
+          orientation: {
+            heading: Cesium.Math.toRadians(approachHdg),
+            pitch:   Cesium.Math.toRadians(-20),
+            roll: 0,
+          },
+          duration: animate ? 2.5 : 0.8,
+          easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
+          complete: resolve, cancel: resolve,
+        });
+      });
+
+      const gh2 = await groundHeight(h.green.lon, h.green.lat, 8);
+      await new Promise(resolve => {
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(h.green.lon, h.green.lat, gh2 + 2),
+          orientation: {
+            heading: Cesium.Math.toRadians(approachHdg),
+            pitch:   Cesium.Math.toRadians(-5),
+            roll: 0,
+          },
+          duration: 1.8,
+          easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
+          complete: resolve, cancel: resolve,
+        });
+      });
+    }
+
+  } finally {
+    flying = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Select hole
+// ─────────────────────────────────────────────────────────────────────────────
+function selectHole(idx, animate = true) {
+  curIdx = ((idx % 18) + 18) % 18;
+  updateHUD(HOLES[curIdx]);
+  status(`Hole ${HOLES[curIdx].n} — ${HOLES[curIdx].name}`);
+  cameraForHole(HOLES[curIdx], animate);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Keyboard navigation
+// ─────────────────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') selectHole(curIdx + 1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   selectHole(curIdx - 1);
+  if (e.key >= '1' && e.key <= '9') selectHole(+e.key - 1);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flythrough
+// ─────────────────────────────────────────────────────────────────────────────
+const EYE_H = 2.2; // metres above clamped terrain surface
+let ftActive    = false;
+let ftWaypoints = [];
+let ftStart     = 0;
+let ftDuration  = 40;
+
+async function startFlythrough() {
+  if (ftActive) { stopFlythrough(); return; }
+  const h = HOLES[curIdx];
+
+  // Cancel any pending camera move
+  flying = false;
+  viewer.camera.cancelFlight();
+  ftActive = true;
+
+  document.getElementById('btnFly').textContent = '⏹ Stop';
+  document.querySelectorAll('#btnTee,#btnAir,#btnGrn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btnFly').classList.add('active');
+  document.getElementById('ftOverlay').classList.add('on');
+
+  // ~9 s per 100 yards — feels like slow drone / walking pace
+  ftDuration = Math.max(25, Math.round(h.yds * 0.09));
+
+  // 32 waypoints along tee → green straight line
+  const N = 32;
+  ftWaypoints = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    ftWaypoints.push({
+      lat: h.tee.lat + t * (h.green.lat - h.tee.lat),
+      lon: h.tee.lon + t * (h.green.lon - h.tee.lon),
+      h: null, refined: false
+    });
+  }
+
+  // Sample tee + green heights; fill rest with linear interpolation as fallback
+  status('Sampling terrain heights…');
+  const [teeH, greenH] = await Promise.all([
+    groundHeight(h.tee.lon, h.tee.lat, 15),
+    groundHeight(h.green.lon, h.green.lat, 15),
+  ]);
+  ftWaypoints.forEach((wp, i) => {
+    wp.h = teeH + (i / N) * (greenH - teeH) + EYE_H;
+  });
+
+  // Snap camera to tee at eye level, facing down the fairway
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(h.tee.lon, h.tee.lat, teeH + EYE_H),
+    orientation: { heading: Cesium.Math.toRadians(h.hdg), pitch: Cesium.Math.toRadians(-6), roll: 0 }
+  });
+
+  document.getElementById('ftLbl').textContent = `H${h.n} — ${h.name}  (${ftDuration}s)`;
+  ftStart = performance.now();
+
+  // Background: bulk-sample all waypoints once tiles settle (tiles need a moment to load)
+  setTimeout(() => bulkSampleHeights(), 1800);
+}
+
+async function bulkSampleHeights() {
+  if (!ftActive) return;
+  try {
+    if (!viewer.scene.globe.show) {
+      // Google Photorealistic 3D Tiles
+      const above = ftWaypoints.map(wp => Cesium.Cartesian3.fromDegrees(wp.lon, wp.lat, 400));
+      const clamped = await viewer.scene.clampToHeightMostDetailed(above);
+      clamped.forEach((c, i) => {
+        if (c) {
+          const cart = Cesium.Cartographic.fromCartesian(c);
+          if (isFinite(cart.height) && cart.height > -100) ftWaypoints[i].h = cart.height + EYE_H;
+        }
+      });
+    } else {
+      // Cesium World Terrain
+      const cartos = ftWaypoints.map(wp => Cesium.Cartographic.fromDegrees(wp.lon, wp.lat));
+      const res = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, cartos);
+      res.forEach((r, i) => { if (r && isFinite(r.height)) ftWaypoints[i].h = r.height + EYE_H; });
+    }
+  } catch(e) { /* keep linear interpolation fallback */ }
+  // Re-run once more 7 s later — tiles further down the fairway will have loaded by then
+  setTimeout(() => bulkSampleHeights(), 7000);
+}
+
+function stopFlythrough() {
+  ftActive = false;
+  document.getElementById('btnFly').textContent = '🎬 Flythrough';
+  document.getElementById('btnFly').classList.remove('active');
+  document.getElementById('ftOverlay').classList.remove('on');
+  document.getElementById('ftFill').style.width = '0%';
+  status(`Hole ${HOLES[curIdx].n} — ${HOLES[curIdx].name}`);
+}
+
+function initFlythroughListener() {
+  viewer.scene.postUpdate.addEventListener(function () {
+    if (!ftActive || ftWaypoints.length < 2) return;
+
+    const elapsed = (performance.now() - ftStart) / 1000;
+    const t = Math.min(elapsed / ftDuration, 1.0);
+
+    if (t >= 1.0) { stopFlythrough(); return; }
+
+    // Progress bar
+    document.getElementById('ftFill').style.width = (t * 100) + '%';
+
+    const N   = ftWaypoints.length - 1;
+    const raw = t * N;
+    const seg = Math.min(Math.floor(raw), N - 1);
+    const st  = raw - seg;
+
+    const wp0 = ftWaypoints[seg];
+    const wp1 = ftWaypoints[Math.min(seg + 1, N)];
+
+    // Current position
+    const lat = wp0.lat + st * (wp1.lat - wp0.lat);
+    const lon = wp0.lon + st * (wp1.lon - wp0.lon);
+    const hh  = wp0.h   + st * (wp1.h   - wp0.h);
+
+    // Look 5% ahead for smooth, stable heading
+    const lookRaw = Math.min((t + 0.05) * N, N);
+    const ls      = Math.min(Math.floor(lookRaw), N - 1);
+    const lw0     = ftWaypoints[ls];
+    const lw1     = ftWaypoints[Math.min(ls + 1, N)];
+    const llt     = lookRaw - ls;
+    const lookLat = lw0.lat + llt * (lw1.lat - lw0.lat);
+    const lookLon = lw0.lon + llt * (lw1.lon - lw0.lon);
+
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(lon, lat, hh),
+      orientation: {
+        heading: Cesium.Math.toRadians(bearing(lat, lon, lookLat, lookLon)),
+        pitch:   Cesium.Math.toRadians(-5),
+        roll: 0
+      }
+    });
+
+    // Rolling prefetch: resample heights 8 waypoints ahead as tiles stream in
+    const pf = Math.min(seg + 8, N);
+    if (!ftWaypoints[pf].refined) {
+      ftWaypoints[pf].refined = true;
+      const fwp = ftWaypoints[pf];
+      groundHeight(fwp.lon, fwp.lat, fwp.h - EYE_H).then(gh => {
+        if (ftActive) fwp.h = gh + EYE_H;
+      });
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Course overlay — uses GroundPrimitive so fills drape on Google 3D tiles
+// ─────────────────────────────────────────────────────────────────────────────
+let courseMapData = null, overlayPrims = [], overlayOn = true;
+
+async function loadCourseMap() {
+  try {
+    const r = await fetch('./pebble_beach_map.json');
+    courseMapData = await r.json();
+    console.log(`Course map loaded: ${courseMapData.holes.length} holes`);
+  } catch(e) { console.warn('pebble_beach_map.json not found:', e.message); }
+}
+
+function buildCourseOverlay() {
+  if (!courseMapData || !viewer) return;
+  for (const p of overlayPrims) viewer.scene.primitives.remove(p);
+  overlayPrims = [];
+
+  function pos(ring) {
+    return Cesium.Cartesian3.fromDegreesArray(ring.flatMap(([la, lo]) => [lo, la]));
+  }
+
+  // Batch all rings of one type into a single GroundPrimitive
+  function addFills(rings, color) {
+    if (!rings.length) return;
+    const instances = rings.map(ring => new Cesium.GeometryInstance({
+      geometry: new Cesium.PolygonGeometry({
+        polygonHierarchy: new Cesium.PolygonHierarchy(pos(ring)),
+        arcType: Cesium.ArcType.GEODESIC,
+      }),
+      attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+    }));
+    const prim = viewer.scene.primitives.add(new Cesium.GroundPrimitive({
+      geometryInstances: instances,
+      appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
+      classificationType: Cesium.ClassificationType.CESIUM_3D_TILE,
+      show: overlayOn,
+    }));
+    overlayPrims.push(prim);
+  }
+
+  // Batch polyline outlines into a single GroundPolylinePrimitive
+  function addLines(segs, color, width) {
+    if (!segs.length) return;
+    const instances = segs.map(seg => new Cesium.GeometryInstance({
+      geometry: new Cesium.GroundPolylineGeometry({ positions: pos(seg), width }),
+      attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+    }));
+    const prim = viewer.scene.primitives.add(new Cesium.GroundPolylinePrimitive({
+      geometryInstances: instances,
+      appearance: new Cesium.PolylineColorAppearance(),
+      classificationType: Cesium.ClassificationType.CESIUM_3D_TILE,
+      show: overlayOn,
+    }));
+    overlayPrims.push(prim);
+  }
+
+  const fairways=[], greens=[], greenOutlines=[], tees=[], bunkers=[], waters=[], woods=[];
+  for (const hole of courseMapData.holes) {
+    if (hole.fairwayPolygon) fairways.push(hole.fairwayPolygon);
+    if (hole.greenPolygon)   { greens.push(hole.greenPolygon); greenOutlines.push([...hole.greenPolygon, hole.greenPolygon[0]]); }
+    if (hole.teePolygon)     tees.push(hole.teePolygon);
+    for (const b of hole.bunkers) bunkers.push(b.polygon);
+    for (const w of hole.waterHazards) if (w.length >= 3) waters.push(w);
+  }
+  for (const wood of courseMapData.woodlands || []) if (wood.length >= 3) woods.push(wood);
+
+  addFills(fairways, new Cesium.Color(0.13, 0.55, 0.13, 0.40));
+  addFills(greens,   new Cesium.Color(0.16, 0.86, 0.31, 0.55));
+  addFills(tees,     new Cesium.Color(0.74, 1.00, 0.74, 0.40));
+  addFills(bunkers,  new Cesium.Color(0.94, 0.82, 0.51, 0.60));
+  addFills(waters,   new Cesium.Color(0.12, 0.39, 0.90, 0.55));
+  addFills(woods,    new Cesium.Color(0.08, 0.31, 0.08, 0.35));
+
+  addLines(greenOutlines,                              new Cesium.Color(1, 1, 1, 0.85),   2.5);
+  addLines(fairways.map(r=>[...r, r[0]]),              new Cesium.Color(0.27, 0.82, 0.35, 0.60), 1.5);
+  addLines(courseMapData.cartPaths.filter(s=>s.length>=2), new Cesium.Color(0.84, 0.84, 0.76, 0.65), 1.5);
+
+  console.log(`Overlay built: ${overlayPrims.length} primitives`);
+}
+
+// ── DeepForest tree dots ───────────────────────────────────────────────────────
+let treeEntities = [], treesOn = false;
+
+function toggleTrees() {
+  if (treesOn) {
+    for (const e of treeEntities) viewer.entities.remove(e);
+    treeEntities = [];
+    treesOn = false;
+    document.getElementById('btnTree').classList.remove('active');
+    return;
+  }
+
+  const trees = courseMapData?.trees;
+  if (!trees?.length) { console.warn('No tree data loaded'); return; }
+
+  for (const t of trees) {
+    const lat = t.lat ?? t[0];
+    const lng = t.lng ?? t[1];
+    if (lat == null || lng == null) continue;
+    const e = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lng, lat, 80),
+      point: {
+        pixelSize: 7,
+        color: Cesium.Color.fromCssColorString('rgba(60,230,90,0.92)'),
+        outlineColor: Cesium.Color.fromCssColorString('rgba(10,80,10,0.85)'),
+        outlineWidth: 1.5,
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    });
+    treeEntities.push(e);
+  }
+
+  treesOn = true;
+  document.getElementById('btnTree').classList.add('active');
+
+  // Compute boundary centroid for overhead aim
+  const bnd = courseMapData.boundary || [];
+  const cLat = bnd.length ? bnd.reduce((s,p)=>s+p[0],0)/bnd.length : 36.5645;
+  const cLng = bnd.length ? bnd.reduce((s,p)=>s+p[1],0)/bnd.length : -121.9425;
+
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(cLng, cLat, 550),
+    orientation: { heading: Cesium.Math.toRadians(0), pitch: Cesium.Math.toRadians(-82), roll: 0 },
+    duration: 2.5,
+  });
+}
+
+// ── 1m² density grid ──────────────────────────────────────────────────────────
+let densityPrim = null, densityOn = false, densityBuilt = false, densityCount = 0;
+let oLatCache = 36.5635, oLngCache = -121.9425;
+
+// Returns flat [lng, lat, lng, lat, …] for all 1m grid points inside boundary,
+// plus projection constants needed by the height interpolator.
+function buildDensityGrid() {
+  const bnd = courseMapData?.boundary;
+  if (!bnd?.length) return { flat: [], oLat: 0, oLng: 0, M: 0, cosLat: 0 };
+
+  const oLat = bnd.reduce((s, p) => s + p[0], 0) / bnd.length;
+  const oLng = bnd.reduce((s, p) => s + p[1], 0) / bnd.length;
+  const M = 111320;
+  const cosLat = Math.cos(oLat * Math.PI / 180);
+
+  const poly = bnd.map(([lat, lng]) => [(lng - oLng) * cosLat * M, (lat - oLat) * M]);
+  const n = poly.length;
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of poly) {
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+  }
+
+  const flat = [];
+  for (let y = Math.ceil(minY); y <= Math.floor(maxY); y++) {
+    const xs = [];
+    let j = n - 1;
+    for (let i = 0; i < n; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi <= y && yj > y) || (yj <= y && yi > y))
+        xs.push(xj + (y - yj) / (yi - yj) * (xi - xj));
+    }
+    xs.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      for (let x = Math.ceil(xs[k]); x <= Math.floor(xs[k + 1]); x++) {
+        flat.push(oLng + x / (cosLat * M), oLat + y / M);
+      }
+    }
+  }
+  return { flat, oLat, oLng, M, cosLat };
+}
+
+// Samples 3D-tile surface heights at a coarse grid using clampToHeightMostDetailed,
+// returns a Map keyed by "cx,cy" → height where cx/cy are cells at STEP_M spacing.
+async function sampleCoarseHeights(flat, oLat, oLng, M, cosLat, STEP_M, btn) {
+  // Collect one representative lng/lat per STEP_M cell
+  const cells = new Map(); // "cx,cy" → {lng, lat}
+  for (let i = 0; i < flat.length; i += 2) {
+    const lng = flat[i], lat = flat[i + 1];
+    const cx = Math.round((lng - oLng) * cosLat * M / STEP_M);
+    const cy = Math.round((lat - oLat) * M / STEP_M);
+    const key = `${cx},${cy}`;
+    if (!cells.has(key)) cells.set(key, { lng, lat, cx, cy });
+  }
+
+  const entries = [...cells.values()];
+  const BATCH = 50;
+  const heights = new Map(); // "cx,cy" → height
+
+  for (let b = 0; b < entries.length; b += BATCH) {
+    const slice = entries.slice(b, b + BATCH);
+    // Cast ray from 800m above each point down onto the 3D tile surface
+    const above = slice.map(e => Cesium.Cartesian3.fromDegrees(e.lng, e.lat, 800));
+    let clamped;
+    try { clamped = await viewer.scene.clampToHeightMostDetailed(above); }
+    catch (_) { clamped = new Array(slice.length).fill(null); }
+
+    clamped.forEach((c, j) => {
+      const { cx, cy } = slice[j];
+      let h = 0;
+      if (c) {
+        const cart = Cesium.Cartographic.fromCartesian(c);
+        if (isFinite(cart.height) && cart.height > -200) h = cart.height;
+      }
+      heights.set(`${cx},${cy}`, h);
+    });
+
+    const pct = Math.round((b + slice.length) / entries.length * 100);
+    btn.textContent = `⏳ Heights ${pct}%…`;
+    await new Promise(r => setTimeout(r, 0)); // yield to renderer
+  }
+  return heights;
+}
+
+// Bilinear interpolation from the coarse height map
+function interpHeight(lng, lat, oLat, oLng, M, cosLat, heights, STEP_M) {
+  const fx = (lng - oLng) * cosLat * M / STEP_M;
+  const fy = (lat - oLat) * M / STEP_M;
+  const cx = Math.floor(fx), cy = Math.floor(fy);
+  const dx = fx - cx, dy = fy - cy;
+  const h00 = heights.get(`${cx},${cy}`)     ?? 0;
+  const h10 = heights.get(`${cx+1},${cy}`)   ?? h00;
+  const h01 = heights.get(`${cx},${cy+1}`)   ?? h00;
+  const h11 = heights.get(`${cx+1},${cy+1}`) ?? h00;
+  return h00*(1-dx)*(1-dy) + h10*dx*(1-dy) + h01*(1-dx)*dy + h11*dx*dy;
+}
+
+async function toggleDensityGrid() {
+  const btn = document.getElementById('btnGrid');
+
+  if (densityOn) {
+    densityPrim.show = false; densityOn = false;
+    btn.classList.remove('active');
+    btn.textContent = `⊞ ${densityCount.toLocaleString()} pts`;
+    return;
+  }
+  if (densityBuilt && densityPrim) {
+    densityPrim.show = true; densityOn = true;
+    btn.classList.add('active');
+    btn.textContent = `⊞ ${densityCount.toLocaleString()} pts`;
+    return;
+  }
+
+  // ── First build ────────────────────────────────────────────────────────────
+  const bnd = courseMapData?.boundary || [];
+  if (!bnd.length) return;
+  oLatCache = bnd.reduce((s, p) => s + p[0], 0) / bnd.length;
+  oLngCache = bnd.reduce((s, p) => s + p[1], 0) / bnd.length;
+
+  // Fly overhead first so tiles are visible and loadable
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(oLngCache, oLatCache, 2200),
+    orientation: { heading: Cesium.Math.toRadians(340), pitch: Cesium.Math.toRadians(-55), roll: 0 },
+    duration: 1.5,
+  });
+
+  btn.textContent = '⏳ Scanning grid…';
+  await new Promise(r => setTimeout(r, 200));
+
+  // Step 1: build 1m scanline grid
+  const { flat, oLat, oLng, M, cosLat } = buildDensityGrid();
+  densityCount = flat.length / 2;
+
+  // Step 2: sample coarse 20m height grid from Google 3D tiles
+  const STEP_M = 20;
+  const heights = await sampleCoarseHeights(flat, oLat, oLng, M, cosLat, STEP_M, btn);
+
+  // Step 3: build PointPrimitiveCollection with interpolated heights
+  btn.textContent = '⏳ Placing pts…';
+  await new Promise(r => setTimeout(r, 0));
+
+  densityPrim = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
+  const color = new Cesium.Color(1.0, 0.28, 0.28, 0.80);
+
+  // Batch Cartesian3 conversion for speed
+  const posArr = new Float64Array(flat.length / 2 * 3);
+  for (let i = 0, j = 0; i < flat.length; i += 2, j += 3) {
+    posArr[j]     = flat[i];          // lng
+    posArr[j + 1] = flat[i + 1];     // lat
+    posArr[j + 2] = interpHeight(flat[i], flat[i + 1], oLat, oLng, M, cosLat, heights, STEP_M) + 0.25;
+  }
+  const cartesians = Cesium.Cartesian3.fromDegreesArrayHeights(Array.from(posArr));
+  for (let k = 0; k < cartesians.length; k++) {
+    densityPrim.add({ position: cartesians[k], pixelSize: 2, color });
+  }
+
+  densityBuilt = true; densityOn = true;
+  btn.classList.add('active');
+  btn.textContent = `⊞ ${densityCount.toLocaleString()} pts`;
+}
+
+// ── OSM course boundary ────────────────────────────────────────────────────────
+let boundaryPrim = null, boundaryOn = false;
+
+function toggleBoundary() {
+  if (!courseMapData) return;
+
+  if (boundaryPrim) {
+    viewer.scene.primitives.remove(boundaryPrim);
+    boundaryPrim = null;
+    boundaryOn = false;
+    document.getElementById('btnBdr').classList.remove('active');
+    return;
+  }
+
+  const ring = courseMapData.boundary;
+  if (!ring || ring.length < 3) { console.warn('No boundary in map data'); return; }
+
+  // Close the ring
+  const closed = [...ring, ring[0]];
+  const positions = Cesium.Cartesian3.fromDegreesArray(closed.flatMap(([la, lo]) => [lo, la]));
+
+  boundaryPrim = viewer.scene.primitives.add(new Cesium.GroundPolylinePrimitive({
+    geometryInstances: new Cesium.GeometryInstance({
+      geometry: new Cesium.GroundPolylineGeometry({ positions, width: 4 }),
+      attributes: {
+        color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+          new Cesium.Color(0.35, 1.0, 0.45, 0.95)
+        ),
+      },
+    }),
+    appearance: new Cesium.PolylineColorAppearance(),
+    classificationType: Cesium.ClassificationType.CESIUM_3D_TILE,
+  }));
+
+  boundaryOn = true;
+  document.getElementById('btnBdr').classList.add('active');
+
+  // Fly out to see the whole course
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(-121.9425, 36.5635, 2200),
+    orientation: { heading: Cesium.Math.toRadians(340), pitch: Cesium.Math.toRadians(-50), roll: 0 },
+    duration: 2.5,
+  });
+}
+
+function toggleOverlay() {
+  overlayOn = !overlayOn;
+  for (const p of overlayPrims) p.show = overlayOn;
+  const btn = document.getElementById('btnMap');
+  btn.textContent = overlayOn ? '🗺 Map On' : '🗺 Map Off';
+  btn.style.background    = overlayOn ? 'rgba(58,145,80,0.18)' : 'transparent';
+  btn.style.borderColor   = overlayOn ? 'rgba(90,186,110,0.45)' : 'rgba(255,255,255,0.07)';
+  btn.style.color         = overlayOn ? 'var(--lime)' : 'rgba(190,215,190,0.45)';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main init
+// ─────────────────────────────────────────────────────────────────────────────
+async function init() {
+  if (cKey) Cesium.Ion.defaultAccessToken = cKey;
+
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    baseLayer:             false,
+    terrainProvider:       new Cesium.EllipsoidTerrainProvider(),
+    animation:             false,
+    baseLayerPicker:       false,
+    fullscreenButton:      false,
+    vrButton:              false,
+    geocoder:              false,
+    homeButton:            false,
+    infoBox:               false,
+    sceneModePicker:       false,
+    selectionIndicator:    false,
+    timeline:              false,
+    navigationHelpButton:  false,
+    projectionPicker:      false,
+    creditContainer:       document.createElement('div'),
+  });
+
+  initFlythroughListener();
+  viewer.scene.globe.enableLighting       = true;
+  viewer.scene.skyAtmosphere.show         = true;
+  viewer.scene.fog.enabled                = true;
+  viewer.scene.fog.density                = 0.00012;
+  viewer.scene.globe.showGroundAtmosphere = true;
+  viewer.scene.globe.atmosphereLightIntensity = 14;
+
+  // ── Google Photorealistic 3D Tiles (preferred) ──
+  if (gKey) {
+    status('Loading Google Photorealistic 3D Tiles...');
+    try {
+      const tiles = await Cesium.Cesium3DTileset.fromUrl(
+        `https://tile.googleapis.com/v1/3dtiles/root.json?key=${gKey}`,
+        { showCreditsOnScreen: true, maximumScreenSpaceError: 2 }
+      );
+      viewer.scene.primitives.add(tiles);
+      viewer.scene.globe.show = false;
+      status('Google Photorealistic 3D — Hole 1 loading');
+    } catch (e) {
+      console.warn('Google tiles error:', e.message);
+      status('Google key error — falling back');
+    }
+  }
+
+  // ── Cesium World Terrain + Bing fallback ──
+  if (cKey && viewer.scene.globe.show !== false) {
+    status('Loading Cesium World Terrain...');
+    try {
+      viewer.terrainProvider = await Cesium.createWorldTerrainAsync({
+        requestWaterMask: true, requestVertexNormals: true,
+      });
+      viewer.imageryLayers.removeAll();
+      viewer.imageryLayers.addImageryProvider(
+        await Cesium.IonImageryProvider.fromAssetId(2)
+      );
+      status('World Terrain + Bing Aerial active');
+    } catch (e) {
+      status('Cesium token error');
+    }
+  }
+
+  // ── ArcGIS satellite fallback ──
+  if (!gKey && viewer.imageryLayers.length === 0) {
+    try {
+      viewer.imageryLayers.addImageryProvider(
+        await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+          'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
+        )
+      );
+    } catch(e) {
+      viewer.imageryLayers.addImageryProvider(
+        new Cesium.ArcGisMapServerImageryProvider({
+          url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
+        })
+      );
+    }
+    status('ArcGIS satellite — add API keys for 3D terrain');
+  }
+
+  // ── Initial position: zoomed out over Pebble Beach ──
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(-121.9455, 36.5645, 1800),
+    orientation: { heading: Cesium.Math.toRadians(340), pitch: Cesium.Math.toRadians(-45), roll: 0 },
+  });
+
+  // ── Course overlay ──
+  await loadCourseMap();
+  buildCourseOverlay();
+
+  // ── Dismiss loader ──
+  let dismissed = false;
+  function dismiss() {
+    if (dismissed) return;
+    dismissed = true;
+    document.getElementById('loader').classList.add('gone');
+    // Start on hole 1
+    selectHole(0, true);
+  }
+  viewer.scene.globe.tileLoadProgressEvent.addEventListener(q => { if (q === 0) dismiss(); });
+  setTimeout(dismiss, 8000);
+}
+
+init().catch(e => {
+  console.error(e);
+  status('Error: ' + e.message);
+  document.getElementById('loader').classList.add('gone');
+});
+
+// ── Hole 7 Capture Tool ───────────────────────────────────────────────────────
+const CAP_WAIT_MS  = 3000;   // ms after camera move before capture
+const CAP_QUALITY  = 0.90;   // JPEG quality
+let   capRunning   = false;
+let   capCancel    = false;
+
+function openCapturePanel()  { document.getElementById('capturePanel').style.display = 'block'; }
+function closeCapturePanel() { document.getElementById('capturePanel').style.display = 'none'; }
+function cancelCapture()     { capCancel = true; }
+
+// ── Geo helpers ───────────────────────────────────────────────────────────────
+function _bearingDeg(lat1, lng1, lat2, lng2) {
+  const dL = (lng2 - lng1) * Math.PI / 180;
+  const f1 = lat1 * Math.PI / 180, f2 = lat2 * Math.PI / 180;
+  const y  = Math.sin(dL) * Math.cos(f2);
+  const x  = Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dL);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function _distM(lat1, lng1, lat2, lng2) {
+  const dy = (lat2 - lat1) * 111320;
+  const dx = (lng2 - lng1) * 111320 * Math.cos(lat1 * Math.PI / 180);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// Sample 3D-tile elevation at a point (reuses existing clampToHeightMostDetailed)
+async function _elevAt(lat, lng) {
+  try {
+    const above = [Cesium.Cartesian3.fromDegrees(lng, lat, 500)];
+    const res   = await viewer.scene.clampToHeightMostDetailed(above);
+    if (res[0]) {
+      const c = Cesium.Cartographic.fromCartesian(res[0]);
+      if (isFinite(c.height) && c.height > -200) return c.height;
+    }
+  } catch (_) {}
+  return 5; // coastal fallback
+}
+
+// ── Viewpoint generation for Hole 7 ──────────────────────────────────────────
+function generateH7Viewpoints() {
+  const h7  = courseMapData?.holes?.find(h => h.number === 7);
+  if (!h7) return [];
+
+  const pin = h7.greenCenter;    // {lat, lng}
+  const tee = h7.teeCenter;
+
+  const oLat = pin.lat, oLng = pin.lng;
+  const M = 111320, cL = Math.cos(oLat * Math.PI / 180);
+  const toXY  = (lat, lng) => [(lng - oLng) * cL * M, (lat - oLat) * M];
+  const toLL  = (x,  y)   => ({ lat: oLat + y / M, lng: oLng + x / (cL * M) });
+
+  // Course boundary PIP
+  const bnd  = (courseMapData.boundary || []).map(([la, lo]) => toXY(la, lo));
+  const inBnd = (lat, lng) => {
+    const [px, py] = toXY(lat, lng);
+    let inside = false;
+    for (let i = 0, j = bnd.length - 1; i < bnd.length; j = i++) {
+      const [xi, yi] = bnd[i], [xj, yj] = bnd[j];
+      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi)
+        inside = !inside;
+    }
+    return inside;
+  };
+
+  const vps = [], seen = new Set();
+  let idx = 0;
+
+  const add = (lat, lng, lie) => {
+    const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    if (seen.has(key) || !inBnd(lat, lng)) return;
+    seen.add(key);
+    const distYd  = _distM(lat, lng, pin.lat, pin.lng) * 1.09361;
+    const heading = _bearingDeg(lat, lng, pin.lat, pin.lng);
+    vps.push({
+      id: `h07_${String(idx++).padStart(4, '0')}`,
+      lat: +lat.toFixed(7), lng: +lng.toFixed(7),
+      lie, distYd: +distYd.toFixed(1), headingDeg: +heading.toFixed(1),
+    });
+  };
+
+  // 1. Tee cluster — 4×3 grid at 2m spacing around the tee centre
+  const [tx, ty] = toXY(tee.lat, tee.lng);
+  for (let dy = -3; dy <= 3; dy += 2)
+    for (let dx = -3; dx <= 3; dx += 2)
+      add(...Object.values(toLL(tx + dx, ty + dy)), 'tee');
+
+  // 2. Green surrounds — concentric rings outward from pin in 5m steps
+  for (let r = 5; r <= 55; r += 5) {
+    const steps = Math.max(8, Math.round(2 * Math.PI * r / 5));
+    for (let s = 0; s < steps; s++) {
+      const θ = (2 * Math.PI * s) / steps;
+      const { lat, lng } = toLL(Math.cos(θ) * r, Math.sin(θ) * r);
+      const lie = r <= 10 ? 'green' : r <= 18 ? 'fringe' : r <= 30 ? 'rough' : 'rough';
+      add(lat, lng, lie);
+    }
+  }
+
+  // 3. Bunker centres
+  for (const b of h7.bunkers || []) {
+    if (!b.polygon?.length) continue;
+    const bLat = b.polygon.reduce((s, p) => s + p[0], 0) / b.polygon.length;
+    const bLng = b.polygon.reduce((s, p) => s + p[1], 0) / b.polygon.length;
+    add(bLat, bLng, 'bunker');
+  }
+
+  return vps;
+}
+
+// ── Main capture loop ─────────────────────────────────────────────────────────
+async function startCapture() {
+  if (capRunning) return;
+  if (!courseMapData) { alert('Map data not loaded yet.'); return; }
+
+  capRunning = true; capCancel = false;
+  document.getElementById('capBtn').textContent = '⏳ Running…';
+  document.getElementById('capBtn').disabled    = true;
+
+  const h7  = courseMapData.holes.find(h => h.number === 7);
+  const pin = h7.greenCenter;
+
+  // Pre-sample pin elevation
+  document.getElementById('capStatus').textContent = 'Sampling pin elevation…';
+  const pinElev = await _elevAt(pin.lat, pin.lng);
+
+  const vps = generateH7Viewpoints();
+  document.getElementById('capCount').textContent = `0 / ${vps.length} viewpoints`;
+
+  const zip       = new JSZip();
+  const metaLines = [];
+  const preview   = document.getElementById('capPreview');
+  preview.style.display = 'block';
+
+  for (let i = 0; i < vps.length; i++) {
+    if (capCancel) break;
+
+    const vp = vps[i];
+    document.getElementById('capStatus').textContent =
+      `[${vp.lie}] ${vp.distYd.toFixed(0)} yd → pin | heading ${vp.headingDeg.toFixed(0)}°`;
+    document.getElementById('capFill').style.width = `${((i) / vps.length * 100).toFixed(1)}%`;
+    document.getElementById('capCount').textContent = `${i} / ${vps.length} viewpoints`;
+
+    // Get ground elevation at this viewpoint
+    const vpElev = await _elevAt(vp.lat, vp.lng);
+    const eyeH   = vpElev + 1.8;
+
+    // Compute pitch toward pin (look slightly down at the green)
+    const dh    = pinElev - eyeH;
+    const dHoriz = _distM(vp.lat, vp.lng, pin.lat, pin.lng);
+    const pitchDeg = Math.max(-25, Math.min(-2,
+      Math.atan2(dh, Math.max(dHoriz, 1)) * 180 / Math.PI - 2));
+
+    // Position camera
+    viewer.camera.setView({
+      destination: Cesium.Cartesian3.fromDegrees(vp.lng, vp.lat, eyeH),
+      orientation: {
+        heading: Cesium.Math.toRadians(vp.headingDeg),
+        pitch:   Cesium.Math.toRadians(pitchDeg),
+        roll:    0,
+      },
+    });
+
+    // Wait for tiles to stream in
+    await new Promise(r => setTimeout(r, CAP_WAIT_MS));
+    viewer.scene.render();
+    await new Promise(r => requestAnimationFrame(r));
+
+    // Capture
+    const dataURL = viewer.scene.canvas.toDataURL('image/jpeg', CAP_QUALITY);
+    const b64     = dataURL.split(',')[1];
+    zip.file(`${vp.id}.jpg`, b64, { base64: true });
+    preview.src = dataURL;
+
+    // Metadata record
+    metaLines.push(JSON.stringify({
+      ...vp,
+      elevationM:  +vpElev.toFixed(2),
+      pitchDeg:    +pitchDeg.toFixed(1),
+      pinLat:      pin.lat, pinLng: pin.lng,
+      file:        `${vp.id}.jpg`,
+      enhancedFile: null,
+    }));
+  }
+
+  // Bundle and trigger download
+  const captured = metaLines.length;
+  document.getElementById('capStatus').textContent = `Bundling ${captured} images…`;
+  zip.file('metadata.jsonl', metaLines.join('\n'));
+  zip.file('README.md', [
+    '# Pebble Beach — Hole 7 Capture',
+    `Captured: ${captured} viewpoints`,
+    'Each .jpg has a matching line in metadata.jsonl.',
+    '',
+    '## Fields',
+    'id, hole, lat, lng, lie, distYd, headingDeg, pitchDeg, elevationM,',
+    'pinLat, pinLng, file, enhancedFile',
+    '',
+    '## Enhancement',
+    'Run enhance_batch.py to upscale with Real-ESRGAN or similar.',
+    'Output files should be saved as {id}_ai.jpg and enhancedFile updated.',
+  ].join('\n'));
+
+  const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'hole7_pebble_capture.zip';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  document.getElementById('capFill').style.width = '100%';
+  document.getElementById('capStatus').textContent =
+    `✓ Done — ${captured} images downloaded as hole7_pebble_capture.zip`;
+  document.getElementById('capCount').textContent = `${captured} / ${vps.length} viewpoints`;
+  document.getElementById('capBtn').textContent = '▶ Start';
+  document.getElementById('capBtn').disabled    = false;
+  capRunning = false;
+}
+</script>
+</body>
+</html>

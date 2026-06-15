@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Golf Course Viewer</title>
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.121/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.121/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg:      #080d08;
+      --surface: rgba(10,16,10,0.82);
+      --border:  rgba(255,255,255,0.07);
+      --green:   #3a9150;
+      --lime:    #5cb870;
+      --text:    #e4ede4;
+      --muted:   rgba(190,215,190,0.45);
+      --radius:  10px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html,body { width:100%; height:100%; overflow:hidden; background:var(--bg);
+                font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif; }
+
+    #cesiumContainer { position:absolute; inset:0; }
+
+    /* suppress default Cesium chrome */
+    .cesium-widget-credits,
+    .cesium-credit-logoContainer,
+    .cesium-credit-expand-link { display:none !important; }
+
+    /* ── top bar ── */
+    #topBar {
+      position:absolute; top:0; left:0; right:0; height:52px;
+      background:var(--surface); backdrop-filter:blur(24px) saturate(1.4);
+      border-bottom:1px solid var(--border);
+      display:flex; align-items:center; gap:12px; padding:0 18px; z-index:100;
+    }
+    .logo { font-size:17px; font-weight:800; color:var(--lime); letter-spacing:-0.4px; white-space:nowrap; }
+    .vdiv { width:1px; height:22px; background:var(--border); flex-shrink:0; }
+    #courseNav { display:flex; gap:3px; overflow-x:auto; flex:1; }
+    #courseNav::-webkit-scrollbar { display:none; }
+    .cBtn {
+      background:transparent; border:1px solid transparent; color:var(--muted);
+      padding:5px 13px; border-radius:6px; cursor:pointer; font-size:12.5px; font-weight:500;
+      transition:all .15s; white-space:nowrap; flex-shrink:0;
+    }
+    .cBtn:hover { color:var(--text); background:rgba(255,255,255,0.04); }
+    .cBtn.active { color:var(--lime); border-color:rgba(92,184,112,0.35); background:rgba(58,145,80,0.1); }
+    .keysBtn {
+      background:transparent; border:1px solid var(--border); color:var(--muted);
+      padding:5px 11px; border-radius:6px; cursor:pointer; font-size:12px; white-space:nowrap;
+      transition:all .15s;
+    }
+    .keysBtn:hover { color:var(--text); border-color:rgba(255,255,255,0.18); }
+
+    /* ── info panel ── */
+    #infoPanel {
+      position:absolute; top:68px; right:14px; width:228px;
+      background:var(--surface); backdrop-filter:blur(24px) saturate(1.4);
+      border:1px solid var(--border); border-radius:var(--radius); padding:16px; z-index:100;
+    }
+    .pTitle   { font-size:14px; font-weight:700; color:var(--text); margin-bottom:2px; line-height:1.3; }
+    .pLoc     { font-size:11px; color:var(--muted); margin-bottom:13px; }
+    .statRow  { display:flex; justify-content:space-between; margin-bottom:5px; }
+    .sLabel   { font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; }
+    .sVal     { font-size:12px; font-weight:600; color:var(--text); }
+    .sep      { height:1px; background:var(--border); margin:12px 0; }
+    .windLabel{ font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; margin-bottom:9px; }
+    .windRow  { display:flex; align-items:center; gap:12px; }
+    .compass  { width:46px; height:46px; border:1px solid var(--border); border-radius:50%;
+                position:relative; flex-shrink:0; }
+    /* cardinal labels */
+    .compass::before { content:'N'; position:absolute; top:2px; left:50%; transform:translateX(-50%);
+                       font-size:8px; font-weight:700; color:rgba(92,184,112,0.7); }
+    .compass::after  { content:'S'; position:absolute; bottom:2px; left:50%; transform:translateX(-50%);
+                       font-size:8px; color:var(--muted); }
+    .needle {
+      position:absolute; top:50%; left:50%;
+      width:2px; height:16px;
+      background:linear-gradient(to bottom, var(--lime), rgba(92,184,112,0));
+      transform-origin:bottom center;
+      transform:translate(-50%, -100%) rotate(0deg);
+      transition:transform .5s ease; border-radius:1px;
+    }
+    .wSpeed   { font-size:22px; font-weight:700; color:var(--text); line-height:1; }
+    .wUnit    { font-size:10px; color:var(--muted); }
+    .wDir     { font-size:11px; color:var(--muted); margin-top:3px; }
+
+    /* ── bottom bar ── */
+    #bottomBar {
+      position:absolute; bottom:0; left:0; right:0; height:38px;
+      background:var(--surface); backdrop-filter:blur(24px);
+      border-top:1px solid var(--border);
+      display:flex; align-items:center; padding:0 18px; gap:10px; z-index:100;
+    }
+    .dot  { width:6px; height:6px; border-radius:50%; background:var(--green); flex-shrink:0; }
+    #statusText { font-size:11.5px; color:var(--muted); }
+    .hint { font-size:11px; color:rgba(255,255,255,0.18); margin-left:auto; }
+
+    /* ── token modal ── */
+    #modal {
+      display:none; position:absolute; inset:0;
+      background:rgba(0,0,0,0.72); backdrop-filter:blur(6px);
+      z-index:200; align-items:center; justify-content:center;
+    }
+    #modal.open { display:flex; }
+    .mBox {
+      background:#0c160c; border:1px solid var(--border); border-radius:16px;
+      padding:28px; width:430px; max-width:90vw;
+    }
+    .mBox h2 { font-size:17px; color:var(--text); margin-bottom:6px; font-weight:700; }
+    .mBox p  { font-size:12.5px; color:var(--muted); line-height:1.65; margin-bottom:18px; }
+    .mBox label { font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;
+                  display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+    .badge { font-size:9px; padding:2px 5px; border-radius:4px; font-weight:700; text-transform:uppercase; }
+    .b-best { background:rgba(92,184,112,.18); color:var(--lime); }
+    .b-good { background:rgba(100,160,255,.18); color:#7fb4ff; }
+    .mBox input {
+      width:100%; background:rgba(255,255,255,0.04); border:1px solid var(--border);
+      color:var(--text); padding:9px 12px; border-radius:7px; font-size:13px; outline:none; margin-bottom:12px;
+    }
+    .mBox input:focus { border-color:var(--green); }
+    .mBox input::placeholder { color:rgba(255,255,255,0.18); }
+    .mNote { font-size:11px; color:rgba(180,210,180,0.35); line-height:1.7; margin:10px 0 18px; }
+    .mNote a { color:rgba(92,184,112,0.6); text-decoration:none; }
+    .mNote a:hover { color:var(--lime); }
+    .btnRow { display:flex; gap:8px; }
+    .btn { flex:1; padding:9px; border-radius:7px; border:none;
+           font-size:13.5px; font-weight:600; cursor:pointer; transition:all .15s; }
+    .btn-p { background:var(--green); color:#fff; }
+    .btn-p:hover { background:var(--lime); }
+    .btn-s { background:rgba(255,255,255,0.05); color:var(--muted); border:1px solid var(--border); }
+    .btn-s:hover { color:var(--text); }
+
+    /* ── loader ── */
+    #loader {
+      position:absolute; inset:0; background:var(--bg);
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      z-index:300; transition:opacity .8s ease;
+    }
+    #loader.gone { opacity:0; pointer-events:none; }
+    .lTitle { font-size:28px; font-weight:800; color:var(--lime); letter-spacing:-1px; margin-bottom:20px; }
+    .lDots  { display:flex; gap:8px; }
+    .ld     { width:7px; height:7px; border-radius:50%; background:var(--green); }
+    .ld:nth-child(1){animation:pulse 1.3s 0.0s infinite}
+    .ld:nth-child(2){animation:pulse 1.3s 0.2s infinite}
+    .ld:nth-child(3){animation:pulse 1.3s 0.4s infinite}
+    @keyframes pulse{0%,100%{opacity:.2;transform:scale(.75)}50%{opacity:1;transform:scale(1)}}
+    .lSub  { font-size:12px; color:var(--muted); margin-top:14px; }
+
+    /* quality badge in bottom bar */
+    .qBadge {
+      font-size:10px; padding:2px 7px; border-radius:4px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.4px;
+    }
+    .qGoogle  { background:rgba(92,184,112,.15); color:var(--lime); }
+    .qCesium  { background:rgba(100,160,255,.15); color:#7fb4ff; }
+    .qArcGIS  { background:rgba(255,180,50,.1);  color:rgba(255,180,50,.7); }
+  </style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="lTitle">⛳ Golf Viewer</div>
+  <div class="lDots"><div class="ld"></div><div class="ld"></div><div class="ld"></div></div>
+  <div class="lSub" id="lStatus">Loading terrain...</div>
+</div>
+
+<div id="cesiumContainer"></div>
+
+<!-- top bar -->
+<div id="topBar">
+  <div class="logo">⛳ Golf Viewer</div>
+  <div class="vdiv"></div>
+  <div id="courseNav"></div>
+  <div class="vdiv"></div>
+  <button class="keysBtn" onclick="openModal()">🔑 API Keys</button>
+</div>
+
+<!-- info panel -->
+<div id="infoPanel">
+  <div class="pTitle" id="pTitle">Loading...</div>
+  <div class="pLoc"   id="pLoc"></div>
+  <div class="statRow"><span class="sLabel">Par</span>     <span class="sVal" id="pPar">—</span></div>
+  <div class="statRow"><span class="sLabel">Yardage</span> <span class="sVal" id="pYds">—</span></div>
+  <div class="statRow"><span class="sLabel">Holes</span>   <span class="sVal" id="pHoles">—</span></div>
+  <div class="sep"></div>
+  <div class="windLabel">Wind</div>
+  <div class="windRow">
+    <div class="compass"><div class="needle" id="needle"></div></div>
+    <div>
+      <div class="wSpeed"><span id="wSpd">8</span> <span class="wUnit">mph</span></div>
+      <div class="wDir"  id="wDir">NW</div>
+    </div>
+  </div>
+</div>
+
+<!-- bottom bar -->
+<div id="bottomBar">
+  <div class="dot"></div>
+  <span id="statusText">Initializing...</span>
+  <span class="hint">Drag to orbit · Scroll to zoom · Right-drag to pan</span>
+</div>
+
+<!-- token modal -->
+<div id="modal">
+  <div class="mBox">
+    <h2>API Keys</h2>
+    <p>Both are free tiers — even one key unlocks dramatically better terrain and imagery.</p>
+
+    <label>Google Maps API Key <span class="badge b-best">Best — Photorealistic 3D</span></label>
+    <input id="gKey" type="text" placeholder="AIzaSy..." spellcheck="false">
+
+    <label>Cesium Ion Token <span class="badge b-good">Great — World Terrain + Bing</span></label>
+    <input id="cKey" type="text" placeholder="eyJhbGci..." spellcheck="false">
+
+    <div class="mNote">
+      Google: <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a>
+        → enable "Map Tiles API" → Credentials → Create Key<br>
+      Cesium: <a href="https://ion.cesium.com" target="_blank">ion.cesium.com</a>
+        → Access Tokens → Default Token (free tier)
+    </div>
+
+    <div class="btnRow">
+      <button class="btn btn-s" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-p" onclick="saveKeys()">Save &amp; Reload</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Courses ──────────────────────────────────────────────────────────────────
+const COURSES = [
+  {
+    id: 'pebble', name: 'Pebble Beach Golf Links', short: 'Pebble Beach',
+    loc: 'Pebble Beach, CA, USA',
+    lon: -121.9505, lat: 36.5685, alt: 650, heading: 325, pitch: -38,
+    par: 72, yds: '7,040', holes: 18,
+  },
+  {
+    id: 'augusta', name: 'Augusta National Golf Club', short: 'Augusta National',
+    loc: 'Augusta, GA, USA',
+    lon: -82.0219, lat: 33.5019, alt: 550, heading: 200, pitch: -36,
+    par: 72, yds: '7,510', holes: 18,
+  },
+  {
+    id: 'standrews', name: 'The Old Course — St Andrews', short: 'St Andrews',
+    loc: 'Fife, Scotland',
+    lon: -2.8019, lat: 56.3433, alt: 600, heading: 70, pitch: -35,
+    par: 72, yds: '7,305', holes: 18,
+  },
+  {
+    id: 'sawgrass', name: 'TPC Sawgrass (Stadium Course)', short: 'TPC Sawgrass',
+    loc: 'Ponte Vedra Beach, FL, USA',
+    lon: -81.3989, lat: 30.1974, alt: 400, heading: 255, pitch: -40,
+    par: 72, yds: '7,215', holes: 18,
+  },
+];
+
+// ── Key storage ───────────────────────────────────────────────────────────────
+const GKEY_LS = 'golf_gkey';
+const CKEY_LS = 'golf_ckey';
+const gKey  = () => localStorage.getItem(GKEY_LS) || '';
+const cKey  = () => localStorage.getItem(CKEY_LS) || '';
+
+function openModal() {
+  document.getElementById('gKey').value = gKey();
+  document.getElementById('cKey').value = cKey();
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function saveKeys() {
+  const g = document.getElementById('gKey').value.trim();
+  const c = document.getElementById('cKey').value.trim();
+  if (g) localStorage.setItem(GKEY_LS, g);
+  if (c) localStorage.setItem(CKEY_LS, c);
+  location.reload();
+}
+
+// ── Wind ──────────────────────────────────────────────────────────────────────
+let wAngle = Math.random() * 360, wMph = 6 + Math.random() * 12;
+const DIRS = ['N','NE','E','SE','S','SW','W','NW'];
+function tickWind() {
+  wAngle += (Math.random() - 0.5) * 10;
+  wMph = Math.max(2, Math.min(28, wMph + (Math.random() - 0.5) * 1.5));
+  document.getElementById('needle').style.transform =
+    `translate(-50%,-100%) rotate(${wAngle}deg)`;
+  document.getElementById('wSpd').textContent = Math.round(wMph);
+  document.getElementById('wDir').textContent  = DIRS[Math.round((wAngle % 360 + 360) / 45) % 8];
+}
+setInterval(tickWind, 2200);
+tickWind();
+
+// ── Course selection ──────────────────────────────────────────────────────────
+let viewer = null;
+
+const nav = document.getElementById('courseNav');
+COURSES.forEach((c, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'cBtn';
+  btn.textContent = c.short;
+  btn.addEventListener('click', () => pick(i));
+  nav.appendChild(btn);
+});
+
+function pick(i) {
+  const c = COURSES[i];
+  document.querySelectorAll('.cBtn').forEach((b, j) => b.classList.toggle('active', j === i));
+  document.getElementById('pTitle').textContent  = c.name;
+  document.getElementById('pLoc').textContent    = c.loc;
+  document.getElementById('pPar').textContent    = c.par;
+  document.getElementById('pYds').textContent    = c.yds + ' yds';
+  document.getElementById('pHoles').textContent  = c.holes;
+  if (viewer) flyTo(c);
+}
+
+function flyTo(c) {
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(c.lon, c.lat, c.alt),
+    orientation: {
+      heading: Cesium.Math.toRadians(c.heading),
+      pitch:   Cesium.Math.toRadians(c.pitch),
+      roll: 0,
+    },
+    duration: 3.5,
+    easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT,
+  });
+}
+
+// ── Status helpers ────────────────────────────────────────────────────────────
+function setStatus(msg, badgeHtml) {
+  document.getElementById('statusText').innerHTML = msg + (badgeHtml ? '&nbsp;&nbsp;' + badgeHtml : '');
+  document.getElementById('lStatus').textContent = msg;
+}
+
+// ── Main init ─────────────────────────────────────────────────────────────────
+async function init() {
+  const gk = gKey(), ck = cKey();
+
+  // Apply Cesium Ion token early if present
+  if (ck) Cesium.Ion.defaultAccessToken = ck;
+
+  // ── Build viewer ──
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    baseLayer:                false,   // we add imagery below
+    terrainProvider:          new Cesium.EllipsoidTerrainProvider(),
+    animation:                false,
+    baseLayerPicker:          false,
+    fullscreenButton:         false,
+    vrButton:                 false,
+    geocoder:                 false,
+    homeButton:               false,
+    infoBox:                  false,
+    sceneModePicker:          false,
+    selectionIndicator:       false,
+    timeline:                 false,
+    navigationHelpButton:     false,
+    projectionPicker:         false,
+    creditContainer:          document.createElement('div'), // discard credits div
+  });
+
+  // Scene atmosphere
+  viewer.scene.globe.enableLighting       = true;
+  viewer.scene.skyAtmosphere.show         = true;
+  viewer.scene.fog.enabled                = true;
+  viewer.scene.fog.density                = 0.00015;
+  viewer.scene.globe.showGroundAtmosphere = true;
+  viewer.scene.globe.atmosphereLightIntensity = 15;
+
+  // ── Imagery / terrain tiers ──────────────────────────────────────────────
+  let qualityBadge = '';
+
+  // TIER 1: Google Photorealistic 3D Tiles
+  if (gk) {
+    setStatus('Loading Google Photorealistic 3D Tiles...');
+    try {
+      const googleTiles = await Cesium.Cesium3DTileset.fromUrl(
+        `https://tile.googleapis.com/v1/3dtiles/root.json?key=${gk}`,
+        { showCreditsOnScreen: true, maximumScreenSpaceError: 8 }
+      );
+      viewer.scene.primitives.add(googleTiles);
+      viewer.scene.globe.show = false; // tiles supply their own terrain + texture
+      qualityBadge = '<span class="qBadge qGoogle">Google Photorealistic 3D</span>';
+      setStatus('Photorealistic 3D tiles active', qualityBadge);
+    } catch (e) {
+      console.warn('Google 3D Tiles error:', e.message);
+      setStatus('Google key error — falling back');
+    }
+  }
+
+  // TIER 2: Cesium World Terrain + Bing Aerial (if Google tiles not active)
+  if (ck && viewer.scene.globe.show !== false) {
+    setStatus('Loading Cesium World Terrain + Bing Aerial...');
+    try {
+      viewer.terrainProvider = await Cesium.createWorldTerrainAsync({
+        requestWaterMask:    true,
+        requestVertexNormals:true,
+      });
+      viewer.imageryLayers.removeAll();
+      viewer.imageryLayers.addImageryProvider(
+        await Cesium.IonImageryProvider.fromAssetId(2) // Bing Maps Aerial
+      );
+      qualityBadge = '<span class="qBadge qCesium">Cesium World Terrain + Bing</span>';
+      setStatus('World terrain + satellite imagery active', qualityBadge);
+    } catch (e) {
+      console.warn('Cesium Ion error:', e.message);
+      setStatus('Cesium token error — using ArcGIS fallback');
+    }
+  }
+
+  // TIER 3: ArcGIS World Imagery — free, no key, good satellite imagery
+  if (!gk && viewer.imageryLayers.length === 0) {
+    viewer.imageryLayers.removeAll();
+    try {
+      const arcgis = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+        'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
+      );
+      viewer.imageryLayers.addImageryProvider(arcgis);
+      qualityBadge = '<span class="qBadge qArcGIS">ArcGIS Satellite</span>';
+      setStatus('Satellite imagery active — add API keys for terrain depth', qualityBadge);
+    } catch(e) {
+      // absolute fallback
+      viewer.imageryLayers.addImageryProvider(
+        new Cesium.ArcGisMapServerImageryProvider({
+          url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
+        })
+      );
+      setStatus('Satellite imagery active');
+    }
+  }
+
+  // Show modal hint if no keys set
+  if (!gk && !ck) {
+    document.getElementById('statusText').insertAdjacentHTML('afterend',
+      ' &nbsp;<button class="keysBtn" style="font-size:11px;padding:3px 9px" onclick="openModal()">Add keys for realistic terrain →</button>'
+    );
+  }
+
+  // ── Select first course & fly there ──
+  pick(0);
+
+  // ── Dismiss loader ──
+  let dismissed = false;
+  function dismissLoader() {
+    if (dismissed) return;
+    dismissed = true;
+    document.getElementById('loader').classList.add('gone');
+  }
+  viewer.scene.globe.tileLoadProgressEvent.addEventListener(q => { if (q === 0) dismissLoader(); });
+  setTimeout(dismissLoader, 7000); // hard cap
+}
+
+init().catch(err => {
+  console.error(err);
+  setStatus('Error: ' + err.message);
+  document.getElementById('loader').classList.add('gone');
+});
+</script>
+</body>
+</html>

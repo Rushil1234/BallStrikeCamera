@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pebble Beach — Street View</title>
+  <style>
+    :root {
+      --bg:     #070d07;
+      --panel:  rgba(7,13,7,0.90);
+      --border: rgba(255,255,255,0.07);
+      --green:  #3a9150;
+      --lime:   #5aba6e;
+      --text:   #e2ece2;
+      --muted:  rgba(190,215,190,0.45);
+      --r:      8px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;}
+
+    /* Street View fills the screen */
+    #pano{position:absolute;inset:0;}
+
+    /* Hide Google's default UI chrome */
+    .gm-svpc,.gm-bundled-control,.gmnoprint,
+    .gm-style-cc, a[href*="maps.google"]{display:none!important;}
+
+    /* ── left hole list ── */
+    #holeList{
+      position:absolute;top:0;left:0;bottom:0;width:68px;
+      background:var(--panel);backdrop-filter:blur(20px);
+      border-right:1px solid var(--border);
+      display:flex;flex-direction:column;align-items:center;
+      padding:10px 0;gap:3px;overflow-y:auto;z-index:100;
+    }
+    #holeList::-webkit-scrollbar{display:none;}
+    .hBtn{
+      width:46px;height:46px;border-radius:var(--r);
+      background:transparent;border:1px solid transparent;
+      cursor:pointer;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:1px;
+      transition:all .15s;flex-shrink:0;
+    }
+    .hBtn:hover{background:rgba(255,255,255,0.05);border-color:var(--border);}
+    .hBtn.active{background:rgba(58,145,80,0.14);border-color:rgba(90,186,110,0.4);}
+    .hNum{font-size:17px;font-weight:700;color:var(--text);}
+    .hBtn.active .hNum{color:var(--lime);}
+    .hPar{font-size:9px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
+    .hBtn.active .hPar{color:rgba(90,186,110,0.7);}
+    .listDivider{width:30px;height:1px;background:var(--border);margin:3px 0;flex-shrink:0;}
+
+    /* ── top HUD ── */
+    #hud{
+      position:absolute;top:0;left:68px;right:0;height:56px;
+      background:var(--panel);backdrop-filter:blur(20px);
+      border-bottom:1px solid var(--border);
+      display:flex;align-items:center;padding:0 18px;gap:16px;z-index:100;
+    }
+    .hudH{font-size:24px;font-weight:800;color:var(--lime);letter-spacing:-1px;white-space:nowrap;}
+    .vdiv{width:1px;height:24px;background:var(--border);flex-shrink:0;}
+    .hudName{font-size:14px;font-weight:700;color:var(--text);}
+    .hudDesc{font-size:11px;color:var(--muted);margin-top:1px;}
+    .sp{flex:1;}
+    .hudYds{font-size:22px;font-weight:700;color:var(--text);}
+    .hudYdsLbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+    .parBadge{font-size:12px;font-weight:700;padding:3px 10px;border-radius:5px;border:1px solid;white-space:nowrap;}
+    .par3{color:#6eb4ff;border-color:rgba(110,180,255,.3);background:rgba(110,180,255,.08);}
+    .par4{color:var(--lime);border-color:rgba(90,186,110,.3);background:rgba(58,145,80,.08);}
+    .par5{color:#ffbd5a;border-color:rgba(255,189,90,.3);background:rgba(255,189,90,.07);}
+
+    /* ── view mode buttons ── */
+    #views{
+      position:absolute;top:68px;right:14px;
+      display:flex;flex-direction:column;gap:6px;z-index:100;
+    }
+    .vBtn{
+      background:var(--panel);backdrop-filter:blur(20px);
+      border:1px solid var(--border);border-radius:var(--r);
+      color:var(--muted);font-size:12px;padding:7px 12px;
+      cursor:pointer;transition:all .15s;white-space:nowrap;text-align:left;
+    }
+    .vBtn:hover{color:var(--text);border-color:rgba(255,255,255,0.15);}
+    .vBtn.active{color:var(--lime);border-color:rgba(90,186,110,.4);background:rgba(58,145,80,.1);}
+
+    /* ── bottom bar ── */
+    #bot{
+      position:absolute;bottom:0;left:68px;right:0;height:36px;
+      background:var(--panel);backdrop-filter:blur(20px);
+      border-top:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;
+      padding:0 16px;z-index:100;
+    }
+    .botL{display:flex;align-items:center;gap:8px;}
+    .dot{width:5px;height:5px;border-radius:50%;background:var(--green);}
+    #statusTxt{font-size:11px;color:var(--muted);}
+    .botR{font-size:11px;color:rgba(255,255,255,0.15);}
+
+    /* ── no coverage overlay ── */
+    #noCoverage{
+      display:none;position:absolute;inset:0;left:68px;top:56px;bottom:36px;
+      background:rgba(7,13,7,0.95);
+      align-items:center;justify-content:center;flex-direction:column;gap:12px;
+      z-index:50;
+    }
+    #noCoverage.show{display:flex;}
+    .ncIcon{font-size:48px;}
+    .ncTitle{font-size:16px;font-weight:700;color:var(--text);}
+    .ncSub{font-size:12px;color:var(--muted);text-align:center;max-width:300px;line-height:1.6;}
+
+    /* ── loader ── */
+    #loader{
+      position:absolute;inset:0;background:var(--bg);
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      z-index:300;transition:opacity .6s ease;
+    }
+    #loader.gone{opacity:0;pointer-events:none;}
+    .lTitle{font-size:24px;font-weight:800;color:var(--lime);letter-spacing:-.5px;margin-bottom:16px;}
+    .dots{display:flex;gap:7px;}
+    .d{width:7px;height:7px;border-radius:50%;background:var(--green);}
+    .d:nth-child(1){animation:p 1.2s .0s infinite}
+    .d:nth-child(2){animation:p 1.2s .2s infinite}
+    .d:nth-child(3){animation:p 1.2s .4s infinite}
+    @keyframes p{0%,100%{opacity:.2;transform:scale(.75)}50%{opacity:1;transform:scale(1)}}
+    .lSub{font-size:12px;color:var(--muted);margin-top:12px;}
+
+    /* ── setup panel (shown if no API key) ── */
+    #setup{
+      display:none;position:absolute;inset:0;
+      background:var(--bg);align-items:center;justify-content:center;z-index:400;
+    }
+    #setup.show{display:flex;}
+    .setupBox{background:#0c160c;border:1px solid var(--border);border-radius:14px;padding:32px;width:420px;}
+    .setupBox h2{font-size:18px;color:var(--text);margin-bottom:8px;}
+    .setupBox p{font-size:13px;color:var(--muted);line-height:1.65;margin-bottom:20px;}
+    .setupBox label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;}
+    .setupBox input{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);
+      color:var(--text);padding:9px 12px;border-radius:7px;font-size:13px;outline:none;margin-bottom:6px;}
+    .setupBox input:focus{border-color:var(--green);}
+    .setupBox input::placeholder{color:rgba(255,255,255,0.18);}
+    .setupNote{font-size:11px;color:rgba(180,210,180,0.35);line-height:1.7;margin:10px 0 18px;}
+    .setupNote a{color:rgba(90,186,110,0.6);text-decoration:none;}
+    .setupBtn{width:100%;padding:10px;border-radius:7px;border:none;background:var(--green);
+      color:#fff;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;}
+    .setupBtn:hover{background:var(--lime);}
+  </style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="lTitle">⛳ Pebble Beach Golf Links</div>
+  <div class="dots"><div class="d"></div><div class="d"></div><div class="d"></div></div>
+  <div class="lSub">Loading Street View...</div>
+</div>
+
+<div id="setup">
+  <div class="setupBox">
+    <h2>Google Maps API Key Required</h2>
+    <p>This viewer uses Google Street View — actual photographs of each hole. Enable the <strong>Maps JavaScript API</strong> in your Google Cloud project (same key as before).</p>
+    <label>Google Maps API Key</label>
+    <input id="keyInput" type="text" placeholder="AIzaSy..." spellcheck="false">
+    <div class="setupNote">
+      <a href="https://console.cloud.google.com" target="_blank">console.cloud.google.com</a> → APIs & Services → Enable APIs → search "Maps JavaScript API" → Enable<br>
+      Same project as your Map Tiles API key — likely the same key works.
+    </div>
+    <button class="setupBtn" onclick="saveKey()">Save & Load</button>
+  </div>
+</div>
+
+<!-- Street View fills everything -->
+<div id="pano"></div>
+
+<!-- no coverage fallback -->
+<div id="noCoverage">
+  <div class="ncIcon">📷</div>
+  <div class="ncTitle">No Street View coverage here</div>
+  <div class="ncSub">Google hasn't photographed this exact tee box. Try dragging to a nearby location, or use the Cesium 3D viewer for this hole.</div>
+</div>
+
+<!-- left hole list -->
+<div id="holeList"></div>
+
+<!-- top HUD -->
+<div id="hud">
+  <div class="hudH" id="hudH">H1</div>
+  <div class="vdiv"></div>
+  <div>
+    <div class="hudName" id="hudName">—</div>
+    <div class="hudDesc" id="hudDesc">Pebble Beach Golf Links</div>
+  </div>
+  <div class="sp"></div>
+  <div style="text-align:right">
+    <div class="hudYds" id="hudYds">—</div>
+    <div class="hudYdsLbl">Yards</div>
+  </div>
+  <div class="vdiv"></div>
+  <div id="parBadge" class="parBadge par4">Par 4</div>
+</div>
+
+<!-- view buttons -->
+<div id="views">
+  <button class="vBtn active" id="btnTee" onclick="setView('tee')">🏌️ Tee View</button>
+  <button class="vBtn"        id="btnFwy" onclick="setView('fairway')">🌿 Mid Fairway</button>
+  <button class="vBtn"        id="btnGrn" onclick="setView('green')">🏁 Green Approach</button>
+</div>
+
+<!-- bottom bar -->
+<div id="bot">
+  <div class="botL">
+    <div class="dot"></div>
+    <span id="statusTxt">Loading...</span>
+  </div>
+  <div class="botR">Drag to look · Scroll to zoom · ← → keys for holes</div>
+</div>
+
+<script>
+// ── Hole data from Supabase pro_hole_pois ─────────────────────────────────────
+// All coordinates from DB: course_id 141520658891108829 (Pebble Beach)
+const HOLES = [
+  { n:1,  par:4, yds:360,
+    tee:  {lat:36.5694064, lon:-121.9495065},
+    mid:  {lat:36.5699500, lon:-121.9478000},
+    green:{lat:36.5705957, lon:-121.9461360},
+    name: 'First Light',
+    desc: 'Uphill opener to the clifftop green' },
+
+  { n:2,  par:5, yds:502,
+    tee:  {lat:36.5703434, lon:-121.9471006},
+    mid:  {lat:36.5699400, lon:-121.9445000},
+    green:{lat:36.5695361, lon:-121.9419568},
+    name: 'The Long Way Home',
+    desc: 'Sweeping par 5 along the Del Monte Forest' },
+
+  { n:3,  par:4, yds:388,
+    tee:  {lat:36.5691802, lon:-121.9412614},
+    mid:  {lat:36.5683000, lon:-121.9429000},
+    green:{lat:36.5674560, lon:-121.9445025},
+    name: 'The Long One',
+    desc: 'Demanding par 4 with a narrow green complex' },
+
+  { n:4,  par:4, yds:327,
+    tee:  {lat:36.5673750, lon:-121.9439195},
+    mid:  {lat:36.5667600, lon:-121.9424000},
+    green:{lat:36.5661856, lon:-121.9408725},
+    name: 'Bomb & Gauge',
+    desc: 'Downhill par 4 as the ocean comes into view' },
+
+  { n:5,  par:3, yds:188,
+    tee:  {lat:36.5662451, lon:-121.9405788},
+    mid:  {lat:36.5656400, lon:-121.9399600},
+    green:{lat:36.5650410, lon:-121.9393316},
+    name: 'Five',
+    desc: 'Short par 3 with a sloping, deceptive green' },
+
+  { n:6,  par:5, yds:513,
+    tee:  {lat:36.5660652, lon:-121.9378858},
+    mid:  {lat:36.5641000, lon:-121.9389700},
+    green:{lat:36.5621649, lon:-121.9400159},
+    name: 'Cliff Hanger',
+    desc: 'Uphill par 5 — first full view of the Pacific' },
+
+  { n:7,  par:3, yds:109,
+    tee:  {lat:36.5622499, lon:-121.9405090},
+    mid:  {lat:36.5618000, lon:-121.9404400},
+    green:{lat:36.5613496, lon:-121.9403736},
+    name: "Pebble's Gem",
+    desc: 'The most iconic par 3 in golf — postage-stamp green above the cove' },
+
+  { n:8,  par:4, yds:418,
+    tee:  {lat:36.5613084, lon:-121.9401376},
+    mid:  {lat:36.5622000, lon:-121.9383400},
+    green:{lat:36.5630512, lon:-121.9365410},
+    name: 'The Cape',
+    desc: 'Dramatic cliffside tee shot over Stillwater Cove' },
+
+  { n:9,  par:4, yds:466,
+    tee:  {lat:36.5635296, lon:-121.9368237},
+    mid:  {lat:36.5620000, lon:-121.9349000},
+    green:{lat:36.5605030, lon:-121.9330578},
+    name: 'Fairway Nine',
+    desc: 'Long par 4 hugging the headland cliffs' },
+
+  { n:10, par:4, yds:446,
+    tee:  {lat:36.5616586, lon:-121.9333905},
+    mid:  {lat:36.5598000, lon:-121.9324000},
+    green:{lat:36.5579533, lon:-121.9314452},
+    name: 'The Turn',
+    desc: 'Back nine opens with a demanding downhill par 4' },
+
+  { n:11, par:4, yds:380,
+    tee:  {lat:36.5578602, lon:-121.9311173},
+    mid:  {lat:36.5593000, lon:-121.9303000},
+    green:{lat:36.5607557, lon:-121.9295522},
+    name: 'Eleven',
+    desc: 'Uphill par 4 to a well-guarded, elevated green' },
+
+  { n:12, par:3, yds:202,
+    tee:  {lat:36.5609863, lon:-121.9290077},
+    mid:  {lat:36.5612400, lon:-121.9300400},
+    green:{lat:36.5615036, lon:-121.9310677},
+    name: 'Twelve',
+    desc: 'Straightforward par 3 with the ocean in the background' },
+
+  { n:13, par:4, yds:392,
+    tee:  {lat:36.5610391, lon:-121.9310449},
+    mid:  {lat:36.5620500, lon:-121.9329000},
+    green:{lat:36.5630733, lon:-121.9347996},
+    name: 'Thirteen',
+    desc: 'Long par 4 back toward the coastline' },
+
+  { n:14, par:5, yds:565,
+    tee:  {lat:36.5630653, lon:-121.9352720},
+    mid:  {lat:36.5651000, lon:-121.9363000},
+    green:{lat:36.5671059, lon:-121.9373125},
+    name: 'Fourteen',
+    desc: 'Reachable par 5 through a Monterey cypress corridor' },
+
+  { n:15, par:4, yds:397,
+    tee:  {lat:36.5671100, lon:-121.9369685},
+    mid:  {lat:36.5681300, lon:-121.9385300},
+    green:{lat:36.5691552, lon:-121.9400933},
+    name: 'Fifteen',
+    desc: 'Uphill par 4 to a clifftop green with ocean views' },
+
+  { n:16, par:4, yds:400,
+    tee:  {lat:36.5696326, lon:-121.9399552},
+    mid:  {lat:36.5687300, lon:-121.9416000},
+    green:{lat:36.5678310, lon:-121.9432687},
+    name: 'Sixteen',
+    desc: 'Downhill par 4 back toward the Lodge' },
+
+  { n:17, par:3, yds:179,
+    tee:  {lat:36.5671337, lon:-121.9440871},
+    mid:  {lat:36.5664600, lon:-121.9445000},
+    green:{lat:36.5657924, lon:-121.9449169},
+    name: 'The Quarry',
+    desc: "Jack's 1-iron in '72 — most famous shot in major championship history" },
+
+  { n:18, par:5, yds:543,
+    tee:  {lat:36.5655406, lon:-121.9451694},
+    mid:  {lat:36.5666000, lon:-121.9474000},
+    green:{lat:36.5676012, lon:-121.9496363},
+    name: 'Final Challenge',
+    desc: 'Finishing hole along Stillwater Cove — the greatest closer in golf' },
+];
+
+// ── Bearing calculation ────────────────────────────────────────────────────────
+function bearing(lat1, lon1, lat2, lon2) {
+  const φ1 = lat1 * Math.PI/180, φ2 = lat2 * Math.PI/180;
+  const Δλ = (lon2-lon1) * Math.PI/180;
+  const y = Math.sin(Δλ)*Math.cos(φ2);
+  const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  return ((Math.atan2(y,x)*180/Math.PI)+360)%360;
+}
+// Pre-compute headings
+HOLES.forEach(h => {
+  h.hdg    = bearing(h.tee.lat, h.tee.lon, h.green.lat, h.green.lon);
+  h.midHdg = bearing(h.mid.lat, h.mid.lon, h.green.lat, h.green.lon);
+});
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let panorama  = null;
+let curIdx    = 0;
+let viewMode  = 'tee';
+const GKEY    = localStorage.getItem('golf_gkey') || '';
+
+// ── Key setup ─────────────────────────────────────────────────────────────────
+function saveKey() {
+  const k = document.getElementById('keyInput').value.trim();
+  if (!k) return;
+  localStorage.setItem('golf_gkey', k);
+  location.reload();
+}
+if (!GKEY) {
+  document.getElementById('setup').classList.add('show');
+  document.getElementById('loader').classList.add('gone');
+}
+
+// ── Build hole list ───────────────────────────────────────────────────────────
+const list = document.getElementById('holeList');
+HOLES.forEach((h, i) => {
+  if (i === 9) {
+    const div = document.createElement('div');
+    div.className = 'listDivider';
+    list.appendChild(div);
+  }
+  const btn = document.createElement('button');
+  btn.className = 'hBtn';
+  btn.id = `hb${i}`;
+  btn.innerHTML = `<span class="hNum">${h.n}</span><span class="hPar">P${h.par}</span>`;
+  btn.addEventListener('click', () => selectHole(i));
+  list.appendChild(btn);
+});
+
+// ── HUD update ────────────────────────────────────────────────────────────────
+function updateHUD(h) {
+  document.getElementById('hudH').textContent    = `H${h.n}`;
+  document.getElementById('hudName').textContent = h.name;
+  document.getElementById('hudDesc').textContent = h.desc;
+  document.getElementById('hudYds').textContent  = h.yds.toLocaleString();
+  const b = document.getElementById('parBadge');
+  b.textContent = `Par ${h.par}`;
+  b.className = `parBadge par${h.par}`;
+  document.querySelectorAll('.hBtn').forEach((btn,i) => btn.classList.toggle('active', i === curIdx));
+}
+
+function status(msg) { document.getElementById('statusTxt').textContent = msg; }
+
+// ── View mode ─────────────────────────────────────────────────────────────────
+function setView(mode) {
+  viewMode = mode;
+  ['tee','fairway','green'].forEach(m => {
+    document.getElementById('btn'+{tee:'Tee',fairway:'Fwy',green:'Grn'}[m])
+      .classList.toggle('active', m === mode);
+  });
+  applyView(HOLES[curIdx]);
+}
+
+function applyView(h) {
+  if (!panorama) return;
+  document.getElementById('noCoverage').classList.remove('show');
+
+  if (viewMode === 'tee') {
+    panorama.setPosition({lat: h.tee.lat, lng: h.tee.lon});
+    panorama.setPov({heading: h.hdg, pitch: -5});
+    status(`Hole ${h.n} — tee view`);
+  } else if (viewMode === 'fairway') {
+    panorama.setPosition({lat: h.mid.lat, lng: h.mid.lon});
+    panorama.setPov({heading: h.midHdg, pitch: -3});
+    status(`Hole ${h.n} — mid fairway`);
+  } else {
+    // Green approach: stand near green, look back toward tee
+    const backHdg = (h.hdg + 180) % 360;
+    panorama.setPosition({lat: h.green.lat, lng: h.green.lon});
+    panorama.setPov({heading: backHdg, pitch: -5});
+    status(`Hole ${h.n} — approach from green`);
+  }
+  panorama.setZoom(0);
+}
+
+// ── Hole selection ────────────────────────────────────────────────────────────
+function selectHole(idx) {
+  curIdx = ((idx % 18) + 18) % 18;
+  updateHUD(HOLES[curIdx]);
+  applyView(HOLES[curIdx]);
+}
+
+// ── Keyboard navigation ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') selectHole(curIdx + 1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   selectHole(curIdx - 1);
+  if (e.key >= '1' && e.key <= '9') selectHole(+e.key - 1);
+});
+
+// ── Init Street View ──────────────────────────────────────────────────────────
+function initMap() {
+  const h = HOLES[0];
+
+  panorama = new google.maps.StreetViewPanorama(
+    document.getElementById('pano'),
+    {
+      position:                    {lat: h.tee.lat, lng: h.tee.lon},
+      pov:                         {heading: h.hdg, pitch: -5},
+      zoom:                        0,
+      addressControl:              false,
+      showRoadLabels:              false,
+      fullscreenControl:           false,
+      motionTracking:              false,
+      motionTrackingControl:       false,
+      enableCloseButton:           false,
+      panControl:                  true,
+      panControlOptions:           {position: google.maps.ControlPosition.LEFT_CENTER},
+      zoomControl:                 true,
+      zoomControlOptions:          {position: google.maps.ControlPosition.LEFT_CENTER},
+      linksControl:                false,
+      imageDateControl:            false,
+      scrollwheel:                 true,
+    }
+  );
+
+  // Detect when Street View has no coverage at a location
+  panorama.addListener('status_changed', () => {
+    const st = panorama.getStatus();
+    const noC = document.getElementById('noCoverage');
+    if (st === google.maps.StreetViewStatus.ZERO_RESULTS) {
+      noC.classList.add('show');
+      status(`Hole ${HOLES[curIdx].n} — no Street View coverage nearby`);
+    } else {
+      noC.classList.remove('show');
+    }
+  });
+
+  // Dismiss loader once panorama renders
+  panorama.addListener('tiles_loaded', () => {
+    document.getElementById('loader').classList.add('gone');
+    status(`Hole 1 — ${HOLES[0].name} — tee view`);
+  });
+
+  updateHUD(h);
+  setTimeout(() => document.getElementById('loader').classList.add('gone'), 6000);
+}
+
+// ── Load Maps JS API ──────────────────────────────────────────────────────────
+if (GKEY) {
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${GKEY}&callback=initMap&v=weekly`;
+  s.async = true;
+  s.defer = true;
+  s.onerror = () => {
+    document.getElementById('loader').classList.add('gone');
+    document.getElementById('setup').classList.add('show');
+    document.getElementById('keyInput').placeholder = 'Key may be invalid or missing Maps JavaScript API permission';
+  };
+  document.head.appendChild(s);
+}
+</script>
+</body>
+</html>
