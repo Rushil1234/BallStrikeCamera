@@ -140,6 +140,7 @@ export default function HomePage() {
           <nav className="nav">
             <a className="l" href="#h03">What it does</a>
             <a className="l" href="/play">The Sim</a>
+            <a className="l" href="/bridge">Connect sim</a>
             <a className="l" href="/store">Store</a>
             <a className="l" href="#h07">Pricing</a>
             <a className="l btn" href="/login">Sign in</a>
@@ -329,6 +330,8 @@ export default function HomePage() {
                   <h4>Product</h4>
                   <a href="#h03">What it does</a>
                   <a href="/play">Play the sim</a>
+                  <a href="/bridge">Connect to GSPro / OGS</a>
+                  <a href="/connect">Check connection</a>
                   <a href="/store">Store</a>
                   <a href="#h07">Pricing</a>
                   <a href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get the app</a>
