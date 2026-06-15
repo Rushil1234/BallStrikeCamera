@@ -33,10 +33,15 @@ export class HUD {
       scorecard: $('scorecard'), scoreTable: $('score-table'),
       summary: $('summary'), summaryScore: $('summary-score'),
       summaryTable: $('summary-table'), btnAgain: $('btn-again'),
-      minimap: $('minimap'),
+      minimap: $('minimap'), mapToggle: $('map-toggle'), mapCaption: $('map-caption'),
     };
     this.mapCtx = this.el.minimap.getContext('2d');
     this.toastTimer = null;
+    this.mapMode = 'hole';
+    this.mapHoles = [];
+    this.mapWorld = null;
+    this.mapCurrentIdx = 0;
+    this.lastMapDraw = { ball: null, aimDir: null, pin: null };
   }
 
   show() { this.el.hud.classList.remove('hidden'); }
@@ -217,8 +222,35 @@ export class HUD {
 
   // ---------- minimap ----------
 
-  mapSetHole(hole) {
+  mapSetCourse(holes, world) {
+    this.mapHoles = holes || [];
+    this.mapWorld = world || null;
+    if (this.mapMode === 'all' && this.mapHoles.length <= 1) this.mapSetMode('hole');
+  }
+
+  mapSetMode(mode) {
+    this.mapMode = mode === 'all' && this.mapHoles.length > 1 ? 'all' : 'hole';
+    if (this.el.mapToggle) {
+      this.el.mapToggle.textContent = this.mapMode === 'all' ? 'HOLE' : 'ALL';
+      this.el.mapToggle.title = this.mapMode === 'all' ? 'View current hole (V)' : 'View all holes (V)';
+    }
+    if (this.el.mapCaption) {
+      this.el.mapCaption.textContent = this.mapMode === 'all'
+        ? 'ISLAND MAP'
+        : (this.mapHole?.id != null ? `HOLE ${this.mapHole.id} MAP` : 'HOLE MAP');
+    }
+    this.mapDraw(this.lastMapDraw.ball, this.lastMapDraw.aimDir, this.lastMapDraw.pin);
+  }
+
+  mapToggleMode() {
+    this.mapSetMode(this.mapMode === 'all' ? 'hole' : 'all');
+    return this.mapMode;
+  }
+
+  mapSetHole(hole, idx = 0) {
     this.mapHole = hole;
+    this.mapCurrentIdx = idx;
+    if (this.el.mapCaption && this.mapMode !== 'all') this.el.mapCaption.textContent = `HOLE ${hole.id ?? idx + 1} MAP`;
     const tee = hole.path[0];
     const green = hole.path[hole.path.length - 1];
     const dx = green.x - tee.x, dz = green.z - tee.z;
@@ -228,7 +260,7 @@ export class HUD {
 
     // gather extents in rotated frame
     const pts = [...hole.path];
-    for (const b of hole.bunkers) pts.push({ x: b.cx, z: b.cz });
+    for (const b of hole.bunkers || []) pts.push({ x: b.cx, z: b.cz });
     if (hole.green) pts.push({ x: hole.green.cx, z: hole.green.cz });
     let minF = Infinity, maxF = -Infinity, minS = Infinity, maxS = -Infinity;
     for (const p of pts) {
@@ -253,8 +285,166 @@ export class HUD {
     ];
   }
 
+  mapWorldPt(x, z) {
+    const W = this.el.minimap.width, H = this.el.minimap.height;
+    const b = this.mapWorld?.bounds || this.mapHole?.island?.bounds;
+    if (!b) return [W / 2, H / 2];
+    const pad = 12;
+    const sc = Math.min((W - pad * 2) / (b.maxX - b.minX), (H - pad * 2) / (b.maxZ - b.minZ));
+    const cx = (b.minX + b.maxX) / 2;
+    const cz = (b.minZ + b.maxZ) / 2;
+    return [
+      W / 2 + (x - cx) * sc,
+      H / 2 - (z - cz) * sc,
+    ];
+  }
+
+  drawIslandBase() {
+    const ctx = this.mapCtx;
+    const W = this.el.minimap.width, H = this.el.minimap.height;
+    const b = this.mapWorld?.bounds || this.mapHole?.island?.bounds;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(25, 65, 77, 0.95)';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, W, H, 8);
+    ctx.fill();
+    if (!b) return;
+    const cx = (b.minX + b.maxX) / 2;
+    const cz = (b.minZ + b.maxZ) / 2;
+    const rx = (b.maxX - b.minX) * 0.52;
+    const rz = (b.maxZ - b.minZ) * 0.52;
+    ctx.fillStyle = 'rgba(38, 76, 34, 0.94)';
+    ctx.strokeStyle = 'rgba(236, 217, 173, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i <= 96; i++) {
+      const a = (i / 96) * Math.PI * 2;
+      const wobble = 1 + Math.sin(a * 3.1) * 0.035 + Math.sin(a * 7.0 + 0.7) * 0.025;
+      const [x, y] = this.mapWorldPt(cx + Math.cos(a) * rx * wobble, cz + Math.sin(a) * rz * wobble);
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(44, 120, 148, 0.9)';
+    ctx.strokeStyle = 'rgba(146, 206, 224, 0.26)';
+    ctx.lineWidth = 1;
+    for (const w of this.mapWorld?.water || []) {
+      if (w.type !== 'pond') continue;
+      const [wx, wy] = this.mapWorldPt(w.cx, w.cz);
+      const edge = this.mapWorldPt(w.cx + w.rx, w.cz);
+      const sc = Math.abs(edge[0] - wx) / Math.max(w.rx, 1);
+      ctx.beginPath();
+      ctx.ellipse(wx, wy, Math.max(3, w.rx * sc), Math.max(3, w.rz * sc), -(w.rot || 0), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  drawHoleOnWorld(hole, idx, current) {
+    const ctx = this.mapCtx;
+    const b = this.mapWorld?.bounds || hole.island?.bounds;
+    if (!b) return;
+    const W = this.el.minimap.width, H = this.el.minimap.height;
+    const sc = Math.min((W - 24) / (b.maxX - b.minX), (H - 24) / (b.maxZ - b.minZ));
+
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.strokeStyle = current ? 'rgba(236, 217, 173, 0.95)' : 'rgba(81, 143, 60, 0.78)';
+    ctx.lineWidth = Math.max(current ? 4 : 2.2, Math.min(7, (hole.fairwayHalf || 12) * 2 * sc));
+    ctx.beginPath();
+    (hole.path || []).forEach((p, i) => {
+      const [mx, my] = this.mapWorldPt(p.x, p.z);
+      i ? ctx.lineTo(mx, my) : ctx.moveTo(mx, my);
+    });
+    ctx.stroke();
+
+    ctx.fillStyle = current ? '#94d66f' : '#6cae55';
+    if (hole.green) {
+      const [gx, gy] = this.mapWorldPt(hole.green.cx, hole.green.cz);
+      const r = Math.max(2.2, ((hole.green.rx + hole.green.rz) / 2) * sc);
+      ctx.beginPath(); ctx.arc(gx, gy, r, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.fillStyle = '#dcc995';
+    for (const s of hole.bunkers || []) {
+      const [sx, sy] = this.mapWorldPt(s.cx, s.cz);
+      const r = Math.max(1.3, ((s.rx + s.rz) / 2) * sc);
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.fillStyle = '#2f7790'; ctx.strokeStyle = '#2f7790';
+    for (const w of hole.water || []) {
+      if (w.type === 'pond') {
+        const [wx, wy] = this.mapWorldPt(w.cx, w.cz);
+        ctx.beginPath(); ctx.ellipse(wx, wy, Math.max(2, w.rx * sc), Math.max(2, w.rz * sc), 0, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.lineWidth = Math.max(1.5, (w.width || 8) * sc);
+        ctx.beginPath();
+        (w.pts || []).forEach((p, i) => {
+          const [mx, my] = this.mapWorldPt(p.x, p.z);
+          i ? ctx.lineTo(mx, my) : ctx.moveTo(mx, my);
+        });
+        ctx.stroke();
+      }
+    }
+
+    const tee = hole.path?.[0];
+    if (tee) {
+      const [tx, ty] = this.mapWorldPt(tee.x, tee.z);
+      ctx.fillStyle = current ? '#0a110c' : 'rgba(10,17,12,0.72)';
+      ctx.strokeStyle = current ? '#ecd9ad' : 'rgba(236,217,173,0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(tx, ty, current ? 5 : 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = current ? '#ecd9ad' : 'rgba(242,238,225,0.72)';
+      ctx.font = '700 8px Rajdhani, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(hole.id ?? idx + 1), tx, ty + 0.2);
+    }
+  }
+
+  mapDrawAll(ball, aimDir, pin) {
+    this.drawIslandBase();
+    const ctx = this.mapCtx;
+    ctx.setLineDash([3, 5]);
+    ctx.strokeStyle = 'rgba(236, 217, 173, 0.25)';
+    ctx.lineWidth = 1;
+    for (const c of this.mapWorld?.connectors || []) {
+      const [x1, y1] = this.mapWorldPt(c.from.x, c.from.z);
+      const [x2, y2] = this.mapWorldPt(c.to.x, c.to.z);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+
+    this.mapHoles.forEach((h, i) => this.drawHoleOnWorld(h, i, i === this.mapCurrentIdx));
+
+    if (pin) {
+      const [px, py] = this.mapWorldPt(pin.x, pin.z);
+      ctx.fillStyle = '#e2654f';
+      ctx.beginPath(); ctx.arc(px, py, 3.2, 0, Math.PI * 2); ctx.fill();
+    }
+    if (ball) {
+      const [bx, by] = this.mapWorldPt(ball.x, ball.z);
+      ctx.fillStyle = '#f7f5ec';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(bx, by, 3.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (aimDir) {
+        const [ax, ay] = this.mapWorldPt(ball.x + aimDir.x * 80, ball.z + aimDir.z * 80);
+        ctx.strokeStyle = 'rgba(236, 217, 173, 0.8)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ax, ay); ctx.stroke();
+      }
+    }
+  }
+
   mapDraw(ball, aimDir, pin) {
     if (!this.mapHole) return;
+    this.lastMapDraw = { ball, aimDir, pin };
+    if (this.mapMode === 'all' && this.mapHoles.length > 1) {
+      this.mapDrawAll(ball, aimDir, pin);
+      return;
+    }
     const ctx = this.mapCtx;
     const hole = this.mapHole;
     const W = this.el.minimap.width, H = this.el.minimap.height;
@@ -280,7 +470,7 @@ export class HUD {
 
     // water
     ctx.fillStyle = '#2a5d74'; ctx.strokeStyle = '#2a5d74';
-    for (const w of hole.water) {
+    for (const w of hole.water || []) {
       if (w.type === 'pond') {
         const [mx, my] = this.mapPt(w.cx, w.cz);
         ctx.beginPath();
@@ -309,7 +499,7 @@ export class HUD {
 
     // bunkers
     ctx.fillStyle = '#dcc995';
-    for (const b of hole.bunkers) {
+    for (const b of hole.bunkers || []) {
       const [mx, my] = this.mapPt(b.cx, b.cz);
       ctx.beginPath();
       ctx.ellipse(mx, my, ((b.rx + b.rz) / 2) * sc, ((b.rx + b.rz) / 2) * sc, 0, 0, Math.PI * 2);

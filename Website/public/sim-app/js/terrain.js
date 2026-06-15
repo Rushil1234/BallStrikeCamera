@@ -274,6 +274,56 @@ function treeKit(assets) {
 
 // ---------- course field + meshes ----------
 
+function islandPlateGeometry(bounds, y, seed = 1) {
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cz = (bounds.minZ + bounds.maxZ) / 2;
+  const rx = (bounds.maxX - bounds.minX) * 0.52;
+  const rz = (bounds.maxZ - bounds.minZ) * 0.52;
+  const seg = 128;
+  const positions = new Float32Array((seg + 2) * 3);
+  const indices = [];
+  positions[0] = cx; positions[1] = y; positions[2] = cz;
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    const wobble = 1
+      + Math.sin(a * 3.0 + seed * 0.01) * 0.035
+      + Math.sin(a * 8.0 + seed * 0.017) * 0.025;
+    const k = i + 1;
+    positions[k * 3] = cx + Math.cos(a) * rx * wobble;
+    positions[k * 3 + 1] = y;
+    positions[k * 3 + 2] = cz + Math.sin(a) * rz * wobble;
+    if (i < seg) indices.push(0, k, k + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function lakePlateGeometry(water, y) {
+  const seg = 96;
+  const positions = new Float32Array((seg + 2) * 3);
+  const indices = [];
+  const c = Math.cos(water.rot || 0), s = Math.sin(water.rot || 0);
+  positions[0] = water.cx; positions[1] = y; positions[2] = water.cz;
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * Math.PI * 2;
+    const lx = Math.cos(a) * water.rx;
+    const lz = Math.sin(a) * water.rz;
+    const k = i + 1;
+    positions[k * 3] = water.cx + lx * c + lz * s;
+    positions[k * 3 + 1] = y;
+    positions[k * 3 + 2] = water.cz - lx * s + lz * c;
+    if (i < seg) indices.push(0, k, k + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 export function buildCourse(hole, assets) {
   const fbmBase = makeFbm(hole.seed, 4);
   const fbmDetail = makeFbm(hole.seed * 7 + 3, 3);
@@ -436,6 +486,49 @@ export function buildCourse(hole, assets) {
 
   if (VISUAL && assets) {
     group = new THREE.Group();
+
+    if (hole.island?.bounds && !hole.isRange) {
+      let localMinH = Infinity;
+      for (let sx = 0; sx <= 5; sx++) {
+        for (let sz = 0; sz <= 5; sz++) {
+          const x = minX + (maxX - minX) * (sx / 5);
+          const z = minZ + (maxZ - minZ) * (sz / 5);
+          localMinH = Math.min(localMinH, heightAt(x, z));
+        }
+      }
+      const baseY = localMinH - 0.7;
+      const ib = hole.island.bounds;
+      const icx = (ib.minX + ib.maxX) / 2;
+      const icz = (ib.minZ + ib.maxZ) / 2;
+      const iw = ib.maxX - ib.minX;
+      const ih = ib.maxZ - ib.minZ;
+      const islandWater = new THREE.Mesh(
+        new THREE.PlaneGeometry(iw + 650, ih + 650),
+        new THREE.MeshBasicMaterial({ color: 0x123241 }),
+      );
+      islandWater.rotation.x = -Math.PI / 2;
+      islandWater.position.set(icx, baseY - 0.05, icz);
+      group.add(islandWater);
+
+      const islandBase = new THREE.Mesh(
+        islandPlateGeometry(ib, baseY, hole.seed),
+        new THREE.MeshLambertMaterial({ color: 0x254d2d }),
+      );
+      islandBase.receiveShadow = true;
+      group.add(islandBase);
+
+      const lakeMat = new THREE.MeshBasicMaterial({
+        color: 0x1f6f8c,
+        transparent: true,
+        opacity: 0.82,
+        depthWrite: false,
+      });
+      for (const w of hole.island.water || []) {
+        if (w.type !== 'pond') continue;
+        const lake = new THREE.Mesh(lakePlateGeometry(w, baseY + 0.035), lakeMat);
+        group.add(lake);
+      }
+    }
 
     // terrain mesh: vertex colors (hue design) + splat weights (texture mix)
     const CELL = 1.7;

@@ -154,6 +154,7 @@ let rangeMarkers = null;
 let lastRangeShot = null;
 const holePickerCard = document.getElementById('hole-picker-card');
 const holePicker = document.getElementById('hole-picker');
+const holeGrid = document.getElementById('hole-grid');
 
 const club = () => CLUBS[game.clubIdx];
 const onGreen = () => game.lie === SURF.GREEN;
@@ -161,11 +162,21 @@ const onGreen = () => game.lie === SURF.GREEN;
 function populateHolePicker() {
   if (!holePicker) return;
   holePicker.innerHTML = '';
+  if (holeGrid) holeGrid.innerHTML = '';
   courseHoles.forEach((h, i) => {
     const opt = document.createElement('option');
     opt.value = String(i);
     opt.textContent = `${h.id}. ${h.name}`;
     holePicker.appendChild(opt);
+    if (holeGrid) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'hole-jump';
+      btn.textContent = String(h.id ?? i + 1);
+      btn.title = `Play hole ${h.id ?? i + 1}`;
+      btn.dataset.holeIndex = String(i);
+      holeGrid.appendChild(btn);
+    }
   });
 }
 
@@ -191,6 +202,24 @@ function totalToPar() {
   return d;
 }
 
+function setHolePickerActive(idx) {
+  if (holePicker) holePicker.value = String(idx);
+  holeGrid?.querySelectorAll('.hole-jump').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.holeIndex === String(idx));
+  });
+}
+
+function jumpToHole(idx) {
+  if (game.state === 'TITLE' || !assets) {
+    setHolePickerActive(idx);
+    return;
+  }
+  hud.toastHide();
+  hud.summaryHide();
+  hud.scorecardHide();
+  startHole(idx);
+}
+
 // ---------- hole / shot setup ----------
 
 function startHole(idx) {
@@ -203,7 +232,7 @@ function startHole(idx) {
   }
   game.holeIdx = idx;
   const def = courseHoles[idx];
-  if (holePicker) holePicker.value = String(idx);
+  setHolePickerActive(idx);
   holePickerCard?.classList.remove('hidden');
   game.course = buildCourse(def, assets);
   scene.add(game.course.group);
@@ -819,11 +848,14 @@ hud.el.mapToggle?.addEventListener('click', (e) => {
 });
 holePicker?.addEventListener('change', () => {
   const idx = Math.max(0, Math.min(Number(holePicker.value) || 0, courseHoles.length - 1));
-  if (game.state === 'TITLE' || !assets) return;
-  hud.toastHide();
-  hud.summaryHide();
-  hud.scorecardHide();
-  startHole(idx);
+  jumpToHole(idx);
+});
+holeGrid?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.hole-jump');
+  if (!btn) return;
+  e.stopPropagation();
+  const idx = Math.max(0, Math.min(Number(btn.dataset.holeIndex) || 0, courseHoles.length - 1));
+  jumpToHole(idx);
 });
 hud.el.btnStart.addEventListener('click', () => {
   if (!assets) return;
