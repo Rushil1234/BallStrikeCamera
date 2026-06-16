@@ -155,7 +155,8 @@ struct SimModeView: View {
                     await simVM.endSessionWithDetails(
                         name: name,
                         description: desc,
-                        usedOGS: ogsVM.connectionState.isConnected
+                        usedOGS: usedOGSNow,
+                        provider: providerEnum
                     )
                     dismiss()
                 }
@@ -580,7 +581,7 @@ struct SimModeView: View {
                     icon: "play.fill",
                     style: .gradient(BSTheme.simGradient),
                     action: {
-                        Task { await simVM.startSession(provider: providerEnum, usedOGS: ogsVM.connectionState.isConnected) }
+                        Task { await simVM.startSession(provider: providerEnum, usedOGS: usedOGSNow) }
                     }
                 )
             }
@@ -929,8 +930,21 @@ struct SimModeView: View {
         switch selectedProvider {
         case "GSPro":      return .gspro
         case "OGS":        return .ogs
+        // Bluetooth bridge: the game is whichever sim the bridge linked to
+        // (reported back over BLE as port 921 = GSPro, 3111 = OGS).
+        case "Bluetooth":  return bleVM.bridgeStatus?.provider ?? .notConnected
         case "Local JSON": return .localJson
         default:           return .notConnected
+        }
+    }
+
+    /// True when the active path is OpenGolfSim — directly (OGS tab) or via the
+    /// Bluetooth bridge linked to OGS.
+    private var usedOGSNow: Bool {
+        switch selectedProvider {
+        case "OGS":       return ogsVM.connectionState.isConnected
+        case "Bluetooth": return bleVM.bridgeStatus?.provider == .ogs
+        default:          return false
         }
     }
 }

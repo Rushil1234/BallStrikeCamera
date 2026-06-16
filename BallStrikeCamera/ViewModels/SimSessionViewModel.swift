@@ -90,12 +90,18 @@ final class SimSessionViewModel: ObservableObject {
         activeSession = nil
     }
 
-    func endSessionWithDetails(name: String, description: String?, usedOGS: Bool = false) async {
+    func endSessionWithDetails(name: String, description: String?, usedOGS: Bool = false,
+                               provider: SimProvider? = nil) async {
         guard var session = activeSession else { return }
         guard !session.shotIds.isEmpty else { await discardSession(); return }
         session.name = name
         session.sessionDescription = description
         session.usedOpenGolfSim = usedOGS
+        // Resolve the game at save time too (a Bluetooth bridge may only report
+        // GSPro vs OGS after the session has already started).
+        if let provider, provider != .notConnected {
+            session.provider = provider
+        }
         session.endedAt = Date()
         do {
             try await backend.saveSimSession(session)
