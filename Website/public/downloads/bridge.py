@@ -45,6 +45,7 @@ ble_client: BleakClient | None = None
 ble_connected = False
 ble_ready = False
 shot_count = 0
+gspro_seq = 0  # ShotNumber for GSPro ready/heartbeat keepalive messages
 
 # Shared snapshot read by the local status server (updated in refresh_status).
 STATE: dict = {
@@ -173,10 +174,55 @@ async def ensure_tcp(port: int) -> bool:
             asyncio.open_connection("127.0.0.1", port), timeout=2.0
         )
         tcp_port = port
+        # GSPro needs to be told the launch monitor is ready right after
+        # connecting, or it stalls at "Waiting for LM to connect". OGS doesn't.
+        if port == GSPRO_PORT:
+            await _send_tcp(_gspro_keepalive_bytes(is_heartbeat=False))
         return True
     except Exception:
         tcp_writer = None
         return False
+
+
+def _gspro_keepalive_bytes(is_heartbeat: bool) -> bytes:
+    """A GSPro Connect ready/heartbeat message (no ball data)."""
+    global gspro_seq
+    gspro_seq += 1
+    return (json.dumps({
+        "DeviceID": "TrueCarry",
+        "Units": "Yards",
+        "ShotNumber": gspro_seq,
+        "APIversion": "1",
+        "ShotDataOptions": {
+            "ContainsBallData": False,
+            "ContainsClubData": False,
+            "LaunchMonitorIsReady": True,
+            "LaunchMonitorBallDetected": False,
+            "IsHeartBeat": is_heartbeat,
+        },
+    }) + "\n").encode()
+
+
+async def _send_tcp(data: bytes) -> bool:
+    global tcp_writer
+    if not tcp_writer:
+        return False
+    try:
+        tcp_writer.write(data)
+        await tcp_writer.drain()
+        return True
+    except Exception:
+        tcp_writer = None
+        return False
+
+
+async def gspro_keepalive():
+    """GSPro drops to "Not Ready" without a steady heartbeat; OGS needs none,
+    so this only sends while we're connected to GSPro (port 921)."""
+    while True:
+        await asyncio.sleep(5)
+        if detected_port == GSPRO_PORT and tcp_writer and not tcp_writer.is_closing():
+            await _send_tcp(_gspro_keepalive_bytes(is_heartbeat=True))
 
 
 async def forward_shot(data: bytes) -> bool:
@@ -233,9 +279,11 @@ async def monitor_simulator():
                 except Exception:
                     pass
                 tcp_writer = None
-            # If the phone is connected, tell it the new game/port immediately.
+            # If the phone is connected, tell it the new game/port immediately,
+            # and open the link to the new sim now (sends GSPro's ready signal).
             if ble_client and new_port:
                 await send_status(ble_client, new_port, True)
+                await ensure_tcp(new_port)
             refresh_status()
         await asyncio.sleep(3)
 
@@ -256,8 +304,10 @@ async def run():
     # 0. Start the local status server so truecarry.app/connect can see us.
     start_status_server()
 
-    # 1. Continuously detect which simulator is running (GSPro or OGS).
+    # 1. Continuously detect which simulator is running (GSPro or OGS),
+    #    and keep GSPro alive with ready/heartbeat messages.
     asyncio.ensure_future(monitor_simulator())
+    asyncio.ensure_future(gspro_keepalive())
     refresh_status()
     while detected_port is None:
         await asyncio.sleep(1)
