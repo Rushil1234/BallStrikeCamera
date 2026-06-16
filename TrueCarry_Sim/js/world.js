@@ -31,6 +31,7 @@ function mergeBounds(bounds, margin = 0) {
 }
 
 const DEG = Math.PI / 180;
+const WORLD_SPREAD = 1.22;
 
 // Hand-routed course plan. Angles are bearings where 0 points north/+z.
 // The route loops around a central lake instead of stacking holes in rows.
@@ -42,23 +43,31 @@ const BUILTIN_ROUTING = [
   { x: -500, z:  250, a: 100 },
   { x: -320, z:  180, a:  55 },
   { x:  -10, z:  380, a:   0 },
-  { x:  105, z:  815, a:-105 },
+  { x:  150, z:  895, a:-100 },
   { x: -280, z:  680, a:-170 },
   { x:   70, z: -620, a: 130 },
   { x:  340, z: -790, a:  20 },
   { x:  430, z: -650, a: -10 },
   { x:  360, z: -110, a: -75 },
-  { x:   30, z:   20, a:  75 },
+  { x:  130, z:   70, a:  80 },
   { x:  465, z:  165, a:   0 },
   { x:  385, z:  700, a:-135 },
   { x:  100, z:  370, a:  95 },
-  { x:  315, z:  315, a:-160 },
+  { x:  560, z:  330, a:-170 },
 ];
 
 const BUILTIN_WATER = [
-  { type: 'pond', cx: 15, cz: -250, rx: 275, rz: 365, rot: -0.22, worldOnly: true },
-  { type: 'pond', cx: 220, cz: 590, rx: 135, rz: 215, rot: 0.38, worldOnly: true },
+  { type: 'pond', cx: -75, cz: -425, rx: 175, rz: 270, rot: -0.5, worldOnly: true },
+  { type: 'pond', cx: 325, cz: 880, rx: 115, rz: 190, rot: -0.6, worldOnly: true },
 ];
+
+function scaledWater(water) {
+  return {
+    ...water,
+    cx: water.cx * WORLD_SPREAD,
+    cz: water.cz * WORLD_SPREAD,
+  };
+}
 
 export function measureHole(hole) {
   const b = emptyBounds();
@@ -138,11 +147,12 @@ export function layoutIslandCourse(rawHoles) {
       z: Math.sin(i * 1.7) * 520,
       a: (i * 47) % 360,
     };
-    return transformHole(hole, r.x, r.z, r.a * DEG);
+    return transformHole(hole, r.x * WORLD_SPREAD, r.z * WORLD_SPREAD, r.a * DEG);
   });
 
+  const worldWater = BUILTIN_WATER.map(scaledWater);
   const boundsPieces = placed.map(measureHole);
-  for (const w of BUILTIN_WATER) {
+  for (const w of worldWater) {
     boundsPieces.push({
       minX: w.cx - w.rx, maxX: w.cx + w.rx,
       minZ: w.cz - w.rz, maxZ: w.cz + w.rz,
@@ -153,8 +163,8 @@ export function layoutIslandCourse(rawHoles) {
   for (let i = 0; i < placed.length - 1; i++) connectors.push(connectorBetween(placed[i], placed[i + 1]));
 
   for (const hole of placed) {
-    hole.island = { bounds, connectors, water: BUILTIN_WATER, holeCount: placed.length };
+    hole.island = { bounds, connectors, water: worldWater, holeCount: placed.length };
   }
 
-  return { holes: placed, bounds, connectors, water: BUILTIN_WATER };
+  return { holes: placed, bounds, connectors, water: worldWater };
 }
