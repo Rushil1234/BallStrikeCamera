@@ -258,32 +258,33 @@ def _matches_truecarry(device, adv) -> bool:
 
 
 async def monitor_simulator():
-    """Continuously track which simulator is running, so the user can switch
-    between GSPro and OGS (or start one later) without restarting the bridge.
+    """Detect the running simulator and hold ONE persistent connection to it.
 
-    On a change we drop the old TCP link and re-tell the phone which game we're
-    on now — the app encodes shots differently for GSPro vs OGS.
+    We detect by actually opening (and keeping) the connection, not by probing
+    with throwaway connects: GSPro Connect allows a single client and treats
+    connect/disconnect churn as the launch monitor dropping, so it would never
+    go "Ready". While a link is live we leave it alone; if the sim closes, the
+    write of the next heartbeat/shot fails and clears tcp_writer, and we re-detect
+    (which also lets the user switch GSPro<->OGS by closing one).
     """
-    global detected_port, sim_name, tcp_writer
+    global detected_port, sim_name
     while True:
-        result = await find_simulator()
-        new_port = result[0] if result else None
-        new_name = result[1] if result else None
-        if new_port != detected_port:
-            detected_port = new_port
-            sim_name = new_name
-            # Drop any link to the old sim; the next shot reconnects to the new one.
-            if tcp_writer:
-                try:
-                    tcp_writer.close()
-                except Exception:
-                    pass
-                tcp_writer = None
-            # If the phone is connected, tell it the new game/port immediately,
-            # and open the link to the new sim now (sends GSPro's ready signal).
-            if ble_client and new_port:
-                await send_status(ble_client, new_port, True)
-                await ensure_tcp(new_port)
+        if tcp_writer and not tcp_writer.is_closing():
+            await asyncio.sleep(3)
+            continue
+
+        prev = detected_port
+        found_port = found_name = None
+        for port, name in [(GSPRO_PORT, "GSPro"), (OGS_PORT, "OpenGolfSim")]:
+            if await ensure_tcp(port):   # opens + KEEPS the link (sends GSPro ready)
+                found_port, found_name = port, name
+                break
+
+        if found_port != detected_port:
+            detected_port, sim_name = found_port, found_name
+            # Tell the phone which game we're on (it encodes GSPro vs OGS differently).
+            if found_port and found_port != prev and ble_client:
+                await send_status(ble_client, found_port, True)
             refresh_status()
         await asyncio.sleep(3)
 
