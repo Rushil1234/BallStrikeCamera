@@ -48,13 +48,18 @@ struct ScoreEntryView: View {
         self.holeYardage = holeYardage
         self.handicap = handicap
         self.onSave = onSave
-        _score = State(initialValue: existingScore ?? par)
-        _putts = State(initialValue: existingPutts ?? 2)
+        let s0 = existingScore ?? par
+        _score = State(initialValue: s0)
+        _putts = State(initialValue: min(existingPutts ?? 2, max(0, s0 - 1)))
         _teeClub = State(initialValue: Self.abbrev(for: prefillTeeClubName))
         _firstPuttFeet = State(initialValue: prefillFirstPuttFeet ?? 0)
     }
 
     // MARK: - Computed
+    /// You always need at least one non-putt to reach the green, so putts < score.
+    private var maxPutts: Int { max(0, score - 1) }
+    private func clampPutts() { if putts > maxPutts { putts = maxPutts } }
+
     private var computedGIR: Bool { (score - putts) <= (par - 2) }
     private var scoreDelta: Int { score - par }
     private var deltaText: String { scoreDelta == 0 ? "E" : (scoreDelta > 0 ? "+\(scoreDelta)" : "\(scoreDelta)") }
@@ -119,8 +124,12 @@ struct ScoreEntryView: View {
     // MARK: - Score | Putts | Tee Shot
     private var mainRow: some View {
         HStack(alignment: .top, spacing: 16) {
-            stepperCol("Score", score, { if score > 1 { score -= 1 } }, { score += 1 })
-            stepperCol("Putts", putts, { if putts > 0 { putts -= 1 } }, { putts += 1 })
+            stepperCol("Score", score,
+                       { if score > 1 { score -= 1 }; clampPutts() },
+                       { score += 1 })
+            stepperCol("Putts", putts,
+                       { if putts > 0 { putts -= 1 } },
+                       { if putts < maxPutts { putts += 1 } })
             VStack(spacing: 8) {
                 colLabel("Tee Shot")
                 teeShotPad
