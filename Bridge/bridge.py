@@ -174,10 +174,10 @@ async def ensure_tcp(port: int) -> bool:
 
 
 async def forward_shot(data: bytes) -> bool:
-    global shot_count
-    if not tcp_port:
+    global shot_count, tcp_writer
+    if not detected_port:
         return False
-    ok = await ensure_tcp(tcp_port)
+    ok = await ensure_tcp(detected_port)
     if not ok or not tcp_writer:
         return False
     try:
@@ -274,6 +274,9 @@ async def run():
             async with BleakClient(device) as client:
                 ble_client = client
                 await client.start_notify(SHOT_UUID, on_shot)
+                # Open the TCP link to the sim now so it shows "connected"
+                # immediately, rather than only after the first shot.
+                await ensure_tcp(sim_port)
                 await send_status(client, sim_port, True)
                 print_status(sim_name, True, True, True)
 
