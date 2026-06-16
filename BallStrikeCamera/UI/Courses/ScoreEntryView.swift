@@ -27,7 +27,6 @@ struct ScoreEntryView: View {
     @State private var dropShot: Bool = false
     @State private var ob: Bool = false
     @State private var onThisHole: Bool = false
-    @State private var advanced: Bool = true
 
     private static let teeClubs = ["Dr", "3W", "5W", "Hyb", "4i", "5i", "6i", "7i", "8i", "9i", "PW", "GW"]
 
@@ -76,22 +75,18 @@ struct ScoreEntryView: View {
 
             VStack(spacing: 14) {
                 mainRow
-                if advanced {
-                    sectionLine
-                    subRow
-                    sectionLine
-                    tagsRow
-                }
+                sectionLine
+                subRow
+                sectionLine
+                tagsRow
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
-
-            modeToggle
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.white)
         .environment(\.colorScheme, .light)   // white card + dark text even in dark mode
-        .presentationDetents([.height(advanced ? 560 : 320)])
+        .presentationDetents([.height(540)])
         .presentationDragIndicator(.visible)
     }
 
@@ -254,29 +249,6 @@ struct ScoreEntryView: View {
             }
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: - Basic / Advanced toggle
-
-    private var modeToggle: some View {
-        HStack(spacing: 0) {
-            ForEach(["Basic", "Advanced"], id: \.self) { mode in
-                let on = (mode == "Advanced") == advanced
-                Button { withAnimation(.spring(response: 0.25)) { advanced = (mode == "Advanced") } } label: {
-                    Text(mode)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(on ? ink : muted)
-                        .frame(maxWidth: .infinity).padding(.vertical, 9)
-                        .background(on ? soft : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(4)
-        .background(Color.black.opacity(0.04))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(.horizontal, 18).padding(.bottom, 18)
     }
 
     // MARK: - Reusable buttons
