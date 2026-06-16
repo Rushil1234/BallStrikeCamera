@@ -264,18 +264,18 @@ async def run():
             continue
 
         if device is None:
-            print_status(sim_name, sim_ok, False, False)
+            print_status(sim_name, True, False, False)
             await asyncio.sleep(2)
             continue
 
-        print_status(sim_name, sim_ok, True, False)
+        print_status(sim_name, True, True, False)
 
         try:
             async with BleakClient(device) as client:
                 ble_client = client
                 await client.start_notify(SHOT_UUID, on_shot)
                 await send_status(client, sim_port, True)
-                print_status(sim_name, sim_ok, True, True)
+                print_status(sim_name, True, True, True)
 
                 # Keep alive until disconnected
                 while client.is_connected:
@@ -288,7 +288,7 @@ async def run():
         finally:
             ble_client = None
 
-        print_status(sim_name, sim_ok, False, False)
+        print_status(sim_name, True, False, False)
         await asyncio.sleep(2)
 
 
