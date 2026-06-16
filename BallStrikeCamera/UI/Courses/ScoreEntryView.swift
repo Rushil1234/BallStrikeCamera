@@ -64,24 +64,21 @@ struct ScoreEntryView: View {
             header
             Rectangle().fill(line).frame(height: 1)
 
-            VStack(spacing: 18) {
-                Spacer(minLength: 4)
+            VStack(spacing: 16) {
                 mainRow
-                Spacer(minLength: 0)
                 sectionLine
                 subRow
-                Spacer(minLength: 0)
                 sectionLine
                 tagsRow
-                Spacer(minLength: 4)
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.white)
         .environment(\.colorScheme, .light)
-        .presentationDetents([.large])
+        .presentationDetents([.fraction(0.6)])
         .presentationDragIndicator(.visible)
     }
 
@@ -173,13 +170,16 @@ struct ScoreEntryView: View {
 
             VStack(spacing: 10) {
                 colLabel("1st Putt Distance")
-                HStack(spacing: 12) {
-                    roundBtn("minus", 38) { if firstPuttFeet > 0 { firstPuttFeet -= 1 } }
-                    Text(firstPuttFeet == 0 ? "—" : "\(firstPuttFeet)ft")
+                HStack(spacing: 6) {
+                    TextField("0", value: $firstPuttFeet, format: .number)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.center)
                         .font(.system(size: 19, weight: .semibold))
-                        .foregroundColor(firstPuttFeet == 0 ? muted : .black)
-                        .frame(minWidth: 56).contentTransition(.numericText())
-                    roundBtn("plus", 38) { firstPuttFeet += 1 }
+                        .foregroundColor(.black)
+                        .frame(width: 66, height: 40)
+                        .background(soft)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    Text("ft").font(.system(size: 14, weight: .semibold)).foregroundColor(muted)
                 }
             }
             .frame(maxWidth: .infinity)
