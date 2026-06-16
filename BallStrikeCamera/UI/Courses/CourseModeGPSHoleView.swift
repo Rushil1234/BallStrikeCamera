@@ -236,6 +236,62 @@ private final class HolePathCasingPolyline: MKPolyline {}
 private final class AimSegmentPolyline: MKPolyline {}
 private final class AimSegmentCasingPolyline: MKPolyline {}
 
+/// A single dispersion shot dot — the selected club's typical landing pattern (#7).
+private final class DispersionDotCircle: MKCircle {}
+
+extension CLLocationCoordinate2D {
+    /// Bearing in degrees (clockwise from north) toward another coordinate.
+    func bearing(to b: CLLocationCoordinate2D) -> Double {
+        let dLon = (b.longitude - longitude) * .pi / 180
+        let la1 = latitude * .pi / 180, la2 = b.latitude * .pi / 180
+        let y = sin(dLon) * cos(la2)
+        let x = cos(la1) * sin(la2) - sin(la1) * cos(la2) * cos(dLon)
+        return (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+    }
+
+    /// Move `forward` yards along `bearingDeg`, then `right` yards perpendicular
+    /// (positive = right of the aim line). Used to place dispersion dots.
+    func projected(yardsForward f: Double, yardsRight r: Double, bearingDeg: Double) -> CLLocationCoordinate2D {
+        let mPerYd = 1.0 / 1.0936133
+        let fwd = f * mPerYd, rgt = r * mPerYd
+        let b = bearingDeg * .pi / 180
+        let east  = fwd * sin(b) + rgt * cos(b)
+        let north = fwd * cos(b) - rgt * sin(b)
+        return CLLocationCoordinate2D(
+            latitude:  latitude  + north / 111320.0,
+            longitude: longitude + east  / (111320.0 * cos(latitude * .pi / 180))
+        )
+    }
+}
+
+/// Per-shot (carry, signed lateral yards) — same model the insights dispersion
+/// chart uses, reused to place the on-course dispersion overlay.
+enum ShotDispersion {
+    static func point(for shot: SavedShot) -> (carry: Double, lateral: Double)? {
+        let carry = shot.metrics.carryYards
+        guard carry > 0 else { return nil }
+        let total = shot.metrics.totalYards > 0 ? shot.metrics.totalYards : carry
+        let signedHLA = shot.metrics.hlaDirection.lowercased() == "left"
+            ? -shot.metrics.hlaDegrees : shot.metrics.hlaDegrees
+        let hlaRad = signedHLA * .pi / 180.0
+        let spinAxis = shot.metrics.spinAxisDegrees
+        let sidespin = shot.metrics.sidespinRpm
+        let curveStrength: Double
+        if abs(spinAxis) > 0.5 {
+            curveStrength = (spinAxis > 0 ? 1.0 : -1.0) * min(abs(spinAxis) / 16.0, 1.0)
+        } else if abs(sidespin) > 30 {
+            curveStrength = (sidespin > 0 ? 1.0 : -1.0) * min(abs(sidespin) / 1100.0, 1.0)
+        } else {
+            curveStrength = 0
+        }
+        let curveMagnitude = abs(curveStrength) * max(total * 0.10, 8.0)
+        let curveSign: Double = curveStrength >= 0 ? 1.0 : -1.0
+        let carryFrac = carry / total
+        let lateral = tan(hlaRad) * total * carryFrac + curveSign * curveMagnitude * pow(carryFrac, 1.6)
+        return (carry, lateral)
+    }
+}
+
 // MARK: - Aim Point (draggable circle on the map)
 
 private final class AimPointAnnotation: NSObject, MKAnnotation {
@@ -546,6 +602,9 @@ private struct SatelliteMapBackground: UIViewRepresentable {
     // Tracked shot polylines + markers (current hole only)
     var trackedShots:    [TrackedShot] = []
 
+    // Dispersion dots for the selected club (#7) — projected landing points.
+    var dispersionDots:  [CLLocationCoordinate2D] = []
+
     // UI inset hints so the camera frames the hole within the usable (non-overlapped) area.
     var topUIInset:    CGFloat = 100   // pts: safe area + top pills height
     var bottomUIInset: CGFloat = 100   // pts: bottom bar + home indicator height
@@ -667,6 +726,11 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         map.removeAnnotations(map.annotations.filter {
             !($0 is MKUserLocation) && !($0 is FlightBallAnnotation)
         })
+
+        // Dispersion dots for the selected club (#7) — small circles on the turf.
+        for dot in dispersionDots {
+            map.addOverlay(DispersionDotCircle(center: dot, radius: 1.5), level: .aboveLabels)
+        }
 
         // Kick off a flight if a new request arrived.
         if let req = flightRequest, context.coordinator.lastFlightId != req.id {
@@ -1083,6 +1147,13 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let dot = overlay as? DispersionDotCircle {
+                let r = MKCircleRenderer(circle: dot)
+                r.fillColor   = UIColor(red: 1.0, green: 0.82, blue: 0.0, alpha: 0.80)
+                r.strokeColor = UIColor.black.withAlphaComponent(0.35)
+                r.lineWidth   = 0.5
+                return r
+            }
             if let polygon = overlay as? TaggedPolygon {
                 let r = MKPolygonRenderer(polygon: polygon)
                 // Translucent fills so real satellite detail (turf, sand, water) stays visible —
@@ -1304,6 +1375,8 @@ struct CourseModeGPSHoleView: View {
     @State private var showFinishAlert = false
     @State private var showDeleteRoundConfirm = false
     @State private var gpsOn           = true
+    @State private var showDispersion  = false
+    @State private var dispersionShots: [SavedShot] = []
     @State private var infoMessage: String?
     @State private var roundStartTime  = Date()
     @State private var recenterToken   = 0
@@ -1450,6 +1523,38 @@ struct CourseModeGPSHoleView: View {
             back:   slope(gh.greenBackCoordinate,   gpsDistances.back),
             verticalYards: vert
         )
+    }
+
+    // MARK: - Dispersion overlay (#7)
+
+    /// Projected landing dots for the selected club: from the player, along the
+    /// bearing to the target (aim point, else green center), offset by each past
+    /// shot's lateral miss. The "zero line" is player→target.
+    private var dispersionDots: [CLLocationCoordinate2D] {
+        guard showDispersion,
+              let origin = vm.location.currentLocation,
+              let target = aimTarget ?? currentMapHole?.greenCenterCoordinate?.clCoordinate
+        else { return [] }
+        let bearing = origin.bearing(to: target)
+        return dispersionShots.compactMap { shot in
+            guard let p = ShotDispersion.point(for: shot) else { return nil }
+            return origin.projected(yardsForward: p.carry, yardsRight: p.lateral, bearingDeg: bearing)
+        }
+    }
+
+    /// Loads the selected club's past shots once (when the overlay is switched on).
+    private func loadDispersionShots() {
+        let clubId = ClubPreference.lastUsedClubId
+        let clubName = ClubPreference.lastUsedClubName
+        guard let uid = session.currentUser?.id else { return }
+        Task {
+            let svc = ShotPersistenceService(userId: uid, backend: session.backend)
+            let all = (try? await svc.loadShots(limit: 400)) ?? []
+            let filtered = all.filter { s in
+                (clubId != nil && s.clubId == clubId) || (clubName != nil && s.clubName == clubName)
+            }.filter { $0.metrics.carryYards > 0 && !$0.isBadShot }
+            await MainActor.run { dispersionShots = filtered }
+        }
     }
 
     /// Pulls one elevation grid for the current hole (tee, green edges, player).
@@ -1797,6 +1902,7 @@ struct CourseModeGPSHoleView: View {
                     withAnimation(.spring(response: 0.3)) { showRecenter = true }
                 },
                 trackedShots:   vm.currentHoleTrackedShots,
+                dispersionDots: dispersionDots,
                 topUIInset:    topSafeArea + 82, // safe area + topBar(44) + gap(2) + infoStrip(30) + margin(6)
                 bottomUIInset: bottomSafeArea + 76, // bottom bar content + home indicator
                 gpsKey:        coarseGpsKey,
@@ -2475,6 +2581,10 @@ struct CourseModeGPSHoleView: View {
             slopePill
             VStack(spacing: 14) {
                 railButton("location.fill", isActive: gpsOn) { gpsOn.toggle() }
+                railButton("scope", isActive: showDispersion) {
+                    showDispersion.toggle()
+                    if showDispersion { loadDispersionShots() }
+                }
                 railButton("camera.fill", isActive: false) { openCamera() }
                 railButton("list.number", isActive: false) { showScorecard = true }
             }
