@@ -25,6 +25,7 @@ struct ScoreEntryView: View {
     @State private var hazard = 0
     @State private var dropShot = 0
     @State private var ob = 0
+    @FocusState private var puttFocused: Bool
 
     private static let teeClubs = ["Dr", "3W", "5W", "Hyb", "4i", "5i", "6i", "7i", "8i", "9i", "PW", "GW"]
 
@@ -179,6 +180,15 @@ struct ScoreEntryView: View {
                         .frame(width: 66, height: 40)
                         .background(soft)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .focused($puttFocused)
+                        .toolbar {
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Spacer()
+                                Button("Done") { puttFocused = false }
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(ink)
+                            }
+                        }
                     Text("ft").font(.system(size: 14, weight: .semibold)).foregroundColor(muted)
                 }
             }
