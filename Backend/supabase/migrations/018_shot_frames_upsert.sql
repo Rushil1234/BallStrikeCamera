@@ -1,4 +1,4 @@
--- 017_shot_frames_upsert.sql
+-- 018_shot_frames_upsert.sql
 -- The shot-frames bucket (007) + insert/select policies (004) already exist and
 -- match the client path convention shot-frames/{user_id}/{shot_id}/frame_N.png.
 -- Add update + delete so the client's upsert upload is robust (re-saving the
