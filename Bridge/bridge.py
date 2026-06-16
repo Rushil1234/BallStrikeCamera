@@ -192,6 +192,19 @@ async def forward_shot(data: bytes) -> bool:
 
 # ── BLE status write ──────────────────────────────────────────────────────────
 
+def _matches_truecarry(device, adv) -> bool:
+    """True if this BLE advertisement is the True Carry iPhone app.
+
+    bleak 3.x removed BLEDevice.metadata; the advertised service UUIDs now
+    live on the advertisement_data passed to the scan filter.
+    """
+    uuids = [u.lower() for u in (getattr(adv, "service_uuids", None) or [])]
+    if SERVICE_UUID.lower() in uuids:
+        return True
+    name = getattr(adv, "local_name", None) or getattr(device, "name", None) or ""
+    return name == "TrueCarry"
+
+
 async def send_status(client: BleakClient, port: int, linked: bool):
     payload = json.dumps({"port": port, "linked": linked}).encode()
     try:
@@ -237,7 +250,7 @@ async def run():
     while True:
         try:
             device = await BleakScanner.find_device_by_filter(
-                lambda d, _: SERVICE_UUID.lower() in (d.metadata.get("uuids") or []),
+                _matches_truecarry,
                 timeout=15.0,
             )
         except BleakError as e:
