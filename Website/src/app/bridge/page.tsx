@@ -119,13 +119,50 @@ export default function BridgePage() {
           </p>
         </div>
 
-        {/* Mac */}
-        <PlatformCard
-          emoji="🍎"
-          title="On your Mac"
-          openHint="Open Terminal (press ⌘ + Space, type “Terminal”, hit Enter), then paste:"
-          command={MAC_CMD}
-        />
+        {/* Mac — notarized download */}
+        <div
+          style={{
+            backgroundColor: "var(--surface)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 16,
+            padding: "24px 26px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <span style={{ fontSize: 24, lineHeight: 1 }}>🍎</span>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--cream)" }}>On your Mac</h2>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, marginBottom: 16 }}>
+            Signed &amp; notarized by Apple — download, unzip, and double-click. No warnings, no
+            Python needed. A golf icon ⛳︎ appears in your menu bar.
+          </p>
+          <a
+            href="/downloads/TrueCarryBridge.zip"
+            download
+            style={{
+              display: "block",
+              textAlign: "center",
+              padding: "13px 16px",
+              borderRadius: 10,
+              backgroundColor: "var(--cream)",
+              color: "#1E2A22",
+              fontSize: 15,
+              fontWeight: 700,
+              textDecoration: "none",
+            }}
+          >
+            ⬇ Download for Mac
+          </a>
+          <details style={{ marginTop: 16 }}>
+            <summary style={{ fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>
+              Prefer the command line?
+            </summary>
+            <p style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.6, margin: "10px 0" }}>
+              Open Terminal (⌘ + Space → “Terminal”) and paste:
+            </p>
+            <CopyCommand command={MAC_CMD} />
+          </details>
+        </div>
 
         {/* Windows */}
         <div style={{ marginTop: 16 }}>

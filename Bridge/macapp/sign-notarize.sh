@@ -12,7 +12,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="TrueCarry Bridge"
 APP="$HERE/dist/$APP_NAME.app"
 ZIP="$HERE/dist/TrueCarryBridge.zip"
-NOTARY_PROFILE="truecarry-notary"
+# Pass the keychain profile name as arg 1 if you named it something other than
+# the default, e.g.:  ./sign-notarize.sh "True Carry"
+NOTARY_PROFILE="${1:-truecarry-notary}"
 ENTITLEMENTS="$HERE/entitlements.plist"
 
 [ -d "$APP" ] || { echo "✗ $APP not found — run build.sh first."; exit 1; }
