@@ -78,7 +78,7 @@ struct ScoreEntryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.white)
         .environment(\.colorScheme, .light)
-        .presentationDetents([.fraction(0.6)])
+        .presentationDetents([.fraction(0.68)])
         .presentationDragIndicator(.visible)
     }
 
