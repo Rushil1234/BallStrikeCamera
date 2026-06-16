@@ -58,6 +58,22 @@ struct PastSessionsView: View {
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
+        #if DEBUG
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task {
+                        guard let uid = session.currentUser?.id else { return }
+                        let backend = session.backend
+                        let clubs = (try? await backend.loadClubs(userId: uid)) ?? []
+                        let round = SampleRoundFactory.generate(userId: uid, clubs: clubs)
+                        try? await backend.saveRound(round)
+                        await loadData()
+                    }
+                } label: { Image(systemName: "ladybug.fill") }
+            }
+        }
+        #endif
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
                 .tcAppearance()

@@ -340,6 +340,79 @@ struct RoundScoreSummary: Codable {
     var totalPutts: Int  = 0
 }
 
+/// Builds a realistic completed 18-hole round for previewing the saved-history
+/// output (as if the user played and tapped an NFC club tag on every shot).
+enum SampleRoundFactory {
+    static func generate(userId: UUID, clubs: [UserClub]) -> CourseRound {
+        let pars  = [4,4,5,3,4,4,3,5,4, 4,3,4,5,4,4,3,4,5]            // par 72
+        let yards = [410,395,540,175,430,360,205,560,440, 400,160,420,575,385,415,190,450,525]
+        let scoreDeltas = [0,1,0,-1,0,0,1,0,2, 0,-1,0,1,0,0,1,0,1]   // deterministic, human-looking
+        let baseLat = 37.6002, baseLon = -122.4908
+
+        func club(_ needles: [String]) -> UserClub? {
+            for n in needles { if let c = clubs.first(where: { $0.name.lowercased().contains(n) }) { return c } }
+            return clubs.first
+        }
+        let driver  = club(["driver"])
+        let wood    = club(["wood"]) ?? driver
+        let midIron = club(["7 iron", "6 iron", "8 iron", "iron"])
+        let wedge   = club(["wedge", "pitching", "gap", "sand"]) ?? midIron
+        let putter  = club(["putter"])
+
+        var holes: [RoundHole] = []
+        var nfc: [NFCShot] = []
+        var totalScore = 0, totalPar = 0, fairways = 0, girs = 0, totalPutts = 0
+
+        for i in 0..<18 {
+            let par = pars[i], holeNum = i + 1
+            let score = max(2, par + scoreDeltas[i])
+            let putts = par == 3 ? (scoreDeltas[i] < 0 ? 1 : 2) : min(max(1, 2 + max(0, scoreDeltas[i] - 1)), 3)
+            let fairway: Bool? = par == 3 ? nil : (scoreDeltas[i] <= 0)
+            let gir = (score - putts) <= (par - 2)
+            let penalties = scoreDeltas[i] >= 2 ? 1 : 0
+
+            totalScore += score; totalPar += par; totalPutts += putts
+            if fairway == true { fairways += 1 }
+            if gir { girs += 1 }
+
+            let fullSwings = max(1, score - putts)
+            for s in 0..<fullSwings {
+                let chosen: UserClub? = s == 0 ? (par == 3 ? midIron : driver)
+                    : (s == fullSwings - 1 ? wedge : (par == 5 && s == 1 ? wood : midIron))
+                guard let c = chosen else { continue }
+                nfc.append(NFCShot(
+                    clubId: c.id, clubName: c.name, holeNumber: holeNum, shotNumber: s + 1,
+                    latitude: baseLat + Double(i) * 0.0009 + Double(s) * 0.0001,
+                    longitude: baseLon + Double(i) * 0.0006,
+                    distanceToPinYards: Double(yards[i]) * (1.0 - Double(s + 1) / Double(fullSwings + 1)),
+                    tappedAt: Date().addingTimeInterval(Double(i - 18) * 600 + Double(s) * 45)))
+            }
+            if let p = putter {
+                for k in 0..<putts {
+                    nfc.append(NFCShot(
+                        clubId: p.id, clubName: p.name, holeNumber: holeNum, shotNumber: fullSwings + k + 1,
+                        latitude: baseLat + Double(i) * 0.0009, longitude: baseLon + Double(i) * 0.0006,
+                        distanceToPinYards: Double(max(2, 28 - k * 13)),
+                        tappedAt: Date().addingTimeInterval(Double(i - 18) * 600 + 240 + Double(k) * 30)))
+                }
+            }
+            holes.append(RoundHole(holeNumber: holeNum, par: par, score: score, putts: putts,
+                                   fairwayHit: fairway, greenInRegulation: gir, penalties: penalties))
+        }
+
+        var round = CourseRound(userId: userId, courseId: "sample-pine-hollow",
+                                courseName: "Pine Hollow National", teeBoxName: "White")
+        round.name = "Sample Round (preview)"
+        round.startedAt = Date().addingTimeInterval(-18 * 600)
+        round.endedAt = Date()
+        round.holes = holes
+        round.nfcShots = nfc
+        round.scoreSummary = RoundScoreSummary(totalScore: totalScore, totalPar: totalPar,
+                                               fairwaysHit: fairways, greensInReg: girs, totalPutts: totalPutts)
+        return round
+    }
+}
+
 // MARK: - Feed Post
 
 struct FeedPost: Codable, Identifiable {
