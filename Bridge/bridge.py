@@ -249,9 +249,14 @@ async def run():
 
     while True:
         try:
+            # Scan FOR our specific service UUID. iOS only surfaces a custom
+            # 128-bit service to a central that explicitly scans for it
+            # (especially once the advertisement moves to the overflow area),
+            # so a scan-for-everything can miss the iPhone entirely.
             device = await BleakScanner.find_device_by_filter(
                 _matches_truecarry,
                 timeout=15.0,
+                service_uuids=[SERVICE_UUID],
             )
         except BleakError as e:
             print(f"  BLE scan error: {e}")
