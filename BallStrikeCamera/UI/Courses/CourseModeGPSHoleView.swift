@@ -1375,8 +1375,9 @@ struct CourseModeGPSHoleView: View {
     @State private var showFinishAlert = false
     @State private var showDeleteRoundConfirm = false
     @State private var gpsOn           = true
-    @State private var showDispersion  = false
+    @State private var dispersionClubId: UUID?     // nil = overlay off
     @State private var dispersionShots: [SavedShot] = []
+    @State private var showDispersionPicker = false
     @State private var infoMessage: String?
     @State private var roundStartTime  = Date()
     @State private var recenterToken   = 0
@@ -1499,41 +1500,44 @@ struct CourseModeGPSHoleView: View {
     /// reference for horizontal and elevation), so it's gated on that.
     private var slopeDistances: SlopeReadout {
         _ = elevation.revision   // recompute when a new grid loads
-        guard gpsOn, userIsNearCurrentHole, gpsDistances.isAvailable,
-              let gh = currentMapHole,
-              let player = vm.location.currentLocation,
-              let playerElev = elevation.elevation(at: player) else {
-            return SlopeReadout()
-        }
+        // Mirror the left pill: show whenever distances are available (live GPS or
+        // estimated from the tee), using the matching reference point for elevation.
+        let d = mapDistances
+        guard d.isAvailable, let gh = currentMapHole ?? currentCourseHole else { return SlopeReadout() }
+        let liveGPS = gpsOn && userIsNearCurrentHole && gpsDistances.isAvailable
+        let reference = (liveGPS ? vm.location.currentLocation : nil) ?? gh.teeCoordinate?.clCoordinate
+        guard let ref = reference, let refElev = elevation.elevation(at: ref) else { return SlopeReadout() }
+
         func slope(_ coord: Coordinate?, _ horiz: Int?) -> Int? {
             guard let coord, let horiz,
                   let targetElev = elevation.elevation(at: coord.clCoordinate) else { return nil }
-            let vertYds = (targetElev - playerElev) * ElevationService.yardsPerMeter
+            let vertYds = (targetElev - refElev) * ElevationService.yardsPerMeter
             let h = Double(horiz)
             return Int(sqrt(h * h + vertYds * vertYds).rounded())
         }
         let vert = gh.greenCenterCoordinate.flatMap { c -> Int? in
             elevation.elevation(at: c.clCoordinate).map {
-                Int((($0 - playerElev) * ElevationService.yardsPerMeter).rounded())
+                Int((($0 - refElev) * ElevationService.yardsPerMeter).rounded())
             }
         }
         return SlopeReadout(
-            front:  slope(gh.greenFrontCoordinate,  gpsDistances.front),
-            center: slope(gh.greenCenterCoordinate, gpsDistances.center),
-            back:   slope(gh.greenBackCoordinate,   gpsDistances.back),
+            front:  slope(gh.greenFrontCoordinate,  d.front),
+            center: slope(gh.greenCenterCoordinate, d.center),
+            back:   slope(gh.greenBackCoordinate,   d.back),
             verticalYards: vert
         )
     }
 
     // MARK: - Dispersion overlay (#7)
 
-    /// Projected landing dots for the selected club: from the player, along the
-    /// bearing to the target (aim point, else green center), offset by each past
-    /// shot's lateral miss. The "zero line" is player→target.
+    /// Projected landing dots for the chosen dispersion club: from the player (or
+    /// the tee when there's no live fix), along the bearing to the target (aim
+    /// point, else green center — the "zero line"), offset by each shot's lateral.
     private var dispersionDots: [CLLocationCoordinate2D] {
-        guard showDispersion,
-              let origin = vm.location.currentLocation,
-              let target = aimTarget ?? currentMapHole?.greenCenterCoordinate?.clCoordinate
+        guard dispersionClubId != nil, !dispersionShots.isEmpty else { return [] }
+        let gh = currentMapHole ?? currentCourseHole
+        guard let origin = vm.location.currentLocation ?? gh?.teeCoordinate?.clCoordinate,
+              let target = aimTarget ?? gh?.greenCenterCoordinate?.clCoordinate
         else { return [] }
         let bearing = origin.bearing(to: target)
         return dispersionShots.compactMap { shot in
@@ -1542,16 +1546,14 @@ struct CourseModeGPSHoleView: View {
         }
     }
 
-    /// Loads the selected club's past shots once (when the overlay is switched on).
-    private func loadDispersionShots() {
-        let clubId = ClubPreference.lastUsedClubId
-        let clubName = ClubPreference.lastUsedClubName
+    /// Loads the chosen club's past shots to project on the course.
+    private func loadDispersionShots(clubId: UUID, clubName: String?) {
         guard let uid = session.currentUser?.id else { return }
         Task {
             let svc = ShotPersistenceService(userId: uid, backend: session.backend)
-            let all = (try? await svc.loadShots(limit: 400)) ?? []
+            let all = (try? await svc.loadShots(limit: 600)) ?? []
             let filtered = all.filter { s in
-                (clubId != nil && s.clubId == clubId) || (clubName != nil && s.clubName == clubName)
+                s.clubId == clubId || (clubName != nil && s.clubName == clubName)
             }.filter { $0.metrics.carryYards > 0 && !$0.isBadShot }
             await MainActor.run { dispersionShots = filtered }
         }
@@ -2155,6 +2157,21 @@ struct CourseModeGPSHoleView: View {
                 .tcAppearance()
             }
         }
+        .confirmationDialog("Show dispersion for…", isPresented: $showDispersionPicker, titleVisibility: .visible) {
+            ForEach(clubs) { c in
+                Button(c.name) {
+                    dispersionClubId = c.id
+                    loadDispersionShots(clubId: c.id, clubName: c.name)
+                }
+            }
+            if dispersionClubId != nil {
+                Button("Hide overlay", role: .destructive) {
+                    dispersionClubId = nil
+                    dispersionShots = []
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
         .confirmationDialog(
             "Is this where shot \(vm.currentHoleTrackedShots.count) landed?",
             isPresented: $showLandingConfirm,
@@ -2581,9 +2598,8 @@ struct CourseModeGPSHoleView: View {
             slopePill
             VStack(spacing: 14) {
                 railButton("location.fill", isActive: gpsOn) { gpsOn.toggle() }
-                railButton("scope", isActive: showDispersion) {
-                    showDispersion.toggle()
-                    if showDispersion { loadDispersionShots() }
+                railButton("scope", isActive: dispersionClubId != nil) {
+                    showDispersionPicker = true
                 }
                 railButton("camera.fill", isActive: false) { openCamera() }
                 railButton("list.number", isActive: false) { showScorecard = true }
