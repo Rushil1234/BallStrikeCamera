@@ -47,10 +47,9 @@ struct RangeCameraScreen: View {
             shotCount: isCourseMode ? 0 : rangeVM.shots.count,
             context: context,
             onChooseClub: {
+                // Manual picker only. NFC club scanning lives in Manage Bag →
+                // Add Club; the camera should never trigger the phone's NFC reader.
                 showClubPicker = true
-                if NFCNDEFReaderSession.readingAvailable {
-                    nfcManager.beginReading(alertMessage: "Or tap your NFC club to auto-select")
-                }
             },
             onDismiss: {
                 if !isCourseMode && !rangeVM.shots.isEmpty {

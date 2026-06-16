@@ -30,10 +30,9 @@ struct SimCameraScreen: View {
             selectedClubId: selectedClubId,
             shotCount: simVM.shots.count,
             onChooseClub: {
+            // Manual picker only. NFC club scanning lives in Manage Bag → Add
+            // Club; the camera should never trigger the phone's NFC reader.
             showClubPicker = true
-            if NFCNDEFReaderSession.readingAvailable {
-                nfcManager.beginReading(alertMessage: "Or tap your NFC club to auto-select")
-            }
         },
             onDismiss: { dismiss() },
             onSaveSession: {
