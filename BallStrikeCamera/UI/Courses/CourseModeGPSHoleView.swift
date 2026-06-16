@@ -1441,6 +1441,24 @@ struct CourseModeGPSHoleView: View {
         return vm.smartScore(forHole: hole.holeNumber).putts
     }
 
+    /// Tee club from the hole's first non-putter NFC tap (chronological).
+    private func teeClubName(for hole: RoundHole) -> String? {
+        (vm.activeRound?.nfcShots ?? [])
+            .filter { $0.holeNumber == hole.holeNumber }
+            .sorted { $0.tappedAt < $1.tappedAt }
+            .first(where: { !$0.clubName.lowercased().contains("putter") })?.clubName
+    }
+
+    /// First-putt distance (feet) from the hole's first putter tap's distance-to-pin.
+    private func firstPuttFeet(for hole: RoundHole) -> Int? {
+        let taps = (vm.activeRound?.nfcShots ?? [])
+            .filter { $0.holeNumber == hole.holeNumber }
+            .sorted { $0.tappedAt < $1.tappedAt }
+        guard let putt = taps.first(where: { $0.clubName.lowercased().contains("putter") }),
+              let yds = putt.distanceToPinYards else { return nil }
+        return max(0, Int((yds * 3.0).rounded()))   // yards → feet
+    }
+
     /// Called when an NFC club tag is tapped; records shot and fires haptic silently.
     private func handleNFCClubTap() {
         guard let clubId = NFCManager.shared.lastScannedClubId,
@@ -2180,7 +2198,9 @@ struct CourseModeGPSHoleView: View {
                     existingScore:  scoreEntryInitialScore(for: hole),
                     existingPutts:  scoreEntryInitialPutts(for: hole),
                     holeYardage:    scorecardYardage,
-                    handicap:       currentCourseHole?.handicap
+                    handicap:       currentCourseHole?.handicap,
+                    prefillTeeClubName: teeClubName(for: hole),
+                    prefillFirstPuttFeet: firstPuttFeet(for: hole)
                 ) { s, p, f, g in
                     let idx = vm.currentHoleIndex
                     Task {
