@@ -38,6 +38,7 @@ STATUS_HTTP_PORT = 8421
 
 # ── State ────────────────────────────────────────────────────────────────────
 tcp_writer: asyncio.StreamWriter | None = None
+tcp_reader: asyncio.StreamReader | None = None
 tcp_port: int | None = None
 detected_port: int | None = None
 sim_name: str | None = None
@@ -166,14 +167,19 @@ async def find_simulator() -> tuple[int, str] | None:
 
 
 async def ensure_tcp(port: int) -> bool:
-    global tcp_writer, tcp_port
+    global tcp_writer, tcp_reader, tcp_port
     if tcp_writer and not tcp_writer.is_closing():
         return True
     try:
-        _, tcp_writer = await asyncio.wait_for(
+        tcp_reader, tcp_writer = await asyncio.wait_for(
             asyncio.open_connection("127.0.0.1", port), timeout=2.0
         )
         tcp_port = port
+        # Drain whatever the sim sends back. If we never read it, the sim's
+        # socket buffer fills (GSPro pushes player/club/course info, especially
+        # when a course loads) and it drops the launch monitor. This also lets
+        # us notice a disconnect immediately (read returns EOF).
+        asyncio.ensure_future(_drain_reader(tcp_reader, tcp_writer))
         # GSPro needs to be told the launch monitor is ready right after
         # connecting, or it stalls at "Waiting for LM to connect". OGS doesn't.
         if port == GSPRO_PORT:
@@ -182,6 +188,21 @@ async def ensure_tcp(port: int) -> bool:
     except Exception:
         tcp_writer = None
         return False
+
+
+async def _drain_reader(reader, writer):
+    """Continuously read & discard data from the sim so its socket never stalls;
+    clear tcp_writer when the connection ends so monitor_simulator reconnects."""
+    global tcp_writer
+    try:
+        while True:
+            data = await reader.read(4096)
+            if not data:
+                break  # sim closed the connection
+    except Exception:
+        pass
+    if tcp_writer is writer:
+        tcp_writer = None
 
 
 def _gspro_keepalive_bytes(is_heartbeat: bool) -> bytes:
