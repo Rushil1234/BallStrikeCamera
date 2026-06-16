@@ -725,19 +725,49 @@ struct SimModeView: View {
                 }
                 .premiumCard(padding: 14)
 
+                // Connection checklist — mirrors truecarry.app/connect so you can
+                // confirm everything's linked from your phone (handy once GSPro is
+                // full-screen on the computer).
+                VStack(spacing: 0) {
+                    bleCheckRow(
+                        done: bleVM.state.isReady,
+                        pending: false,
+                        title: "Bridge connected",
+                        detail: bleVM.state.isReady
+                            ? "TrueCarry Bridge is paired over Bluetooth."
+                            : "Open TrueCarry Bridge on your computer.")
+                    Divider().background(BSTheme.border)
+                    bleCheckRow(
+                        done: bleSimDetected,
+                        pending: !bleVM.state.isReady,
+                        title: "Simulator detected",
+                        detail: bleSimDetected
+                            ? "\(bleVM.bridgeStatus?.gameName ?? "Simulator") running on your computer."
+                            : "Open GSPro or OpenGolfSim on your computer.")
+                    Divider().background(BSTheme.border)
+                    bleCheckRow(
+                        done: bleVM.bridgeStatus?.linked == true,
+                        pending: !bleSimDetected,
+                        title: "Ready to play",
+                        detail: bleVM.bridgeStatus?.linked == true
+                            ? "Shots forward automatically — swing away!"
+                            : "Waiting for the simulator link.")
+                }
+                .premiumCard(padding: 6)
+
                 // Download instructions
                 VStack(alignment: .leading, spacing: 8) {
                     Text("First time setup")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(BSTheme.textMuted)
                     VStack(alignment: .leading, spacing: 5) {
-                        bleStep("1", "Download TrueCarry Bridge on your PC or Mac:")
+                        bleStep("1", "On your Mac, download TrueCarry Bridge from:")
                         Text("truecarry.app/bridge")
                             .font(.system(size: 13, weight: .semibold, design: .monospaced))
                             .foregroundColor(BSTheme.electricCyan)
                             .padding(.leading, 20)
-                        bleStep("2", "Double-click the file to run it — no install needed")
-                        bleStep("3", "Keep that window open while you play")
+                        bleStep("2", "Open the download and drag TrueCarry Bridge into Applications, then launch it.")
+                        bleStep("3", "It runs in the menu bar (⛳︎). Keep this screen open until it connects.")
                     }
                 }
                 .padding(.top, 2)
@@ -776,6 +806,35 @@ struct SimModeView: View {
         case .unavailable:     return "dot.radiowaves.right"
         case .failed:          return "exclamationmark"
         }
+    }
+
+    private var bleSimDetected: Bool {
+        guard let s = bleVM.bridgeStatus else { return false }
+        return s.port == 921 || s.port == 3111
+    }
+
+    @ViewBuilder
+    private func bleCheckRow(done: Bool, pending: Bool, title: String, detail: String) -> some View {
+        let color: Color = done ? BSTheme.fairwayGreen : (pending ? BSTheme.textMuted : BSTheme.gold)
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle().fill(color.opacity(0.18)).frame(width: 24, height: 24)
+                Image(systemName: done ? "checkmark" : (pending ? "circle" : "exclamationmark"))
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(color)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(BSTheme.textPrimary)
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundColor(BSTheme.textMuted)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
     }
 
     private func bleStep(_ number: String, _ text: String) -> some View {

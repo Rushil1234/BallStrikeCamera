@@ -50,10 +50,16 @@ xcrun stapler validate "$APP"
 spctl --assess --type execute --verbose=4 "$APP" || true
 rm -f "$TMP_ZIP"
 
-# 4. Package the stapled app into a DMG, sign the DMG, then notarize + staple it.
+# 4. Package the stapled app into a drag-to-Applications DMG, sign, notarize, staple.
 echo "→ Building + signing + notarizing DMG…"
 rm -f "$DMG"
-hdiutil create -volname "$APP_NAME" -srcfolder "$APP" -ov -format UDZO "$DMG"
+STAGE="$HERE/dist/dmg_stage"
+rm -rf "$STAGE"
+mkdir -p "$STAGE"
+cp -R "$APP" "$STAGE/"                 # the stapled app
+ln -s /Applications "$STAGE/Applications"   # drop target so users can drag it in
+hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
+rm -rf "$STAGE"
 codesign --force --timestamp --sign "$IDENTITY" "$DMG"
 xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$DMG"
