@@ -237,7 +237,14 @@ private final class AimSegmentPolyline: MKPolyline {}
 private final class AimSegmentCasingPolyline: MKPolyline {}
 
 /// A single dispersion shot dot — the selected club's typical landing pattern (#7).
-private final class DispersionDotCircle: MKCircle {}
+private final class DispersionDotCircle: MKCircle { var isMiss = false }
+
+/// A projected dispersion shot: where it lands + whether it's an off-line miss
+/// (drives the green/red coloring, matching the insights dispersion chart).
+private struct DispersionDot {
+    let coord: CLLocationCoordinate2D
+    let isMiss: Bool
+}
 
 extension CLLocationCoordinate2D {
     /// Bearing in degrees (clockwise from north) toward another coordinate.
@@ -603,7 +610,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
     var trackedShots:    [TrackedShot] = []
 
     // Dispersion dots for the selected club (#7) — projected landing points.
-    var dispersionDots:  [CLLocationCoordinate2D] = []
+    var dispersionDots:  [DispersionDot] = []
 
     // UI inset hints so the camera frames the hole within the usable (non-overlapped) area.
     var topUIInset:    CGFloat = 100   // pts: safe area + top pills height
@@ -714,7 +721,11 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         let t = teeCoord.map { "\($0.latitude),\($0.longitude)" } ?? "-"
         let aimKey = aimPoints.map { "\(Int($0.latitude * 10000)),\(Int($0.longitude * 10000))" }.joined(separator: "|")
         let aimTgtKey = customAimTarget.map { "\(Int($0.latitude * 10000)),\(Int($0.longitude * 10000))" } ?? ""
-        let renderKey = "\(focusId)|\(g)|\(t)|\(trackedShots.count)|\(aimKey)|\(recenterToken)|\(gpsKey)|\(aimTgtKey)"
+        // Include the dispersion set so toggling/selecting a club rebuilds the
+        // overlays immediately (not only after a hole switch changes another key).
+        let dispKey = dispersionDots.isEmpty ? "0"
+            : "\(dispersionDots.count)@\(Int((dispersionDots[0].coord.latitude) * 100000))"
+        let renderKey = "\(focusId)|\(g)|\(t)|\(trackedShots.count)|\(aimKey)|\(recenterToken)|\(gpsKey)|\(aimTgtKey)|\(dispKey)"
         let flightPending = flightRequest != nil && flightRequest!.id != context.coordinator.lastFlightId
         if renderKey == context.coordinator.lastRenderKey && !flightPending {
             return
@@ -729,7 +740,9 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
         // Dispersion dots for the selected club (#7) — circles on the turf.
         for dot in dispersionDots {
-            map.addOverlay(DispersionDotCircle(center: dot, radius: 6), level: .aboveLabels)
+            let circle = DispersionDotCircle(center: dot.coord, radius: 2.6)
+            circle.isMiss = dot.isMiss
+            map.addOverlay(circle, level: .aboveLabels)
         }
 
         // Kick off a flight if a new request arrived.
@@ -1149,9 +1162,13 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let dot = overlay as? DispersionDotCircle {
                 let r = MKCircleRenderer(circle: dot)
-                r.fillColor   = UIColor(red: 1.0, green: 0.82, blue: 0.0, alpha: 0.80)
-                r.strokeColor = UIColor.black.withAlphaComponent(0.35)
-                r.lineWidth   = 0.5
+                // Match the insights dispersion chart: green = on line, red = miss.
+                // Semi-transparent so overlapping shots read darker (density).
+                let good = UIColor(red: 0.45, green: 0.88, blue: 0.38, alpha: 1)
+                let miss = UIColor(red: 0.95, green: 0.38, blue: 0.50, alpha: 1)
+                r.fillColor   = (dot.isMiss ? miss : good).withAlphaComponent(0.80)
+                r.strokeColor = UIColor.black.withAlphaComponent(0.45)
+                r.lineWidth   = 0.6
                 return r
             }
             if let polygon = overlay as? TaggedPolygon {
@@ -1536,15 +1553,19 @@ struct CourseModeGPSHoleView: View {
 
     // MARK: - Dispersion overlay (#7)
 
-    /// Projected landing dots for the chosen dispersion club: from the player (or
-    /// the tee when there's no live fix), along the bearing to the target (aim
-    /// point, else green center — the "zero line"), offset by each shot's lateral.
-    private var dispersionDots: [CLLocationCoordinate2D] {
+    /// Projected landing dots for the chosen dispersion club. The "zero line" runs
+    /// from where you're hitting (live GPS on the hole, else the tee) toward what
+    /// you're actually aiming at: a custom tap target, else the next fairway
+    /// waypoint ahead (activeAimPoints already filters to points ahead of you and
+    /// is empty on par 3s / near the green), else the green. Each shot is offset
+    /// by its lateral miss; large misses are flagged for the red coloring.
+    private var dispersionDots: [DispersionDot] {
         guard dispersionClubId != nil, !dispersionShots.isEmpty else { return [] }
         let gh = currentMapHole ?? currentCourseHole
-        let target = aimTarget ?? gh?.greenCenterCoordinate?.clCoordinate ?? gh?.greenFrontCoordinate?.clCoordinate
-        // Origin (where shots are hit from): your live position, else the tee, else
-        // far enough behind the green that the pattern lands on/around it.
+        let target = aimTarget
+            ?? activeAimPoints.first
+            ?? gh?.greenCenterCoordinate?.clCoordinate
+            ?? gh?.greenFrontCoordinate?.clCoordinate
         // Use live GPS only when on the hole; else project from the tee so the
         // pattern lands on the visible hole (not off-screen from a far sim fix).
         let origin = (userIsNearCurrentHole ? vm.location.currentLocation : nil)
@@ -1554,7 +1575,8 @@ struct CourseModeGPSHoleView: View {
         let bearing = origin.bearing(to: target)
         return dispersionShots.compactMap { shot in
             guard let p = ShotDispersion.point(for: shot) else { return nil }
-            return origin.projected(yardsForward: p.carry, yardsRight: p.lateral, bearingDeg: bearing)
+            let coord = origin.projected(yardsForward: p.carry, yardsRight: p.lateral, bearingDeg: bearing)
+            return DispersionDot(coord: coord, isMiss: abs(p.lateral) > 15)
         }
     }
 
