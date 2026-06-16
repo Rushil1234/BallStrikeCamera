@@ -33,6 +33,23 @@ class BridgeApp(rumps.App):
         ]
         threading.Thread(target=self._run_bridge, daemon=True).start()
         rumps.Timer(self._tick, 1).start()
+        # Make it obvious the (window-less) app actually launched.
+        self._announced = False
+        rumps.Timer(self._announce, 1).start()
+
+    def _announce(self, timer):
+        if self._announced:
+            return
+        self._announced = True
+        timer.stop()
+        try:
+            rumps.notification(
+                "TrueCarry Bridge is running",
+                "Look for the ⛳︎ icon in your menu bar.",
+                "Open Sim Mode → Bluetooth on your iPhone to connect.",
+            )
+        except Exception:
+            pass
 
     def _run_bridge(self):
         try:

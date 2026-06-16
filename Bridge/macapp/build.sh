@@ -32,6 +32,7 @@ rm -rf "$HERE/build" "$HERE/dist"
 "$VENV/bin/pyinstaller" --noconfirm --clean --windowed \
     --name "$APP_NAME" \
     --osx-bundle-identifier "$BUNDLE_ID" \
+    --icon "$HERE/icon.icns" \
     --collect-all bleak \
     --collect-all rumps \
     --distpath "$HERE/dist" \

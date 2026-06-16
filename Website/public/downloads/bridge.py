@@ -56,6 +56,8 @@ STATE: dict = {
 
 
 def clear():
+    if not sys.stdout.isatty():
+        return  # running inside the .app (no console) — nothing to clear
     os.system("cls" if platform.system() == "Windows" else "clear")
 
 
