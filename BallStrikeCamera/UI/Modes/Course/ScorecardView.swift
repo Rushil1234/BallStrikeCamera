@@ -237,17 +237,9 @@ struct ScorecardView: View {
 
             Spacer()
 
-            // Score cell with colored background
+            // Score cell with traditional golf markings (no fill except an ace).
             if let s = hole.score {
-                let diff = s - hole.par
-                Text("\(s)")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(diff < 0 ? .white : diff == 0 ? Color(white: 0.20) : .white)
-                    .frame(width: 28, height: 28)
-                    .background(scoreCellBackground(diff: diff))
-                    .clipShape(diff > 0
-                               ? AnyShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                               : AnyShape(Circle()))
+                scoreMark(score: s, par: hole.par)
                     .frame(width: 54, alignment: .center)
             } else {
                 Text("—")
@@ -273,10 +265,38 @@ struct ScorecardView: View {
         .padding(.vertical, 8)
     }
 
-    private func scoreCellBackground(diff: Int) -> Color {
-        if diff < 0  { return Color(red: 0.20, green: 0.65, blue: 0.30).opacity(0.85) }
-        if diff == 0 { return Color(white: 0.82) }
-        return Color(red: 0.85, green: 0.65, blue: 0.20).opacity(0.85)
+    /// Traditional scorecard markings around the score:
+    /// ace (1) → gold-filled star · eagle (≤−2) → two circles · birdie (−1) → one
+    /// circle · par → plain · bogey (+1) → one square · double+ (≥+2) → two squares.
+    /// No fills except the ace.
+    @ViewBuilder
+    private func scoreMark(score s: Int, par: Int) -> some View {
+        let diff = s - par
+        let stroke = Color(white: 0.22)
+        ZStack {
+            if s == 1 {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 30))
+                    .foregroundColor(Color(red: 0.86, green: 0.68, blue: 0.13))
+            } else if diff <= -2 {
+                Circle().stroke(stroke, lineWidth: 1.3).frame(width: 27, height: 27)
+                Circle().stroke(stroke, lineWidth: 1.3).frame(width: 21, height: 21)
+            } else if diff == -1 {
+                Circle().stroke(stroke, lineWidth: 1.3).frame(width: 24, height: 24)
+            } else if diff == 1 {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(stroke, lineWidth: 1.3).frame(width: 24, height: 24)
+            } else if diff >= 2 {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(stroke, lineWidth: 1.3).frame(width: 27, height: 27)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(stroke, lineWidth: 1.3).frame(width: 21, height: 21)
+            }
+            Text("\(s)")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(s == 1 ? .white : Color(white: 0.18))
+        }
+        .frame(width: 30, height: 30)
     }
 
     private func scorecardTotalRow(label: String, holes: [RoundHole]) -> some View {
