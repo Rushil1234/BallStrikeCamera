@@ -46,10 +46,6 @@ export default function PlayPage() {
       {/* Slim top bar — always visible */}
       <div className="sim-bar">
         <a className="sim-back" href="/">← True <span className="it">Carry.</span></a>
-        <div className="sim-code-display">
-          <span className="sim-code-label">App code</span>
-          <span className="sim-code-value">{code}</span>
-        </div>
         {stage === "playing" ? (
           <button className="sim-change-btn" onClick={() => setStage("select")}>
             ↩ Change
