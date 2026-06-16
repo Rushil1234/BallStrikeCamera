@@ -1506,7 +1506,9 @@ struct CourseModeGPSHoleView: View {
         guard d.isAvailable, let gh = currentMapHole ?? currentCourseHole else { return SlopeReadout() }
         // Reference point for the elevation delta: your live position if we have a
         // fix at all, otherwise the tee, otherwise the green itself (slope ≈ flat).
-        let reference = vm.location.currentLocation
+        // Only trust the live GPS when you're actually on the hole; otherwise the
+        // sim/off-course location poisons the elevation delta. Fall back to the tee.
+        let reference = (userIsNearCurrentHole ? vm.location.currentLocation : nil)
             ?? gh.teeCoordinate?.clCoordinate
             ?? gh.greenCenterCoordinate?.clCoordinate
         guard let ref = reference, let refElev = elevation.elevation(at: ref) else { return SlopeReadout() }
@@ -1543,7 +1545,11 @@ struct CourseModeGPSHoleView: View {
         let target = aimTarget ?? gh?.greenCenterCoordinate?.clCoordinate ?? gh?.greenFrontCoordinate?.clCoordinate
         // Origin (where shots are hit from): your live position, else the tee, else
         // far enough behind the green that the pattern lands on/around it.
-        let origin = vm.location.currentLocation ?? gh?.teeCoordinate?.clCoordinate
+        // Use live GPS only when on the hole; else project from the tee so the
+        // pattern lands on the visible hole (not off-screen from a far sim fix).
+        let origin = (userIsNearCurrentHole ? vm.location.currentLocation : nil)
+            ?? gh?.teeCoordinate?.clCoordinate
+            ?? gh?.greenFrontCoordinate?.clCoordinate
         guard let target, let origin else { return [] }
         let bearing = origin.bearing(to: target)
         return dispersionShots.compactMap { shot in
@@ -1571,7 +1577,10 @@ struct CourseModeGPSHoleView: View {
         var coords: [CLLocationCoordinate2D] = []
         [gh.teeCoordinate, gh.greenCenterCoordinate, gh.greenFrontCoordinate, gh.greenBackCoordinate]
             .compactMap { $0?.clCoordinate }.forEach { coords.append($0) }
-        if let u = vm.location.currentLocation { coords.append(u) }
+        // Only widen the grid to the player when they're actually on the hole;
+        // a far sim/off-course fix would make the grid span huge distances and
+        // wreck the interpolation (flat holes showing 100+ yd of "slope").
+        if userIsNearCurrentHole, let u = vm.location.currentLocation { coords.append(u) }
         guard !coords.isEmpty else { return }
         Task { await elevation.loadGrid(around: coords) }
     }
