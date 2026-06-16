@@ -29,6 +29,10 @@ protocol AppBackend {
     func loadShots(userId: UUID) async throws -> [SavedShot]
     func deleteShot(shotId: UUID, userId: UUID) async throws
 
+    // Replay frames in cloud storage (so replay survives reinstall / works cross-device)
+    func uploadShotFrames(userId: UUID, shotId: UUID, frames: [Data]) async throws
+    func downloadShotFrames(userId: UUID, shotId: UUID, count: Int) async throws -> [Data]
+
     // Range sessions — userId embedded in model
     func saveRangeSession(_ session: PracticeSession) async throws
     func deleteRangeSession(sessionId: UUID, userId: UUID) async throws
@@ -90,6 +94,10 @@ protocol AppBackend {
 extension AppBackend {
     func deleteSimSession(sessionId: UUID, userId: UUID) async throws {}
     func deleteCourseRound(roundId: UUID, userId: UUID) async throws {}
+
+    // Default: no cloud frame storage (local backend keeps frames on-device).
+    func uploadShotFrames(userId: UUID, shotId: UUID, frames: [Data]) async throws {}
+    func downloadShotFrames(userId: UUID, shotId: UUID, count: Int) async throws -> [Data] { [] }
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)

@@ -2,6 +2,10 @@ import SwiftUI
 
 struct ShotDetailView: View {
     let shot: SavedShot
+    @EnvironmentObject private var session: AuthSessionStore
+
+    @State private var resolvedFramesDir: String?   // local dir after ensuring frames (cloud → disk)
+    @State private var framesResolved = false
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -26,6 +30,17 @@ struct ShotDetailView: View {
         .navigationTitle(shot.clubName ?? "Shot")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
+        .task { await resolveFrames() }
+    }
+
+    /// Ensures the replay frames exist on disk (downloading from cloud if this
+    /// device doesn't have them), then points the player at the local folder.
+    private func resolveFrames() async {
+        guard !framesResolved, shot.media.frameCount > 0,
+              let uid = session.currentUser?.id else { framesResolved = true; return }
+        let svc = ShotPersistenceService(userId: uid, backend: session.backend)
+        resolvedFramesDir = (await svc.ensureFramesAvailable(for: shot))?.path
+        framesResolved = true
     }
 
     // MARK: - Replay
@@ -35,10 +50,14 @@ struct ShotDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             TCSectionHeader(title: "Replay")
             Group {
-                if let framesDir = shot.media.originalFramesFolderPath, shot.media.frameCount > 0 {
+                if let framesDir = resolvedFramesDir, shot.media.frameCount > 0 {
                     AnimatedFramesView(framesDir: framesDir, frameCount: shot.media.frameCount)
                         .frame(height: 220)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else if !framesResolved, shot.media.frameCount > 0 {
+                    // Fetching frames from cloud for this device.
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 220)
                 } else if let composite = shot.media.compositePath {
                     AsyncImage(url: URL(fileURLWithPath: composite)) { phase in
                         switch phase {

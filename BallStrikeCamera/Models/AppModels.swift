@@ -220,6 +220,9 @@ struct SavedShotMedia: Codable {
     var gifPath: String?                   = nil   // animated GIF of original frames
     var frameCount: Int                    = 41
     var saveOriginalFrames: Bool           = false
+    /// Replay frames mirrored to cloud storage, so replay works on any device /
+    /// after a reinstall (local files only exist on the device that captured them).
+    var framesUploaded: Bool               = false
 }
 
 // MARK: - Practice Session

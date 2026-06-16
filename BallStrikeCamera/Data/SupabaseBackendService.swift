@@ -256,6 +256,47 @@ final class SupabaseBackendService: AppBackend {
         try await deleteRow(table: "shots", id: shotId)
     }
 
+    // MARK: - Replay frames (Supabase Storage)
+    // Requires a private bucket "shot-frames" with RLS allowing a user to
+    // read/write objects under a path that starts with their own user id.
+
+    private static let framesBucket = "shot-frames"
+
+    private func frameObjectURL(userId: UUID, shotId: UUID, index: Int) -> URL {
+        config.storageBaseURL
+            .appendingPathComponent("object")
+            .appendingPathComponent(Self.framesBucket)
+            .appendingPathComponent(userId.uuidString)
+            .appendingPathComponent(shotId.uuidString)
+            .appendingPathComponent("frame_\(String(format: "%03d", index)).png")
+    }
+
+    func uploadShotFrames(userId: UUID, shotId: UUID, frames: [Data]) async throws {
+        for (idx, data) in frames.enumerated() {
+            var req = authorizedRequest(url: frameObjectURL(userId: userId, shotId: shotId, index: idx), method: "POST")
+            req.setValue("image/png", forHTTPHeaderField: "Content-Type")
+            req.setValue("true", forHTTPHeaderField: "x-upsert")   // overwrite if it exists
+            req.httpBody = data
+            let (respData, response) = try await performAuthorizedRequest(req)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200 || status == 201 else {
+                logError("uploadFrame", data: respData, response: response)
+                throw BackendError.saveFailed("shot-frames")
+            }
+        }
+    }
+
+    func downloadShotFrames(userId: UUID, shotId: UUID, count: Int) async throws -> [Data] {
+        var out: [Data] = []
+        for idx in 0..<max(0, count) {
+            let req = authorizedRequest(url: frameObjectURL(userId: userId, shotId: shotId, index: idx))
+            let (data, response) = try await performAuthorizedRequest(req)
+            guard (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { break }
+            out.append(data)
+        }
+        return out
+    }
+
     // MARK: - Range Sessions
 
     func saveRangeSession(_ session: PracticeSession) async throws {

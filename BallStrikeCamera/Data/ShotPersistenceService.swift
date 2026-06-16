@@ -66,18 +66,21 @@ final class ShotPersistenceService {
         }
 
         // Impact frames — always saved when provided (enables shot replay)
+        var framePNGs: [Data] = []
         if !originalFrames.isEmpty {
             let framesDir = mediaDir.appendingPathComponent("frames")
             AppStorageManager.ensureDirectory(framesDir)
             let limit = saveOriginalFrames ? 41 : 11
             for (idx, frame) in originalFrames.prefix(limit).enumerated() {
                 if let data = frame.pngData() {
+                    framePNGs.append(data)
                     let name = String(format: "frame_%03d.png", idx)
                     try? data.write(to: framesDir.appendingPathComponent(name))
                 }
             }
             media.originalFramesFolderPath = framesDir.path
             media.frameCount = min(limit, originalFrames.count)
+            media.framesUploaded = true   // optimistic; replay falls back to local if cloud misses
         }
 
         // Metrics JSON sidecar
@@ -106,7 +109,36 @@ final class ShotPersistenceService {
         shot.shotLongitude = shotLongitude
 
         try await backend.saveShot(shot)
+        // Best-effort: mirror replay frames to cloud storage so they survive a
+        // reinstall and work on other devices (local files only exist here).
+        if !framePNGs.isEmpty {
+            try? await backend.uploadShotFrames(userId: userId, shotId: shotId, frames: framePNGs)
+        }
         return shot
+    }
+
+    /// Returns the on-disk frames directory for a shot, downloading the frames
+    /// from cloud storage first if they're not already on this device (e.g. the
+    /// shot was captured on another device or after a reinstall). nil if none.
+    func ensureFramesAvailable(for shot: SavedShot) async -> URL? {
+        guard shot.media.frameCount > 0 else { return nil }
+        let framesDir = AppStorageManager.shotFramesDir(userId: userId, shotId: shot.id)
+            .appendingPathComponent("frames")
+        let fm = FileManager.default
+        // Already local?
+        if let files = try? fm.contentsOfDirectory(atPath: framesDir.path),
+           files.contains(where: { $0.hasPrefix("frame_") }) {
+            return framesDir
+        }
+        // Pull from cloud.
+        guard let datas = try? await backend.downloadShotFrames(
+            userId: userId, shotId: shot.id, count: shot.media.frameCount), !datas.isEmpty
+        else { return nil }
+        AppStorageManager.ensureDirectory(framesDir)
+        for (idx, data) in datas.enumerated() {
+            try? data.write(to: framesDir.appendingPathComponent(String(format: "frame_%03d.png", idx)))
+        }
+        return framesDir
     }
 
     // MARK: - Load
