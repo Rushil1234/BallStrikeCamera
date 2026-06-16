@@ -165,6 +165,28 @@ export default function BridgePage() {
           </details>
         </div>
 
+        {/* What to expect when you open it */}
+        <div
+          style={{
+            marginTop: 16,
+            backgroundColor: "rgba(184,154,94,0.08)",
+            border: "1px solid rgba(184,154,94,0.25)",
+            borderRadius: 14,
+            padding: "18px 20px",
+          }}
+        >
+          <p style={{ fontSize: 14, fontWeight: 700, color: "var(--cream)", marginBottom: 8 }}>
+            ⛳︎ What happens when you open it
+          </p>
+          <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.65 }}>
+            No window will pop up — that&rsquo;s normal. TrueCarry Bridge runs quietly in the
+            background. Look for the <strong style={{ color: "var(--text)" }}>⛳︎ TrueCarry icon in
+            your menu bar</strong> (top-right of the screen, near the clock and Wi-Fi). You&rsquo;ll
+            also get a notification confirming it&rsquo;s running. Click that menu-bar icon any time
+            to check status, open this status page, or quit.
+          </p>
+        </div>
+
         {/* Windows */}
         <div style={{ marginTop: 16 }}>
           <PlatformCard
