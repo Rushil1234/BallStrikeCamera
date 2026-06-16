@@ -162,6 +162,8 @@ struct ScoreEntryView: View {
                     rowDivider
                     mainStatsRow
                     rowDivider
+                    teeShotColumn.padding(.vertical, 16)
+                    rowDivider
                     subStatsRow
                     rowDivider
                     bunkersSection
@@ -232,42 +234,69 @@ struct ScoreEntryView: View {
     // MARK: - Main Stats Row (Score | Putts | Tee Shot)
 
     private var mainStatsRow: some View {
-        HStack(alignment: .top, spacing: 0) {
-            scoreColumn
-            colDivider
-            puttsColumn
-            colDivider
-            teeShotColumn
+        VStack(spacing: 16) {
+            heroScore
+            HStack(spacing: 12) {
+                stepperCard(label: "Score", value: score, valueColor: scoreSummaryColor,
+                            onMinus: { if score > 1 { score -= 1 } }, onPlus: { score += 1 })
+                stepperCard(label: "Putts", value: putts, valueColor: TCTheme.textPrimary,
+                            onMinus: { if putts > 0 { putts -= 1 } }, onPlus: { putts += 1 })
+            }
         }
-        .padding(.vertical, 16)
+        .padding(.vertical, 18)
     }
 
-    private var scoreColumn: some View {
+    /// Big result-forward score readout — the focal point of the sheet.
+    private var heroScore: some View {
         VStack(spacing: 8) {
-            colLabel("Score")
-            stepCircle("plus") { score += 1 }
             Text("\(score)")
-                .font(.system(size: 34, weight: .bold))
+                .font(.system(size: 60, weight: .bold, design: .rounded))
                 .foregroundColor(scoreSummaryColor)
                 .contentTransition(.numericText())
-                .frame(minWidth: 44, alignment: .center)
-            stepCircle("minus") { if score > 1 { score -= 1 } }
+                .frame(minWidth: 72)
+            HStack(spacing: 8) {
+                Text(scoreSummaryLabel)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(scoreSummaryColor)
+                Text(scoreDeltaText)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.textMuted)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(TCTheme.panelRaised)
+                    .clipShape(Capsule())
+                if computedGIR {
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.seal.fill").font(.system(size: 10, weight: .bold))
+                        Text("GIR").font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundColor(TCTheme.sage)
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(TCTheme.sage.opacity(0.15)).clipShape(Capsule())
+                }
+            }
         }
-        .frame(maxWidth: .infinity)
     }
 
-    private var puttsColumn: some View {
-        VStack(spacing: 8) {
-            colLabel("Putts")
-            stepCircle("plus") { putts += 1 }
-            Text("\(putts)")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundColor(TCTheme.textPrimary)
-                .contentTransition(.numericText())
-                .frame(minWidth: 44, alignment: .center)
-            stepCircle("minus") { if putts > 0 { putts -= 1 } }
+    private func stepperCard(label: String, value: Int, valueColor: Color,
+                             onMinus: @escaping () -> Void, onPlus: @escaping () -> Void) -> some View {
+        VStack(spacing: 10) {
+            colLabel(label)
+            HStack(spacing: 14) {
+                stepCircle("minus", action: onMinus)
+                Text("\(value)")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(valueColor)
+                    .frame(minWidth: 30)
+                    .contentTransition(.numericText())
+                stepCircle("plus", action: onPlus)
+            }
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(TCTheme.panelRaised.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
+            .strokeBorder(TCTheme.border, lineWidth: 1))
     }
 
     private var teeShotColumn: some View {
