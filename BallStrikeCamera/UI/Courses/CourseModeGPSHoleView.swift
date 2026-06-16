@@ -2779,19 +2779,19 @@ struct CourseModeGPSHoleView: View {
         HStack(spacing: 14) {
             // Avatar
             ZStack {
-                Circle().fill(TCTheme.goldGradient).frame(width: 42, height: 42)
-                Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1).frame(width: 42, height: 42)
+                Circle().fill(TCTheme.goldGradient).frame(width: 40, height: 40)
+                Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1).frame(width: 40, height: 40)
                 Text(userInitials)
                     .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundColor(TCTheme.deepGreen)
             }
 
-            // Score info — to-par + strokes (no name/email)
-            VStack(alignment: .leading, spacing: 1) {
+            // Score info — to-par + strokes side by side (no name/email)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(scoreToParString)
-                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    .font(.system(size: 19, weight: .heavy, design: .rounded))
                     .foregroundColor(scoreToParColor)
-                Text("\(vm.activeRound?.scoreSummary.totalScore ?? 0) strokes")
+                Text("· \(vm.activeRound?.scoreSummary.totalScore ?? 0) strokes")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundColor(.white.opacity(0.70))
             }
@@ -2803,7 +2803,7 @@ struct CourseModeGPSHoleView: View {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 46, height: 46)
+                    .frame(width: 44, height: 44)
                     .background(.white.opacity(0.12))
                     .clipShape(Circle())
                     .overlay(Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1))
@@ -2819,7 +2819,7 @@ struct CourseModeGPSHoleView: View {
                         .font(.system(size: 11, weight: .heavy, design: .rounded))
                 }
                 .foregroundColor(TCTheme.deepGreen)
-                .frame(width: 78, height: 54)
+                .frame(width: 76, height: 51)
                 .background(TCTheme.goldGradient)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 .shadow(color: TCTheme.gold.opacity(0.4), radius: 6, y: 2)
@@ -2827,8 +2827,8 @@ struct CourseModeGPSHoleView: View {
             .buttonStyle(HUDPressStyle())
         }
         .padding(.horizontal, 18)
-        .padding(.top, 18)
-        .padding(.bottom, 26)
+        .padding(.top, 16)
+        .padding(.bottom, 22)
         .frame(maxWidth: .infinity)
         .background(
             ZStack {
