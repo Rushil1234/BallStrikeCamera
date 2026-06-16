@@ -47,10 +47,6 @@ struct ScorecardView: View {
                         scorecardGrid
                             .padding(.horizontal, TCTheme.hPad)
 
-                        // Legend
-                        legendRow
-                            .padding(.horizontal, TCTheme.hPad)
-
                         // Summary strip
                         summaryStrip
                             .padding(.horizontal, TCTheme.hPad)
@@ -200,20 +196,16 @@ struct ScorecardView: View {
 
     private var scorecardHeaderRow: some View {
         HStack(spacing: 0) {
-            Text("HOLE")
-                .frame(width: 44, alignment: .leading)
-            Text("PAR")
-                .frame(width: 36, alignment: .center)
-            Spacer()
-            Text("SCORE")
-                .frame(width: 54, alignment: .center)
-            Text("PUTTS")
-                .frame(width: 44, alignment: .center)
+            Text("HOLE").frame(maxWidth: .infinity)
+            Text("PAR").frame(maxWidth: .infinity)
+            Rectangle().fill(Color.white.opacity(0.22)).frame(width: 1, height: 16)
+            Text("SCORE").frame(maxWidth: .infinity)
+            Text("PUTTS").frame(maxWidth: .infinity)
         }
-        .font(.system(size: 10, weight: .bold))
+        .font(.system(size: 12, weight: .bold))
         .foregroundColor(Color(red: 0.94, green: 0.90, blue: 0.80))
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.vertical, 11)
         .background(
             // Top corners rounded, bottom corners square to join the rows below
             Color(red: 0.10, green: 0.23, blue: 0.13)
@@ -226,40 +218,36 @@ struct ScorecardView: View {
     private func scorecardHoleRow(hole: RoundHole) -> some View {
         HStack(spacing: 0) {
             Text("\(hole.holeNumber)")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(Color(white: 0.15))
-                .frame(width: 44, alignment: .leading)
+                .frame(maxWidth: .infinity)
 
             Text("\(hole.par)")
-                .font(.system(size: 13))
+                .font(.system(size: 17))
                 .foregroundColor(Color(white: 0.40))
-                .frame(width: 36, alignment: .center)
+                .frame(maxWidth: .infinity)
 
-            Spacer()
+            Rectangle().fill(Color(white: 0.72)).frame(width: 1, height: 32)
 
             // Score cell with traditional golf markings (no fill except an ace).
-            if let s = hole.score {
-                scoreMark(score: s, par: hole.par)
-                    .frame(width: 54, alignment: .center)
-            } else {
-                Text("—")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(white: 0.55))
-                    .frame(width: 54, alignment: .center)
+            Group {
+                if let s = hole.score {
+                    scoreMark(score: s, par: hole.par)
+                } else {
+                    Text("—").font(.system(size: 17)).foregroundColor(Color(white: 0.55))
+                }
             }
+            .frame(maxWidth: .infinity)
 
             // Putts
-            if let p = hole.putts {
-                Text("\(p)")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(white: 0.35))
-                    .frame(width: 44, alignment: .center)
-            } else {
-                Text("—")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(white: 0.55))
-                    .frame(width: 44, alignment: .center)
+            Group {
+                if let p = hole.putts {
+                    Text("\(p)").font(.system(size: 17)).foregroundColor(Color(white: 0.35))
+                } else {
+                    Text("—").font(.system(size: 17)).foregroundColor(Color(white: 0.55))
+                }
             }
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -293,10 +281,10 @@ struct ScorecardView: View {
                     .stroke(stroke, lineWidth: 1.3).frame(width: 21, height: 21)
             }
             Text("\(s)")
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundColor(s == 1 ? .white : Color(white: 0.18))
         }
-        .frame(width: 30, height: 30)
+        .frame(width: 32, height: 32)
     }
 
     private func scorecardTotalRow(label: String, holes: [RoundHole]) -> some View {
@@ -306,55 +294,26 @@ struct ScorecardView: View {
 
         return HStack(spacing: 0) {
             Text(label)
-                .font(.system(size: 11, weight: .black))
+                .font(.system(size: 14, weight: .black))
                 .foregroundColor(Color(white: 0.20))
-                .frame(width: 44, alignment: .leading)
+                .frame(maxWidth: .infinity)
             Text("\(totalPar)")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(Color(white: 0.40))
-                .frame(width: 36, alignment: .center)
-            Spacer()
+                .frame(maxWidth: .infinity)
+            Rectangle().fill(Color(white: 0.66)).frame(width: 1, height: 20)
             Text("\(totalScore)")
-                .font(.system(size: 13, weight: .black))
+                .font(.system(size: 16, weight: .black))
                 .foregroundColor(Color(white: 0.15))
-                .frame(width: 54, alignment: .center)
+                .frame(maxWidth: .infinity)
             Text(totalPutts > 0 ? "\(totalPutts)" : "—")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(Color(white: 0.40))
-                .frame(width: 44, alignment: .center)
+                .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.vertical, 10)
         .background(Color(white: 0.88))
-    }
-
-    // MARK: - Legend
-
-    private var legendRow: some View {
-        HStack(spacing: 14) {
-            legendItem(isCircle: true,  color: Color(red: 0.20, green: 0.65, blue: 0.30).opacity(0.85), label: "Birdie or Better")
-            legendItem(isCircle: true,  color: Color(white: 0.82),                                       label: "Par")
-            legendItem(isCircle: false, color: Color(red: 0.85, green: 0.65, blue: 0.20).opacity(0.85), label: "Bogey or Worse")
-        }
-        .tcCard()
-    }
-
-    private func legendItem(isCircle: Bool, color: Color, label: String) -> some View {
-        HStack(spacing: 6) {
-            if isCircle {
-                Circle()
-                    .fill(color)
-                    .frame(width: 12, height: 12)
-            } else {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(color)
-                    .frame(width: 12, height: 12)
-            }
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundColor(TCTheme.textMuted)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Summary Strip
