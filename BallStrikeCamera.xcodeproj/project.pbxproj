@@ -98,6 +98,7 @@
 		BF0000030000000000000004 /* AuthSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000004 /* AuthSessionStore.swift */; };
 		BF0000030000000000000005 /* LocalBackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000005 /* LocalBackendService.swift */; };
 		BF0000030000000000000006 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000006 /* LocationService.swift */; };
+		BFE1E2E300000000000000A2 /* ElevationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE1E2E300000000000000A1 /* ElevationService.swift */; };
 		BF0000030000000000000007 /* ShotPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000007 /* ShotPersistenceService.swift */; };
 		BF0000030000000000000008 /* SimOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000008 /* SimOutputService.swift */; };
 		BF0000030000000000000009 /* GolfCourseAPIConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000009 /* GolfCourseAPIConfig.swift */; };
@@ -331,6 +332,7 @@
 		BF0000020000000000000004 /* AuthSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSessionStore.swift; sourceTree = "<group>"; };
 		BF0000020000000000000005 /* LocalBackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBackendService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000006 /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
+		BFE1E2E300000000000000A1 /* ElevationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevationService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000007 /* ShotPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotPersistenceService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000008 /* SimOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimOutputService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000009 /* GolfCourseAPIConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfCourseAPIConfig.swift; sourceTree = "<group>"; };
@@ -747,6 +749,7 @@
 				BF0000020000000000000005 /* LocalBackendService.swift */,
 				BF000006000000000000001F /* CourseImageService.swift */,
 				BF0000020000000000000006 /* LocationService.swift */,
+				BFE1E2E300000000000000A1 /* ElevationService.swift */,
 				BF0000020000000000000007 /* ShotPersistenceService.swift */,
 				BF0000020000000000000008 /* SimOutputService.swift */,
 				BF0000020000000000000009 /* GolfCourseAPIConfig.swift */,
@@ -1177,6 +1180,7 @@
 				BF0000030000000000000004 /* AuthSessionStore.swift in Sources */,
 				BF0000030000000000000005 /* LocalBackendService.swift in Sources */,
 				BF0000030000000000000006 /* LocationService.swift in Sources */,
+				BFE1E2E300000000000000A2 /* ElevationService.swift in Sources */,
 				BF0000030000000000000007 /* ShotPersistenceService.swift in Sources */,
 				BF0000030000000000000008 /* SimOutputService.swift in Sources */,
 				BF0000030000000000000009 /* GolfCourseAPIConfig.swift in Sources */,

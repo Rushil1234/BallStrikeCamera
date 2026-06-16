@@ -1295,6 +1295,7 @@ struct CourseModeGPSHoleView: View {
     @EnvironmentObject var camera: CameraController
     @StateObject private var vm: CourseRoundViewModel
     @ObservedObject private var nfcManager = NFCManager.shared
+    @StateObject private var elevation = ElevationService()
 
     @State private var clubs: [UserClub] = []
     @State private var showCamera      = false
@@ -1415,6 +1416,51 @@ struct CourseModeGPSHoleView: View {
             return gpsDistances
         }
         return estimatedTeeDistances
+    }
+
+    // MARK: - Slope-adjusted distances (#6)
+
+    /// "Plays-like" distance = sqrt(horizontal² + vertical²), where horizontal is
+    /// the live player→target yardage and vertical is the interpolated elevation
+    /// change (yards). Only meaningful with live GPS (player position + the same
+    /// reference for horizontal and elevation), so it's gated on that.
+    private var slopeDistances: SlopeReadout {
+        _ = elevation.revision   // recompute when a new grid loads
+        guard gpsOn, userIsNearCurrentHole, gpsDistances.isAvailable,
+              let gh = currentMapHole,
+              let player = vm.location.currentLocation,
+              let playerElev = elevation.elevation(at: player) else {
+            return SlopeReadout()
+        }
+        func slope(_ coord: Coordinate?, _ horiz: Int?) -> Int? {
+            guard let coord, let horiz,
+                  let targetElev = elevation.elevation(at: coord.clCoordinate) else { return nil }
+            let vertYds = (targetElev - playerElev) * ElevationService.yardsPerMeter
+            let h = Double(horiz)
+            return Int(sqrt(h * h + vertYds * vertYds).rounded())
+        }
+        let vert = gh.greenCenterCoordinate.flatMap { c -> Int? in
+            elevation.elevation(at: c.clCoordinate).map {
+                Int((($0 - playerElev) * ElevationService.yardsPerMeter).rounded())
+            }
+        }
+        return SlopeReadout(
+            front:  slope(gh.greenFrontCoordinate,  gpsDistances.front),
+            center: slope(gh.greenCenterCoordinate, gpsDistances.center),
+            back:   slope(gh.greenBackCoordinate,   gpsDistances.back),
+            verticalYards: vert
+        )
+    }
+
+    /// Pulls one elevation grid for the current hole (tee, green edges, player).
+    private func loadElevationForHole() {
+        guard let gh = currentMapHole ?? currentCourseHole else { return }
+        var coords: [CLLocationCoordinate2D] = []
+        [gh.teeCoordinate, gh.greenCenterCoordinate, gh.greenFrontCoordinate, gh.greenBackCoordinate]
+            .compactMap { $0?.clCoordinate }.forEach { coords.append($0) }
+        if let u = vm.location.currentLocation { coords.append(u) }
+        guard !coords.isEmpty else { return }
+        Task { await elevation.loadGrid(around: coords) }
     }
 
     private var displayYardage: Int? {
@@ -2036,6 +2082,7 @@ struct CourseModeGPSHoleView: View {
         }
         .onAppear {
             registerWatchRoundControls()
+            loadElevationForHole()
         }
         .onDisappear {
             WatchConnectivityBridge.shared.unregisterRoundCommandHandler()
@@ -2050,6 +2097,7 @@ struct CourseModeGPSHoleView: View {
             hazardCounts = [:]
             showRecenter = false
             pushWidgetData()
+            loadElevationForHole()
         }
         .onChange(of: mapDistances.center) { _ in
             pushWidgetData()
@@ -2422,8 +2470,9 @@ struct CourseModeGPSHoleView: View {
     // MARK: - Right Sidebar
 
     private var rightSidebar: some View {
-        VStack {
+        VStack(alignment: .trailing, spacing: 10) {
             Spacer(minLength: 0)
+            slopePill
             VStack(spacing: 14) {
                 railButton("location.fill", isActive: gpsOn) { gpsOn.toggle() }
                 railButton("camera.fill", isActive: false) { openCamera() }
@@ -2434,6 +2483,61 @@ struct CourseModeGPSHoleView: View {
             .hudGlass(28)
             Spacer(minLength: 0)
         }
+    }
+
+    /// Right-side slope ("plays-like") pill — mirrors the left F/C/B pill but each
+    /// number is slope-adjusted, with an arrow showing net elevation to the green.
+    @ViewBuilder private var slopePill: some View {
+        let s = slopeDistances
+        if s.isAvailable {
+            VStack(alignment: .trailing, spacing: 3) {
+                if let v = s.verticalYards, v != 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: v > 0 ? "arrow.up.forward" : "arrow.down.forward")
+                            .font(.system(size: 8, weight: .black))
+                        Text("\(abs(v))y")
+                            .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundColor(v > 0 ? Color(red: 0.70, green: 0.95, blue: 0.24)
+                                           : Color(red: 0.98, green: 0.72, blue: 0.42))
+                }
+                if let f = s.front  { slopeRow(label: "F", yards: f, isHero: false) }
+                if let c = s.center { slopeRow(label: "C", yards: c, isHero: true) }
+                if let b = s.back   { slopeRow(label: "B", yards: b, isHero: false) }
+                Text("PLAYS")
+                    .font(.system(size: 7, weight: .black, design: .rounded))
+                    .foregroundColor(.white.opacity(0.40))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .hudGlass(14)
+            .frame(minWidth: 70, alignment: .trailing)
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: s.center)
+        }
+    }
+
+    private func slopeRow(label: String, yards: Int, isHero: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Text(label)
+                .font(.system(size: isHero ? 9 : 8, weight: .black, design: .rounded))
+                .foregroundColor(isHero ? .white : .white.opacity(0.5))
+                .frame(width: 10, alignment: .leading)
+            Text("\(yards)")
+                .font(.system(size: isHero ? 31 : 13, weight: isHero ? .black : .semibold,
+                              design: .rounded))
+                .foregroundColor(isHero ? .white : .white.opacity(0.75))
+                .contentTransition(.numericText())
+        }
+    }
+
+    /// Slope-adjusted F/C/B yardages + net elevation to the green center (yards;
+    /// + uphill, − downhill).
+    private struct SlopeReadout {
+        var front: Int? = nil
+        var center: Int? = nil
+        var back: Int? = nil
+        var verticalYards: Int? = nil
+        var isAvailable: Bool { center != nil }
     }
 
     private func toolButton(_ icon: String, _ label: String, action: (() -> Void)? = nil) -> some View {
