@@ -92,6 +92,35 @@ final class ElevationService: ObservableObject {
     // MARK: - Network
 
     private static func fetchElevations(lats: [Double], lons: [Double]) async -> [Double]? {
+        // Prefer SRTM (30 m) for terrain accuracy; fall back to Open-Meteo's DEM
+        // if the SRTM endpoint is rate-limited/unreachable so slope still works.
+        if let srtm = await fetchSRTM(lats: lats, lons: lons) { return srtm }
+        return await fetchOpenMeteo(lats: lats, lons: lons)
+    }
+
+    /// SRTM 30 m via OpenTopoData (free, no key; up to 100 points/request).
+    private static func fetchSRTM(lats: [Double], lons: [Double]) async -> [Double]? {
+        let locs = zip(lats, lons).map { String(format: "%.6f,%.6f", $0, $1) }.joined(separator: "|")
+        var comps = URLComponents(string: "https://api.opentopodata.org/v1/srtm30m")!
+        comps.queryItems = [URLQueryItem(name: "locations", value: locs)]
+        guard let url = comps.url else { return nil }
+        do {
+            let (data, resp) = try await URLSession.shared.data(from: url)
+            guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+            struct Response: Decodable {
+                struct Result: Decodable { let elevation: Double? }
+                let results: [Result]
+                let status: String
+            }
+            let r = try JSONDecoder().decode(Response.self, from: data)
+            guard r.status == "OK", r.results.count == lats.count else { return nil }
+            return r.results.map { $0.elevation ?? 0 }
+        } catch {
+            return nil
+        }
+    }
+
+    private static func fetchOpenMeteo(lats: [Double], lons: [Double]) async -> [Double]? {
         let latStr = lats.map { String(format: "%.5f", $0) }.joined(separator: ",")
         let lonStr = lons.map { String(format: "%.5f", $0) }.joined(separator: ",")
         var comps = URLComponents(string: "https://api.open-meteo.com/v1/elevation")!

@@ -727,9 +727,9 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             !($0 is MKUserLocation) && !($0 is FlightBallAnnotation)
         })
 
-        // Dispersion dots for the selected club (#7) — small circles on the turf.
+        // Dispersion dots for the selected club (#7) — circles on the turf.
         for dot in dispersionDots {
-            map.addOverlay(DispersionDotCircle(center: dot, radius: 1.5), level: .aboveLabels)
+            map.addOverlay(DispersionDotCircle(center: dot, radius: 6), level: .aboveLabels)
         }
 
         // Kick off a flight if a new request arrived.
@@ -1514,9 +1514,10 @@ struct CourseModeGPSHoleView: View {
         func slope(_ coord: Coordinate?, _ horiz: Int?) -> Int? {
             guard let coord, let horiz,
                   let targetElev = elevation.elevation(at: coord.clCoordinate) else { return nil }
+            // Plays-like = horizontal + (target elevation − your elevation).
+            // Uphill (target higher) plays longer (+); if you're above it, shorter (−).
             let vertYds = (targetElev - refElev) * ElevationService.yardsPerMeter
-            let h = Double(horiz)
-            return Int(sqrt(h * h + vertYds * vertYds).rounded())
+            return max(0, Int((Double(horiz) + vertYds).rounded()))
         }
         let vert = gh.greenCenterCoordinate.flatMap { c -> Int? in
             elevation.elevation(at: c.clCoordinate).map {
@@ -2029,6 +2030,14 @@ struct CourseModeGPSHoleView: View {
                 .padding(.trailing, 12)
                 .padding(.top, topSafeArea + 132)
                 .padding(.bottom, 210)
+                .ignoresSafeArea(edges: .bottom)
+
+            // Slope ("plays-like") pill — bottom-right, same height as the left F/C/B pill
+            VStack { Spacer(minLength: 0); slopePill }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                .padding(.trailing, 12)
+                .padding(.top, topSafeArea + 120)
+                .padding(.bottom, 130)
                 .ignoresSafeArea(edges: .bottom)
 
             // Hazard count badges — top-left, below top bar
@@ -2599,9 +2608,8 @@ struct CourseModeGPSHoleView: View {
     // MARK: - Right Sidebar
 
     private var rightSidebar: some View {
-        VStack(alignment: .trailing, spacing: 10) {
+        VStack {
             Spacer(minLength: 0)
-            slopePill
             VStack(spacing: 14) {
                 railButton("location.fill", isActive: gpsOn) { gpsOn.toggle() }
                 railButton("scope", isActive: dispersionClubId != nil) {
