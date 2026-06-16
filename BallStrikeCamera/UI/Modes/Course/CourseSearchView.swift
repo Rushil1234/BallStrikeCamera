@@ -59,7 +59,7 @@ struct CourseSearchView: View {
                         .foregroundColor(TCTheme.textMuted)
                         .font(.system(size: 15))
                     TextField("Search courses…", text: $query)
-                        .foregroundColor(.white)
+                        .foregroundColor(.black)
                         .font(.system(size: 15))
                     if !query.isEmpty {
                         Button {
