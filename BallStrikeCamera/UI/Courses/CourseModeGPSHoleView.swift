@@ -1504,8 +1504,11 @@ struct CourseModeGPSHoleView: View {
         // estimated from the tee), using the matching reference point for elevation.
         let d = mapDistances
         guard d.isAvailable, let gh = currentMapHole ?? currentCourseHole else { return SlopeReadout() }
-        let liveGPS = gpsOn && userIsNearCurrentHole && gpsDistances.isAvailable
-        let reference = (liveGPS ? vm.location.currentLocation : nil) ?? gh.teeCoordinate?.clCoordinate
+        // Reference point for the elevation delta: your live position if we have a
+        // fix at all, otherwise the tee, otherwise the green itself (slope ≈ flat).
+        let reference = vm.location.currentLocation
+            ?? gh.teeCoordinate?.clCoordinate
+            ?? gh.greenCenterCoordinate?.clCoordinate
         guard let ref = reference, let refElev = elevation.elevation(at: ref) else { return SlopeReadout() }
 
         func slope(_ coord: Coordinate?, _ horiz: Int?) -> Int? {
@@ -1536,9 +1539,11 @@ struct CourseModeGPSHoleView: View {
     private var dispersionDots: [CLLocationCoordinate2D] {
         guard dispersionClubId != nil, !dispersionShots.isEmpty else { return [] }
         let gh = currentMapHole ?? currentCourseHole
-        guard let origin = vm.location.currentLocation ?? gh?.teeCoordinate?.clCoordinate,
-              let target = aimTarget ?? gh?.greenCenterCoordinate?.clCoordinate
-        else { return [] }
+        let target = aimTarget ?? gh?.greenCenterCoordinate?.clCoordinate ?? gh?.greenFrontCoordinate?.clCoordinate
+        // Origin (where shots are hit from): your live position, else the tee, else
+        // far enough behind the green that the pattern lands on/around it.
+        let origin = vm.location.currentLocation ?? gh?.teeCoordinate?.clCoordinate
+        guard let target, let origin else { return [] }
         let bearing = origin.bearing(to: target)
         return dispersionShots.compactMap { shot in
             guard let p = ShotDispersion.point(for: shot) else { return nil }
@@ -2224,6 +2229,7 @@ struct CourseModeGPSHoleView: View {
         }
         .onChange(of: mapDistances.center) { _ in
             pushWidgetData()
+            loadElevationForHole()   // geometry arrives async from Supabase after onAppear
         }
         .onChange(of: vm.activeRound?.scoreSummary.totalScore) { _ in
             pushWidgetData()
