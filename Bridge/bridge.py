@@ -40,10 +40,13 @@ STATUS_HTTP_PORT = 8421
 tcp_writer: asyncio.StreamWriter | None = None
 tcp_port: int | None = None
 detected_port: int | None = None
+sim_name: str | None = None
 ble_client: BleakClient | None = None
+ble_connected = False
+ble_ready = False
 shot_count = 0
 
-# Shared snapshot read by the local status server (updated in print_status).
+# Shared snapshot read by the local status server (updated in refresh_status).
 STATE: dict = {
     "running": True,
     "sim": None,
@@ -72,11 +75,12 @@ def status_line(label: str, value: str, ok: bool | None = None):
     print(f"  {icon}  {label:<22} {value}")
 
 
-def print_status(sim_name: str | None, sim_ok: bool, ble_connected: bool, ble_ready: bool):
-    # Keep the snapshot the local status server serves in sync with the console.
+def refresh_status():
+    """Recompute STATE from the current globals and redraw the console."""
+    sim_found = detected_port is not None
     STATE.update({
         "sim": sim_name,
-        "simFound": sim_ok,
+        "simFound": sim_found,
         "bleConnected": ble_connected,
         "ready": ble_ready,
         "port": detected_port,
@@ -85,14 +89,16 @@ def print_status(sim_name: str | None, sim_ok: bool, ble_connected: bool, ble_re
     clear()
     banner()
     print()
-    status_line("Simulator",    sim_name or "not found",  sim_ok)
-    status_line("iPhone (BLE)", "connected" if ble_connected else "searching…", ble_connected)
-    status_line("Bridge ready", "yes" if ble_ready else "no",                   ble_ready)
+    status_line("Simulator",    sim_name or "not found",                         sim_found)
+    status_line("iPhone (BLE)", "connected" if ble_connected else "searching…",  ble_connected)
+    status_line("Bridge ready", "yes" if ble_ready else "no",                    ble_ready)
     if shot_count:
         print(f"\n  🏌️  Shots relayed: {shot_count}")
     print()
-    if ble_ready:
-        print("  Swing away! Each shot is forwarded automatically.")
+    if ble_ready and sim_found:
+        print(f"  Swing away! Forwarding every shot to {sim_name}.")
+    elif not sim_found:
+        print("  Waiting for GSPro or OpenGolfSim on this computer…")
     else:
         print("  Open True Carry → Sim Mode → Bluetooth on your iPhone.")
     print()
@@ -205,6 +211,35 @@ def _matches_truecarry(device, adv) -> bool:
     return name == "TrueCarry"
 
 
+async def monitor_simulator():
+    """Continuously track which simulator is running, so the user can switch
+    between GSPro and OGS (or start one later) without restarting the bridge.
+
+    On a change we drop the old TCP link and re-tell the phone which game we're
+    on now — the app encodes shots differently for GSPro vs OGS.
+    """
+    global detected_port, sim_name, tcp_writer
+    while True:
+        result = await find_simulator()
+        new_port = result[0] if result else None
+        new_name = result[1] if result else None
+        if new_port != detected_port:
+            detected_port = new_port
+            sim_name = new_name
+            # Drop any link to the old sim; the next shot reconnects to the new one.
+            if tcp_writer:
+                try:
+                    tcp_writer.close()
+                except Exception:
+                    pass
+                tcp_writer = None
+            # If the phone is connected, tell it the new game/port immediately.
+            if ble_client and new_port:
+                await send_status(ble_client, new_port, True)
+            refresh_status()
+        await asyncio.sleep(3)
+
+
 async def send_status(client: BleakClient, port: int, linked: bool):
     payload = json.dumps({"port": port, "linked": linked}).encode()
     try:
@@ -216,36 +251,26 @@ async def send_status(client: BleakClient, port: int, linked: bool):
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
 async def run():
-    global ble_client, detected_port
+    global ble_client, ble_connected, ble_ready
 
     # 0. Start the local status server so truecarry.app/connect can see us.
     start_status_server()
 
-    # 1. Wait for a simulator — keep running (and keep reporting status) so the
-    #    user can start GSPro / OGS after the bridge, and watch it on /connect.
-    sim_port = sim_name = None
-    while sim_port is None:
-        result = await find_simulator()
-        if result:
-            sim_port, sim_name = result
-            detected_port = sim_port
-            break
-        detected_port = None
-        print_status(None, False, False, False)
-        print("  ⚠️  Waiting for GSPro or OpenGolfSim on this computer…  (Ctrl+C to quit)")
-        await asyncio.sleep(3)
+    # 1. Continuously detect which simulator is running (GSPro or OGS).
+    asyncio.ensure_future(monitor_simulator())
+    refresh_status()
+    while detected_port is None:
+        await asyncio.sleep(1)
 
-    print_status(sim_name, True, False, False)
-
-    # 2. Scan for iPhone
-    print(f"  Scanning for True Carry iPhone app…  (Ctrl+C to quit)\n")
+    # 2. Scan for the iPhone.
+    print("  Scanning for True Carry iPhone app…  (Ctrl+C to quit)\n")
 
     def on_shot(_, data: bytes):
         asyncio.ensure_future(_relay(data))
 
     async def _relay(data: bytes):
         await forward_shot(data)
-        print_status(sim_name, True, True, True)
+        refresh_status()
 
     while True:
         try:
@@ -264,34 +289,43 @@ async def run():
             continue
 
         if device is None:
-            print_status(sim_name, True, False, False)
+            ble_connected = False
+            ble_ready = False
+            refresh_status()
             await asyncio.sleep(2)
             continue
 
-        print_status(sim_name, True, True, False)
+        ble_connected = True
+        ble_ready = False
+        refresh_status()
 
         try:
             async with BleakClient(device) as client:
                 ble_client = client
                 await client.start_notify(SHOT_UUID, on_shot)
-                # Open the TCP link to the sim now so it shows "connected"
-                # immediately, rather than only after the first shot.
-                await ensure_tcp(sim_port)
-                await send_status(client, sim_port, True)
-                print_status(sim_name, True, True, True)
+                # Open the TCP link to the current sim now so it shows
+                # "connected" immediately, rather than only after the first shot.
+                if detected_port:
+                    await ensure_tcp(detected_port)
+                    await send_status(client, detected_port, True)
+                ble_ready = True
+                refresh_status()
 
                 # Keep alive until disconnected
                 while client.is_connected:
                     await asyncio.sleep(1)
 
-                await send_status(client, sim_port, False)
+                if detected_port:
+                    await send_status(client, detected_port, False)
 
-        except BleakError as e:
+        except BleakError:
             pass
         finally:
             ble_client = None
+            ble_connected = False
+            ble_ready = False
 
-        print_status(sim_name, True, False, False)
+        refresh_status()
         await asyncio.sleep(2)
 
 
