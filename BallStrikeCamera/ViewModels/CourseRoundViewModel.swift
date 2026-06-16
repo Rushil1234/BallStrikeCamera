@@ -34,6 +34,7 @@ final class CourseRoundViewModel: ObservableObject {
     /// Records an NFC club tap at the user's current GPS position for the active hole.
     /// Captures shot number within the hole and distance to the green center.
     func recordNFCShot(club: UserClub) {
+        ClubPreference.remember(club)   // app club is the source of truth
         guard var round = activeRound,
               let coord = location.currentLocation else { return }
         let holeNum   = currentHole?.holeNumber ?? (currentHoleIndex + 1)

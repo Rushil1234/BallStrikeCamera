@@ -78,6 +78,7 @@ struct RangeCameraScreen: View {
             if let match = clubs.first(where: { $0.id == clubId }) {
                 selectedClub   = match.name
                 selectedClubId = match.id
+                ClubPreference.remember(match)
                 showClubPicker = false
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 publishWatchRangeState()
@@ -175,6 +176,7 @@ struct RangeCameraScreen: View {
                 Button(club.name) {
                     selectedClub = club.name
                     selectedClubId = club.id
+                    ClubPreference.remember(club)
                     publishWatchRangeState()
                 }
             }
@@ -291,7 +293,7 @@ struct RangeCameraScreen: View {
             selectedClub = nameMatch.name
             return
         }
-        if let preferred = clubs.first(where: { $0.name == "7 Iron" }) ?? clubs.first {
+        if let preferred = ClubPreference.preferred(in: clubs) {
             selectedClub = preferred.name
             selectedClubId = preferred.id
         }

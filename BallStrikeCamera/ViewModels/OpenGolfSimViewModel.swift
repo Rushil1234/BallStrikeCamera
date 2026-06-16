@@ -132,8 +132,8 @@ final class OpenGolfSimViewModel: ObservableObject {
         await send(shot: .testShot, label: "Test shot")
     }
 
-    func sendMetrics(_ metrics: SavedShotMetrics) async {
-        let shot = OpenGolfSimShot.from(metrics: metrics)
+    func sendMetrics(_ metrics: SavedShotMetrics, club: String? = nil) async {
+        let shot = OpenGolfSimShot.from(metrics: metrics, club: club ?? ClubPreference.lastUsedClubName)
         await send(shot: shot, label: "Shot")
     }
 

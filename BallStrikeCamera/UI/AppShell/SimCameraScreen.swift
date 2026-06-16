@@ -51,7 +51,7 @@ struct SimCameraScreen: View {
 
             // Send to simulator — network first, BLE bridge as fallback.
             if ogsVM.connectionState.isConnected {
-                Task { await ogsVM.sendMetrics(savedMetrics) }
+                Task { await ogsVM.sendMetrics(savedMetrics, club: selectedClub) }
             } else if gsproVM.connectionState.isConnected {
                 Task { await gsproVM.sendMetrics(savedMetrics) }
             } else if bleVM.state.isReady {
@@ -164,7 +164,7 @@ struct SimCameraScreen: View {
         if let selected = simVM.selectedClub {
             selectedClub = selected.name
             selectedClubId = selected.id
-        } else if let preferred = clubs.first(where: { $0.name == "7 Iron" }) ?? clubs.first {
+        } else if let preferred = ClubPreference.preferred(in: clubs) {
             selectedClub = preferred.name
             selectedClubId = preferred.id
             simVM.selectedClub = preferred

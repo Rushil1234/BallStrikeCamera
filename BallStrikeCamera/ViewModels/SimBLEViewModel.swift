@@ -70,7 +70,7 @@ final class SimBLEViewModel: ObservableObject {
             d.append(contentsOf: "\n".utf8)
             return d
         case .ogs:
-            let shot = OpenGolfSimShot.from(metrics: metrics)
+            let shot = OpenGolfSimShot.from(metrics: metrics, club: ClubPreference.lastUsedClubName)
             let msg  = OpenGolfSimShotMessage(shot: shot)
             guard var d = try? JSONEncoder().encode(msg) else { return nil }
             d.append(contentsOf: "\n".utf8)

@@ -8,7 +8,7 @@ final class SimSessionViewModel: ObservableObject {
     @Published var lastShotJSON: String?
     @Published var shots: [SavedShot] = []
     @Published var clubs: [UserClub] = []
-    @Published var selectedClub: UserClub?
+    @Published var selectedClub: UserClub? { didSet { ClubPreference.remember(selectedClub) } }
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -45,7 +45,7 @@ final class SimSessionViewModel: ObservableObject {
                 .filter { $0.isActive }
                 .sorted { $0.sortOrder < $1.sortOrder }
             if selectedClub == nil {
-                selectedClub = clubs.first(where: { $0.name == "7 Iron" }) ?? clubs.first
+                selectedClub = ClubPreference.preferred(in: clubs)
             }
         } catch {
             errorMessage = error.localizedDescription

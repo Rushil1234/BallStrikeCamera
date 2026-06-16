@@ -271,6 +271,35 @@ enum SimProvider: String, Codable, CaseIterable {
     case notConnected = "Not Connected"
 }
 
+/// The app's club is the source of truth: it persists the last club used (set by
+/// a manual pick OR an RFID/NFC tag tap) and is what we default to next time and
+/// what we send to the sim — "stick with the last club unless the user changes it".
+enum ClubPreference {
+    private static let idKey   = "lastUsedClubId"
+    private static let nameKey = "lastUsedClubName"
+
+    static var lastUsedClubId: UUID? {
+        get { UserDefaults.standard.string(forKey: idKey).flatMap(UUID.init) }
+        set { UserDefaults.standard.set(newValue?.uuidString, forKey: idKey) }
+    }
+    static var lastUsedClubName: String? {
+        UserDefaults.standard.string(forKey: nameKey)
+    }
+
+    /// Record the club the user just selected (manual or RFID).
+    static func remember(_ club: UserClub?) {
+        guard let club else { return }
+        UserDefaults.standard.set(club.id.uuidString, forKey: idKey)
+        UserDefaults.standard.set(club.name,          forKey: nameKey)
+    }
+
+    /// The club to default to: last used (if still in the bag), else 7 Iron, else first.
+    static func preferred(in clubs: [UserClub]) -> UserClub? {
+        if let id = lastUsedClubId, let c = clubs.first(where: { $0.id == id }) { return c }
+        return clubs.first(where: { $0.name == "7 Iron" }) ?? clubs.first
+    }
+}
+
 // MARK: - Course Round
 
 struct CourseRound: Codable, Identifiable {

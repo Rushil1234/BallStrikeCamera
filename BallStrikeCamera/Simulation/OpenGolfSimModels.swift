@@ -13,15 +13,17 @@ struct OpenGolfSimShot: Codable {
     let horizontalLaunchAngle: Double  // degrees (+ right, - left)
     let spinSpeed: Double              // rpm
     let spinAxis: Double               // degrees (+ draw, - fade)
+    let club: String?                  // selected club (the app is source of truth)
 
-    static func from(metrics: SavedShotMetrics) -> OpenGolfSimShot {
+    static func from(metrics: SavedShotMetrics, club: String? = nil) -> OpenGolfSimShot {
         let totalSpin = sqrt(pow(metrics.backspinRpm, 2) + pow(metrics.sidespinRpm, 2))
         return OpenGolfSimShot(
             ballSpeed:            metrics.ballSpeedMph,
             verticalLaunchAngle:  metrics.vlaDegrees,
             horizontalLaunchAngle: metrics.hlaDegrees,
             spinSpeed:            max(totalSpin, 0),
-            spinAxis:             metrics.spinAxisDegrees
+            spinAxis:             metrics.spinAxisDegrees,
+            club:                 club
         )
     }
 
@@ -30,7 +32,8 @@ struct OpenGolfSimShot: Codable {
         verticalLaunchAngle:  13.0,
         horizontalLaunchAngle: 0.5,
         spinSpeed:            2600.0,
-        spinAxis:             -1.0
+        spinAxis:             -1.0,
+        club:                 nil
     )
 }
 

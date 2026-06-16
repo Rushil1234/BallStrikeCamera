@@ -143,7 +143,7 @@ struct LiveSimCameraScreen: View {
         if let selected = simVM.selectedClub {
             selectedClub = selected.name
             selectedClubId = selected.id
-        } else if let preferred = clubs.first(where: { $0.name == "7 Iron" }) ?? clubs.first {
+        } else if let preferred = ClubPreference.preferred(in: clubs) {
             selectedClub = preferred.name
             selectedClubId = preferred.id
             simVM.selectedClub = preferred
