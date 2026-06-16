@@ -2779,27 +2779,21 @@ struct CourseModeGPSHoleView: View {
         HStack(spacing: 14) {
             // Avatar
             ZStack {
-                Circle().fill(TCTheme.goldGradient).frame(width: 38, height: 38)
-                Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1).frame(width: 38, height: 38)
+                Circle().fill(TCTheme.goldGradient).frame(width: 42, height: 42)
+                Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1).frame(width: 42, height: 42)
                 Text(userInitials)
-                    .font(.system(size: 13, weight: .heavy, design: .rounded))
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
                     .foregroundColor(TCTheme.deepGreen)
             }
 
-            // Player + score info
-            VStack(alignment: .leading, spacing: 2) {
-                Text(displayPlayerName)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(scoreToParString)
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                        .foregroundColor(scoreToParColor)
-                    Text("· \(vm.activeRound?.scoreSummary.totalScore ?? 0) strokes")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.65))
-                }
+            // Score info — to-par + strokes (no name/email)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(scoreToParString)
+                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    .foregroundColor(scoreToParColor)
+                Text("\(vm.activeRound?.scoreSummary.totalScore ?? 0) strokes")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.70))
             }
 
             Spacer(minLength: 0)
@@ -2807,9 +2801,9 @@ struct CourseModeGPSHoleView: View {
             // Camera
             Button { openCamera() } label: {
                 Image(systemName: "camera.fill")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 46, height: 46)
                     .background(.white.opacity(0.12))
                     .clipShape(Circle())
                     .overlay(Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1))
@@ -2820,21 +2814,21 @@ struct CourseModeGPSHoleView: View {
             Button { showScoreEntry = true } label: {
                 VStack(spacing: 2) {
                     Image(systemName: "square.and.pencil")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                     Text("Add Score")
-                        .font(.system(size: 10, weight: .heavy, design: .rounded))
+                        .font(.system(size: 11, weight: .heavy, design: .rounded))
                 }
                 .foregroundColor(TCTheme.deepGreen)
-                .frame(width: 70, height: 48)
+                .frame(width: 78, height: 54)
                 .background(TCTheme.goldGradient)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 .shadow(color: TCTheme.gold.opacity(0.4), radius: 6, y: 2)
             }
             .buttonStyle(HUDPressStyle())
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 26)
         .frame(maxWidth: .infinity)
         .background(
             ZStack {
