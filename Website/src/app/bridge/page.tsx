@@ -133,11 +133,12 @@ export default function BridgePage() {
             <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--cream)" }}>On your Mac</h2>
           </div>
           <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, marginBottom: 16 }}>
-            Signed &amp; notarized by Apple — download, unzip, and double-click. No warnings, no
-            Python needed. A golf icon ⛳︎ appears in your menu bar.
+            Signed &amp; notarized by Apple — no warnings, no Python needed. Download, open the disk
+            image, and drag <strong style={{ color: "var(--text)" }}>TrueCarry Bridge</strong> into your
+            Applications folder. A golf icon ⛳︎ then appears in your menu bar when you launch it.
           </p>
           <a
-            href="/downloads/TrueCarryBridge.zip"
+            href="/downloads/TrueCarryBridge.dmg"
             download
             style={{
               display: "block",
@@ -151,7 +152,7 @@ export default function BridgePage() {
               textDecoration: "none",
             }}
           >
-            ⬇ Download for Mac
+            ⬇ Download for Mac (.dmg)
           </a>
           <details style={{ marginTop: 16 }}>
             <summary style={{ fontSize: 12, color: "var(--muted)", cursor: "pointer" }}>

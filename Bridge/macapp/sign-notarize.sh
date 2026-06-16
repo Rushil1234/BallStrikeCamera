@@ -11,7 +11,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="TrueCarry Bridge"
 APP="$HERE/dist/$APP_NAME.app"
-ZIP="$HERE/dist/TrueCarryBridge.zip"
+DMG="$HERE/dist/TrueCarryBridge.dmg"
 # Pass the keychain profile name as arg 1 if you named it something other than
 # the default, e.g.:  ./sign-notarize.sh "True Carry"
 NOTARY_PROFILE="${1:-truecarry-notary}"
@@ -34,26 +34,32 @@ codesign --force --deep --timestamp --options runtime \
     --sign "$IDENTITY" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
-# 3. Zip for notarization
-rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+# 3. Notarize + staple the .app (zip only as a transport for notarytool).
+#    We DON'T distribute the zip — Archive Utility mangles the bundled
+#    Python.framework symlinks on extraction, which breaks the seal
+#    ("unsealed contents present in the root directory of an embedded
+#    framework"). A DMG preserves the bundle exactly, so we ship that.
+TMP_ZIP="$HERE/dist/_notarize.zip"
+rm -f "$TMP_ZIP"
+ditto -c -k --keepParent "$APP" "$TMP_ZIP"
 
-# 4. Notarize (waits for Apple's result)
-echo "→ Submitting to Apple notary service (this can take a few minutes)…"
-xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
-
-# 5. Staple the ticket so it works offline
+echo "→ Notarizing the app (this can take a few minutes)…"
+xcrun notarytool submit "$TMP_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
 xcrun stapler staple "$APP"
 xcrun stapler validate "$APP"
-
-# 6. Gatekeeper sanity check (should say: accepted, source=Notarized Developer ID)
 spctl --assess --type execute --verbose=4 "$APP" || true
+rm -f "$TMP_ZIP"
 
-# 7. Re-zip the stapled app for distribution
-rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
+# 4. Package the stapled app into a DMG, sign the DMG, then notarize + staple it.
+echo "→ Building + signing + notarizing DMG…"
+rm -f "$DMG"
+hdiutil create -volname "$APP_NAME" -srcfolder "$APP" -ov -format UDZO "$DMG"
+codesign --force --timestamp --sign "$IDENTITY" "$DMG"
+xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+xcrun stapler staple "$DMG"
+xcrun stapler validate "$DMG"
+spctl -a -t open --context context:primary-signature -v "$DMG" || true
 
 echo ""
-echo "✅ Notarized + stapled: $APP"
-echo "   Distributable:       $ZIP"
-echo "   Copy it to the site:  cp \"$ZIP\" ../../Website/public/downloads/TrueCarryBridge.zip"
+echo "✅ Notarized + stapled: $DMG"
+echo "   Copy it to the site:  cp \"$DMG\" ../../Website/public/downloads/TrueCarryBridge.dmg"
