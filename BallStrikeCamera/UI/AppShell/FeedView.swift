@@ -38,6 +38,8 @@ struct FeedView: View {
     @State private var showFriends = false
     @State private var showProfile = false
     @State private var showComposer = false
+    @State private var showNotifications = false
+    @AppStorage("tc_feed_notifs_seen_ts") private var notifsLastSeenTs: Double = 0
     @State private var greeting: HomeGreeting = HomeGreeting.all.first!
     @State private var commentingPost: FeedPost?
     @State private var showRangeCamera = false
@@ -53,6 +55,10 @@ struct FeedView: View {
         _vm = StateObject(wrappedValue: FeedViewModel(userId: userId, backend: backend))
     }
 
+    private var unreadNotifs: Int {
+        vm.notifications.filter { $0.createdAt.timeIntervalSince1970 > notifsLastSeenTs }.count
+    }
+
     private var userInitials: String {
         let parts = authorName.components(separatedBy: " ")
         if parts.count >= 2, let f = parts[0].first, let l = parts[1].first { return "\(f)\(l)" }
@@ -65,6 +71,23 @@ struct FeedView: View {
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
+                        Button { showNotifications = true } label: {
+                            Image(systemName: "bell")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(TCTheme.textSecondary)
+                                .frame(width: 32, height: 32)
+                                .overlay(alignment: .topTrailing) {
+                                    if unreadNotifs > 0 {
+                                        Text(unreadNotifs > 9 ? "9+" : "\(unreadNotifs)")
+                                            .font(.system(size: 9, weight: .heavy))
+                                            .foregroundColor(TCTheme.onPrimary)
+                                            .padding(.horizontal, 4).padding(.vertical, 1)
+                                            .background(Capsule().fill(TCTheme.gold))
+                                            .offset(x: 5, y: -1)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
                         Button { showFriends = true } label: {
                             Image(systemName: "person.2")
                                 .font(.system(size: 16, weight: .medium))
@@ -124,6 +147,11 @@ struct FeedView: View {
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
                 .tcAppearance()
+        }
+        .sheet(isPresented: $showNotifications) {
+            NavigationStack { NotificationsView(notifications: vm.notifications) }
+                .tcAppearance()
+                .onAppear { notifsLastSeenTs = Date().timeIntervalSince1970 }
         }
         .fullScreenCover(isPresented: $showRangeCamera) {
             RangeCameraScreen(userId: userId, backend: backend)
@@ -1209,4 +1237,68 @@ func relativeTime(_ date: Date) -> String {
     let f = RelativeDateTimeFormatter()
     f.unitsStyle = .short
     return f.localizedString(for: date, relativeTo: Date())
+}
+
+// MARK: - Notifications center (gimmes + comments on your posts)
+
+struct NotificationsView: View {
+    let notifications: [FeedNotification]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            TrueCarryBackground(pattern: .plain).ignoresSafeArea()
+            if notifications.isEmpty {
+                GolfBallEmptyField(
+                    title: "No notifications yet",
+                    message: "When golfers gimme or comment on your rounds and posts, it shows up here."
+                )
+                .padding(.horizontal, TCTheme.hPad)
+            } else {
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: 10) {
+                        ForEach(notifications) { n in
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill((n.kind == .gimme ? TCTheme.gold : TCTheme.sage).opacity(0.16))
+                                        .frame(width: 42, height: 42)
+                                    Image(systemName: n.icon)
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(n.kind == .gimme ? TCTheme.gold : TCTheme.sage)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    (Text(n.actorName).font(.system(size: 14, weight: .bold))
+                                        + Text(" \(n.message)").font(.system(size: 14)))
+                                        .foregroundColor(TCTheme.textPrimary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Text(relativeTime(n.createdAt))
+                                        .font(.system(size: 12))
+                                        .foregroundColor(TCTheme.textMuted)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(12)
+                            .background(TCTheme.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous)
+                                    .strokeBorder(TCTheme.border, lineWidth: 1)
+                            )
+                        }
+                    }
+                    .padding(.horizontal, TCTheme.hPad)
+                    .padding(.top, 8)
+                    .padding(.bottom, 40)
+                }
+            }
+        }
+        .navigationTitle("Notifications")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Done") { dismiss() }.foregroundColor(TCTheme.gold)
+            }
+        }
+    }
 }

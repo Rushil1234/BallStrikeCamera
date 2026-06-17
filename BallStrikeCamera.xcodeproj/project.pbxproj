@@ -98,7 +98,6 @@
 		BF0000030000000000000004 /* AuthSessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000004 /* AuthSessionStore.swift */; };
 		BF0000030000000000000005 /* LocalBackendService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000005 /* LocalBackendService.swift */; };
 		BF0000030000000000000006 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000006 /* LocationService.swift */; };
-		BFE1E2E300000000000000A2 /* ElevationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE1E2E300000000000000A1 /* ElevationService.swift */; };
 		BF0000030000000000000007 /* ShotPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000007 /* ShotPersistenceService.swift */; };
 		BF0000030000000000000008 /* SimOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000008 /* SimOutputService.swift */; };
 		BF0000030000000000000009 /* GolfCourseAPIConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000009 /* GolfCourseAPIConfig.swift */; };
@@ -168,6 +167,7 @@
 		BF000008000000000000NFC1 /* NFCManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000007000000000000NFC1 /* NFCManager.swift */; };
 		BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000090000000000000001 /* TrueCarryProfileView.swift */; };
 		BF00SECRETS00000000000002 /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = BF00SECRETS00000000000001 /* Secrets.plist */; };
+		BFE1E2E300000000000000A2 /* ElevationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE1E2E300000000000000A1 /* ElevationService.swift */; };
 		C01B8FF3C6BC3CAE2B516BA0 /* TrueCarryWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06EDD5EAA4C54D150A3AB0AB /* TrueCarryWatchApp.swift */; };
 		CA0000000000000000000004 /* RoundWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000001 /* RoundWidget.swift */; };
 		CA0000000000000000000005 /* BallStrikeCameraWidget.appex in Embed Widgets */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000002 /* BallStrikeCameraWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -181,9 +181,6 @@
 		CAFE000000000000000000B5 /* OpenGolfSimViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */; };
 		CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C0 /* SessionSaveSheet.swift */; };
 		CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C2 /* SimCameraScreen.swift */; };
-		LIVE00000000000000000001 /* LiveSimService.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000002 /* LiveSimService.swift */; };
-		LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000004 /* LiveSimCodeView.swift */; };
-		LIVE00000000000000000005 /* LiveSimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000006 /* LiveSimCameraScreen.swift */; };
 		CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C4 /* SessionDetailView.swift */; };
 		CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C6 /* ShotDetailView.swift */; };
 		CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C8 /* ShotGIFExporter.swift */; };
@@ -195,6 +192,9 @@
 		CAFE0000000000000000010B /* SimBLEPeripheral.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000010A /* SimBLEPeripheral.swift */; };
 		CAFE0000000000000000010D /* SimBLEViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000010C /* SimBLEViewModel.swift */; };
 		F87102851E39D771471CCF94 /* BallStrikeCameraWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		LIVE00000000000000000001 /* LiveSimService.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000002 /* LiveSimService.swift */; };
+		LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000004 /* LiveSimCodeView.swift */; };
+		LIVE00000000000000000005 /* LiveSimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000006 /* LiveSimCameraScreen.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -332,7 +332,6 @@
 		BF0000020000000000000004 /* AuthSessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthSessionStore.swift; sourceTree = "<group>"; };
 		BF0000020000000000000005 /* LocalBackendService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalBackendService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000006 /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationService.swift; sourceTree = "<group>"; };
-		BFE1E2E300000000000000A1 /* ElevationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevationService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000007 /* ShotPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotPersistenceService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000008 /* SimOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimOutputService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000009 /* GolfCourseAPIConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfCourseAPIConfig.swift; sourceTree = "<group>"; };
@@ -402,6 +401,7 @@
 		BF000008000000000000000D /* TrackedShotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackedShotModels.swift; sourceTree = "<group>"; };
 		BF0000090000000000000001 /* TrueCarryProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryProfileView.swift; sourceTree = "<group>"; };
 		BF00SECRETS00000000000001 /* Secrets.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Secrets.plist; sourceTree = "<group>"; };
+		BFE1E2E300000000000000A1 /* ElevationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevationService.swift; sourceTree = "<group>"; };
 		C3944CB03FEBA50408FF3B9B /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS11.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		CA0000000000000000000001 /* RoundWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundWidget.swift; sourceTree = "<group>"; };
 		CA0000000000000000000002 /* BallStrikeCameraWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BallStrikeCameraWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -415,9 +415,6 @@
 		CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimViewModel.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C0 /* SessionSaveSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSaveSheet.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C2 /* SimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimCameraScreen.swift; sourceTree = "<group>"; };
-		LIVE00000000000000000002 /* LiveSimService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimService.swift; sourceTree = "<group>"; };
-		LIVE00000000000000000004 /* LiveSimCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCodeView.swift; sourceTree = "<group>"; };
-		LIVE00000000000000000006 /* LiveSimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCameraScreen.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C4 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C6 /* ShotDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotDetailView.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C8 /* ShotGIFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotGIFExporter.swift; sourceTree = "<group>"; };
@@ -431,6 +428,9 @@
 		D285E96FFA0E9231BA42EF6E /* Appearance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Appearance.swift; sourceTree = "<group>"; };
 		E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchConnectivityBridge.swift; sourceTree = "<group>"; };
 		E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
+		LIVE00000000000000000002 /* LiveSimService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimService.swift; sourceTree = "<group>"; };
+		LIVE00000000000000000004 /* LiveSimCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCodeView.swift; sourceTree = "<group>"; };
+		LIVE00000000000000000006 /* LiveSimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCameraScreen.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -975,11 +975,6 @@
 			productName = BallStrikeCamera;
 			productReference = BF0000010000000000000111 /* BallStrikeCamera.app */;
 			productType = "com.apple.product-type.application";
-			systemCapabilities = {
-				com.apple.NFCTagReading = {
-					enabled = 1;
-				};
-			};
 		};
 		CA0000000000000000000009 /* BallStrikeCameraWidget */ = {
 			isa = PBXNativeTarget;
@@ -1309,11 +1304,11 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWatch/Info.plist;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1457,7 +1452,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCamera/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1466,7 +1461,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -1485,7 +1480,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCamera/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1494,7 +1489,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -1510,11 +1505,11 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWatch/Info.plist;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1535,7 +1530,7 @@
 				CODE_SIGN_ENTITLEMENTS = BallStrikeCameraWidget/BallStrikeCameraWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -1545,7 +1540,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1563,7 +1558,7 @@
 				CODE_SIGN_ENTITLEMENTS = BallStrikeCameraWidget/BallStrikeCameraWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -1573,7 +1568,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.widget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera.widget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

@@ -667,7 +667,20 @@ html, body {
 /* ---------------- small screens ---------------- */
 
 @media (max-width: 860px) {
-  #map-wrap { display: none; }
+  #map-wrap {
+    display: none;
+    right: 10px;
+    top: 94px;
+    transform: none;
+    padding: 23px 6px 18px;
+    background: rgba(9,16,11,0.78);
+    z-index: 18;
+  }
+  #map-wrap.map-mode-all { display: block; }
+  #map-wrap.map-mode-all #minimap {
+    width: min(42vw, 180px);
+    height: min(58vh, 282px);
+  }
   #hole-picker-card { display: none; }
   #help-strip { display: none; }
   #hc-name { display: none; }

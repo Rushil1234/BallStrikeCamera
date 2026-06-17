@@ -61,11 +61,11 @@ const BUILTIN_WATER = [
   { type: 'pond', cx: 325, cz: 880, rx: 115, rz: 190, rot: -0.6, worldOnly: true },
 ];
 
-function scaledWater(water) {
+function scaledWater(water, spread) {
   return {
     ...water,
-    cx: water.cx * WORLD_SPREAD,
-    cz: water.cz * WORLD_SPREAD,
+    cx: water.cx * spread,
+    cz: water.cz * spread,
   };
 }
 
@@ -133,24 +133,32 @@ function connectorBetween(a, b) {
   };
 }
 
-export function layoutIslandCourse(rawHoles) {
+export function layoutIslandCourse(rawHoles, options = {}) {
   const holes = rawHoles || [];
+  const spread = options.spread ?? WORLD_SPREAD;
+  const routing = options.routing || BUILTIN_ROUTING;
+  const baseWater = options.water || BUILTIN_WATER;
+  const boundsMargin = options.boundsMargin ?? 150;
+  const profile = options.profile || 'island';
+  const coastline = options.coastline || null;
+  const prepositioned = !!options.prepositioned;
   if (!holes.length) {
     const b = emptyBounds();
     addBounds(b, 0, 0, 1);
-    return { holes: [], bounds: b, connectors: [] };
+    return { holes: [], bounds: b, connectors: [], profile };
   }
 
   const placed = holes.map((hole, i) => {
-    const r = BUILTIN_ROUTING[i] || {
+    if (prepositioned) return clone(hole);
+    const r = routing[i] || {
       x: Math.cos(i * 1.7) * 520,
       z: Math.sin(i * 1.7) * 520,
       a: (i * 47) % 360,
     };
-    return transformHole(hole, r.x * WORLD_SPREAD, r.z * WORLD_SPREAD, r.a * DEG);
+    return transformHole(hole, r.x * spread, r.z * spread, r.a * DEG);
   });
 
-  const worldWater = BUILTIN_WATER.map(scaledWater);
+  const worldWater = baseWater.map((w) => scaledWater(w, spread));
   const boundsPieces = placed.map(measureHole);
   for (const w of worldWater) {
     boundsPieces.push({
@@ -158,13 +166,13 @@ export function layoutIslandCourse(rawHoles) {
       minZ: w.cz - w.rz, maxZ: w.cz + w.rz,
     });
   }
-  const bounds = mergeBounds(boundsPieces, 150);
+  const bounds = mergeBounds(boundsPieces, boundsMargin);
   const connectors = [];
   for (let i = 0; i < placed.length - 1; i++) connectors.push(connectorBetween(placed[i], placed[i + 1]));
 
   for (const hole of placed) {
-    hole.island = { bounds, connectors, water: worldWater, holeCount: placed.length };
+    hole.island = { bounds, connectors, water: worldWater, holeCount: placed.length, profile, coastline };
   }
 
-  return { holes: placed, bounds, connectors, water: worldWater };
+  return { holes: placed, bounds, connectors, water: worldWater, profile, coastline };
 }

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=pebble-visual-1">
 <script type="importmap">
 {
   "imports": {
@@ -115,11 +115,11 @@
       <div class="title-sub">TRUECARRY · PINE HOLLOW NATIONAL</div>
       <div class="title-rule"></div>
 
-      <!-- Course selector — hidden until sim_courses are loaded -->
-      <div id="course-select-wrap" class="course-select-wrap hidden">
+      <!-- Course selector — local/dev courses are populated by js/local-courses.js -->
+      <div id="course-select-wrap" class="course-select-wrap">
         <label class="course-select-label" for="course-select">COURSE</label>
         <select id="course-select" class="course-select">
-          <option value="">Pine Hollow (built-in)</option>
+          <option value="pine-hollow">Pine Hollow National</option>
         </select>
       </div>
 
@@ -187,6 +187,6 @@
 window.onerror = (m, s, l) => { document.title = 'ERR: ' + m + ' @' + String(s || '').split('/').pop() + ':' + l; };
 window.addEventListener('unhandledrejection', (e) => { document.title = 'REJ: ' + (e.reason && e.reason.message || e.reason); });
 </script>
-<script type="module" src="js/main.js"></script>
+<script type="module" src="js/main.js?v=pebble-visual-1"></script>
 </body>
 </html>

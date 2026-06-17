@@ -4,14 +4,15 @@
 import * as THREE from 'three';
 import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js';
 import { createShot, simulateCarry, SURF } from './physics.js';
-import { HOLES, RANGE, holeLength } from './holes.js';
+import { RANGE, holeLength } from './holes.js?v=pebble-visual-1';
 import { buildCourse } from './terrain.js';
 import { makeSky } from './sky.js';
 import { loadAssets } from './assets.js';
-import { HUD, toParStr } from './ui.js';
+import { HUD, toParStr } from './ui.js?v=pebble-visual-1';
 import { SFX } from './audio.js';
 import { getLiveCode, connectLive } from './live.js';
 import { fetchSimCourses } from './courses.js';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=pebble-visual-1';
 import { layoutIslandCourse } from './world.js';
 
 // ---------- boot ----------
@@ -31,7 +32,9 @@ document.getElementById('app').prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 6000);
 
-let courseWorld = layoutIslandCourse(HOLES);
+let activeCourse = LOCAL_COURSES[0];
+let selectableCourses = [...LOCAL_COURSES];
+let courseWorld = layoutIslandCourse(activeCourse.holes, activeCourse.world);
 let courseHoles = courseWorld.holes;
 hud.mapSetCourse(courseHoles, courseWorld);
 
@@ -155,6 +158,8 @@ let lastRangeShot = null;
 const holePickerCard = document.getElementById('hole-picker-card');
 const holePicker = document.getElementById('hole-picker');
 const holeGrid = document.getElementById('hole-grid');
+const courseSelect = document.getElementById('course-select');
+const courseSelectWrap = document.getElementById('course-select-wrap');
 
 const club = () => CLUBS[game.clubIdx];
 const onGreen = () => game.lie === SURF.GREEN;
@@ -180,15 +185,63 @@ function populateHolePicker() {
   });
 }
 
-function setActiveCourse(rawHoles) {
-  courseWorld = layoutIslandCourse(rawHoles);
+function getSelectableCourse(courseId) {
+  return selectableCourses.find((course) => course.courseId === courseId)
+    || getLocalCourse(courseId)
+    || null;
+}
+
+function populateCourseSelect() {
+  if (!courseSelect || !courseSelectWrap) return;
+  courseSelect.innerHTML = '';
+  selectableCourses.forEach((course) => {
+    const opt = document.createElement('option');
+    opt.value = course.courseId;
+    opt.textContent = course.private
+      ? `${course.courseName} (local)`
+      : course.courseName;
+    courseSelect.appendChild(opt);
+  });
+  courseSelect.value = activeCourse.courseId;
+  courseSelectWrap.classList.remove('hidden');
+}
+
+function setTitleCourseName(courseName) {
+  const titleSub = document.querySelector('.title-sub');
+  if (titleSub) titleSub.textContent = `TRUECARRY · ${courseName.toUpperCase()}`;
+}
+
+function setActiveCourse(course) {
+  const nextCourse = Array.isArray(course)
+    ? { courseId: 'preview', courseName: 'Preview Course', holes: course, world: {} }
+    : course;
+  if (!nextCourse?.holes?.length) return;
+  activeCourse = nextCourse;
+  courseWorld = layoutIslandCourse(nextCourse.holes, nextCourse.world || {});
   courseHoles = courseWorld.holes;
+  if (game.course) {
+    scene.remove(game.course.group);
+    game.course.dispose();
+    game.course = null;
+  }
   game.scores = courseHoles.map(() => null);
+  game.holeIdx = 0;
   hud.mapSetCourse(courseHoles, courseWorld);
+  hud.mapSetMode('hole');
+  hud.summaryHide();
+  hud.scorecardHide();
+  hud.toastHide();
   populateHolePicker();
+  setHolePickerActive(0);
+  setTitleCourseName(nextCourse.courseName || 'TrueCarry Course');
+  if (courseSelect && courseSelect.value !== nextCourse.courseId && getSelectableCourse(nextCourse.courseId)) {
+    courseSelect.value = nextCourse.courseId;
+  }
 }
 
 populateHolePicker();
+populateCourseSelect();
+setTitleCourseName(activeCourse.courseName);
 
 function distToPin() {
   const p = game.course.pinPos;
@@ -857,6 +910,14 @@ holeGrid?.addEventListener('click', (e) => {
   const idx = Math.max(0, Math.min(Number(btn.dataset.holeIndex) || 0, courseHoles.length - 1));
   jumpToHole(idx);
 });
+courseSelect?.addEventListener('change', () => {
+  const chosen = getSelectableCourse(courseSelect.value);
+  if (!chosen?.holes?.length) return;
+  setActiveCourse(chosen);
+  if (game.state !== 'TITLE') {
+    assetsReady.then(() => startHole(0));
+  }
+});
 hud.el.btnStart.addEventListener('click', () => {
   if (!assets) return;
   SFX.unlock();
@@ -1050,6 +1111,8 @@ window.parent?.postMessage({ type: 'SIM_READY' }, '*');
 window.addEventListener('message', (e) => {
   // Play page tells the sim to start. Works from any state (course switching).
   if (e.data?.type === 'START_SIM') {
+    const requestedCourse = e.data.courseId ? getSelectableCourse(e.data.courseId) : null;
+    if (requestedCourse) setActiveCourse(requestedCourse);
     assetsReady.then(() => {
       if (game.state === 'TITLE') hud.titleHide();
       startHole(0);
@@ -1069,7 +1132,7 @@ window.addEventListener('message', (e) => {
   const { holes, holeIndex = 0 } = e.data;
   if (!holes?.length) return;
 
-  setActiveCourse(holes);
+  setActiveCourse({ courseId: 'preview', courseName: 'Preview Course', holes, world: {} });
 
   // If assets aren't ready, wait for them.
   assetsReady.then(() => {
@@ -1080,30 +1143,17 @@ window.addEventListener('message', (e) => {
   });
 });
 
-// Load real courses from Supabase and populate the course selector.
+// Load real courses from Supabase and append them after local/dev courses.
 const isPreview = new URLSearchParams(location.search).has('preview');
 if (!isPreview && !liveCode) {
   fetchSimCourses().then(courses => {
     if (!courses.length) return;
-    const select = document.getElementById('course-select');
-    const wrap   = document.getElementById('course-select-wrap');
-    if (!select || !wrap) return;
-    courses.forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.courseId;
-      opt.textContent = c.courseName;
-      opt._holes = c.holes;
-      select.appendChild(opt);
-    });
-    wrap.classList.remove('hidden');
-    select.addEventListener('change', () => {
-      const chosen = courses.find(c => c.courseId === select.value);
-      if (!chosen?.holes?.length) return;
-      setActiveCourse(chosen.holes);
-      if (game.state !== 'TITLE') {
-        assetsReady.then(() => startHole(0));
-      }
-    });
+    const seen = new Set(selectableCourses.map((course) => course.courseId));
+    selectableCourses = [
+      ...selectableCourses,
+      ...courses.filter((course) => course?.holes?.length && !seen.has(course.courseId)),
+    ];
+    populateCourseSelect();
   });
 }
 

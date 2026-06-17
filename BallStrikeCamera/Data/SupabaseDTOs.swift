@@ -222,6 +222,27 @@ struct SupabaseIncomingRequestRow: Codable {
     }
 }
 
+/// Row returned by the `list_feed_notifications` RPC.
+struct SupabaseFeedNotificationRow: Codable {
+    var kind: String
+    var actorName: String
+    var postId: String
+    var postTitle: String
+    var createdAt: String
+
+    func toNotification() -> FeedNotification? {
+        guard let pid = UUID(uuidString: postId),
+              let k = FeedNotification.Kind(rawValue: kind) else { return nil }
+        return FeedNotification(
+            kind: k,
+            actorName: actorName,
+            postId: pid,
+            postTitle: postTitle,
+            createdAt: ISO8601DateFormatter.tcFlexible.date(from: createdAt) ?? Date()
+        )
+    }
+}
+
 /// Supabase `timestamptz` values may or may not carry fractional seconds; parse both.
 enum SupabaseDate {
     private static let withFraction: ISO8601DateFormatter = {

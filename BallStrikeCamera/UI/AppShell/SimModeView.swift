@@ -243,63 +243,77 @@ struct SimModeView: View {
     // MARK: - Subheader
 
     private var subheader: some View {
-        Text("Connect True Carry to your simulator over Wi-Fi.")
-            .font(.system(size: 14))
-            .foregroundColor(BSTheme.textSecondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Play on your simulator")
+                .font(.system(size: 23, weight: .bold, design: .serif))
+                .foregroundColor(BSTheme.textPrimary)
+            Text("Connect True Carry to your launch monitor or sim over Wi-Fi, then track every shot live.")
+                .font(.system(size: 14))
+                .foregroundColor(BSTheme.textSecondary)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Provider picker
 
     private var providerSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            BSectionHeader(title: "Provider")
-            VStack(spacing: 8) {
+            BSectionHeader(title: "Choose your setup")
+            VStack(spacing: 10) {
                 ForEach(providers) { p in
-                    Button { selectedProvider = p.name } label: {
+                    let isSel = selectedProvider == p.name
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            selectedProvider = p.name
+                        }
+                    } label: {
                         HStack(spacing: 14) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(selectedProvider == p.name
-                                          ? BSTheme.simBlue.opacity(0.25)
-                                          : BSTheme.panel)
-                                    .frame(width: 38, height: 38)
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(isSel ? BSTheme.gold.opacity(0.16) : BSTheme.panel)
+                                    .frame(width: 46, height: 46)
                                 Image(systemName: p.icon)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(selectedProvider == p.name
-                                                     ? BSTheme.electricCyan
-                                                     : BSTheme.textMuted)
+                                    .font(.system(size: 18, weight: .semibold))
+                                    .foregroundColor(isSel ? BSTheme.gold : BSTheme.textMuted)
                             }
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(p.name)
-                                    .font(.system(size: 15, weight: .semibold))
+                                    .font(.system(size: 16, weight: .semibold))
                                     .foregroundColor(BSTheme.textPrimary)
                                 Text(p.subtitle)
-                                    .font(.system(size: 12))
+                                    .font(.system(size: 12.5))
                                     .foregroundColor(BSTheme.textMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            Spacer()
-                            if selectedProvider == p.name {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(BSTheme.electricCyan)
-                                    .font(.system(size: 18))
+                            Spacer(minLength: 8)
+                            ZStack {
+                                Circle()
+                                    .strokeBorder(BSTheme.border, lineWidth: 1.5)
+                                    .frame(width: 22, height: 22)
+                                    .opacity(isSel ? 0 : 1)
+                                Circle()
+                                    .fill(BSTheme.gold)
+                                    .frame(width: 22, height: 22)
+                                    .opacity(isSel ? 1 : 0)
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(BSTheme.panel)
+                                    .opacity(isSel ? 1 : 0)
                             }
                         }
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 14)
+                        .padding(14)
                         .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(selectedProvider == p.name ? BSTheme.panelRaised : BSTheme.panel)
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(isSel ? BSTheme.panelRaised : BSTheme.panel)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(
-                                    selectedProvider == p.name
-                                        ? BSTheme.electricCyan.opacity(0.40)
-                                        : BSTheme.border,
-                                    lineWidth: 1
-                                )
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(isSel ? BSTheme.gold.opacity(0.55) : BSTheme.border,
+                                              lineWidth: isSel ? 1.5 : 1)
                         )
+                        .shadow(color: isSel ? BSTheme.gold.opacity(0.14) : .clear, radius: 12, y: 4)
                     }
                     .buttonStyle(.plain)
                 }

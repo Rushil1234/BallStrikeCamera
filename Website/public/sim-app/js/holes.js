@@ -273,6 +273,7 @@ export const RANGE = {
 
 // Total playing length of a hole along its path, meters.
 export function holeLength(hole) {
+  if (hole.cardYards) return hole.cardYards * 0.9144;
   let L = 0;
   for (let i = 1; i < hole.path.length; i++) {
     L += Math.hypot(hole.path[i].x - hole.path[i - 1].x, hole.path[i].z - hole.path[i - 1].z);

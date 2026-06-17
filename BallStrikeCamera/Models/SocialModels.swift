@@ -96,6 +96,26 @@ struct IncomingFriendRequest: Identifiable, Equatable {
     var id: UUID { requestId }
 }
 
+// MARK: - Feed Notification (gimmes / comments on your posts)
+
+struct FeedNotification: Identifiable, Equatable {
+    enum Kind: String { case gimme, comment }
+    var id = UUID()
+    var kind: Kind
+    var actorName: String
+    var postId: UUID
+    var postTitle: String
+    var createdAt: Date
+
+    var message: String {
+        switch kind {
+        case .gimme:   return "gimme'd \(postTitle)"
+        case .comment: return "commented on \(postTitle)"
+        }
+    }
+    var icon: String { kind == .gimme ? "hands.clap.fill" : "bubble.left.fill" }
+}
+
 // MARK: - In-Round Suggestion
 
 enum SuggestionType: String, Codable {

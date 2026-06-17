@@ -10,6 +10,7 @@ final class FeedViewModel: ObservableObject {
     @Published var gimmeCounts: [UUID: Int] = [:]
     @Published var gimmedByMe: Set<UUID> = []
     @Published var commentCounts: [UUID: Int] = [:]
+    @Published var notifications: [FeedNotification] = []
     @Published var friendsCount = 0
     @Published var isLoading = false
     @Published var isLoadingMore = false
@@ -39,6 +40,7 @@ final class FeedViewModel: ObservableObject {
             applyEngagement(try await backend.loadEngagement(postIds: page.posts.map(\.id), userId: userId))
             leaderboardEntries = try await backend.loadFriendLeaderboard(userId: userId, period: .week)
             challengePreviews = makeChallengePreviews(summary: homeSummary, posts: posts)
+            notifications = (try? await backend.loadFeedNotifications()) ?? notifications
         } catch {
             errorMessage = error.localizedDescription
         }

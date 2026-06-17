@@ -767,6 +767,11 @@ final class SupabaseBackendService: AppBackend {
         return rows.compactMap { $0.toFriendProfile() }
     }
 
+    func loadFeedNotifications() async throws -> [FeedNotification] {
+        let rows: [SupabaseFeedNotificationRow] = try await rpc("list_feed_notifications", body: [:])
+        return rows.compactMap { $0.toNotification() }
+    }
+
     func createInviteCode(userId: UUID) async throws -> String {
         let code = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8)).uppercased()
         try await upsert(table: "invite_codes", body: ["code": code, "user_id": userId.uuidString])

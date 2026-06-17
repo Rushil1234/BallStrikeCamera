@@ -63,6 +63,8 @@ protocol AppBackend {
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage
     func loadEngagement(postIds: [UUID], userId: UUID) async throws -> FeedEngagementSummary
     func loadFriendLeaderboard(userId: UUID, period: FeedLeaderboardPeriod) async throws -> [FeedLeaderboardEntry]
+    /// Gimmes + comments others left on the current user's posts (for the notification center).
+    func loadFeedNotifications() async throws -> [FeedNotification]
 
     // Gimmes (feed reactions) — the golf-flavored "kudos"
     func loadGimmes() async throws -> [FeedReaction]
@@ -98,6 +100,9 @@ extension AppBackend {
     // Default: no cloud frame storage (local backend keeps frames on-device).
     func uploadShotFrames(userId: UUID, shotId: UUID, frames: [Data]) async throws {}
     func downloadShotFrames(userId: UUID, shotId: UUID, count: Int) async throws -> [Data] { [] }
+
+    // Default: no notifications (local backend has no social graph).
+    func loadFeedNotifications() async throws -> [FeedNotification] { [] }
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)

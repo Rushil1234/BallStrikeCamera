@@ -16,6 +16,10 @@ final class LiveSimService: ObservableObject {
                 shotsSent = 0
                 lastBroadcastError = nil
                 isConnectedToSim = false
+                lastShot = nil
+                lastShotAt = nil
+                bestCarryYards = 0
+                topBallSpeedMph = 0
             }
         }
     }
@@ -23,6 +27,12 @@ final class LiveSimService: ObservableObject {
     @Published private(set) var isConnectedToSim = false
     @Published private(set) var lastBroadcastError: String?
     @Published private(set) var shotsSent = 0
+
+    // Live session telemetry — fuels the connected-state UI.
+    @Published private(set) var lastShot: SavedShotMetrics?
+    @Published private(set) var bestCarryYards: Double = 0
+    @Published private(set) var topBallSpeedMph: Double = 0
+    @Published private(set) var lastShotAt: Date?
 
     private let config: SupabaseConfig?
 
@@ -33,10 +43,23 @@ final class LiveSimService: ObservableObject {
     var isReadyToConnect: Bool { enteredCode.count == 6 }
 
     /// Sends a ping to the website so it advances from the code screen to the course selector.
+    /// Only marks the session connected if the broadcast actually went through.
     func connect() async {
         guard isReadyToConnect else { return }
-        await broadcastRaw(event: "ping", payload: [:])
-        isConnectedToSim = true
+        isBroadcasting = true
+        defer { isBroadcasting = false }
+        lastBroadcastError = nil
+        let ok = await broadcastRaw(event: "ping", payload: [:])
+        isConnectedToSim = ok
+        if !ok && lastBroadcastError == nil {
+            lastBroadcastError = "Couldn't reach the sim — check Wi-Fi and the code."
+        }
+    }
+
+    /// Drops the current pairing so the user can re-enter / change the code.
+    func disconnect() {
+        isConnectedToSim = false
+        lastBroadcastError = nil
     }
 
     /// Tells the website which club is currently selected.
@@ -70,6 +93,10 @@ final class LiveSimService: ObservableObject {
         if ok {
             lastBroadcastError = nil
             shotsSent += 1
+            lastShot = metrics
+            lastShotAt = Date()
+            bestCarryYards = max(bestCarryYards, metrics.carryYards)
+            topBallSpeedMph = max(topBallSpeedMph, metrics.ballSpeedMph)
         }
     }
 

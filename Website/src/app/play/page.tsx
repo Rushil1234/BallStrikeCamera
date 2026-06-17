@@ -35,7 +35,7 @@ export default function PlayPage() {
     setStage("playing");
     setTimeout(() => {
       const msgType = courseId === "range" ? "START_RANGE" : "START_SIM";
-      iframeRef.current?.contentWindow?.postMessage({ type: msgType }, "*");
+      iframeRef.current?.contentWindow?.postMessage({ type: msgType, courseId }, "*");
     }, 200);
   }
 
