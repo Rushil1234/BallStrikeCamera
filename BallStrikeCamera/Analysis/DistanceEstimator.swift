@@ -13,6 +13,14 @@ struct DistanceEstimate {
 }
 
 struct DistanceEstimator {
+    // Below this ball speed the shot is a putt/roll; bypass the full-swing flight model.
+    private let puttSpeedCutoffMph: Double = 12.0
+    // Rolling resistance of a golf ball on turf (~0.08 fast green … ~0.20 rough); middle estimate.
+    private let rollingResistance: Double = 0.12
+    // The trained flight model is fit to full shots; below this ball speed it just emits its bias
+    // (~35 yd) regardless of input, so chips/pitches use speed-scaled physics instead.
+    private let flightModelMinSpeedMph: Double = 50.0
+
     func estimate(
         ballSpeedMph: Double?,
         vlaDegrees: Double?,
@@ -44,6 +52,24 @@ struct DistanceEstimator {
             warnings.append("HLA unavailable; distance model ignores lateral curve.")
         }
 
+        // Putt / slow roll: the trained flight model is fit to full shots and extrapolates a
+        // bogus 30+ yd rollout at putt speeds (its bias term dominates when inputs ≈ 0). A ball
+        // this slow doesn't fly — it rolls. Estimate the roll distance from kinetic energy vs
+        // rolling resistance (d = v² / (2·μ·g)) instead of consulting the flight model.
+        if ballSpeedMph < puttSpeedCutoffMph {
+            let speedMps  = ballSpeedMph / 2.23694
+            let rollMeters = (speedMps * speedMps) / (2.0 * rollingResistance * 9.80665)
+            let rollYards  = rollMeters * 1.09361
+            warnings.append(String(format: "Putt/roll: %.1f mph → %.1f yd roll (flight model bypassed).",
+                                   ballSpeedMph, rollYards))
+            return DistanceEstimate(
+                idealCarryYards: nil, carryCorrectionFactor: 1.0,
+                carryYards: nil, rolloutYards: rollYards > 0 ? rollYards : nil,
+                totalYards: rollYards > 0 ? rollYards : nil,
+                rolloutFraction: 1.0, vlaBucket: "putt_roll",
+                method: "putt_rolling_physics", warnings: warnings)
+        }
+
         let clampedVLA = min(max(vlaDegrees, 0.5), 65)
         if clampedVLA != vlaDegrees {
             warnings.append(String(format: "VLA %.1f° clamped to %.1f° for distance estimate.", vlaDegrees, clampedVLA))
@@ -54,8 +80,13 @@ struct DistanceEstimator {
         let idealCarryMeters = (speedMps * speedMps * sin(2.0 * vlaRad)) / 9.80665
         let idealCarryYards  = idealCarryMeters * 1.09361
 
-        // Flight model path (trained ridge regression)
-        if let fm = flightModel {
+        // Hard physical ceiling: a ball launched at this speed cannot travel farther than its
+        // optimal-launch (45°) vacuum range — even with roll — by more than a small margin. This
+        // is a sanity cap so no path can ever report a physically impossible distance.
+        let physicalMaxYards = ((speedMps * speedMps) / 9.80665) * 1.09361 * 1.25
+
+        // Flight model path (trained ridge regression) — only trusted at full-shot speeds.
+        if let fm = flightModel, ballSpeedMph >= flightModelMinSpeedMph {
             let carry      = clamp(fm.predictCarry(ballSpeedMph: ballSpeedMph,
                                                    vlaDegrees: clampedVLA,
                                                    idealCarryYards: idealCarryYards), 0, 450)
@@ -64,7 +95,7 @@ struct DistanceEstimator {
                                                      idealCarryYards: idealCarryYards,
                                                      carryYards: carry,
                                                      backspinRpm: backspinRpm), 0, 150)
-            let total      = min(carry + rollout, 400)
+            let total      = min(carry + rollout, 400, physicalMaxYards)
             let rollFrac   = carry > 0 ? rollout / carry : 0
             if total > 350 {
                 warnings.append("Total distance estimate >350 yd — verify calibration and FOV settings.")
@@ -120,7 +151,7 @@ struct DistanceEstimator {
 
         let rolloutFraction = clamp(baseRollout * speedAdjust, 0.02, 0.90)
         let rolloutYards    = carry * rolloutFraction
-        let total           = min(carry + rolloutYards, 400)
+        let total           = min(carry + rolloutYards, 400, physicalMaxYards)
 
         if total > 350 {
             warnings.append("Total distance estimate >350 yd — verify calibration and FOV settings.")

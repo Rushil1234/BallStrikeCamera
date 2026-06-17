@@ -65,6 +65,11 @@ struct ShotMetricsCalculator {
         var preferredBallPointLimit: Int = 6
         var minimumClubPoints: Int = 2
         var lowConfidenceWarningThreshold: Double = 0.45
+        // Below this ball speed the shot is a putt/roll: the ball stays on the ground with no real
+        // vertical launch. At these speeds the per-frame horizontal travel is comparable to
+        // tracking noise, so the computed VLA becomes unstable and reads spuriously high. Force
+        // such shots to 0° VLA.
+        var puttBallSpeedThresholdMph: Double = 12.0
     }
 
     let configuration: Configuration
@@ -123,7 +128,21 @@ struct ShotMetricsCalculator {
         let allPostImpactObs = ball3DObservations
             .filter { $0.frameIndex > analysis.detectedImpactFrameIndex }
             .sorted { $0.frameIndex < $1.frameIndex }
-        if let model = VLAModelPredictor.autoLoad() {
+        let isPuttShot = (ballLaunch.ballSpeedMph ?? 0) < configuration.puttBallSpeedThresholdMph
+        if isPuttShot {
+            // Putt/roll: VLA is already 0 from calculateBallLaunch — never run the model, which
+            // would otherwise predict a spurious launch angle for a ball that just rolls.
+            ballLaunch.vlaLegacyDegrees       = 0
+            ballLaunch.vlaTrainedModelDegrees = nil
+            ballLaunch.vlaFinalDegrees        = 0
+            ballLaunch.vlaDegrees             = 0
+            ballLaunch.vlaModelUsed           = "putt_no_vla"
+            ballLaunch.vlaModelWarnings       = [String(format:
+                "VLA forced to 0° — ball speed %.1f mph is in the putt/roll range (< %.0f).",
+                ballLaunch.ballSpeedMph ?? 0, configuration.puttBallSpeedThresholdMph)]
+            print(String(format: "[VLA] putt/roll: ball speed %.1f mph < %.0f → VLA 0° (model skipped)",
+                         ballLaunch.ballSpeedMph ?? 0, configuration.puttBallSpeedThresholdMph))
+        } else if let model = VLAModelPredictor.autoLoad() {
             let feats = VLAModelPredictor.extractFeatures(
                 from: allPostImpactObs,
                 hlaDegrees: ballLaunch.hlaDegrees,
@@ -331,7 +350,11 @@ struct ShotMetricsCalculator {
         let ballSpeedMph = speedMetersPerSecond * 2.23694
         let hla3D = atan2(velocity.x, velocity.z) * 180 / .pi
         let horizontalSpeed = sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
-        let vlaDegrees = atan2(velocity.y, horizontalSpeed) * 180 / .pi
+        // Putt/roll: as soon as we know the ball speed is in the putt range, do NOT compute a VLA
+        // — a slow roll has no vertical launch, and atan2 is dominated by tracking noise at low
+        // horizontal speed (reads spuriously high). Force it to 0 at the source.
+        let isPutt = ballSpeedMph < configuration.puttBallSpeedThresholdMph
+        let vlaDegrees = isPutt ? 0.0 : atan2(velocity.y, horizontalSpeed) * 180 / .pi
 
         let imageHLA = computeImageSpaceHLA(
             observations: selected,

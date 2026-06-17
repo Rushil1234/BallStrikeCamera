@@ -63,15 +63,19 @@ struct ShotResultView: View {
     // MARK: - Timing
 
     private var durations: (flight: Double, rollout: Double) {
-        guard let spd = m?.ballLaunch.ballSpeedMph,
+        guard let total = m?.distance.totalYards else { return (3.0, 1.2) }  // no metrics → default
+        let carry  = m?.distance.carryYards ?? 0
+        let rollYd = max(0, total - carry)
+        let roll   = min(max(rollYd / 20.0 * 1.20, 0.6), 3.0)
+        // Roll-only (putt / chip with no carry): no flight phase — animate the roll directly.
+        guard carry > 0.2,
+              let spd = m?.ballLaunch.ballSpeedMph,
               let vla = m?.ballLaunch.vlaDegrees,
-              spd > 0, vla > 0 else { return (3.0, 1.2) }
+              spd > 0, vla > 0 else { return (0.0, roll) }
         let speedMps = spd * 0.44704
         let vertVel  = speedMps * sin(vla * .pi / 180.0)
         let hang     = max(0.8, min(7.0, 2.0 * vertVel / 9.81))
         let flt      = min(max(hang * 1.25, 2.4), 6.5)
-        let rollYd   = max(0, (m?.distance.totalYards ?? 0) - (m?.distance.carryYards ?? 0))
-        let roll     = min(max(rollYd / 20.0 * 1.20, 0.6), 3.0)
         return (flt, roll)
     }
 
@@ -552,8 +556,10 @@ struct ShotResultView: View {
                                fp: Double, rp: Double,
                                showCarry: Bool, showTotal: Bool) {
         let totalYd = m?.distance.totalYards ?? m?.distance.carryYards ?? 100
-        let carryYd = m?.distance.carryYards ?? totalYd
+        let carryYd = m?.distance.carryYards ?? 0
         let rollYd  = max(0, totalYd - carryYd)
+        // Roll-only shot (putt / no carry): render a pure ground roll, no airborne arc or carry marker.
+        let rollOnly = carryYd <= 0.2
         let peakYd  = peakHeightYards
 
         // Part B: nice feet-based y scale
@@ -642,8 +648,8 @@ struct ShotResultView: View {
                     .foregroundColor(Self.airborneColor.opacity(0.60)),
                  at: CGPoint(x: leftPad + 6, y: topPad + 2), anchor: .topLeading)
 
-        // Part C: progressive airborne arc (asymmetric curve)
-        if fp > 0.001 {
+        // Part C: progressive airborne arc (asymmetric curve) — skipped entirely for roll-only shots
+        if fp > 0.001 && !rollOnly {
             let steps    = 80
             let stepSize = max(ballXFlight / Double(steps), 0.001)
             var arcPath  = Path()
@@ -661,9 +667,9 @@ struct ShotResultView: View {
                        style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
         }
 
-        // Rollout with bounces
+        // Rollout with bounces (roll-only shots always render as a pure ground roll, no bounces)
         if fp >= 1.0 && rollYd > 0.2 {
-            if rollYd < 2.0 {
+            if rollOnly || rollYd < 2.0 {
                 // Pure roll, no bounce
                 if rp > 0.001 {
                     var rp2 = Path()
@@ -742,7 +748,7 @@ struct ShotResultView: View {
         let ballColor: Color
         if fp >= 1.0 && rp > 0.002 && rollYd > 0.2 {
             ballColor = Self.rolloutColor
-            if rollYd < 2.0 {
+            if rollOnly || rollYd < 2.0 {
                 ballPos = CGPoint(x: sx(carryYd + rollYd * rp), y: groundY - 1)
             } else if rollYd <= 6.0 {
                 let b1Dist = rollYd * 0.45, b1Ht = min(max(0.667, peakYd * 0.03), 1.0)
@@ -775,8 +781,8 @@ struct ShotResultView: View {
         }
         drawGolfBall(ctx: ctx, center: ballPos, radius: 10, phaseColor: ballColor)
 
-        // Carry marker
-        if showCarry {
+        // Carry marker (none for roll-only shots)
+        if showCarry && !rollOnly {
             var drop = Path()
             drop.move(to: CGPoint(x: carryX, y: sy(peakYd * 0.15)))
             drop.addLine(to: CGPoint(x: carryX, y: groundY))

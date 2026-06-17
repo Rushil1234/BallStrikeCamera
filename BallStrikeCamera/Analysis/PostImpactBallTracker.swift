@@ -332,12 +332,12 @@ final class PostImpactBallTracker {
                 // Part G: parity diagnostic — detailed logging near impact
                 if cfg.isPostImpactDebugLoggingEnabled && idx >= impactFrameIndex - 4 {
                     let topCand = candidates.max(by: { $0.brightPixelCount < $1.brightPixelCount })
-                    print(String(format: "PARITY frame=%02d phase=pre minBrightPx=%d stride=%d roiW=%.3f topCandPx=%d topCandW=%.4f topCandH=%.4f reason=%@",
+                    print(String(format: "PARITY frame=%02ld phase=pre minBrightPx=%ld stride=%ld roiW=%.3f topCandPx=%ld topCandW=%.4f topCandH=%.4f reason=%@",
                                  idx, preConfig.minimumBrightSamples, cfg.sampleStride,
-                                 roi.width,
+                                 Double(roi.width),
                                  topCand?.brightPixelCount ?? 0,
-                                 topCand?.rect.width ?? 0,
-                                 topCand?.rect.height ?? 0,
+                                 Double(topCand?.rect.width ?? 0),
+                                 Double(topCand?.rect.height ?? 0),
                                  reason ?? (chosen != nil ? "ok" : "no_blobs")))
                 }
                 debugInfos.append(ShotFrameDebugInfo(
