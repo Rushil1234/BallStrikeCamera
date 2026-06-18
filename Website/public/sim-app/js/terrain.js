@@ -65,6 +65,32 @@ function inFeaturePolys(features, x, z) {
   return false;
 }
 
+function lineIntersectsBounds(points, bounds, pad = 0) {
+  for (const p of points || []) {
+    if (p.x >= bounds.minX - pad && p.x <= bounds.maxX + pad
+      && p.z >= bounds.minZ - pad && p.z <= bounds.maxZ + pad) return true;
+  }
+  return false;
+}
+
+function elevationAtWorld(elevation, x, z) {
+  if (!elevation?.values || !elevation.worldBounds) return null;
+  const b = elevation.worldBounds;
+  if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) return null;
+  const u = (x - b.minX) / ((b.maxX - b.minX) || 1) * (elevation.width - 1);
+  const v = (z - b.minZ) / ((b.maxZ - b.minZ) || 1) * (elevation.height - 1);
+  const x0 = Math.floor(u), z0 = Math.floor(v);
+  const x1 = Math.min(elevation.width - 1, x0 + 1);
+  const z1 = Math.min(elevation.height - 1, z0 + 1);
+  const tx = u - x0, tz = v - z0;
+  const at = (gx, gz) => elevation.values[gz * elevation.width + gx];
+  const a = lerp(at(x0, z0), at(x1, z0), tx);
+  const c = lerp(at(x0, z1), at(x1, z1), tx);
+  const meters = lerp(a, c, tz);
+  if (!Number.isFinite(meters)) return null;
+  return (meters - (elevation.base || 0)) * (elevation.scale || 0.42);
+}
+
 // ---------- splatted PBR ground material ----------
 // vertex colors carry the designed hue (stripes, depth tints); the photo
 // textures are normalized by their mean so they contribute structure only.
@@ -410,6 +436,31 @@ function offsetPolyline(points, offset, closed = false) {
   });
 }
 
+function smoothPolyline(points, iterations = 2, closed = false) {
+  let pts = (points || []).map((p) => ({ x: p.x, z: p.z }));
+  if (pts.length < 3) return pts;
+  for (let it = 0; it < iterations; it++) {
+    const next = [];
+    const count = closed ? pts.length : pts.length - 1;
+    if (!closed) next.push(pts[0]);
+    for (let i = 0; i < count; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      next.push({
+        x: a.x * 0.75 + b.x * 0.25,
+        z: a.z * 0.75 + b.z * 0.25,
+      });
+      next.push({
+        x: a.x * 0.25 + b.x * 0.75,
+        z: a.z * 0.25 + b.z * 0.75,
+      });
+    }
+    if (!closed) next.push(pts[pts.length - 1]);
+    pts = next;
+  }
+  return pts;
+}
+
 function coastlineOutsideNormal(points, i, landPts) {
   const pts = points || [];
   const prev = pts[Math.max(0, i - 1)];
@@ -476,13 +527,28 @@ export function buildCourse(hole, assets) {
   const osmTees = osm.tees || [];
   const osmBunkers = osm.bunkers || [];
   const isCoastal = hole.island?.profile === 'coastal';
-  const coastLandPts = isCoastal ? (hole.island?.coastline?.land || []) : [];
-  const coastEdgePts = isCoastal ? (hole.island?.coastline?.beach || coastLandPts) : [];
+  const elevation = isCoastal ? hole.island?.elevation : null;
+  const visualZones = hole.island?.visualZones || {};
+  const visualWoods = visualZones.woods || [];
+  const visualSand = visualZones.sand || [];
+  const visualScrub = visualZones.scrub || [];
+  const rawCoastLandPts = isCoastal ? (hole.island?.coastline?.land || []) : [];
+  const rawCoastEdgePts = isCoastal ? (hole.island?.coastline?.beach || rawCoastLandPts) : [];
+  const coastLandPts = smoothPolyline(rawCoastLandPts, 3, true);
+  const coastEdgePts = smoothPolyline(rawCoastEdgePts, 3, false);
   const hasOcean = coastLandPts.length >= 3 && coastEdgePts.length >= 2;
 
-  const baseAt = hole.isRange
+  const proceduralBaseAt = hole.isRange
     ? (x, z) => fbmBase(x * 0.003, z * 0.003) * 0.35
     : (x, z) => fbmBase(x * 0.0065, z * 0.0065) * 4.5 + fbmBase(x * 0.018 + 50, z * 0.018) * 1.1;
+
+  const baseAt = (x, z) => {
+    const dem = elevationAtWorld(elevation, x, z);
+    if (dem === null) return proceduralBaseAt(x, z);
+    const broad = fbmBase(x * 0.0032 + 18, z * 0.0032 - 11) * 0.9;
+    const detail = fbmBase(x * 0.014 + 50, z * 0.014) * 0.32;
+    return dem + broad + detail;
+  };
 
   // water level: relative to terrain near the water features
   let waterLevel = -100;
@@ -499,9 +565,9 @@ export function buildCourse(hole, assets) {
   }
   const bedH = waterLevel - 1.1;
 
-  function coastalPlayableLand(x, z, p = null) {
-    if (!hasOcean) return true;
-    if (pointInPolygon(coastLandPts, x, z)) return true;
+  // A point that must always stay full-height land — the playing corridor and
+  // any mapped course surface — even where it sits right on the cliff edge.
+  function courseForcedLand(x, z, p = null) {
     const info = p || distToPolyline(path, x, z);
     if (info.dist < fhw + 13) return true;
     if (inFeaturePolys(osmFairways, x, z) || inFeaturePolys(osmGreens, x, z)
@@ -509,6 +575,12 @@ export function buildCourse(hole, assets) {
     if (ellipseVal(hole.green, x, z) < 3.0) return true;
     if (Math.hypot(x - tee.x, z - tee.z) < 22) return true;
     return false;
+  }
+
+  function coastalPlayableLand(x, z, p = null) {
+    if (!hasOcean) return true;
+    if (pointInPolygon(coastLandPts, x, z)) return true;
+    return courseForcedLand(x, z, p);
   }
 
   function waterMask(x, z) {
@@ -541,17 +613,18 @@ export function buildCourse(hole, assets) {
   function heightAt(x, z) {
     const p = distToPolyline(path, x, z);
     const fairMask = Math.max(sstep(fhw + 20, fhw - 5, p.dist), inFeaturePolys(osmFairways, x, z) ? 1 : 0);
-    const onCoastalLand = coastalPlayableLand(x, z, p);
-    if (!onCoastalLand) {
-      return bedH - fbmDetail(x * 0.025, z * 0.025) * 0.35;
-    }
 
+    // --- shaped LAND height (computed everywhere; clamped to seabed below) ---
     let h = baseAt(x, z);
     if (hasOcean) {
       const coastDist = distToPolyline(coastEdgePts, x, z).dist;
-      const bluff = sstep(95, 4, coastDist) * (1 - fairMask * 0.65);
-      h += bluff * (5.8 + fbmDetail(x * 0.018 + 22, z * 0.018 - 6) * 1.9);
+      const bluff = sstep(130, 14, coastDist) * (1 - fairMask * 0.78);
+      h += bluff * (2.8 + fbmDetail(x * 0.018 + 22, z * 0.018 - 6) * 0.9);
       h += sstep(52, 6, coastDist) * fbmDetail(x * 0.055 + 9, z * 0.055 + 14) * 1.5;
+      const greenProtected = ellipseVal(hole.green, x, z) < 3.2 || inFeaturePolys(osmGreens, x, z);
+      const shoreTaper = sstep(38, 0, coastDist) * (1 - fairMask) * (greenProtected ? 0 : 1);
+      const shoreShelf = waterLevel + 2.0 + fbmDetail(x * 0.025 - 4, z * 0.025 + 3) * 0.45;
+      h = lerp(h, Math.max(shoreShelf, h - 3.5), shoreTaper * 0.72);
     }
     h += fbmDetail(x * 0.05, z * 0.05) * 0.85 * (1 - fairMask);  // bumpy rough
     h += fairMask * 0.15;                                        // slight fairway crown
@@ -588,9 +661,29 @@ export function buildCourse(hole, assets) {
     }
 
     // water carve (after fairway so the creek cuts through)
-    if (hasWater) {
+    if (hole.water.length > 0) {
       const { m } = waterMask(x, z);
       if (m > 0) h = lerp(h, bedH, m * 0.95);
+    }
+
+    // --- smooth coastline ---
+    // Blend the shaped land down to the seabed across a soft, noise-warped band
+    // that straddles the shore. Because it's a continuous function of a signed
+    // distance (not a hard inside/outside flip), the grid mesh slopes gently into
+    // the sea instead of stair-stepping at the polygon edge. Course surfaces are
+    // pinned to full land height so greens/tees never sink at clifftop holes.
+    if (hasOcean) {
+      const seabed = waterLevel - 1.8 - fbmDetail(x * 0.018, z * 0.018) * 0.45;
+      let t;
+      if (courseForcedLand(x, z, p)) {
+        t = 1;
+      } else {
+        const coastDist = distToPolyline(coastEdgePts, x, z).dist;
+        const wob = fbmDetail(x * 0.06 + 3, z * 0.06 - 7) * 4.5;        // organic edge
+        const signed = (pointInPolygon(coastLandPts, x, z) ? 1 : -1) * coastDist + wob;
+        t = sstep(-9, 12, signed);                                     // 21m smooth shore band
+      }
+      h = lerp(seabed, h, t);
     }
     return h;
   }
@@ -666,6 +759,10 @@ export function buildCourse(hole, assets) {
   }
   const MARGIN = 90;
   minX -= MARGIN; maxX += MARGIN; minZ -= MARGIN; maxZ += MARGIN;
+  const localBounds = { minX, maxX, minZ, maxZ };
+  const worldPaths = isCoastal
+    ? (hole.island?.paths || []).filter((p) => lineIntersectsBounds(p.points, localBounds, 40))
+    : [];
 
   const pinPos = {
     x: hole.pin.x,
@@ -701,7 +798,7 @@ export function buildCourse(hole, assets) {
       const ih = ib.maxZ - ib.minZ;
       if (hole.island.profile === 'coastal') {
         // A vast, reflective ocean stretching to the horizon — the course sits
-        // on a coastal headland (Pebble Beach), not a tidy little island pond.
+        // on a coastal headland, not a tidy little island pond.
         const ocean = new Water(new THREE.PlaneGeometry(26000, 26000), {
           textureWidth: 512,
           textureHeight: 512,
@@ -749,9 +846,9 @@ export function buildCourse(hole, assets) {
     }
 
     // terrain mesh: vertex colors (hue design) + splat weights (texture mix)
-    const CELL = 1.7;
-    const nx = Math.min(440, Math.ceil((maxX - minX) / CELL));
-    const nz = Math.min(480, Math.ceil((maxZ - minZ) / CELL));
+    const CELL = hasOcean ? 1.15 : 1.7;
+    const nx = Math.min(hasOcean ? 620 : 440, Math.ceil((maxX - minX) / CELL));
+    const nz = Math.min(hasOcean ? 660 : 480, Math.ceil((maxZ - minZ) / CELL));
     const geo = new THREE.BufferGeometry();
     const positions = new Float32Array((nx + 1) * (nz + 1) * 3);
     const colors = new Float32Array((nx + 1) * (nz + 1) * 3);
@@ -766,6 +863,9 @@ export function buildCourse(hole, assets) {
       rough: new THREE.Color(0x3b662e), deep: new THREE.Color(0x2c4f22),
       sand: new THREE.Color(0xd5c28c),
       bed: new THREE.Color(0x31464a),
+      beach: new THREE.Color(0xb9ab82),
+      scrub: new THREE.Color(0x626c51),
+      rock: new THREE.Color(0x51463a),
     };
     const tmp = new THREE.Color();
 
@@ -781,6 +881,9 @@ export function buildCourse(hole, assets) {
 
         const surf = surfaceAt(x, z);
         const p = pathInfo(x, z);
+        const inMappedSand = hasOcean && inFeaturePolys(visualSand, x, z);
+        const inMappedScrub = hasOcean && inFeaturePolys(visualScrub, x, z);
+        const coastDist = hasOcean ? distToPolyline(coastEdgePts, x, z).dist : Infinity;
         let sg = 0, sr = 0, ss = 0, sw = 0;   // grass, rough, sand, tight-mow
 
         if (hasWater && h < waterLevel + 0.05 && waterMask(x, z).m > 0.45) {
@@ -802,6 +905,12 @@ export function buildCourse(hole, assets) {
           sg = 1;
         } else if (p.dist < fhw + 3.5) {
           tmp.copy(C.firstCut); sg = 0.55; sr = 0.45;
+        } else if (inMappedSand) {
+          tmp.copy(C.beach); ss = 0.68; sr = 0.32;
+        } else if (inMappedScrub) {
+          tmp.copy(C.scrub); sr = 1;
+        } else if (hasOcean && coastDist < 30 && !inFeaturePolys(osmFairways, x, z) && !inFeaturePolys(osmGreens, x, z)) {
+          tmp.copy(C.rock).lerp(C.rough, sstep(2, 30, coastDist)); sr = 1;
         } else {
           const t = sstep(fhw + 10, fhw + 45, p.dist);
           tmp.copy(C.rough).lerp(C.deep, t);
@@ -838,13 +947,34 @@ export function buildCourse(hole, assets) {
     group.add(terrain);
 
     if (hasOcean) {
-      const cliff = new THREE.Mesh(
-        cliffWallGeometry(coastEdgePts, coastLandPts, (x, z) => heightAt(x, z), waterLevel),
-        new THREE.MeshLambertMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }),
-      );
-      cliff.receiveShadow = true;
-      group.add(cliff);
+      const pathMat = new THREE.MeshStandardMaterial({
+        color: 0x2e302c,
+        roughness: 0.92,
+        metalness: 0,
+        transparent: true,
+        opacity: 0.94,
+      });
+      const visiblePaths = worldPaths.length
+        ? worldPaths
+        : [
+            { points: coastalCartPath(path, -1, fhw + 12), width: 3.2 },
+            { points: coastalCartPath(path, 1, fhw + 18), width: 2.2 },
+          ];
+      for (const pth of visiblePaths.slice(0, 18)) {
+        if ((pth.points?.length || 0) < 2) continue;
+        const pathMesh = new THREE.Mesh(
+          ribbonGeometry(pth.points, pth.width || 3.2, (x, z) => heightAt(x, z) + 0.052),
+          pathMat,
+        );
+        pathMesh.receiveShadow = true;
+        group.add(pathMesh);
+      }
+    }
 
+    if (hasOcean) {
+      // No separate cliff-wall mesh: the terrain now slopes smoothly into the
+      // sea, so a vertical rock wall would just re-introduce the hard faceted
+      // edge. Foam at the waterline + scattered rocks sell the shoreline instead.
       const foamMat = new THREE.MeshBasicMaterial({
         color: 0xf4fbff,
         transparent: true,
@@ -862,18 +992,6 @@ export function buildCourse(hole, assets) {
       );
       foamOffshore.material.opacity = 0.38;
       group.add(foamNear, foamOffshore);
-
-      const cartSide = [1, 1, -1, -1, -1, 1, -1, 1, -1, -1, 1, 1, -1, 1, -1, 1, -1, -1][(hole.id || 1) - 1] || 1;
-      const cartPts = coastalCartPath(path, cartSide, Math.max(26, fhw + 15))
-        .filter((p) => coastalPlayableLand(p.x, p.z));
-      if (cartPts.length >= 2) {
-        const cart = new THREE.Mesh(
-          ribbonGeometry(cartPts, 4.8, (x, z) => heightAt(x, z) + 0.075),
-          new THREE.MeshStandardMaterial({ color: 0x23211e, roughness: 0.92, metalness: 0 }),
-        );
-        cart.receiveShadow = true;
-        group.add(cart);
-      }
 
       const coastRng = makeRng(hole.seed * 101 + 19);
       const rockGeo = new THREE.DodecahedronGeometry(1, 1);
@@ -974,25 +1092,32 @@ export function buildCourse(hole, assets) {
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];
-    const candidates = Math.floor(1700 * (hole.treeDensity || 1));
-    for (let i = 0; i < candidates && spots.length < 460; i++) {
+    const candidates = Math.floor((hasOcean ? 960 : 1700) * (hole.treeDensity || 1));
+    const maxRandomTrees = hasOcean ? 245 : 460;
+    for (let i = 0; i < candidates && spots.length < maxRandomTrees; i++) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
       const z = minZ + 14 + rng() * (maxZ - minZ - 28);
       const p = pathInfo(x, z);
+      const mappedWood = inFeaturePolys(visualWoods, x, z);
       if (p.dist < fhw + 11) continue;
       if (inFeaturePolys(osmFairways, x, z) || inFeaturePolys(osmGreens, x, z)
         || inFeaturePolys(osmTees, x, z) || inFeaturePolys(osmBunkers, x, z)) continue;
       if (ellipseVal(hole.green, x, z) < 3.0) continue;
       if (Math.hypot(x - tee.x, z - tee.z) < 20) continue;
       if (hasWater && waterMask(x, z).m > 0.05) continue;
+      if (hasOcean && inFeaturePolys(visualSand, x, z)) continue;
+      if (hasOcean && !mappedWood && p.dist > fhw + 72 && rng() < 0.72) continue;
       if (fbmDetail(x * 0.02 + 90, z * 0.02) < -0.12) continue; // clearings
       spots.push({
         x, z, h: heightAt(x, z),
-        s: 0.62 + rng() * 0.95,
+        s: mappedWood ? 0.86 + rng() * 1.08 : 0.58 + rng() * 0.82,
         ry: rng() * Math.PI * 2,
         tilt: (rng() - 0.5) * 0.08,
-        kind: rng() < 0.6 ? (rng() < 0.5 ? 0 : 1) : (rng() < 0.5 ? 2 : 3),
-        tint: [0.82 + rng() * 0.34, 0.84 + rng() * 0.34, 0.82 + rng() * 0.28],
+        kind: hasOcean ? (rng() < 0.78 ? (rng() < 0.5 ? 0 : 1) : (rng() < 0.5 ? 2 : 3))
+          : (rng() < 0.6 ? (rng() < 0.5 ? 0 : 1) : (rng() < 0.5 ? 2 : 3)),
+        tint: hasOcean
+          ? [0.62 + rng() * 0.22, 0.72 + rng() * 0.22, 0.60 + rng() * 0.18]
+          : [0.82 + rng() * 0.34, 0.84 + rng() * 0.34, 0.82 + rng() * 0.28],
       });
     }
     if (hasOcean) {

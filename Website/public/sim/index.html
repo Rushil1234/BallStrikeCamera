@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=pebble-visual-1">
+<link rel="stylesheet" href="styles.css?v=range-upgrade-1">
 <script type="importmap">
 {
   "imports": {
@@ -181,12 +181,30 @@
   <!-- Range: last-shot metrics pill -->
   <div id="range-pill" class="range-pill hidden"></div>
 
+  <div id="range-panel" class="range-panel hidden">
+    <div class="range-panel-top">
+      <span>Practice Range</span>
+      <strong id="range-shot-count">0 shots</strong>
+    </div>
+    <div class="range-panel-grid">
+      <div><span>Carry</span><strong id="range-carry">—</strong></div>
+      <div><span>Total</span><strong id="range-total">—</strong></div>
+      <div><span>Offline</span><strong id="range-offline">—</strong></div>
+      <div><span>Apex</span><strong id="range-apex">—</strong></div>
+    </div>
+    <div class="range-panel-row">
+      <span>Avg carry</span><strong id="range-avg">—</strong>
+      <span>Best</span><strong id="range-best">—</strong>
+    </div>
+    <div id="range-history" class="range-history"></div>
+  </div>
+
 </div>
 <script>
 /* surface fatal errors in the tab title (also handy for headless checks) */
 window.onerror = (m, s, l) => { document.title = 'ERR: ' + m + ' @' + String(s || '').split('/').pop() + ':' + l; };
 window.addEventListener('unhandledrejection', (e) => { document.title = 'REJ: ' + (e.reason && e.reason.message || e.reason); });
 </script>
-<script type="module" src="js/main.js?v=pebble-visual-1"></script>
+<script type="module" src="js/main.js?v=range-upgrade-1"></script>
 </body>
 </html>

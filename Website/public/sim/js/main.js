@@ -4,15 +4,15 @@
 import * as THREE from 'three';
 import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js';
 import { createShot, simulateCarry, SURF } from './physics.js';
-import { RANGE, holeLength } from './holes.js?v=pebble-visual-1';
+import { RANGE, holeLength } from './holes.js?v=range-upgrade-1';
 import { buildCourse } from './terrain.js';
 import { makeSky } from './sky.js';
 import { loadAssets } from './assets.js';
-import { HUD, toParStr } from './ui.js?v=pebble-visual-1';
+import { HUD, toParStr } from './ui.js?v=range-upgrade-1';
 import { SFX } from './audio.js';
 import { getLiveCode, connectLive } from './live.js';
 import { fetchSimCourses } from './courses.js';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=pebble-visual-1';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=range-upgrade-1';
 import { layoutIslandCourse } from './world.js';
 
 // ---------- boot ----------
@@ -155,11 +155,13 @@ const game = {
 
 let rangeMarkers = null;
 let lastRangeShot = null;
+let rangeStats = { shots: 0, totalCarry: 0, bestCarry: 0, recent: [] };
 const holePickerCard = document.getElementById('hole-picker-card');
 const holePicker = document.getElementById('hole-picker');
 const holeGrid = document.getElementById('hole-grid');
 const courseSelect = document.getElementById('course-select');
 const courseSelectWrap = document.getElementById('course-select-wrap');
+const rangePanel = document.getElementById('range-panel');
 
 const club = () => CLUBS[game.clubIdx];
 const onGreen = () => game.lie === SURF.GREEN;
@@ -231,6 +233,7 @@ function setActiveCourse(course) {
   hud.summaryHide();
   hud.scorecardHide();
   hud.toastHide();
+  rangePanel?.classList.add('hidden');
   populateHolePicker();
   setHolePickerActive(0);
   setTitleCourseName(nextCourse.courseName || 'TrueCarry Course');
@@ -278,6 +281,8 @@ function jumpToHole(idx) {
 function startHole(idx) {
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = false;
+  rangePanel?.classList.add('hidden');
+  document.getElementById('range-pill')?.classList.add('hidden');
   if (idx === 0) game.scores = courseHoles.map(() => null);
   if (game.course) {
     scene.remove(game.course.group);
@@ -512,6 +517,13 @@ function resolveShot() {
     const carry = sim.carryPos
       ? Math.hypot(sim.carryPos.x - game.shotStart.x, sim.carryPos.z - game.shotStart.z) : 0;
     const total = Math.hypot(sim.pos.x - game.shotStart.x, sim.pos.z - game.shotStart.z);
+    const result = recordRangeShot({
+      carry,
+      total,
+      finalX: sim.pos.x,
+      finalZ: sim.pos.z,
+      clubName: club().name,
+    });
     if (!club().putter) hud.shotDataResult(fmtYards(carry), fmtYards(total));
     // populate last-shot pill
     const rangePill = document.getElementById('range-pill');
@@ -521,6 +533,7 @@ function resolveShot() {
       rangePill.innerHTML =
         `<span class="rp-hi">${carryYd}</span><span class="rp-lo">y carry</span>` +
         ` · <span class="rp-hi">${totalYd}</span><span class="rp-lo">y total</span>` +
+        ` · <span class="rp-hi">${Math.round(Math.abs(result.offline) * 1.09361)}</span><span class="rp-lo">y ${result.offline < 0 ? 'left' : 'right'}</span>` +
         (rs.speedMph > 0 ? ` · <span class="rp-hi">${Math.round(rs.speedMph)}</span><span class="rp-lo">mph</span>` : '') +
         (rs.launchDeg > 0 ? ` · <span class="rp-hi">${Number(rs.launchDeg).toFixed(1)}°</span><span class="rp-lo">launch</span>` : '') +
         (rs.spinRpm > 0 ? ` · <span class="rp-hi">${Math.round(rs.spinRpm).toLocaleString()}</span><span class="rp-lo">rpm</span>` : '') +
@@ -607,9 +620,134 @@ function nextHole() {
   }
 }
 
+function resetRangeStats() {
+  rangeStats = { shots: 0, totalCarry: 0, bestCarry: 0, recent: [] };
+  lastRangeShot = null;
+  updateRangePanel();
+}
+
+function updateRangePanel(result = null) {
+  if (!rangePanel) return;
+  const setText = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+  };
+  setText('range-shot-count', `${rangeStats.shots} shot${rangeStats.shots === 1 ? '' : 's'}`);
+  setText('range-carry', result ? `${fmtYards(result.carry)}y` : '—');
+  setText('range-total', result ? `${fmtYards(result.total)}y` : '—');
+  setText('range-offline', result ? `${Math.round(Math.abs(result.offline) * 1.09361)}y ${result.offline < 0 ? 'L' : 'R'}` : '—');
+  setText('range-apex', result?.apexFt ? `${Math.round(result.apexFt)} ft` : '—');
+  setText('range-avg', rangeStats.shots ? `${fmtYards(rangeStats.totalCarry / rangeStats.shots)}y` : '—');
+  setText('range-best', rangeStats.bestCarry ? `${fmtYards(rangeStats.bestCarry)}y` : '—');
+  const history = document.getElementById('range-history');
+  if (history) {
+    history.innerHTML = rangeStats.recent
+      .map((shot) => `<span title="${shot.club} · ${Math.round(Math.abs(shot.offline) * 1.09361)}y ${shot.offline < 0 ? 'L' : 'R'}">${fmtYards(shot.carry)}</span>`)
+      .join('');
+  }
+}
+
+function recordRangeShot({ carry, total, finalX, finalZ, clubName }) {
+  const right = { x: -game.aimDir.z, z: game.aimDir.x };
+  const dx = finalX - game.shotStart.x;
+  const dz = finalZ - game.shotStart.z;
+  const offline = dx * right.x + dz * right.z;
+  const apexFt = lastRangeShot?.apexFt || 0;
+  const result = { carry, total, offline, apexFt, club: clubName };
+  rangeStats.shots += 1;
+  rangeStats.totalCarry += carry;
+  rangeStats.bestCarry = Math.max(rangeStats.bestCarry, carry);
+  rangeStats.recent = [result, ...rangeStats.recent].slice(0, 12);
+  updateRangePanel(result);
+  return result;
+}
+
+function makeRangeLabel(text, color = '#f3ead4') {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 92;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(8, 14, 10, 0.72)';
+  ctx.strokeStyle = 'rgba(201, 168, 106, 0.55)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(10, 10, 236, 72, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = '700 34px Rajdhani, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  ctx.fillText(text, 128, 46);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.anisotropy = 4;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: tex,
+    transparent: true,
+    depthWrite: false,
+  }));
+  sprite.scale.set(11, 4, 1);
+  return sprite;
+}
+
+function addRangeLine(points, color, opacity = 0.38) {
+  const geo = new THREE.BufferGeometry().setFromPoints(points.map((p) => new THREE.Vector3(p.x, p.y, p.z)));
+  const line = new THREE.Line(
+    geo,
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false }),
+  );
+  scene.add(line);
+  rangeMarkers.push(line);
+  return line;
+}
+
+function addRangeDisc(x, z, radius, color, opacity = 0.22) {
+  const y = game.course.heightAt(x, z) + 0.075;
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(radius, 64),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  disc.rotation.x = -Math.PI / 2;
+  disc.position.set(x, y, z);
+  scene.add(disc);
+  rangeMarkers.push(disc);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(radius, 0.14, 8, 72),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: Math.min(opacity + 0.32, 0.72), depthWrite: false }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(x, y + 0.02, z);
+  scene.add(ring);
+  rangeMarkers.push(ring);
+  return disc;
+}
+
+function addRangeFlag(x, z, color = 0xf2e6c9) {
+  const y = game.course.heightAt(x, z);
+  const group = new THREE.Group();
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.035, 3.2, 8),
+    new THREE.MeshLambertMaterial({ color: 0xf2eee1 }),
+  );
+  pole.position.y = 1.6;
+  const flag = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.9, 0.45),
+    new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }),
+  );
+  flag.position.set(0.45, 2.8, 0);
+  group.add(pole, flag);
+  group.position.set(x, y + 0.05, z);
+  scene.add(group);
+  rangeMarkers.push(group);
+}
+
 function startRange() {
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = true;
+  resetRangeStats();
+  rangePanel?.classList.remove('hidden');
   holePickerCard?.classList.add('hidden');
   if (game.course) { scene.remove(game.course.group); game.course.dispose(); }
   game.course = buildCourse(RANGE, assets);
@@ -636,11 +774,13 @@ function startRange() {
   const hcName = document.getElementById('hc-name');
   if (hcHole) hcHole.textContent = 'RANGE';
   if (hcPar)  hcPar.textContent  = 'PRACTICE';
-  if (hcYds)  hcYds.textContent  = '';
-  if (hcName) hcName.textContent = 'DRIVING RANGE';
+  if (hcYds)  hcYds.textContent  = 'TARGETS';
+  if (hcName) hcName.textContent = 'PRACTICE FACILITY';
   const helpStrip = document.getElementById('help-strip');
   if (helpStrip && window.__liveMode) {
     helpStrip.textContent = 'RANGE · LIVE MODE — hit shots on your phone · V MAP · M MUTE';
+  } else if (helpStrip) {
+    helpStrip.textContent = 'RANGE · TARGET FIELD — drag to aim · V MAP · M MUTE';
   }
   const liveWaiting = document.getElementById('live-waiting');
   if (liveWaiting && window.__liveMode) liveWaiting.classList.remove('hidden');
@@ -650,13 +790,25 @@ function startRange() {
 
 function buildRangeMarkers() {
   rangeMarkers = [];
-  const yardages = [50, 100, 150, 200, 250, 300];
+  const yardages = [50, 75, 100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350];
   const ox = game.course.teePos.x, oz = game.course.teePos.z;
+
+  for (const x of [-75, -50, -25, 25, 50, 75]) {
+    addRangeLine([
+      { x: ox + x, y: game.course.heightAt(ox + x, oz + 30) + 0.08, z: oz + 30 },
+      { x: ox + x, y: game.course.heightAt(ox + x, oz + 365) + 0.08, z: oz + 365 },
+    ], x === -25 || x === 25 ? 0xd6c889 : 0xffffff, x === -25 || x === 25 ? 0.24 : 0.15);
+  }
+
   for (const yd of yardages) {
     const dist = yd * 0.9144;
     const mz = oz + dist, mx = ox;
     const my = game.course.heightAt(mx, mz) + 0.07;
     const isHundred = yd % 100 === 0;
+    addRangeLine([
+      { x: ox - 85, y: game.course.heightAt(ox - 85, mz) + 0.08, z: mz },
+      { x: ox + 85, y: game.course.heightAt(ox + 85, mz) + 0.08, z: mz },
+    ], isHundred ? 0xd7c685 : 0xffffff, isHundred ? 0.28 : 0.12);
     const marker = new THREE.Mesh(
       new THREE.TorusGeometry(isHundred ? 4 : 2.5, 0.12, 6, 40),
       new THREE.MeshBasicMaterial({
@@ -669,6 +821,22 @@ function buildRangeMarkers() {
     marker.position.set(mx, my, mz);
     scene.add(marker);
     rangeMarkers.push(marker);
+    if (yd % 50 === 0) {
+      const label = makeRangeLabel(`${yd}y`, isHundred ? '#f8d978' : '#f2ead7');
+      label.position.set(ox - 96, game.course.heightAt(ox - 96, mz) + 3.2, mz);
+      scene.add(label);
+      rangeMarkers.push(label);
+    }
+  }
+
+  for (const target of RANGE.targets || []) {
+    addRangeDisc(ox + target.x, oz + target.z, target.radius, target.color || 0xd7c685, 0.2);
+    addRangeDisc(ox + target.x, oz + target.z, target.radius * 0.45, target.color || 0xd7c685, 0.32);
+    addRangeFlag(ox + target.x, oz + target.z, target.color || 0xd7c685);
+    const label = makeRangeLabel(`${target.yards}y`, '#fff3c9');
+    label.position.set(ox + target.x, game.course.heightAt(ox + target.x, oz + target.z) + 5.2, oz + target.z);
+    scene.add(label);
+    rangeMarkers.push(label);
   }
 }
 
@@ -1289,13 +1457,17 @@ function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaD
   SFX.strike(0.8, false);
 }
 
-// dev hooks: #play skips the title screen, #aim also skips the flyover,
-// an optional digit picks the hole (#aim2 = hole 2)
+// dev hooks: #range starts practice; #play skips title; #aim also skips flyover,
+// an optional digit picks the hole (#aim2 = hole 2).
 {
-  const m = location.hash.match(/^#(play|aim)(\d{1,2})?$/);
+  const m = location.hash.match(/^#(range|play|aim)(\d{1,2})?$/);
   if (m) {
     assetsReady.then(() => {
       hud.titleHide();
+      if (m[1] === 'range') {
+        startRange();
+        return;
+      }
       startHole(m[2] ? Math.min(parseInt(m[2], 10) - 1, courseHoles.length - 1) : 0);
       if (m[1] === 'aim') { game.flyT = 99; }
     });

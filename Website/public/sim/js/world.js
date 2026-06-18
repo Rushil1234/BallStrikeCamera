@@ -141,6 +141,10 @@ export function layoutIslandCourse(rawHoles, options = {}) {
   const boundsMargin = options.boundsMargin ?? 150;
   const profile = options.profile || 'island';
   const coastline = options.coastline || null;
+  const elevation = options.elevation || null;
+  const paths = options.paths || [];
+  const visualZones = options.visualZones || {};
+  const osmCoastline = options.osmCoastline || [];
   const prepositioned = !!options.prepositioned;
   if (!holes.length) {
     const b = emptyBounds();
@@ -171,8 +175,19 @@ export function layoutIslandCourse(rawHoles, options = {}) {
   for (let i = 0; i < placed.length - 1; i++) connectors.push(connectorBetween(placed[i], placed[i + 1]));
 
   for (const hole of placed) {
-    hole.island = { bounds, connectors, water: worldWater, holeCount: placed.length, profile, coastline };
+    hole.island = {
+      bounds,
+      connectors,
+      water: worldWater,
+      holeCount: placed.length,
+      profile,
+      coastline,
+      elevation,
+      paths,
+      visualZones,
+      osmCoastline,
+    };
   }
 
-  return { holes: placed, bounds, connectors, water: worldWater, profile, coastline };
+  return { holes: placed, bounds, connectors, water: worldWater, profile, coastline, elevation, paths, visualZones, osmCoastline };
 }

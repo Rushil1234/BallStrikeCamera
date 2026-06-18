@@ -1,6 +1,8 @@
-import { HOLES } from './holes.js?v=pebble-visual-1';
-import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=pebble-visual-1';
-import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=pebble-visual-1';
+import { HOLES } from './holes.js?v=range-upgrade-1';
+import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=range-upgrade-1';
+import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=range-upgrade-1';
+import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=range-upgrade-1';
+import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=range-upgrade-1';
 
 const PEBBLE_HOLES_WITH_OSM = PEBBLE_PRIVATE_HOLES.map((hole) => ({
   ...hole,
@@ -18,12 +20,17 @@ export const LOCAL_COURSES = [
   },
   {
     courseId: 'pebble-private',
-    courseName: 'Pebble Private Prototype',
-    sub: 'Local-only coastal research course · BlueGolf centerlines + OSM polygons',
+    courseName: 'Cypress Coast Links',
+    sub: 'Coastal links course · OSM surfaces + USGS terrain',
     holes: PEBBLE_HOLES_WITH_OSM,
-    world: { profile: 'coastal', ...PEBBLE_PRIVATE_WORLD, ...PEBBLE_OSM_WORLD },
+    world: {
+      profile: 'coastal',
+      ...PEBBLE_PRIVATE_WORLD,
+      ...PEBBLE_OSM_WORLD,
+      ...PEBBLE_WORLD_REALISM,
+      elevation: PEBBLE_ELEVATION,
+    },
     local: true,
-    private: true,
   },
 ];
 

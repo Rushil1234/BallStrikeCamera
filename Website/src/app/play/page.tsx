@@ -9,7 +9,7 @@ function makeCode() {
 const COURSES = [
   { id: "range",        name: "Range",                 sub: "Free practice — no scoring",          icon: "🏌" },
   { id: "pine-hollow",  name: "Pine Hollow National",  sub: "18 holes · par 72 · 6,900 yd",        icon: "⛳" },
-  { id: "pebble",       name: "Pebble Beach",          sub: "Coming soon",                          icon: "⛳", disabled: true },
+  { id: "pebble-private", name: "Cypress Coast Links", sub: "18 holes · coastal links · par 72",    icon: "⛳" },
   { id: "augusta",      name: "Augusta National",      sub: "Coming soon",                          icon: "⛳", disabled: true },
 ];
 

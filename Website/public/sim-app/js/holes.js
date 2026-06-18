@@ -257,18 +257,26 @@ export const HOLES = [
   },
 ];
 
-// Driving range: flat, straight, no scoring.
+// Driving range: longer practice field with multiple target greens.
 export const RANGE = {
   id: 0, name: 'RANGE', par: null, seed: 9999, isRange: true,
-  path: [{ x: 0, z: 0 }, { x: 0, z: 350 }],
-  fairwayHalf: 80,
+  path: [{ x: 0, z: 0 }, { x: 0, z: 430 }],
+  fairwayHalf: 115,
   obMargin: 9999,
-  green: { cx: 0, cz: 350, rx: 30, rz: 30, rot: 0 },
-  pin: { x: 0, z: 350 },
+  green: { cx: 0, cz: 315, rx: 38, rz: 32, rot: 0 },
+  pin: { x: 0, z: 315 },
   bunkers: [],
   water: [],
   treeDensity: 0,
-  windMax: 8,
+  windMax: 6,
+  targets: [
+    { x: -32, z: 68, yards: 75, radius: 8, color: 0xd7c685 },
+    { x: 28, z: 105, yards: 115, radius: 10, color: 0x8fcf79 },
+    { x: -42, z: 142, yards: 155, radius: 12, color: 0x86c5d8 },
+    { x: 38, z: 183, yards: 200, radius: 14, color: 0xd7c685 },
+    { x: -24, z: 229, yards: 250, radius: 16, color: 0x8fcf79 },
+    { x: 24, z: 279, yards: 305, radius: 18, color: 0x86c5d8 },
+  ],
 };
 
 // Total playing length of a hole along its path, meters.

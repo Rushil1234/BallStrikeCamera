@@ -15,7 +15,17 @@ if (typeof PEBBLE_PRIVATE_HOLES !== 'undefined') {
   const pebbleHoles = typeof PEBBLE_OSM_BY_HOLE !== 'undefined'
     ? PEBBLE_PRIVATE_HOLES.map(h => ({ ...h, osm: PEBBLE_OSM_BY_HOLE[h.id] || null }))
     : PEBBLE_PRIVATE_HOLES;
-  TEST_COURSES.push({ name: 'Pebble Private Prototype', holes: pebbleHoles });
+  const pebbleWorld = {
+    profile: 'coastal',
+    ...(typeof PEBBLE_PRIVATE_WORLD !== 'undefined' ? PEBBLE_PRIVATE_WORLD : {}),
+    ...(typeof PEBBLE_OSM_WORLD !== 'undefined' ? PEBBLE_OSM_WORLD : {}),
+    ...(typeof PEBBLE_WORLD_REALISM !== 'undefined' ? PEBBLE_WORLD_REALISM : {}),
+    elevation: typeof PEBBLE_ELEVATION !== 'undefined' ? PEBBLE_ELEVATION : null,
+  };
+  const laidOutPebble = typeof layoutIslandCourse !== 'undefined'
+    ? layoutIslandCourse(pebbleHoles, pebbleWorld).holes
+    : pebbleHoles;
+  TEST_COURSES.push({ name: 'Cypress Coast Links', holes: laidOutPebble });
 }
 
 let failures = 0;
@@ -37,6 +47,29 @@ function playCourse(courseName, holes) {
     if (teeS !== 'tee' || pinS !== 'green') {
       print("  !!! bad surfaces: tee=" + teeS + " pin=" + pinS);
       failures++;
+    }
+    if (courseName.indexOf('Cypress Coast') >= 0) {
+      if (teeS === 'water' || pinS === 'water') {
+        print("  !!! Cypress Coast playable point classified as water");
+        failures++;
+      }
+      const coast = hole.island && hole.island.coastline && hole.island.coastline.beach;
+      const land = hole.island && hole.island.coastline && hole.island.coastline.land;
+      if (coast && land && coast.length > 5) {
+        let oceanOk = false;
+        for (let ci = 1; ci < coast.length - 1; ci += Math.max(1, Math.floor(coast.length / 16))) {
+          const n = coastlineOutsideNormal(coast, ci, land);
+          const sample = { x: coast[ci].x + n.x * 42, z: coast[ci].z + n.z * 42 };
+          if (course.surfaceAt(sample.x, sample.z) === 'water') {
+            oceanOk = true;
+            break;
+          }
+        }
+        if (!oceanOk) {
+          print("  !!! Cypress Coast coastline samples did not classify as ocean");
+          failures++;
+        }
+      }
     }
     // boundary sanity: the playing corridor is in bounds, way offline is not
     const mid = course.pointAtAlong(holeLength(hole) / 2);
@@ -78,7 +111,13 @@ function playCourse(courseName, holes) {
         power = Math.min(Math.max((Math.pow(frac, 1 / 1.8) - 0.3) / 0.7, 0.2), 1);
       }
 
-      const dx = pin.x - pos.x, dz = pin.z - pos.z, L = Math.hypot(dx, dz) || 1;
+      let target = pin;
+      if (mode === 'fly' && rem > 125) {
+        const current = course.pathInfo(pos.x, pos.z);
+        const advance = Math.max(72, Math.min(c.carryM * 0.82, rem * 0.78));
+        target = course.pointAtAlong(Math.min(holeLength(hole), current.along + advance));
+      }
+      const dx = target.x - pos.x, dz = target.z - pos.z, L = Math.hypot(dx, dz) || 1;
       const speed = c.putter ? c.speed * power : c.speed * (0.3 + 0.7 * power) * lieE.speed;
       strokes++;
       const sim = createShot({
