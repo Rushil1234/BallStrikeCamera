@@ -10,7 +10,7 @@ import { makeSky } from './sky.js';
 import { loadAssets } from './assets.js';
 import { HUD, toParStr } from './ui.js?v=range-upgrade-1';
 import { SFX } from './audio.js';
-import { getLiveCode, connectLive } from './live.js';
+import { getLiveCode, connectLive, publishLiveState } from './live.js';
 import { fetchSimCourses } from './courses.js';
 import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=range-upgrade-1';
 import { layoutIslandCourse } from './world.js';
@@ -281,6 +281,26 @@ function totalToPar() {
   return d;
 }
 
+// Mirror the sim's current state to Supabase so a paired phone can show it live.
+function pushLiveState(extra = {}) {
+  if (!window.__liveMode || game.isRange) return;
+  const code = getLiveCode();
+  if (!code) return;
+  const def = courseHoles[game.holeIdx] || {};
+  const distPin = game.course ? distToPin() : 0;
+  publishLiveState(code, {
+    hole: def.id ?? (game.holeIdx + 1),
+    par: def.par ?? null,
+    yards: def.cardYards ?? null,
+    hole_name: def.name ?? null,
+    stroke: game.strokes,
+    to_par: totalToPar(),
+    distance_to_pin_yards: Math.round(distPin * 1.09361),
+    sim_state: game.state,
+    ...extra,
+  });
+}
+
 function setHolePickerActive(idx) {
   if (holePicker) holePicker.value = String(idx);
   holeGrid?.querySelectorAll('.hole-jump').forEach((btn) => {
@@ -345,6 +365,8 @@ function startHole(idx) {
   ball.visible = false;
   blob.visible = false;
   setGuides(false);
+
+  pushLiveState({ stroke: 1, last_shot: null, sim_state: 'NEW_HOLE' });
 }
 
 function suggestClub() {
@@ -583,6 +605,7 @@ function resolveShot() {
       `<span class="t-sub">HOLE ${def.id} · ${game.strokes} STROKES</span>`, 0);
     game.state = 'HOLE_DONE';
     game.doneTimer = 0;
+    pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
     return;
   }
 
@@ -631,6 +654,13 @@ function resolveShot() {
       `<span class="t-sub">${game.lie.toUpperCase()}</span>`, 2800);
   }
   setupShot();
+  pushLiveState({
+    last_shot: {
+      carryYards: Math.round(carry * 1.09361),
+      totalYards: Math.round(total * 1.09361),
+      lie: game.lie,
+    },
+  });
 }
 
 function nextHole() {

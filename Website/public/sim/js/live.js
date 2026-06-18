@@ -55,6 +55,22 @@ export function connectLive(code, onShotReceived, onStatusChange, onPing, onClub
     });
 }
 
+/**
+ * Best-effort upsert of the sim's live state (current hole, last shot, score)
+ * so a paired phone can poll `live_sim_state` and mirror the sim in near-real-time.
+ */
+export async function publishLiveState(code, state) {
+  if (!code) return;
+  if (!_client) _client = createClient(SUPABASE_URL, SUPABASE_ANON);
+  try {
+    await _client
+      .from('live_sim_state')
+      .upsert({ code, ...state, updated_at: new Date().toISOString() }, { onConflict: 'code' });
+  } catch (_) {
+    // never block the game loop on a network hiccup
+  }
+}
+
 export function disconnectLive() {
   if (_channel) {
     _channel.unsubscribe();

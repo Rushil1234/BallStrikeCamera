@@ -87,6 +87,61 @@ struct LiveSimCodeView: View {
             }
             .padding(.top, 2)
 
+            // Mirror of the sim: which hole you're on, distance, score, last result.
+            if let s = liveSimService.liveState {
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("ON THE SIM")
+                            .font(.system(size: 10, weight: .bold)).kerning(1.5)
+                            .foregroundColor(BSTheme.textMuted)
+                        Spacer()
+                        if let tp = s.toPar {
+                            Text(tp == 0 ? "E" : (tp > 0 ? "+\(tp)" : "\(tp)"))
+                                .font(.system(size: 12, weight: .heavy))
+                                .foregroundColor(BSTheme.gold)
+                        }
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        if let h = s.hole {
+                            Text("Hole \(h)")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(BSTheme.textPrimary)
+                        }
+                        if let p = s.par {
+                            Text("Par \(p)")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(BSTheme.textMuted)
+                        }
+                        Spacer()
+                        if let d = s.distanceToPinYards {
+                            (Text("\(d)").font(.system(size: 16, weight: .bold))
+                                + Text("y to pin").font(.system(size: 11)))
+                                .foregroundColor(BSTheme.fairwayGreen)
+                        }
+                    }
+                    if let ls = s.lastShot, ls.result != nil || (ls.totalYards ?? 0) > 0 {
+                        HStack(spacing: 6) {
+                            Image(systemName: "scope").font(.system(size: 10, weight: .bold))
+                            if let r = ls.result {
+                                Text(r.uppercased())
+                            } else if let t = ls.totalYards {
+                                Text("\(Int(t))y → \((ls.lie ?? "").uppercased())")
+                            }
+                        }
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(BSTheme.gold)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(12)
+                .background(BSTheme.backgroundTop.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(BSTheme.gold.opacity(0.25), lineWidth: 1)
+                )
+            }
+
             // Live shot telemetry — flashes as each shot streams to the sim.
             if let shot = liveSimService.lastShot {
                 VStack(spacing: 10) {
