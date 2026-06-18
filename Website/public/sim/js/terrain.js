@@ -759,6 +759,13 @@ export function buildCourse(hole, assets) {
   }
   const MARGIN = 90;
   minX -= MARGIN; maxX += MARGIN; minZ -= MARGIN; maxZ += MARGIN;
+  if (hole.isRange && hole.rangeScenery) {
+    const padX = hole.rangeScenery.boundsPadX ?? 170;
+    minX = Math.min(minX, tee.x - padX);
+    maxX = Math.max(maxX, tee.x + padX);
+    minZ = Math.min(minZ, tee.z - 55);
+    maxZ = Math.max(maxZ, path[path.length - 1].z + (hole.rangeScenery.backPad ?? 110));
+  }
   const localBounds = { minX, maxX, minZ, maxZ };
   const worldPaths = isCoastal
     ? (hole.island?.paths || []).filter((p) => lineIntersectsBounds(p.points, localBounds, 40))
@@ -1148,6 +1155,45 @@ export function buildCourse(hole, assets) {
         made++;
       }
     }
+    if (hole.isRange && hole.rangeScenery?.treeBelts) {
+      const rangeTreeRng = makeRng(hole.seed * 313 + 17);
+      const backZ = path[path.length - 1].z;
+      const sideRows = [
+        { x: minX + 28, wob: 18 },
+        { x: maxX - 28, wob: -18 },
+        { x: minX + 58, wob: -12 },
+        { x: maxX - 58, wob: 12 },
+      ];
+      for (const row of sideRows) {
+        for (let z = tee.z + 18; z <= backZ + 74; z += 18 + rangeTreeRng() * 12) {
+          const x = row.x + Math.sin(z * 0.028 + row.wob) * 9 + (rangeTreeRng() - 0.5) * 14;
+          const p = pathInfo(x, z);
+          if (p.dist < fhw + 18) continue;
+          spots.push({
+            x, z, h: heightAt(x, z),
+            s: 0.92 + rangeTreeRng() * 1.25,
+            ry: rangeTreeRng() * Math.PI * 2,
+            tilt: (rangeTreeRng() - 0.5) * 0.09,
+            kind: rangeTreeRng() < 0.72 ? (rangeTreeRng() < 0.58 ? 0 : 1) : (rangeTreeRng() < 0.5 ? 2 : 3),
+            tint: [0.68 + rangeTreeRng() * 0.22, 0.79 + rangeTreeRng() * 0.22, 0.66 + rangeTreeRng() * 0.18],
+          });
+        }
+      }
+      for (let i = 0; i < 78; i++) {
+        const x = minX + 28 + rangeTreeRng() * (maxX - minX - 56);
+        const z = backZ + 26 + rangeTreeRng() * 86;
+        const p = pathInfo(x, z);
+        if (p.dist < fhw + 10 && rangeTreeRng() < 0.72) continue;
+        spots.push({
+          x, z, h: heightAt(x, z),
+          s: 0.8 + rangeTreeRng() * 1.35,
+          ry: rangeTreeRng() * Math.PI * 2,
+          tilt: (rangeTreeRng() - 0.5) * 0.08,
+          kind: rangeTreeRng() < 0.8 ? (rangeTreeRng() < 0.62 ? 0 : 1) : 2,
+          tint: [0.62 + rangeTreeRng() * 0.2, 0.75 + rangeTreeRng() * 0.22, 0.62 + rangeTreeRng() * 0.16],
+        });
+      }
+    }
 
     const kit = treeKit(assets);
     const m4 = new THREE.Matrix4();
@@ -1220,6 +1266,99 @@ export function buildCourse(hole, assets) {
       }));
       rm.position.set(ccx, 0, ccz);
       group.add(rm);
+    }
+
+    if (hole.isRange && hole.rangeScenery?.mountains) {
+      const mountainRng = makeRng(hole.seed * 421 + 9);
+      const mountainBase = Math.min(heightAt(minX, maxZ), heightAt(maxX, maxZ), heightAt(0, maxZ)) - 1.8;
+      const makeRangeFoothills = ({ width, depth, zStart, height, colorLow, colorHigh, alpha, seedOffset }) => {
+        const cols = 92;
+        const rows = 34;
+        const positions = [];
+        const colors = [];
+        const indices = [];
+        const low = new THREE.Color(colorLow);
+        const high = new THREE.Color(colorHigh);
+        const noise = makeFbm(hole.seed * 19 + seedOffset, 4);
+        const cx = (minX + maxX) / 2;
+        for (let iz = 0; iz <= rows; iz++) {
+          const v = iz / rows;
+          for (let ix = 0; ix <= cols; ix++) {
+            const u = ix / cols;
+            const x = cx - width / 2 + u * width;
+            const z = zStart + v * depth;
+            const ridgeCenter = 0.36
+              + 0.12 * Math.sin(u * Math.PI * 2.7 + seedOffset)
+              + 0.08 * noise(u * 2.1 + 4, seedOffset * 0.13);
+            const ridge = Math.exp(-((v - ridgeCenter) ** 2) / 0.075);
+            const farRidge = Math.exp(-((v - 0.74) ** 2) / 0.115) * 0.36;
+            const sideFalloff = Math.sin(Math.PI * u) * 0.32 + 0.68;
+            const broad = noise(u * 3.4 + 11, v * 2.4 - 7) * 0.5 + 0.5;
+            const detail = noise(u * 11.5 - 4, v * 7.2 + 18) * 0.5 + 0.5;
+            const y = mountainBase
+              + (ridge * height + farRidge * height * 0.8) * sideFalloff
+              + broad * height * 0.26
+              + detail * height * 0.055
+              - v * 10;
+            positions.push(x, y, z);
+            const shade = Math.min(Math.max((y - mountainBase) / (height * 1.2), 0), 1);
+            const haze = 0.32 + v * 0.40;
+            const c = low.clone().lerp(high, shade * 0.58).lerp(new THREE.Color(0xb6c9d8), haze);
+            colors.push(c.r, c.g, c.b);
+          }
+        }
+        for (let iz = 0; iz < rows; iz++) {
+          for (let ix = 0; ix < cols; ix++) {
+            const a = iz * (cols + 1) + ix;
+            indices.push(a, a + cols + 1, a + 1, a + 1, a + cols + 1, a + cols + 2);
+          }
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+        const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          vertexColors: true,
+          transparent: true,
+          opacity: alpha,
+          fog: true,
+          depthWrite: false,
+          side: THREE.FrontSide,
+        }));
+        mesh.receiveShadow = false;
+        group.add(mesh);
+      };
+      makeRangeFoothills({
+        width: (maxX - minX) * 2.3,
+        depth: 520,
+        zStart: maxZ + 55,
+        height: 48,
+        colorLow: 0x3b6245,
+        colorHigh: 0x7b9478,
+        alpha: 0.76,
+        seedOffset: 3,
+      });
+      makeRangeFoothills({
+        width: (maxX - minX) * 2.9,
+        depth: 760,
+        zStart: maxZ + 370,
+        height: 86,
+        colorLow: 0x334d43,
+        colorHigh: 0x718276,
+        alpha: 0.44,
+        seedOffset: 23,
+      });
+      makeRangeFoothills({
+        width: (maxX - minX) * 3.4,
+        depth: 1040,
+        zStart: maxZ + 780,
+        height: 136,
+        colorLow: 0x35454a,
+        colorHigh: 0x7a8890,
+        alpha: 0.28,
+        seedOffset: 47,
+      });
     }
 
     // ---------- birds: distant circling silhouettes ----------

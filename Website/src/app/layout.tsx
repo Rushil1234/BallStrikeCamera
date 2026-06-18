@@ -47,6 +47,9 @@ export const metadata: Metadata = {
     title: "True Carry — The Camera Launch Monitor",
     description: "Tour-grade ball data from the iPhone in your pocket.",
   },
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

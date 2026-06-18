@@ -16,12 +16,21 @@ type Course = {
 
 const COURSES: Course[] = [
   {
-    id: "pinchbrook",
-    name: "Pinch Brook Golf Course",
-    location: "Florham Park, NJ",
+    id: "pine-hollow",
+    name: "Pine Hollow National",
+    location: "True Carry built-in",
     holes: 18,
-    par: 65,
-    path: "/course-sim/index.html",
+    par: 72,
+    path: "/sim/index.html?mode=course&course=pine-hollow",
+    preview: "/sim-preview.jpg",
+  },
+  {
+    id: "pebble-private",
+    name: "Cypress Coast Links",
+    location: "Coastal prototype",
+    holes: 18,
+    par: 72,
+    path: "/sim/index.html?mode=course&course=pebble-private",
     preview: "/sim-preview.jpg",
   },
 ];
@@ -134,7 +143,7 @@ export default function CoursePage() {
           <p>
             Courses are built from open geographic data (OSM + USGS elevation).
             Using True Carry with a launch monitor?{" "}
-            <Link href="/sim" className="course-link">Use Live Sim</Link> instead.
+            <Link href="/play" className="course-link">Use Course Select</Link> instead.
           </p>
         </div>
       </main>

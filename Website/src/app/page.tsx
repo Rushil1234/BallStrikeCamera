@@ -243,7 +243,7 @@ export default function HomePage() {
                   </ul>
                   <div className="sim-ctas">
                     <a className="solid" href="/play">Tee off in the sim</a>
-                    <a className="ghost" href="/sim/index.html" target="_blank" rel="noreferrer">Open full screen</a>
+                    <a className="ghost" href="/sim/index.html?mode=course&course=pine-hollow" target="_blank" rel="noreferrer">Open full screen</a>
                   </div>
                 </div>
                 <a className="sim-shot" href="/play" aria-label="Play the True Carry Sim">

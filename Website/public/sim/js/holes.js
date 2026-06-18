@@ -267,8 +267,14 @@ export const RANGE = {
   pin: { x: 0, z: 315 },
   bunkers: [],
   water: [],
-  treeDensity: 0,
+  treeDensity: 0.95,
   windMax: 6,
+  rangeScenery: {
+    boundsPadX: 185,
+    backPad: 260,
+    treeBelts: true,
+    mountains: true,
+  },
   targets: [
     { x: -32, z: 68, yards: 75, radius: 8, color: 0xd7c685 },
     { x: 28, z: 105, yards: 115, radius: 10, color: 0x8fcf79 },

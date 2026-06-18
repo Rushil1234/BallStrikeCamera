@@ -38,7 +38,7 @@ function SimContent() {
       <div className="sim-fullscreen">
         <iframe
           key={activeCode}
-          src={`/sim-app/index.html?code=${activeCode}`}
+          src={`/sim/index.html?code=${activeCode}`}
           className="sim-iframe"
           allow="autoplay; fullscreen"
           title="True Carry Live Sim"
@@ -99,6 +99,9 @@ function SimContent() {
           </form>
 
           <p className="sim-landing-hint">
+            Want to play without pairing? <Link href="/play" className="sim-link">Open Course Select →</Link>
+          </p>
+          <p className="sim-landing-hint secondary">
             Don&apos;t have the app? <Link href="/#pricing" className="sim-link">Download True Carry →</Link>
           </p>
         </div>
@@ -179,6 +182,7 @@ function SimContent() {
         }
         .sim-code-btn:disabled { opacity: 0.35; cursor: default; }
         .sim-landing-hint { font-size: 13px; color: var(--faint); }
+        .sim-landing-hint.secondary { margin-top: 8px; }
         .sim-link { color: var(--gold); text-decoration: none; }
         .sim-link:hover { text-decoration: underline; }
 

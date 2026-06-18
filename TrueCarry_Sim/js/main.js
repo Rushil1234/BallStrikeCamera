@@ -18,6 +18,10 @@ import { layoutIslandCourse } from './world.js';
 // ---------- boot ----------
 
 const hud = new HUD();
+const launchParams = new URLSearchParams(location.search);
+const launchMode = launchParams.get('mode');
+const launchCourseId = launchParams.get('course') || launchParams.get('courseId') || 'pine-hollow';
+let urlLaunchHandled = false;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -240,6 +244,25 @@ function setActiveCourse(course) {
   if (courseSelect && courseSelect.value !== nextCourse.courseId && getSelectableCourse(nextCourse.courseId)) {
     courseSelect.value = nextCourse.courseId;
   }
+}
+
+function notifyParent(type, detail = {}) {
+  window.parent?.postMessage({ type, ...detail }, '*');
+}
+
+function startCourseRound(courseId = activeCourse.courseId, holeIndex = 0) {
+  const requestedCourse = courseId ? getSelectableCourse(courseId) : null;
+  if (requestedCourse) setActiveCourse(requestedCourse);
+  hud.titleHide();
+  const idx = Math.max(0, Math.min(Number(holeIndex) || 0, courseHoles.length - 1));
+  startHole(idx);
+  notifyParent('SIM_LAUNCHED', { mode: 'course', courseId: activeCourse.courseId, courseName: activeCourse.courseName });
+}
+
+function startPracticeRange() {
+  hud.titleHide();
+  startRange();
+  notifyParent('SIM_LAUNCHED', { mode: 'range', courseId: 'range', courseName: 'Practice Range' });
 }
 
 populateHolePicker();
@@ -1089,9 +1112,8 @@ courseSelect?.addEventListener('change', () => {
 hud.el.btnStart.addEventListener('click', () => {
   if (!assets) return;
   SFX.unlock();
-  hud.titleHide();
   const idx = holePicker ? Math.max(0, Math.min(Number(holePicker.value) || 0, courseHoles.length - 1)) : 0;
-  startHole(idx);
+  startCourseRound(activeCourse.courseId, idx);
 });
 hud.el.btnAgain.addEventListener('click', () => {
   SFX.unlock();
@@ -1272,26 +1294,27 @@ frame();
 // Hoist liveCode here so the course-selector guard below can reference it.
 const liveCode = getLiveCode();
 
-// Notify parent (course-builder tool) that the sim is ready.
-window.parent?.postMessage({ type: 'SIM_READY' }, '*');
+// Notify parent (website host/course-builder tool) that the sim runtime is ready.
+notifyParent('SIM_READY', {
+  courses: selectableCourses.map((course) => ({
+    courseId: course.courseId,
+    courseName: course.courseName,
+  })),
+});
 
 // postMessage preview mode: course-builder sends PREVIEW_HOLE with custom holes array.
 window.addEventListener('message', (e) => {
   // Play page tells the sim to start. Works from any state (course switching).
   if (e.data?.type === 'START_SIM') {
-    const requestedCourse = e.data.courseId ? getSelectableCourse(e.data.courseId) : null;
-    if (requestedCourse) setActiveCourse(requestedCourse);
     assetsReady.then(() => {
-      if (game.state === 'TITLE') hud.titleHide();
-      startHole(0);
+      startCourseRound(e.data.courseId || activeCourse.courseId, e.data.holeIndex || 0);
     });
     return;
   }
 
   if (e.data?.type === 'START_RANGE') {
     assetsReady.then(() => {
-      if (game.state === 'TITLE') hud.titleHide();
-      startRange();
+      startPracticeRange();
     });
     return;
   }
@@ -1311,9 +1334,22 @@ window.addEventListener('message', (e) => {
   });
 });
 
+assetsReady.then(() => {
+  if (urlLaunchHandled) return;
+  if (launchMode === 'range') {
+    urlLaunchHandled = true;
+    startPracticeRange();
+    return;
+  }
+  if (launchMode === 'course') {
+    urlLaunchHandled = true;
+    startCourseRound(launchCourseId, launchParams.get('hole') || 0);
+  }
+});
+
 // Load real courses from Supabase and append them after local/dev courses.
 const isPreview = new URLSearchParams(location.search).has('preview');
-if (!isPreview && !liveCode) {
+if (!isPreview && !liveCode && !launchMode) {
   fetchSimCourses().then(courses => {
     if (!courses.length) return;
     const seen = new Set(selectableCourses.map((course) => course.courseId));
