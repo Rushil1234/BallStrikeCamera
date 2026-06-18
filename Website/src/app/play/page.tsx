@@ -108,16 +108,24 @@ export default function PlayPage() {
         ? COURSES.find((course) => course.id === courseId)
         : null;
     if (requestedCourse && !requestedCourse.disabled) {
+      // Remember the requested mode, but don't launch until the phone is paired.
       setActiveCourse(requestedCourse);
-      setStage("launching");
     }
   }, []);
 
+  // Auto-start the session the moment both the laptop and phone are connected
+  // (with a mode chosen here or via the launch URL).
   useEffect(() => {
-    if (stage !== "launching" || !activeCourse || !simReady) return;
+    if (connected && activeCourse && stage === "select") {
+      setStage("launching");
+    }
+  }, [connected, activeCourse, stage]);
+
+  useEffect(() => {
+    if (stage !== "launching" || !activeCourse || !simReady || !connected) return;
     const msgType = activeCourse.id === "range" ? "START_RANGE" : "START_SIM";
     iframeRef.current?.contentWindow?.postMessage({ type: msgType, courseId: activeCourse.id }, "*");
-  }, [activeCourse, simReady, stage]);
+  }, [activeCourse, simReady, stage, connected]);
 
   function writeLaunchUrl(course: CourseOption) {
     const url = new URL(window.location.href);
@@ -132,6 +140,7 @@ export default function PlayPage() {
 
   function selectCourse(course: CourseOption) {
     if (course.disabled) return;
+    // Phone pairing is optional — you can play in the browser standalone.
     setActiveCourse(course);
     setStage("launching");
     writeLaunchUrl(course);
@@ -211,7 +220,9 @@ export default function PlayPage() {
               <p className="sim-select-kicker">{connected ? "Phone connected" : "Browser sim ready"}</p>
               <h1 className="sim-select-title">Choose how you want to play.</h1>
               <p className="sim-select-body">
-                Start the range or jump into an 18-hole course from the website. Pair the iPhone when you want live-shot input.
+                {connected
+                  ? "Your phone is paired — pick a mode and it'll feed real shots straight in."
+                  : "Pick the range or an 18-hole course and play right here. Pair your iPhone (code on the right) anytime to add real shots."}
               </p>
               <div className="sim-status-row">
                 <span><b>{COURSES.filter(c => !c.disabled).length}</b> playable modes</span>

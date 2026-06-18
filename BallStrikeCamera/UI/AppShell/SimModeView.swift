@@ -630,7 +630,10 @@ struct SimModeView: View {
                 action: {
                     Task {
                         let shot = await simVM.addSimulatedShot()
-                        if ogsVM.connectionState.isConnected {
+                        if liveSimService.isConnectedToSim {
+                            await liveSimService.broadcast(metrics: shot.metrics)
+                            simulateFeedback = "Shot sent to True Carry Sim."
+                        } else if ogsVM.connectionState.isConnected {
                             await ogsVM.sendMetrics(shot.metrics)
                             simulateFeedback = "Shot sent to OpenGolfSim."
                         } else if gsproVM.connectionState.isConnected {

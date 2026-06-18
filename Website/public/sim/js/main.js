@@ -801,12 +801,10 @@ function startRange() {
   if (hcName) hcName.textContent = 'PRACTICE FACILITY';
   const helpStrip = document.getElementById('help-strip');
   if (helpStrip && window.__liveMode) {
-    helpStrip.textContent = 'RANGE · LIVE MODE — hit shots on your phone · V MAP · M MUTE';
+    helpStrip.textContent = 'RANGE · SWING here or hit shots on your phone · V MAP · M MUTE';
   } else if (helpStrip) {
     helpStrip.textContent = 'RANGE · TARGET FIELD — drag to aim · V MAP · M MUTE';
   }
-  const liveWaiting = document.getElementById('live-waiting');
-  if (liveWaiting && window.__liveMode) liveWaiting.classList.remove('hidden');
   setupShot();
   buildRangeMarkers();
 }
@@ -967,12 +965,8 @@ let keys = {};
 let dragInfo = null;
 
 function action() {
-  // In live mode, only allow skipping flyover and advancing after a hole.
-  if (window.__liveMode) {
-    if (game.state === 'FLYOVER') { game.flyT = 99; }
-    if (game.state === 'HOLE_DONE' && game.doneTimer > 0.8) { game.doneTimer = 99; }
-    return;
-  }
+  // Phone pairing is optional: the 3-click swing always works in the browser,
+  // and live shots from a paired phone feed in on top via fireLiveShot().
   switch (game.state) {
     case 'FLYOVER':
       game.flyT = 99;
@@ -1046,7 +1040,7 @@ function rotateAim(ang) {
 }
 
 function changeClub(delta) {
-  if (window.__liveMode) return; // club is driven by app in live mode
+  // club can be changed in the browser even when a phone is paired
   if (game.state !== 'AIM') return;
   game.clubIdx = (game.clubIdx + delta + CLUBS.length) % CLUBS.length;
   refreshClubHud();
@@ -1374,14 +1368,10 @@ if (liveCode) {
   const helpStrip   = document.getElementById('help-strip');
 
   // Patch the help strip text for live mode.
-  if (helpStrip) helpStrip.textContent = 'LIVE MODE — hit shots on your phone · V MAP · TAB CARD · M MUTE';
+  if (helpStrip) helpStrip.textContent = 'SWING here or hit shots on your phone · V MAP · TAB CARD · M MUTE';
 
-  // Show waiting overlay once the game leaves TITLE.
-  const origTitleHide = hud.titleHide.bind(hud);
-  hud.titleHide = function () {
-    origTitleHide();
-    if (liveWaiting) liveWaiting.classList.remove('hidden');
-  };
+  // Phone is optional — no blocking "waiting for phone" overlay. A paired phone
+  // simply feeds shots in; the browser swing works the whole time.
 
   // Disable keyboard/pointer swing actions in live mode.
   const origAction = action;          // already defined above

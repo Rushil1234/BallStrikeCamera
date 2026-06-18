@@ -118,21 +118,29 @@ final class LiveSimService: ObservableObject {
         var req = URLRequest(url: config.baseURL.appendingPathComponent("realtime/v1/api/broadcast"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Authorize with the anon (publishable) key — same as the web sim client.
+        // A signed-in user's access token can be expired, which 401s the broadcast
+        // and silently breaks pairing; the public broadcast channel only needs anon.
         req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
-        let token = UserDefaults.standard.string(forKey: "sb_access_token") ?? config.anonKey
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("Bearer \(config.anonKey)", forHTTPHeaderField: "Authorization")
         req.httpBody = bodyData
+        req.timeoutInterval = 6   // don't hang ~60s on a flaky cellular/Wi-Fi path
 
-        do {
-            let (_, response) = try await URLSession.shared.data(for: req)
-            if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
-                lastBroadcastError = "Broadcast failed (HTTP \(http.statusCode))"
-                return false
+        // Retry once on a transient network failure so a single dropped packet
+        // doesn't lose the shot / ping.
+        for attempt in 1...2 {
+            do {
+                let (_, response) = try await URLSession.shared.data(for: req)
+                if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                    lastBroadcastError = "Broadcast failed (HTTP \(http.statusCode))"
+                    return false
+                }
+                return true
+            } catch {
+                lastBroadcastError = error.localizedDescription
+                if attempt == 2 { return false }
             }
-            return true
-        } catch {
-            lastBroadcastError = error.localizedDescription
-            return false
         }
+        return false
     }
 }
