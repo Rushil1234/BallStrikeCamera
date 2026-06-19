@@ -188,6 +188,43 @@ html, body {
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+/* ---------------- live connection badge ---------------- */
+
+.live-badge {
+  position: absolute;
+  top: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 16px;
+  background: rgba(9, 16, 11, 0.72);
+  border: 1px solid var(--glass-edge);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
+  color: var(--gold);
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 20;
+  pointer-events: none;
+}
+.live-badge b { color: var(--cream); letter-spacing: 0.22em; margin: 0 2px; }
+.live-badge .lb-ico { font-size: 13px; }
+.live-badge.connected {
+  color: var(--pine);
+  border-color: rgba(143, 212, 154, 0.55);
+}
+.live-badge .lb-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--pine);
+  box-shadow: 0 0 8px var(--pine);
+  animation: lb-pulse 1.4s ease-in-out infinite;
+}
+@keyframes lb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+@media (max-width: 860px) {
+  .live-badge { font-size: 9px; padding: 5px 10px; letter-spacing: 0.1em; }
+}
+
 /* ---------------- club card (bottom-left) ---------------- */
 
 #club-card {

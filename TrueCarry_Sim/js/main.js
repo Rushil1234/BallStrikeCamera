@@ -1408,6 +1408,23 @@ if (liveCode) {
   // eslint-disable-next-line no-global-assign
   window.__liveMode = true;
 
+  // Persistent connection badge: shows the pairing code until a phone connects,
+  // then flips to a live "phone connected" indicator.
+  const liveBadge = document.getElementById('live-badge');
+  let livePhoneConnected = false;
+  function updateLiveBadge() {
+    if (!liveBadge) return;
+    if (livePhoneConnected) {
+      liveBadge.innerHTML = '<span class="lb-dot"></span>PHONE CONNECTED';
+      liveBadge.className = 'live-badge connected';
+    } else {
+      liveBadge.innerHTML = `<span class="lb-ico">📱</span>CODE <b>${liveCode}</b> · CONNECT YOUR PHONE`;
+      liveBadge.className = 'live-badge';
+    }
+    liveBadge.classList.remove('hidden');
+  }
+  updateLiveBadge();
+
   const liveClub = document.getElementById('live-club');
 
   function updateLiveStatus(text, cls) {
@@ -1432,6 +1449,7 @@ if (liveCode) {
   connectLive(liveCode,
     // onShotReceived
     function (metrics) {
+      livePhoneConnected = true; updateLiveBadge();
       if (liveWaiting) liveWaiting.classList.add('hidden');
       if (game.state === 'AIM' || game.state === 'METER_POWER' || game.state === 'METER_ACCURACY') {
         fireLiveShot(metrics);
@@ -1447,6 +1465,7 @@ if (liveCode) {
     },
     // onPing — app tapped Connect; tell the parent page to advance to course selector
     function () {
+      livePhoneConnected = true; updateLiveBadge();
       window.parent?.postMessage({ type: 'APP_CONNECTED' }, '*');
     },
     // onClubChanged — sync club selection from app
