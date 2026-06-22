@@ -23,6 +23,7 @@ struct UserProfile: Codable, Identifiable {
     var id: UUID = UUID()
     var userId: UUID
     var displayName: String
+    var username: String? = nil
     var handedness: Handedness = .right
     var distanceUnit: DistanceUnit = .yards
     var speedUnit: SpeedUnit = .mph
@@ -161,6 +162,33 @@ struct SavedShot: Codable, Identifiable {
     var holeNumber: Int?
     var shotLatitude: Double?
     var shotLongitude: Double?
+    /// Who can see this shot. Optional for backward-compat with shots saved before visibility
+    /// existed — `nil` is treated as `.friends` everywhere via `effectiveVisibility`.
+    var visibility: ShotVisibility?
+
+    var effectiveVisibility: ShotVisibility { visibility ?? .friends }
+}
+
+/// Who can see a shot / session / round. Default is friends (+ golfers at the same home course).
+enum ShotVisibility: String, Codable, CaseIterable {
+    case `private`
+    case friends
+    case `public`
+
+    var label: String {
+        switch self {
+        case .private: return "Only me"
+        case .friends: return "Friends & home course"
+        case .public:  return "Everyone"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .private: return "lock.fill"
+        case .friends: return "person.2.fill"
+        case .public:  return "globe"
+        }
+    }
 }
 
 enum ShotSource: String, Codable {

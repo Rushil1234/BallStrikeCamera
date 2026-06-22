@@ -171,6 +171,41 @@ struct ShotTrackingReviewView: View {
         isSavingShot = true
         defer { isSavingShot = false }
 
+        // Bad shots are discarded entirely. The live pipeline may have already auto-saved this
+        // shot (range/sim save on capture), so delete the just-saved shot here too.
+        if markBad {
+            let backend = session.backend
+            let service = ShotPersistenceService(userId: uid, backend: backend)
+            let mine = (try? await service.loadShots()) ?? []
+            // The shot we saved from this review if present, else the most recent (just auto-saved).
+            if let target = savedShot ?? mine.max(by: { $0.timestamp < $1.timestamp }) {
+                try? await service.deleteShot(id: target.id)
+                // Strip the id from its owning session/round so counts (shotIds.count) stay correct.
+                if let sid = target.sessionId {
+                    if var rs = (try? await backend.loadRangeSessions(userId: uid))?.first(where: { $0.id == sid }) {
+                        rs.shotIds.removeAll { $0 == target.id }
+                        try? await backend.saveRangeSession(rs)
+                    } else if var ss = (try? await backend.loadSimSessions(userId: uid))?.first(where: { $0.id == sid }) {
+                        ss.shotIds.removeAll { $0 == target.id }
+                        try? await backend.saveSimSession(ss)
+                    }
+                }
+                if let rid = target.roundId,
+                   var r = (try? await backend.loadCourseRounds(userId: uid))?.first(where: { $0.id == rid }) {
+                    r.shotIds.removeAll { $0 == target.id }
+                    for i in r.holes.indices { r.holes[i].shotIds.removeAll { $0 == target.id } }
+                    try? await backend.saveRound(r)
+                }
+                // Tell any active session VM to drop it too (it may still be the live session).
+                NotificationCenter.default.post(name: .tcShotDiscarded, object: nil,
+                                                userInfo: ["id": target.id])
+            }
+            savedShot = nil
+            await session.refreshCache()
+            showMarkBadAlert = true
+            return
+        }
+
         do {
             let service = ShotPersistenceService(userId: uid, backend: session.backend)
             let impact = analysis.detectedImpactFrameIndex

@@ -33,6 +33,7 @@ struct ShotResultView: View {
     @State private var animationStartDate: Date? = nil
     @State private var animationFinished: Bool   = false
     @State private var showReplay: Bool          = false
+    @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
 
     // Course-mode save state
     @EnvironmentObject private var session: AuthSessionStore
@@ -311,6 +312,7 @@ struct ShotResultView: View {
                 clubName: selectedClubName,
                 mode: context?.shotMode ?? .course,
                 saveOriginalFrames: false,
+                visibility: ShotVisibility(rawValue: defaultVisibilityRaw) ?? .friends,
                 roundId: context?.courseRoundId,
                 holeNumber: context?.holeNumber,
                 isBadShot: false,

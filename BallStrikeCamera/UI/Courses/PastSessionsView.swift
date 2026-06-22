@@ -15,7 +15,12 @@ struct PastSessionsView: View {
     @State private var didLoad = false
     @State private var loadError: String?
     @State private var itemToDelete: DeletionTarget?
+    @State private var showClearHistory = false
     @State private var skeletonPulse = false
+
+    private var sessionsEmpty: Bool {
+        rangeSessions.isEmpty && simSessions.isEmpty && rounds.isEmpty && shots.isEmpty
+    }
 
     private static let shortDateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -58,27 +63,32 @@ struct PastSessionsView: View {
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
-        #if DEBUG
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task {
-                        guard let uid = session.currentUser?.id else { return }
-                        let backend = session.backend
-                        let clubs = (try? await backend.loadClubs(userId: uid)) ?? []
-                        let round = SampleRoundFactory.generate(userId: uid, clubs: clubs)
-                        try? await backend.saveRound(round)
-                        await loadData()
+                if !sessionsEmpty {
+                    Button(role: .destructive) { showClearHistory = true } label: {
+                        Image(systemName: "trash")
                     }
-                } label: { Image(systemName: "ladybug.fill") }
+                }
             }
         }
-        #endif
+        .confirmationDialog("Clear all history?", isPresented: $showClearHistory, titleVisibility: .visible) {
+            Button("Delete everything", role: .destructive) { Task { await clearAllHistory() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes every saved session, round, and shot. This cannot be undone.")
+        }
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
                 .tcAppearance()
         }
-        .task(id: session.currentUser?.id) { await loadData() }
+        .task(id: session.currentUser?.id) {
+            // Seed instantly from the prewarmed cache so counts aren't 0 while loading.
+            if !didLoad, !session.cachedShots.isEmpty {
+                shots = session.cachedShots.filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
+            }
+            await loadData()
+        }
         .alert(
             "Delete \(itemToDelete?.label ?? "item")?",
             isPresented: Binding(get: { itemToDelete != nil }, set: { if !$0 { itemToDelete = nil } })
@@ -685,6 +695,17 @@ struct PastSessionsView: View {
         } catch {
             loadError = "Delete failed. \(error.localizedDescription)"
         }
+    }
+
+    private func clearAllHistory() async {
+        guard let uid = session.currentUser?.id else { return }
+        let backend = session.backend
+        let service = ShotPersistenceService(userId: uid, backend: backend)
+        for s in rangeSessions { try? await backend.deleteRangeSession(sessionId: s.id, userId: uid) }
+        for s in simSessions  { try? await backend.deleteSimSession(sessionId: s.id, userId: uid) }
+        for r in rounds       { try? await backend.deleteCourseRound(roundId: r.id, userId: uid) }
+        for sh in shots       { try? await service.deleteShot(id: sh.id) }
+        rangeSessions = []; simSessions = []; rounds = []; shots = []
     }
 
     // MARK: - Derived State

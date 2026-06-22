@@ -473,7 +473,7 @@ struct TCRangeFinderDispersion: View {
 
     private var valid: [ShotPoint] { shots.filter { $0.carry > 0 } }
 
-    // Remove outliers beyond 2.5 std-devs on either axis
+    // Remove outliers beyond 3.5 std-devs on either axis (loose — only the wildest mishits)
     private var filtered: [ShotPoint] {
         guard valid.count > 4 else { return valid }
         let carries  = valid.map { $0.carry }
@@ -482,8 +482,8 @@ struct TCRangeFinderDispersion: View {
         let meanL = laterals.reduce(0, +) / Double(laterals.count)
         let sdC = sqrt(carries.map { pow($0 - meanC, 2) }.reduce(0, +) / Double(carries.count))
         let sdL = sqrt(laterals.map { pow($0 - meanL, 2) }.reduce(0, +) / Double(laterals.count))
-        let limC = max(sdC * 2.5, 20)
-        let limL = max(sdL * 2.5, 15)
+        let limC = max(sdC * 3.5, 20)
+        let limL = max(sdL * 3.5, 15)
         return valid.filter { abs($0.carry - meanC) <= limC && abs($0.lateral - meanL) <= limL }
     }
 
@@ -541,14 +541,22 @@ struct TCRangeFinderDispersion: View {
             ctx.fill(Path(CGRect(x: fLeft, y: plotTop, width: fRight - fLeft, height: plotH)),
                      with: .color(Color(red: 0.14, green: 0.30, blue: 0.12)))
 
-            // ── Horizontal carry lines every 5 yds, labelled every 50 ──────
+            // ── Constant-distance lines every 5 yds, labelled every 50 ─────
+            // Same axes/scales as before, but each line is the set of points the same TOTAL
+            // distance from the tee — so it bows downward at the edges (carry = √(d² − lat²)),
+            // since a ball offline at the same distance travelled less forward carry.
             for rawC in stride(from: 5.0, through: mCarry - 1, by: 5.0) {
-                let y = yCG(rawC)
-                guard y > plotTop && y < plotBot else { continue }
+                guard yCG(rawC) > plotTop && yCG(rawC) < plotBot else { continue }
                 let isMajor = Int(rawC) % 50 == 0
+                let latLimit = min(rawC, mLateral)
                 var ln = Path()
-                ln.move(to: CGPoint(x: plotLeft, y: y))
-                ln.addLine(to: CGPoint(x: plotRight, y: y))
+                let steps = 64
+                for i in 0...steps {
+                    let lat   = -latLimit + (2 * latLimit) * Double(i) / Double(steps)
+                    let carry = sqrt(max(0, rawC * rawC - lat * lat))
+                    let pt = CGPoint(x: xCG(lat), y: yCG(carry))
+                    if i == 0 { ln.move(to: pt) } else { ln.addLine(to: pt) }
+                }
                 ctx.stroke(ln, with: .color(Color.white.opacity(isMajor ? 0.40 : 0.12)),
                            lineWidth: isMajor ? 1.0 : 0.5)
                 if isMajor {
@@ -556,7 +564,7 @@ struct TCRangeFinderDispersion: View {
                         Text(String(Int(rawC)))
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(Color.white.opacity(0.90)),
-                        at: CGPoint(x: plotLeft - 8, y: y), anchor: .trailing
+                        at: CGPoint(x: plotLeft - 8, y: yCG(rawC)), anchor: .trailing
                     )
                 }
             }

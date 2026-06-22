@@ -16,6 +16,13 @@ final class SimSessionViewModel: ObservableObject {
     private let simOutput = SimOutputService()
     private(set) var userId: UUID
 
+    /// Per-session frame-storage cap from the subscription tier (metrics always save).
+    var sessionFrameLimit: Int = .max
+    private(set) var framedShotCount = 0
+    var framesAllowed: Bool { framedShotCount < sessionFrameLimit }
+    private let idleTimeout: TimeInterval = 15 * 60
+    private var idleTask: Task<Void, Never>?
+
     var sessionActive: Bool { activeSession != nil }
 
     var summary: SessionSummary {
@@ -32,9 +39,27 @@ final class SimSessionViewModel: ObservableObject {
         )
     }
 
+    private var discardObserver: NSObjectProtocol?
+
     init(userId: UUID, backend: AppBackend) {
         self.userId  = userId
         self.backend = backend
+        discardObserver = NotificationCenter.default.addObserver(
+            forName: .tcShotDiscarded, object: nil, queue: .main) { [weak self] note in
+            guard let id = note.userInfo?["id"] as? UUID else { return }
+            Task { @MainActor in self?.dropShot(id) }
+        }
+    }
+
+    deinit { if let o = discardObserver { NotificationCenter.default.removeObserver(o) } }
+
+    /// Remove a discarded (bad) shot from the active session so counts stay correct.
+    func dropShot(_ id: UUID) {
+        shots.removeAll { $0.id == id }
+        guard var s = activeSession, s.shotIds.contains(id) else { return }
+        s.shotIds.removeAll { $0 == id }
+        activeSession = s
+        Task { try? await backend.saveSimSession(s) }
     }
 
     // MARK: - Clubs
@@ -58,6 +83,10 @@ final class SimSessionViewModel: ObservableObject {
         guard activeSession == nil else { return }
         var session = SimSession(userId: userId, provider: provider)
         session.usedOpenGolfSim = usedOGS
+        framedShotCount = 0
+        if let ent = try? await backend.loadEntitlement(userId: userId) {
+            sessionFrameLimit = ent.effectiveTier.sessionFrameLimit
+        }
         do {
             try await backend.saveSimSession(session)
             activeSession = session
@@ -67,17 +96,36 @@ final class SimSessionViewModel: ObservableObject {
         }
     }
 
+    /// Ensures a session is open so every saved shot belongs to one (autostart).
+    func ensureSessionStarted() async {
+        if activeSession == nil { await startSession(provider: selectedProvider) }
+    }
+
     func addShot(_ shot: SavedShot) async {
+        await ensureSessionStarted()
         shots.append(shot)
+        if shot.media.frameCount > 0 { framedShotCount += 1 }
         lastShotJSON = simOutput.jsonString(metrics: shot.metrics, shotNumber: shots.count)
         guard var session = activeSession else { return }
         session.shotIds.append(shot.id)
         session.outputLog.append(lastShotJSON ?? "")
         activeSession = session
         try? await backend.saveSimSession(session)
+        scheduleIdleAutoStop()
+    }
+
+    private func scheduleIdleAutoStop() {
+        idleTask?.cancel()
+        let timeout = idleTimeout
+        idleTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await self?.endSession()
+        }
     }
 
     func endSession() async {
+        idleTask?.cancel(); idleTask = nil
         guard var session = activeSession else { return }
         guard !session.shotIds.isEmpty else { await discardSession(); return }
         session.endedAt = Date()
@@ -113,11 +161,13 @@ final class SimSessionViewModel: ObservableObject {
     }
 
     func discardSession() async {
+        idleTask?.cancel(); idleTask = nil
         if let session = activeSession {
             try? await backend.deleteSimSession(sessionId: session.id, userId: userId)
         }
         activeSession = nil
         shots = []
+        framedShotCount = 0
     }
 
     func computeDefaultName() async -> String {

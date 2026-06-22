@@ -3,6 +3,17 @@ import UIKit
 
 // MARK: - Shot Persistence Service
 
+enum ShotPersistenceError: Error {
+    /// A shot flagged as a bad shot — by rule, these are never stored (no metrics, no frames).
+    case discardedBadShot
+}
+
+extension Notification.Name {
+    /// Posted when a previously-saved shot is discarded (marked bad). userInfo["id"] = shot UUID.
+    /// Active session view models listen so the shot leaves their counts immediately.
+    static let tcShotDiscarded = Notification.Name("tc.shot.discarded")
+}
+
 final class ShotPersistenceService {
 
     private let userId: UUID
@@ -33,6 +44,8 @@ final class ShotPersistenceService {
                   clubName: String? = nil,
                   mode: ShotMode = .range,
                   saveOriginalFrames: Bool = false,
+                  framesAllowed: Bool? = nil,
+                  visibility: ShotVisibility = .friends,
                   sessionId: UUID? = nil,
                   roundId: UUID? = nil,
                   holeNumber: Int? = nil,
@@ -41,6 +54,30 @@ final class ShotPersistenceService {
                   notes: String? = nil,
                   shotLatitude: Double? = nil,
                   shotLongitude: Double? = nil) async throws -> SavedShot {
+
+        // Rule: bad shots are never saved — no metrics, no frames, nothing persisted.
+        guard !isBadShot else { throw ShotPersistenceError.discardedBadShot }
+
+        // Decide whether this shot may store frames. If the caller already decided (range/sim
+        // view models track it), use that. Otherwise compute it here from the subscription tier
+        // and how many shots in this session/round already have frames — so the per-session frame
+        // cap applies uniformly (course mode included) without per-screen plumbing.
+        let allowFrames: Bool
+        if let framesAllowed {
+            allowFrames = framesAllowed
+        } else if !originalFrames.isEmpty, (sessionId != nil || roundId != nil) {
+            let tier = (try? await backend.loadEntitlement(userId: userId))?.effectiveTier ?? .free
+            let existing = (try? await backend.loadShots(userId: userId)) ?? []
+            let framed = existing.filter { s in
+                guard s.media.frameCount > 0 else { return false }
+                if let sid = sessionId, s.sessionId == sid { return true }
+                if let rid = roundId, s.roundId == rid { return true }
+                return false
+            }.count
+            allowFrames = framed < tier.sessionFrameLimit
+        } else {
+            allowFrames = true
+        }
 
         let shotId = UUID()
         let mediaDir = AppStorageManager.shotFramesDir(userId: userId, shotId: shotId)
@@ -65,9 +102,11 @@ final class ShotPersistenceService {
             }
         }
 
-        // Impact frames — always saved when provided (enables shot replay)
+        // Impact frames — saved only when the per-session frame cap hasn't been hit
+        // (`framesAllowed`). Metrics are always saved; once a session exceeds its tier's frame
+        // limit, further shots keep metrics but skip frame storage so we don't over-store frames.
         var framePNGs: [Data] = []
-        if !originalFrames.isEmpty {
+        if allowFrames && !originalFrames.isEmpty {
             let framesDir = mediaDir.appendingPathComponent("frames")
             AppStorageManager.ensureDirectory(framesDir)
             let limit = saveOriginalFrames ? 41 : 11
@@ -107,6 +146,7 @@ final class ShotPersistenceService {
         )
         shot.shotLatitude  = shotLatitude
         shot.shotLongitude = shotLongitude
+        shot.visibility    = visibility
 
         try await backend.saveShot(shot)
         // Best-effort: mirror replay frames to cloud storage so they survive a

@@ -7,13 +7,14 @@ struct RangeCameraScreen: View {
     @StateObject private var rangeVM: RangeSessionViewModel
     @ObservedObject private var nfcManager = NFCManager.shared
     @AppStorage("tc_save_original_frames") private var defaultSaveOriginalFrames = false
+    @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
 
     @State private var selectedClub = "7 Iron"
     @State private var selectedClubId: UUID?
     @State private var clubs: [UserClub] = []
     @State private var showClubPicker = false
-    @State private var showEndConfirmation = false
-    @State private var showSaveSheet = false
+    @State private var showSavePage = false
+    @State private var isFinishing = false
     @State private var saveSheetDefaultName = "Range Session"
 
     var context: ShotContext? = nil
@@ -53,7 +54,7 @@ struct RangeCameraScreen: View {
             },
             onDismiss: {
                 if !isCourseMode && !rangeVM.shots.isEmpty {
-                    showEndConfirmation = true
+                    beginSaveSessionFlow()
                 } else if !isCourseMode && rangeVM.sessionActive {
                     // Empty session — just discard silently
                     Task {
@@ -115,48 +116,12 @@ struct RangeCameraScreen: View {
                 WatchConnectivityBridge.shared.unregisterRangeCommandHandler()
             }
         }
-        .onChange(of: showSaveSheet) { isShowing in
-            if isShowing {
-                OrientationManager.shared.unlockAllButUpsideDown()
-            } else {
-                OrientationManager.shared.lockLandscape()
-            }
-        }
-        .onChange(of: showEndConfirmation) { isShowing in
-            if isShowing {
-                OrientationManager.shared.unlockAllButUpsideDown()
-            } else if !showSaveSheet {
-                // Only re-lock if save sheet isn't about to appear
-                OrientationManager.shared.lockLandscape()
-            }
-        }
-        // Phase 1: Save / Delete / Continue choice
-        .confirmationDialog(
-            "End Range Session?",
-            isPresented: $showEndConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Save Session") {
-                Task {
-                    saveSheetDefaultName = await rangeVM.computeDefaultName()
-                    showSaveSheet = true
-                }
-            }
-            Button("Delete Session", role: .destructive) {
-                Task {
-                    await rangeVM.discardSession()
-                    publishWatchRangeState()
-                    exitClean()
-                }
-            }
-            Button("Continue Session", role: .cancel) {}
-        } message: {
-            Text(rangeVM.shots.count > 0
-                 ? "Save this session to History or delete it? You have \(rangeVM.shots.count) shot\(rangeVM.shots.count == 1 ? "" : "s")."
-                 : "Save this session to History or delete it?")
-        }
-        // Phase 2: Name + description entry
-        .sheet(isPresented: $showSaveSheet) {
+        // Save flow is a full-screen page in the user's natural orientation (not a popup over
+        // the landscape camera). Continue → back to camera (re-lock landscape); Save/Delete →
+        // leave the camera entirely back to Play.
+        .fullScreenCover(isPresented: $showSavePage, onDismiss: {
+            if !isFinishing { OrientationManager.shared.lockLandscape() }
+        }) {
             SessionSaveSheet(
                 config: SessionSaveConfig(
                     type: .range,
@@ -164,9 +129,11 @@ struct RangeCameraScreen: View {
                     date: rangeVM.activeSession?.startedAt ?? Date()
                 ),
                 onSave: { name, desc in
+                    isFinishing = true
                     Task { await rangeVM.endSessionWithDetails(name: name, description: desc); publishWatchRangeState(); exitClean() }
                 },
                 onDelete: {
+                    isFinishing = true
                     Task { await rangeVM.discardSession(); publishWatchRangeState(); exitClean() }
                 }
             )
@@ -186,14 +153,19 @@ struct RangeCameraScreen: View {
 
     private func beginSaveSessionFlow() {
         guard rangeVM.sessionActive, !rangeVM.shots.isEmpty else { return }
+        isFinishing = false
+        // Drop the landscape lock so the save page uses the phone's natural orientation.
+        OrientationManager.shared.unlockAllButUpsideDown()
         Task {
             saveSheetDefaultName = await rangeVM.computeDefaultName()
-            showSaveSheet = true
+            showSavePage = true
         }
     }
 
     private func autoSave(analysis: ShotAnalysisResult, metrics: SavedShotMetrics) async {
         guard metrics.carryYards > 0 || metrics.ballSpeedMph > 0 else { return }
+        // Every shot belongs to a session — autostart one if needed (also resolves the frame cap).
+        await rangeVM.ensureSessionStarted()
         let composite = ShotCompositeRenderer().render(analysis: analysis, mode: .darkenedHighContrast)
         let service = ShotPersistenceService(userId: userId, backend: backend)
         let framesToSave = impactFrames(from: analysis, fullSet: rangeVM.saveOriginalFrames)
@@ -205,6 +177,8 @@ struct RangeCameraScreen: View {
             clubName: selectedClub,
             mode: .range,
             saveOriginalFrames: rangeVM.saveOriginalFrames,
+            framesAllowed: rangeVM.framesAllowed,
+            visibility: ShotVisibility(rawValue: defaultVisibilityRaw) ?? .friends,
             sessionId: rangeVM.activeSession?.id
         ) else { return }
         await rangeVM.addShot(shot)

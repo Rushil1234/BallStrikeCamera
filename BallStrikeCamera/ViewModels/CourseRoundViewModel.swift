@@ -121,11 +121,29 @@ final class CourseRoundViewModel: ObservableObject {
         return result.isInferred ? result.score : nil
     }
 
+    private var discardObserver: NSObjectProtocol?
+
     init(userId: UUID, backend: AppBackend) {
         self.userId  = userId
         self.backend = backend
         self.courseProvider = CourseProviderFactory.make(userId: userId)
         self.location = LocationService()
+        discardObserver = NotificationCenter.default.addObserver(
+            forName: .tcShotDiscarded, object: nil, queue: .main) { [weak self] note in
+            guard let id = note.userInfo?["id"] as? UUID else { return }
+            Task { @MainActor in self?.dropShot(id) }
+        }
+    }
+
+    deinit { if let o = discardObserver { NotificationCenter.default.removeObserver(o) } }
+
+    /// Remove a discarded (bad) shot from the active round so counts stay correct.
+    func dropShot(_ id: UUID) {
+        guard var r = activeRound, r.shotIds.contains(id) else { return }
+        r.shotIds.removeAll { $0 == id }
+        for i in r.holes.indices { r.holes[i].shotIds.removeAll { $0 == id } }
+        activeRound = r
+        Task { await saveRoundOfflineSafe(r) }
     }
 
     // MARK: - Round control

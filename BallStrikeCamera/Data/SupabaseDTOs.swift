@@ -41,6 +41,7 @@ struct SupabaseProfileRow: Codable {
     var id: String
     var userId: String
     var displayName: String
+    var username: String?
     var handedness: String
     var distanceUnit: String
     var speedUnit: String
@@ -53,6 +54,7 @@ struct SupabaseProfileRow: Codable {
             id: UUID(uuidString: id) ?? UUID(),
             userId: uid,
             displayName: displayName,
+            username: username,
             handedness: Handedness(rawValue: handedness) ?? .right,
             distanceUnit: DistanceUnit(rawValue: distanceUnit) ?? .yards,
             speedUnit: SpeedUnit(rawValue: speedUnit) ?? .mph,

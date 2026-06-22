@@ -13,7 +13,7 @@ struct FeedHomeView: View {
             if let uid = session.currentUser?.id {
                 FeedView(
                     userId: uid,
-                    authorName: session.userProfile?.displayName ?? session.currentUser?.name ?? "You",
+                    authorName: session.displayHandle,
                     backend: session.backend
                 )
             } else {
@@ -139,7 +139,15 @@ struct FeedView: View {
             .refreshable { await vm.load() }
         }
         .navigationBarHidden(true)
-        .task { await vm.load() }
+        .task {
+            // Seed instantly from the prewarmed cache so the page (posts + "Your Week") isn't
+            // empty / showing 0s on first paint.
+            if vm.posts.isEmpty, !session.cachedFeedPosts.isEmpty {
+                vm.posts = session.cachedFeedPosts
+            }
+            if let hs = session.cachedHomeSummary { vm.homeSummary = hs }
+            await vm.load()
+        }
         .sheet(isPresented: $showFriends, onDismiss: { Task { await vm.load() } }) {
             NavigationStack { FriendsView(userId: userId, backend: backend) }
                 .tcAppearance()
@@ -149,9 +157,16 @@ struct FeedView: View {
                 .tcAppearance()
         }
         .sheet(isPresented: $showNotifications) {
-            NavigationStack { NotificationsView(notifications: vm.notifications) }
-                .tcAppearance()
-                .onAppear { notifsLastSeenTs = Date().timeIntervalSince1970 }
+            NavigationStack {
+                NotificationsView(notifications: vm.notifications) { postId in
+                    // Open the related post's comments. Small delay lets the sheet dismiss first.
+                    if let post = vm.posts.first(where: { $0.id == postId }) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { commentingPost = post }
+                    }
+                }
+            }
+            .tcAppearance()
+            .onAppear { notifsLastSeenTs = Date().timeIntervalSince1970 }
         }
         .fullScreenCover(isPresented: $showRangeCamera) {
             RangeCameraScreen(userId: userId, backend: backend)
@@ -1243,6 +1258,7 @@ func relativeTime(_ date: Date) -> String {
 
 struct NotificationsView: View {
     let notifications: [FeedNotification]
+    var onSelect: ((UUID) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -1258,33 +1274,43 @@ struct NotificationsView: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 10) {
                         ForEach(notifications) { n in
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    Circle()
-                                        .fill((n.kind == .gimme ? TCTheme.gold : TCTheme.sage).opacity(0.16))
-                                        .frame(width: 42, height: 42)
-                                    Image(systemName: n.icon)
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(n.kind == .gimme ? TCTheme.gold : TCTheme.sage)
+                            Button {
+                                let pid = n.postId
+                                dismiss()
+                                onSelect?(pid)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        Circle()
+                                            .fill((n.kind == .gimme ? TCTheme.gold : TCTheme.sage).opacity(0.16))
+                                            .frame(width: 42, height: 42)
+                                        Image(systemName: n.icon)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .foregroundColor(n.kind == .gimme ? TCTheme.gold : TCTheme.sage)
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        (Text(n.actorName).font(.system(size: 14, weight: .bold))
+                                            + Text(" \(n.message)").font(.system(size: 14)))
+                                            .foregroundColor(TCTheme.textPrimary)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                        Text(relativeTime(n.createdAt))
+                                            .font(.system(size: 12))
+                                            .foregroundColor(TCTheme.textMuted)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundColor(TCTheme.textUltraMuted)
                                 }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    (Text(n.actorName).font(.system(size: 14, weight: .bold))
-                                        + Text(" \(n.message)").font(.system(size: 14)))
-                                        .foregroundColor(TCTheme.textPrimary)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    Text(relativeTime(n.createdAt))
-                                        .font(.system(size: 12))
-                                        .foregroundColor(TCTheme.textMuted)
-                                }
-                                Spacer(minLength: 0)
+                                .padding(12)
+                                .background(TCTheme.panel)
+                                .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous)
+                                        .strokeBorder(TCTheme.border, lineWidth: 1)
+                                )
                             }
-                            .padding(12)
-                            .background(TCTheme.panel)
-                            .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous)
-                                    .strokeBorder(TCTheme.border, lineWidth: 1)
-                            )
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, TCTheme.hPad)

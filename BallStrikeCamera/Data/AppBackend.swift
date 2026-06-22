@@ -77,6 +77,7 @@ protocol AppBackend {
 
     // Friends / contacts
     func searchUsers(query: String) async throws -> [FriendProfile]
+    func golfersAtHomeCourse() async throws -> [FriendProfile]
     func sendFriendRequest(fromUserId: UUID, toUserId: UUID) async throws
     func loadIncomingRequests() async throws -> [IncomingFriendRequest]
     func acceptFriendRequest(requestId: UUID) async throws
@@ -103,6 +104,9 @@ extension AppBackend {
 
     // Default: no notifications (local backend has no social graph).
     func loadFeedNotifications() async throws -> [FeedNotification] { [] }
+
+    // Default: no social graph locally.
+    func golfersAtHomeCourse() async throws -> [FriendProfile] { [] }
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)

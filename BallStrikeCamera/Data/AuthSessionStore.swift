@@ -9,6 +9,25 @@ final class AuthSessionStore: ObservableObject {
     @Published var userProfile: UserProfile?
     @Published var isLoading = true
 
+    /// Prewarmed caches so screens render data instantly instead of flashing 0s until a refresh.
+    /// Populated right after auth and refreshable on demand.
+    @Published var cachedShots: [SavedShot] = []
+    @Published var cachedClubs: [UserClub] = []
+    @Published var cachedFeedPosts: [FeedPost] = []
+    @Published var cachedHomeSummary: FeedHomeSummary?
+    @Published private(set) var dataPreloaded = false
+
+    /// The name to show for the current user everywhere. Prefers the chosen username, then a
+    /// real (non-email) display name, then the email's local part — never the raw email.
+    var displayHandle: String {
+        if let u = userProfile?.username, !u.isEmpty { return u }
+        let dn = userProfile?.displayName ?? currentUser?.name ?? ""
+        if !dn.isEmpty, !dn.contains("@") { return dn }
+        let email = currentUser?.email ?? dn
+        if email.contains("@") { return String(email.split(separator: "@").first ?? "Golfer") }
+        return dn.isEmpty ? "Golfer" : dn
+    }
+
     @Published private(set) var backend: AppBackend
     @Published var entitlementVM: EntitlementViewModel
     private let configuredBackend: AppBackend
@@ -39,6 +58,23 @@ final class AuthSessionStore: ObservableObject {
     var isLoggedIn: Bool { currentUser != nil }
     var userId: UUID? { currentUser?.id }
 
+    /// Loads shots + clubs into the in-memory cache so dependent screens have data on first paint.
+    func preloadData() async {
+        guard let uid = currentUser?.id else { return }
+        async let s = try? await backend.loadShots(userId: uid)
+        async let c = try? await backend.loadClubs(userId: uid)
+        async let f = try? await backend.loadFeedPage(userId: uid, cursor: nil, limit: 20)
+        async let hs = try? await backend.loadHomeSummary(userId: uid)
+        cachedShots = await s ?? []
+        cachedClubs = await c ?? []
+        cachedFeedPosts = (await f)?.posts ?? []
+        cachedHomeSummary = await hs
+        dataPreloaded = true
+    }
+
+    /// Refresh the cache after new data is written (e.g. session ends).
+    func refreshCache() async { await preloadData() }
+
     // MARK: - Session Restore
 
     func restoreSession() async {
@@ -48,11 +84,13 @@ final class AuthSessionStore: ObservableObject {
             currentUser = user
             userProfile = await ensureProfileAndBag(for: user)
             await entitlementVM.load(userId: user.id)
+        await preloadData()
         } else if let user = try? await localGuestBackend.currentUser() {
             activateBackend(localGuestBackend)
             currentUser = user
             userProfile = await ensureProfileAndBag(for: user)
             await entitlementVM.load(userId: user.id)
+        await preloadData()
         }
         isLoading = false
     }
@@ -65,6 +103,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        await preloadData()
     }
 
     func createAccount(name: String, email: String, password: String) async throws {
@@ -73,6 +112,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        await preloadData()
     }
 
     func sendPasswordReset(email: String) async throws {
@@ -106,6 +146,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        await preloadData()
     }
 
     func signOut() async {
@@ -145,6 +186,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        await preloadData()
     }
 
     // MARK: - Profile Updates

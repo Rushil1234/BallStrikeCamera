@@ -734,6 +734,11 @@ final class SupabaseBackendService: AppBackend {
         return rows.compactMap { $0.toFriendProfile() }
     }
 
+    func golfersAtHomeCourse() async throws -> [FriendProfile] {
+        let rows: [SupabaseUserSearchRow] = try await rpc("golfers_at_home_course", body: [:])
+        return rows.compactMap { $0.toFriendProfile() }
+    }
+
     func sendFriendRequest(fromUserId: UUID, toUserId: UUID) async throws {
         let body: [String: Any] = [
             "from_user_id": fromUserId.uuidString,
@@ -973,6 +978,7 @@ final class SupabaseBackendService: AppBackend {
             "home_course_name": p.homeCourseName
         ]
         if let path = p.profileImagePath { d["profile_image_path"] = path }
+        if let u = p.username, !u.isEmpty { d["username"] = u }
         return d
     }
 

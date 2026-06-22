@@ -28,6 +28,9 @@ final class FeedViewModel: ObservableObject {
     }
 
     func load() async {
+        // Prevent overlapping loads (task + sheet-dismiss + refresh) from racing and snapping
+        // "Your Week" back to stale/0 values.
+        guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
         do {

@@ -122,7 +122,9 @@ struct LiveSimCameraScreen: View {
             .filter { abs($0.frameIndex - impact) <= 5 }
             .map { $0.originalFrame.image }
 
+        await simVM.ensureSessionStarted()
         let service = ShotPersistenceService(userId: uid, backend: session.backend)
+        let visRaw = UserDefaults.standard.string(forKey: "tc_default_visibility") ?? ShotVisibility.friends.rawValue
         guard let shot = try? await service.saveShot(
             metrics: metrics,
             compositeImage: composite,
@@ -131,6 +133,8 @@ struct LiveSimCameraScreen: View {
             clubName: selectedClub,
             mode: .sim,
             saveOriginalFrames: false,
+            framesAllowed: simVM.framesAllowed,
+            visibility: ShotVisibility(rawValue: visRaw) ?? .friends,
             sessionId: simVM.activeSession?.id
         ) else { return }
 

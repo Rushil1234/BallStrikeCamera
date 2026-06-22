@@ -14,6 +14,18 @@ final class RangeSessionViewModel: ObservableObject {
     private let backend: AppBackend
     private let userId: UUID
 
+    /// Per-session FRAME-storage cap from the user's subscription tier. Metrics always save;
+    /// once this many shots in the session have stored frames, further shots keep metrics only.
+    var sessionFrameLimit: Int = .max
+    private(set) var framedShotCount = 0
+
+    /// True while this session may still store captured frames for a new shot.
+    var framesAllowed: Bool { framedShotCount < sessionFrameLimit }
+
+    /// Auto-stop a session after this much inactivity (no new shot).
+    private let idleTimeout: TimeInterval = 15 * 60
+    private var idleTask: Task<Void, Never>?
+
     var sessionActive: Bool { activeSession != nil }
 
     var summary: SessionSummary {
@@ -32,9 +44,28 @@ final class RangeSessionViewModel: ObservableObject {
         )
     }
 
+    private var discardObserver: NSObjectProtocol?
+
     init(userId: UUID, backend: AppBackend) {
         self.userId  = userId
         self.backend = backend
+        discardObserver = NotificationCenter.default.addObserver(
+            forName: .tcShotDiscarded, object: nil, queue: .main) { [weak self] note in
+            guard let id = note.userInfo?["id"] as? UUID else { return }
+            Task { @MainActor in self?.dropShot(id) }
+        }
+    }
+
+    deinit { if let o = discardObserver { NotificationCenter.default.removeObserver(o) } }
+
+    /// Remove a discarded (bad) shot from the active session so counts stay correct.
+    func dropShot(_ id: UUID) {
+        shots.removeAll { $0.id == id }
+        guard var s = activeSession, s.shotIds.contains(id) else { return }
+        s.shotIds.removeAll { $0 == id }
+        s.summary = summary
+        activeSession = s
+        Task { try? await backend.saveRangeSession(s) }
     }
 
     func loadClubs() async {
@@ -58,6 +89,11 @@ final class RangeSessionViewModel: ObservableObject {
         // Set immediately so the UI is interactive regardless of network status.
         activeSession = session
         shots = []
+        framedShotCount = 0
+        // Resolve the per-session frame cap from the user's subscription tier.
+        if let ent = try? await backend.loadEntitlement(userId: userId) {
+            sessionFrameLimit = ent.effectiveTier.sessionFrameLimit
+        }
         do {
             try await backend.saveRangeSession(session)
         } catch {
@@ -66,8 +102,15 @@ final class RangeSessionViewModel: ObservableObject {
         }
     }
 
+    /// Ensures a session is open so every saved shot belongs to one (autostart).
+    func ensureSessionStarted() async {
+        if activeSession == nil { await startSession() }
+    }
+
     func addShot(_ shot: SavedShot) async {
+        await ensureSessionStarted()           // every shot must live in a session
         shots.append(shot)
+        if shot.media.frameCount > 0 { framedShotCount += 1 }
         guard var session = activeSession else { return }
         if session.selectedClubId == nil {
             session.selectedClubId = shot.clubId
@@ -77,9 +120,23 @@ final class RangeSessionViewModel: ObservableObject {
         session.summary = summary
         activeSession = session
         try? await backend.saveRangeSession(session)
+        scheduleIdleAutoStop()
+    }
+
+    /// (Re)arm the inactivity timer. If no new shot arrives within `idleTimeout`, the session
+    /// auto-ends (saved if it has shots, discarded if empty).
+    private func scheduleIdleAutoStop() {
+        idleTask?.cancel()
+        let timeout = idleTimeout
+        idleTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await self?.endSession()
+        }
     }
 
     func endSession() async {
+        idleTask?.cancel(); idleTask = nil
         guard var session = activeSession else { return }
         guard !session.shotIds.isEmpty else { await discardSession(); return }
         session.endedAt = Date()
@@ -110,11 +167,13 @@ final class RangeSessionViewModel: ObservableObject {
     }
 
     func discardSession() async {
+        idleTask?.cancel(); idleTask = nil
         if let session = activeSession {
             try? await backend.deleteRangeSession(sessionId: session.id, userId: userId)
         }
         activeSession = nil
         shots = []
+        framedShotCount = 0
     }
 
     func computeDefaultName() async -> String {

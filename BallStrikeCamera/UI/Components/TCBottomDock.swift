@@ -142,6 +142,8 @@ extension EnvironmentValues {
 
 struct TrueCarryAppShell: View {
     @State private var selectedTab: TCTab = .home
+    @State private var showUsernameSetup = false
+    @State private var didPromptUsername = false
     @EnvironmentObject var session: AuthSessionStore
     @EnvironmentObject var camera: CameraController
 
@@ -163,6 +165,21 @@ struct TrueCarryAppShell: View {
         }
         .background(TCTheme.background.ignoresSafeArea())
         .tcAppearance()
+        .sheet(isPresented: $showUsernameSetup) {
+            NavigationStack { TCEditProfileSheet() }.tcAppearance()
+        }
+        .onAppear(perform: maybePromptUsername)
+        .onChange(of: session.userProfile?.username) { _ in maybePromptUsername() }
+    }
+
+    /// One-time-per-launch nudge to pick a username so the app shows @handles instead of email.
+    private func maybePromptUsername() {
+        guard !didPromptUsername,
+              session.currentUser != nil,
+              session.userProfile != nil,
+              (session.userProfile?.username ?? "").isEmpty else { return }
+        didPromptUsername = true
+        showUsernameSetup = true
     }
 
     @ViewBuilder

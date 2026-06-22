@@ -97,6 +97,12 @@ struct TrueCarryInsightsView: View {
                 .tcAppearance()
         }
         .onAppear {
+            // Seed instantly from the prewarmed cache so the page never flashes empty.
+            if shots.isEmpty {
+                shots = session.cachedShots.filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
+                clubs = session.cachedClubs
+                if selectedClub == nil { selectedClub = availableClubs.first }
+            }
             Task {
                 guard let uid = session.currentUser?.id else { return }
                 async let s = try? await session.backend.loadShots(userId: uid)
@@ -208,7 +214,72 @@ struct TrueCarryInsightsView: View {
         metricsCard(s)
         carryTrendCard(s)
         spinCard(s)
+        advancedCard(s)
         Spacer(minLength: 140)
+    }
+
+    // MARK: - Advanced (Pro)
+
+    private func stdDev(_ vals: [Double]) -> Double? {
+        let f = vals.filter { $0 > 0 }
+        guard f.count > 1, let m = avg(f) else { return nil }
+        let variance = f.map { ($0 - m) * ($0 - m) }.reduce(0, +) / Double(f.count)
+        return variance.squareRoot()
+    }
+
+    @ViewBuilder
+    private func advancedCard(_ shots: [SavedShot]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            cardHeader("Advanced", "Consistency & efficiency")
+            if !session.entitlementVM.canAccessAdvancedInsights {
+                HStack(spacing: 10) {
+                    Image(systemName: "lock.fill").foregroundColor(TCTheme.gold)
+                    Text("Upgrade to Pro to unlock consistency, dispersion spread, and gapping.")
+                        .font(.system(size: 13)).foregroundColor(TCTheme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                let carrySD = stdDev(shots.map { $0.metrics.carryYards })
+                let speedSD = stdDev(shots.map { $0.metrics.ballSpeedMph })
+                let smashAvg = avg(shots.map { $0.metrics.smashFactor })
+                let carriesSorted = shots.map { $0.metrics.carryYards }.filter { $0 > 0 }.sorted()
+                let spread = (carriesSorted.last ?? 0) - (carriesSorted.first ?? 0)
+                let cv: Double? = {
+                    guard let sd = carrySD, let m = avg(shots.map { $0.metrics.carryYards }), m > 0 else { return nil }
+                    return sd / m * 100
+                }()
+                VStack(spacing: 0) {
+                    advRow("Carry consistency (± std dev)", carrySD.map { "± \(fmt($0, decimals: 1)) yd" } ?? "—")
+                    advDivider
+                    advRow("Carry spread (long − short)", spread > 0 ? "\(fmt(spread)) yd" : "—")
+                    advDivider
+                    advRow("Consistency score", cv.map { String(format: "%.0f%%", max(0, 100 - $0 * 4)) } ?? "—")
+                    advDivider
+                    advRow("Ball-speed consistency", speedSD.map { "± \(fmt($0, decimals: 1)) mph" } ?? "—")
+                    advDivider
+                    advRow("Avg smash factor", smashAvg.map { fmt($0, decimals: 2) } ?? "—")
+                    advDivider
+                    advRow("Shots analyzed", "\(shots.count)")
+                }
+            }
+        }
+        .padding(16)
+        .tcCard()
+    }
+
+    private func advRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.system(size: 14)).foregroundColor(TCTheme.textMuted)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer(minLength: 8)
+            Text(value).font(.system(size: 15, weight: .semibold)).foregroundColor(TCTheme.textPrimary)
+        }
+        .padding(.vertical, 11)
+    }
+
+    private var advDivider: some View {
+        Rectangle().fill(TCTheme.border).frame(height: 1)
     }
 
     /// Card header with the small Marker Gold tick (the brand title treatment).
