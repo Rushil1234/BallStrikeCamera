@@ -776,34 +776,38 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         if let green = effectiveGreen, let start = lineStart, !coordsEqual(start, green) {
             holePathForOverlay = preferredHolePath(start: start, green: green)
             if shouldRecenter {
-                let routeStart = holePathForOverlay.first ?? start
+                // Frame the FULL hole — always tee → green — regardless of where the player is
+                // standing. This makes switching holes auto-fit the whole hole (tee box to flag),
+                // exactly like the recenter button, instead of zooming to the remaining shot and
+                // cropping the tee. Falls back to the aim-line start only when no tee geometry.
+                let frameStart = teeCoord ?? (holePathForOverlay.first ?? start)
                 let routeEnd   = holePathForOverlay.last  ?? green
-                let heading    = Self.bearing(from: routeStart, to: routeEnd)
+                let heading    = Self.bearing(from: frameStart, to: routeEnd)
 
                 let kPad     = 20.0
                 let h_rad    = heading * .pi / 180.0
-                let cosLat   = cos(start.latitude * .pi / 180.0)
+                let cosLat   = cos(frameStart.latitude * .pi / 180.0)
                 let kMPerDeg = 111_320.0
                 var minX = Double.infinity, maxX = -Double.infinity
                 var minY = Double.infinity, maxY = -Double.infinity
-                // Always include the tee in the bounding box even when lineStart is user GPS.
-                let boundsCoords = teeCoord.map { [$0] + holePathForOverlay } ?? holePathForOverlay
+                // Bounds measured from the tee: tee + aim path + green.
+                let boundsCoords = (teeCoord.map { [$0] } ?? []) + holePathForOverlay + [routeEnd]
                 for coord in boundsCoords {
-                    let dn = (coord.latitude  - start.latitude)  * kMPerDeg
-                    let de = (coord.longitude - start.longitude) * kMPerDeg * cosLat
+                    let dn = (coord.latitude  - frameStart.latitude)  * kMPerDeg
+                    let de = (coord.longitude - frameStart.longitude) * kMPerDeg * cosLat
                     let sy =  dn * cos(h_rad) + de * sin(h_rad)
                     let sx = -dn * sin(h_rad) + de * cos(h_rad)
                     minX = min(minX, sx); maxX = max(maxX, sx)
                     minY = min(minY, sy); maxY = max(maxY, sy)
                 }
                 // Extra bottom padding so the tee isn't hidden behind the HUD.
-                // Par 5s: modest vertical cap + slightly wider corridor padding.
+                // Cap high enough that even long par 5s fit the full hole.
                 let rawVert    = (maxY - minY) + kPad + max(Double(bottomUIInset) * 0.5, kPad)
-                let vertExtent = aimPoints.count >= 2 ? min(rawVert, 490.0) : rawVert
+                let vertExtent = aimPoints.count >= 2 ? min(rawVert, 600.0) : rawVert
                 let horizExtent = max((maxX - minX) + 2 * kPad, kPad * 2)
                 let midX        = (minX + maxX) / 2.0
 
-                let centerOnPath = Self.interpolate(routeStart, routeEnd, t: centerT)
+                let centerOnPath = Self.interpolate(frameStart, routeEnd, t: centerT)
                 let cosLatC = cos(centerOnPath.latitude * .pi / 180.0)
                 let biasedCenter = CLLocationCoordinate2D(
                     latitude:  centerOnPath.latitude  - midX * sin(h_rad) / kMPerDeg,
