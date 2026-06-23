@@ -383,6 +383,7 @@ struct LiveSimCodeView: View {
 struct LiveSimConnectedScreen: View {
     @ObservedObject var liveSimService: LiveSimService
     var onHitShot: () -> Void
+    var onSimulateShot: () -> Void
     var onEnd: () -> Void
 
     @State private var pulse = false
@@ -649,7 +650,7 @@ struct LiveSimConnectedScreen: View {
     // MARK: Hit Shot bar (pinned bottom)
 
     private var hitShotBar: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 10) {
             PremiumActionButton(
                 title: "Hit Shot",
                 icon: "camera.fill",
@@ -657,6 +658,17 @@ struct LiveSimConnectedScreen: View {
                 action: onHitShot
             )
             .glowingAccent(BSTheme.electricCyan)
+            .disabled(ended)
+            .opacity(ended ? 0.4 : 1.0)
+
+            // Simulate a shot — streams a realistic random shot to the sim so you
+            // can test the live link without the camera.
+            PremiumActionButton(
+                title: "Simulate Shot",
+                icon: "sparkles",
+                style: .ghost,
+                action: onSimulateShot
+            )
             .disabled(ended)
             .opacity(ended ? 0.4 : 1.0)
         }

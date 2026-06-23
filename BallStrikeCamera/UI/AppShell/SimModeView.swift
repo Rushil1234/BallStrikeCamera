@@ -57,6 +57,15 @@ struct SimModeView: View {
                     }
                     showLiveCamera = true
                 },
+                onSimulateShot: {
+                    Task {
+                        if !simVM.sessionActive {
+                            await simVM.startSession(provider: .liveSim, usedOGS: false)
+                        }
+                        let shot = await simVM.addSimulatedShot()
+                        await liveSimService.broadcast(metrics: shot.metrics)
+                    }
+                },
                 onEnd: {
                     Task { await liveSimService.endSession() }
                     // If the session captured shots, offer to save / discard them.

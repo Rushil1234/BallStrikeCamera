@@ -2001,9 +2001,9 @@ code {
 .sim-connection-dot.connected{ animation:none; }
 @keyframes simDotPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.4; } }
 
-.sim-pairing-code-wrap{ display:flex; align-items:stretch; gap:8px; }
-.sim-pairing-code-wrap .sim-pairing-code{ flex:1; }
-.sim-pairing-copy{ flex-shrink:0; font-family:var(--r-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--carry-gold,#c9a86a); background:rgba(201,168,106,.08); border:1px solid rgba(201,168,106,.25); border-radius:8px; padding:0 16px; cursor:pointer; transition:background .15s,color .15s; }
+.sim-pairing-code-wrap{ display:flex; flex-direction:column; gap:10px; width:100%; }
+.sim-pairing-code-wrap .sim-pairing-code{ width:100%; }
+.sim-pairing-copy{ width:100%; box-sizing:border-box; font-family:var(--r-mono); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--carry-gold,#c9a86a); background:rgba(201,168,106,.08); border:1px solid rgba(201,168,106,.25); border-radius:8px; padding:11px; cursor:pointer; transition:background .15s,color .15s; }
 .sim-pairing-copy:hover{ background:rgba(201,168,106,.18); color:var(--bone,#f2eee1); }
 
 .sim-pairing-waiting{ display:flex; align-items:center; gap:10px; margin:auto 0 0; padding-top:22px; font-family:var(--r-mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--bone,#f2eee1) 60%,transparent); }
