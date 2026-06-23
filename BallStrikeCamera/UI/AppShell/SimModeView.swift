@@ -302,11 +302,11 @@ struct SimModeView: View {
                         HStack(spacing: 14) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(isSel ? BSTheme.gold.opacity(0.16) : BSTheme.panel)
+                                    .fill(isSel ? (p.name == "Live Sim" ? BSTheme.fairwayGreen.opacity(0.16) : BSTheme.gold.opacity(0.16)) : BSTheme.panel)
                                     .frame(width: 46, height: 46)
                                 Image(systemName: p.icon)
                                     .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(isSel ? BSTheme.gold : BSTheme.textMuted)
+                                    .foregroundColor(p.name == "Live Sim" ? BSTheme.fairwayGreen : (isSel ? BSTheme.gold : BSTheme.textMuted))
                             }
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(p.name)

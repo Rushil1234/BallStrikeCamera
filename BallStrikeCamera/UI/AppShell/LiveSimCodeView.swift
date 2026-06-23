@@ -388,7 +388,6 @@ struct LiveSimConnectedScreen: View {
 
     @State private var pulse = false
     @State private var shotFlash = false
-    @State private var showEndConfirm = false
     @State private var reconnecting = false
 
     private var ended: Bool { liveSimService.simEndedSession }
@@ -427,12 +426,6 @@ struct LiveSimConnectedScreen: View {
                 withAnimation(.easeOut(duration: 0.5)) { shotFlash = false }
             }
         }
-        .confirmationDialog("End live session?", isPresented: $showEndConfirm, titleVisibility: .visible) {
-            Button("End Session", role: .destructive) { onEnd() }
-            Button("Keep Playing", role: .cancel) {}
-        } message: {
-            Text("This disconnects your phone from the sim on your screen.")
-        }
     }
 
     // MARK: Header (status + clear exit)
@@ -449,7 +442,7 @@ struct LiveSimConnectedScreen: View {
                     .foregroundColor(ended ? BSTheme.dangerRed : BSTheme.fairwayGreen)
             }
             Spacer()
-            Button { showEndConfirm = true } label: {
+            Button { onEnd() } label: {
                 Text("End Session")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(BSTheme.dangerRed)
