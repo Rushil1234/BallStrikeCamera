@@ -23,7 +23,7 @@ export function getLiveCode() {
  * @param {() => void} [onPing]         – called when app taps "Connect"
  * @param {(name: string) => void} [onClubChanged] – called when app changes club
  */
-export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged) {
+export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged, onSessionEnd) {
   if (_channel) {
     _channel.unsubscribe();
     _channel = null;
@@ -45,6 +45,9 @@ export function connectLive(code, onShotReceived, onStatusChange, onPing, onClub
     })
     .on('broadcast', { event: 'club' }, ({ payload }) => {
       if (onClubChanged && payload?.clubName) onClubChanged(payload.clubName);
+    })
+    .on('broadcast', { event: 'end' }, () => {
+      if (onSessionEnd) onSessionEnd();
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {

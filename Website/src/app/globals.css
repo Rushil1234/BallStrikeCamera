@@ -2013,6 +2013,19 @@ code {
   .sim-pairing-panel.is-waiting,.sim-connection-dot,.sim-pairing-spinner{ animation:none; }
 }
 
+/* end-session confirmation modal */
+.sim-modal-scrim{ position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(5,9,6,.72); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); animation:simModalIn .18s ease; }
+.sim-modal{ width:min(420px,100%); background:rgba(12,22,15,.98); border:1px solid rgba(201,168,106,.3); border-radius:14px; padding:26px 24px; box-shadow:0 30px 90px rgba(0,0,0,.5); }
+.sim-modal-title{ margin:0 0 12px; font-family:var(--display); font-weight:400; font-size:28px; color:var(--bone,#f2eee1); }
+.sim-modal-body{ margin:0 0 22px; font-family:var(--r-sans); font-size:14.5px; line-height:1.6; color:color-mix(in oklab,var(--bone,#f2eee1) 66%,transparent); }
+.sim-modal-actions{ display:flex; gap:10px; }
+.sim-modal-actions button{ flex:1; font-family:var(--r-mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; padding:12px; border-radius:9px; cursor:pointer; transition:background .15s,color .15s,border-color .15s; }
+.sim-modal-cancel{ background:rgba(242,238,225,.06); border:1px solid rgba(242,238,225,.16); color:var(--bone,#f2eee1); }
+.sim-modal-cancel:hover{ background:rgba(242,238,225,.12); }
+.sim-modal-end{ background:rgba(196,84,72,.16); border:1px solid rgba(196,84,72,.5); color:#e8918a; }
+.sim-modal-end:hover{ background:rgba(196,84,72,.3); color:#fff; }
+@keyframes simModalIn{ from{ opacity:0; } to{ opacity:1; } }
+
 .sim-stage-loading{ background:#0a110c; }
 .sim-loading-card{
   width:min(420px,calc(100vw - 32px));

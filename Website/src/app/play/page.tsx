@@ -67,6 +67,7 @@ export default function PlayPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeCourse, setActiveCourse] = useState<CourseOption | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -93,6 +94,12 @@ export default function PlayPage() {
       }
       if (e.data?.type === "APP_CONNECTED") {
         setConnected(true);
+      }
+      if (e.data?.type === "APP_DISCONNECTED") {
+        // The phone left the live session — drop the link and return to the
+        // (now re-locked) selector so the user can pair again.
+        setConnected(false);
+        setStage("select");
       }
     }
     window.addEventListener("message", onMessage);
@@ -172,6 +179,20 @@ export default function PlayPage() {
     window.history.replaceState({}, "", url.toString());
   }
 
+  // Exiting a live round ends the session for the paired phone too — so confirm
+  // it clearly when connected, and signal the sim/phone on the way out.
+  function requestExit() {
+    if (connected) setShowEndConfirm(true);
+    else returnToSelect();
+  }
+
+  function endSession() {
+    iframeRef.current?.contentWindow?.postMessage({ type: "END_SESSION" }, "*");
+    setConnected(false);
+    setShowEndConfirm(false);
+    returnToSelect();
+  }
+
   async function toggleFullscreen() {
     try {
       if (document.fullscreenElement) {
@@ -197,8 +218,8 @@ export default function PlayPage() {
             <button className="sim-full" type="button" onClick={toggleFullscreen}>
               {isFullscreen ? "Exit full screen" : "Full screen"}
             </button>
-            <button className="sim-change-btn" onClick={returnToSelect}>
-              ↩ Change
+            <button className="sim-change-btn" onClick={requestExit}>
+              {connected ? "↩ End session" : "↩ Change"}
             </button>
           </div>
         ) : (
@@ -308,6 +329,26 @@ export default function PlayPage() {
                 </div>
               )}
             </aside>
+          </div>
+        </div>
+      )}
+
+      {showEndConfirm && (
+        <div className="sim-modal-scrim" role="dialog" aria-modal="true" onClick={() => setShowEndConfirm(false)}>
+          <div className="sim-modal" onClick={(e) => e.stopPropagation()}>
+            <h2 className="sim-modal-title">End this session?</h2>
+            <p className="sim-modal-body">
+              This disconnects your paired iPhone and ends the live round. You'll
+              need to pair again with a new code to keep playing.
+            </p>
+            <div className="sim-modal-actions">
+              <button className="sim-modal-cancel" onClick={() => setShowEndConfirm(false)}>
+                Keep playing
+              </button>
+              <button className="sim-modal-end" onClick={endSession}>
+                End session
+              </button>
+            </div>
           </div>
         </div>
       )}

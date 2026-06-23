@@ -1343,6 +1343,13 @@ window.addEventListener('message', (e) => {
     return;
   }
 
+  // Play page is ending the session (user exited on the laptop) — flag the
+  // shared live state so a paired phone knows the round is over.
+  if (e.data?.type === 'END_SESSION') {
+    if (liveCode) publishLiveState(liveCode, { sim_state: 'ENDED' });
+    return;
+  }
+
   if (!e.data || e.data.type !== 'PREVIEW_HOLE') return;
   const { holes, holeIndex = 0 } = e.data;
   if (!holes?.length) return;
@@ -1477,6 +1484,13 @@ if (liveCode) {
         refreshClubHud();
         if (game.state === 'AIM') updateGuides();
       }
+    },
+    // onSessionEnd — the paired phone left the live session
+    function () {
+      livePhoneConnected = false;
+      updateLiveBadge();
+      updateLiveStatus('Phone disconnected — re-enter the code on your phone', '');
+      window.parent?.postMessage({ type: 'APP_DISCONNECTED' }, '*');
     }
   );
 }

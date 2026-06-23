@@ -45,6 +45,25 @@ struct SimModeView: View {
     }
 
     var body: some View {
+        Group {
+        // Once paired with the website sim, take over the whole screen with the
+        // live console — no other simulator options to distract.
+        if liveSimService.isConnectedToSim {
+            LiveSimConnectedScreen(
+                liveSimService: liveSimService,
+                onHitShot: {
+                    if !simVM.sessionActive {
+                        Task { await simVM.startSession(provider: .liveSim, usedOGS: false) }
+                    }
+                    showLiveCamera = true
+                },
+                onEnd: {
+                    Task { await liveSimService.endSession() }
+                    // If the session captured shots, offer to save / discard them.
+                    if simVM.sessionActive { showEndConfirmation = true }
+                }
+            )
+        } else {
         NavigationStack {
             ZStack {
                 BallStrikeBackgroundView()
@@ -87,6 +106,8 @@ struct SimModeView: View {
                     }
                 }
             }
+        }
+        }
         }
         .tcAppearance()
         // Camera screen for real shots

@@ -120,6 +120,19 @@ final class LiveSimService: ObservableObject {
         liveState = nil
     }
 
+    /// Ends the live session deliberately: signals the website that this phone
+    /// is leaving (so it can return to its selector / show "phone disconnected"),
+    /// then drops the local pairing.
+    func endSession() async {
+        if isConnectedToSim {
+            await broadcastRaw(event: "end", payload: [:])
+        }
+        disconnect()
+    }
+
+    /// True once the sim on the website has ended the round/session on its side.
+    var simEndedSession: Bool { liveState?.simState == "ENDED" }
+
     // MARK: - Live state polling (web sim → phone mirror)
 
     private func startPolling() {

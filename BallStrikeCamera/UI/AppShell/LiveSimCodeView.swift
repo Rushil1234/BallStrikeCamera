@@ -373,3 +373,338 @@ struct LiveSimCodeView: View {
         return "Enter the code shown on your screen"
     }
 }
+
+// MARK: - Full-screen connected console
+//
+// Shown edge-to-edge the moment the phone is paired with the website sim. It
+// replaces the whole provider list so there are no other simulator options to
+// distract from the live link.
+
+struct LiveSimConnectedScreen: View {
+    @ObservedObject var liveSimService: LiveSimService
+    var onHitShot: () -> Void
+    var onEnd: () -> Void
+
+    @State private var pulse = false
+    @State private var shotFlash = false
+    @State private var showEndConfirm = false
+    @State private var reconnecting = false
+
+    private var ended: Bool { liveSimService.simEndedSession }
+
+    var body: some View {
+        ZStack {
+            BallStrikeBackgroundView().ignoresSafeArea()
+            VStack(spacing: 0) {
+                header
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        broadcastHero
+                        if ended {
+                            endedBanner
+                        } else {
+                            if let s = liveSimService.liveState { simMirrorPanel(s) }
+                            if let shot = liveSimService.lastShot { lastShotPanel(shot) }
+                        }
+                        statsChips
+                        Spacer(minLength: 8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                }
+                hitShotBar
+            }
+        }
+        .onAppear { pulse = true }
+        .onChange(of: liveSimService.shotsSent) { _ in
+            #if os(iOS)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            #endif
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) { shotFlash = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                withAnimation(.easeOut(duration: 0.5)) { shotFlash = false }
+            }
+        }
+        .confirmationDialog("End live session?", isPresented: $showEndConfirm, titleVisibility: .visible) {
+            Button("End Session", role: .destructive) { onEnd() }
+            Button("Keep Playing", role: .cancel) {}
+        } message: {
+            Text("This disconnects your phone from the sim on your screen.")
+        }
+    }
+
+    // MARK: Header (status + clear exit)
+
+    private var header: some View {
+        HStack {
+            HStack(spacing: 7) {
+                Circle().fill(ended ? BSTheme.dangerRed : BSTheme.fairwayGreen)
+                    .frame(width: 8, height: 8)
+                    .opacity(pulse ? 1 : 0.3)
+                    .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+                Text(ended ? "SESSION ENDED" : "LIVE · CONNECTED")
+                    .font(.system(size: 12, weight: .heavy)).kerning(2)
+                    .foregroundColor(ended ? BSTheme.dangerRed : BSTheme.fairwayGreen)
+            }
+            Spacer()
+            Button { showEndConfirm = true } label: {
+                Text("End Session")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(BSTheme.dangerRed)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+    }
+
+    // MARK: Broadcast hero
+
+    private var broadcastHero: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .stroke(BSTheme.fairwayGreen.opacity(0.5), lineWidth: 1.5)
+                        .frame(width: 76, height: 76)
+                        .scaleEffect(pulse ? 2.1 : 0.85)
+                        .opacity(pulse ? 0 : 0.7)
+                        .animation(.easeOut(duration: 2.2).repeatForever(autoreverses: false).delay(Double(i) * 0.7), value: pulse)
+                }
+                Circle().fill(BSTheme.fairwayGreen.opacity(0.16)).frame(width: 76, height: 76)
+                Image(systemName: ended ? "wifi.slash" : "dot.radiowaves.left.and.right")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundColor(ended ? BSTheme.dangerRed : BSTheme.fairwayGreen)
+            }
+            .frame(height: 92)
+
+            Text(ended ? "Sim session ended" : "Connected to True Carry Sim")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(BSTheme.textPrimary)
+                .multilineTextAlignment(.center)
+            if !ended {
+                Text("Pick a course on your screen, then tap Hit Shot — every swing streams over instantly.")
+                    .font(.system(size: 13))
+                    .foregroundColor(BSTheme.textMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 16) {
+                    linkNode(icon: "iphone", label: "App")
+                    Image(systemName: "wifi")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(BSTheme.fairwayGreen)
+                        .opacity(pulse ? 1 : 0.35)
+                        .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: pulse)
+                    linkNode(icon: "display", label: "Sim")
+                }
+                .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+        .padding(.horizontal, 18)
+        .background(BSTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder((ended ? BSTheme.dangerRed : BSTheme.fairwayGreen).opacity(0.45), lineWidth: 1.2)
+        )
+    }
+
+    // MARK: Ended banner (the sim ended on the other side)
+
+    private var endedBanner: some View {
+        VStack(spacing: 14) {
+            Text("The sim on your screen ended this session. Reconnect to keep streaming, or exit Live Sim.")
+                .font(.system(size: 14))
+                .foregroundColor(BSTheme.textMuted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Button {
+                    Task { reconnecting = true; await liveSimService.connect(); reconnecting = false }
+                } label: {
+                    HStack(spacing: 8) {
+                        if reconnecting { ProgressView().scaleEffect(0.8).tint(BSTheme.electricCyan) }
+                        Text(reconnecting ? "Reconnecting…" : "Reconnect")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 12)
+                    .background(BSTheme.electricCyan.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(BSTheme.electricCyan.opacity(0.5), lineWidth: 1))
+                    .foregroundColor(BSTheme.electricCyan)
+                }
+                .disabled(reconnecting)
+                Button { onEnd() } label: {
+                    Text("Exit")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity).padding(.vertical, 12)
+                        .background(BSTheme.textMuted.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .foregroundColor(BSTheme.textMuted)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .background(BSTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: Sim mirror panel
+
+    private func simMirrorPanel(_ s: LiveSimState) -> some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("ON THE SIM")
+                    .font(.system(size: 10, weight: .bold)).kerning(1.5)
+                    .foregroundColor(BSTheme.textMuted)
+                Spacer()
+                if let tp = s.toPar {
+                    Text(tp == 0 ? "E" : (tp > 0 ? "+\(tp)" : "\(tp)"))
+                        .font(.system(size: 13, weight: .heavy))
+                        .foregroundColor(BSTheme.gold)
+                }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if let h = s.hole {
+                    Text("Hole \(h)").font(.system(size: 17, weight: .bold)).foregroundColor(BSTheme.textPrimary)
+                }
+                if let p = s.par {
+                    Text("Par \(p)").font(.system(size: 12, weight: .semibold)).foregroundColor(BSTheme.textMuted)
+                }
+                Spacer()
+                if let d = s.distanceToPinYards {
+                    (Text("\(d)").font(.system(size: 17, weight: .bold))
+                        + Text("y to pin").font(.system(size: 11)))
+                        .foregroundColor(BSTheme.fairwayGreen)
+                }
+            }
+            if let ls = s.lastShot, ls.result != nil || (ls.totalYards ?? 0) > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "scope").font(.system(size: 10, weight: .bold))
+                    if let r = ls.result {
+                        Text(r.uppercased())
+                    } else if let t = ls.totalYards {
+                        Text("\(Int(t))y → \((ls.lie ?? "").uppercased())")
+                    }
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(BSTheme.gold)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .background(BSTheme.backgroundTop.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(BSTheme.gold.opacity(0.25), lineWidth: 1))
+    }
+
+    // MARK: Last shot telemetry
+
+    private func lastShotPanel(_ shot: SavedShotMetrics) -> some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text("LAST SHOT").font(.system(size: 10, weight: .bold)).kerning(1.5).foregroundColor(BSTheme.textMuted)
+                Spacer()
+                Text("just now").font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(BSTheme.fairwayGreen).opacity(shotFlash ? 1 : 0.5)
+            }
+            HStack(spacing: 0) {
+                telemetryStat("\(Int(shot.ballSpeedMph))", "mph", "BALL")
+                telemetryDivider
+                telemetryStat("\(Int(shot.carryYards))", "yd", "CARRY")
+                telemetryDivider
+                telemetryStat("\(Int(shot.totalYards))", "yd", "TOTAL")
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .background(BSTheme.backgroundTop.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(BSTheme.fairwayGreen.opacity(shotFlash ? 0.8 : 0.25), lineWidth: shotFlash ? 2 : 1))
+        .scaleEffect(shotFlash ? 1.01 : 1)
+    }
+
+    // MARK: Stats chips
+
+    private var statsChips: some View {
+        HStack(spacing: 8) {
+            chip(icon: "number", text: liveSimService.enteredCode, accent: BSTheme.gold)
+            if liveSimService.shotsSent > 0 {
+                chip(icon: "scope", text: "\(liveSimService.shotsSent) sent", accent: BSTheme.fairwayGreen)
+            }
+            if liveSimService.bestCarryYards > 0 {
+                chip(icon: "trophy.fill", text: "\(Int(liveSimService.bestCarryYards))y", accent: BSTheme.gold)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: Hit Shot bar (pinned bottom)
+
+    private var hitShotBar: some View {
+        VStack(spacing: 0) {
+            PremiumActionButton(
+                title: "Hit Shot",
+                icon: "camera.fill",
+                style: .gradient(BSTheme.rangeGradient),
+                action: onHitShot
+            )
+            .glowingAccent(BSTheme.electricCyan)
+            .disabled(ended)
+            .opacity(ended ? 0.4 : 1.0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(BSTheme.backgroundTop.opacity(0.001))
+    }
+
+    // MARK: Small helpers
+
+    private func linkNode(icon: String, label: String) -> some View {
+        VStack(spacing: 5) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(BSTheme.backgroundTop.opacity(0.6))
+                    .frame(width: 48, height: 48)
+                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(BSTheme.fairwayGreen.opacity(0.35), lineWidth: 1))
+                Image(systemName: icon).font(.system(size: 20, weight: .medium)).foregroundColor(BSTheme.textPrimary)
+            }
+            Text(label).font(.system(size: 10, weight: .semibold)).foregroundColor(BSTheme.textMuted)
+        }
+    }
+
+    private func chip(icon: String, text: String, accent: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 10, weight: .bold))
+            Text(text).font(.system(size: 12, weight: .semibold, design: .monospaced))
+        }
+        .foregroundColor(accent)
+        .padding(.horizontal, 9).padding(.vertical, 5)
+        .background(accent.opacity(0.12))
+        .clipShape(Capsule())
+    }
+
+    private func telemetryStat(_ value: String, _ unit: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            HStack(alignment: .lastTextBaseline, spacing: 2) {
+                Text(value).font(.system(size: 22, weight: .bold, design: .rounded)).foregroundColor(BSTheme.textPrimary)
+                Text(unit).font(.system(size: 10, weight: .semibold)).foregroundColor(BSTheme.textMuted)
+            }
+            Text(label).font(.system(size: 9, weight: .bold)).kerning(1).foregroundColor(BSTheme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var telemetryDivider: some View {
+        Rectangle().fill(BSTheme.textMuted.opacity(0.18)).frame(width: 1, height: 30)
+    }
+}
