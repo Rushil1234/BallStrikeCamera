@@ -211,7 +211,12 @@ export default function PlayPage() {
     <div className="sim-host" ref={hostRef}>
       {/* Slim top bar — always visible */}
       <div className="sim-bar">
-        <a className="sim-back" href="/">← True <span className="it">Carry.</span></a>
+        {/* Home link only on the menu — during a session the way out is End session. */}
+        {stage === "select" ? (
+          <a className="sim-back" href="/">← True <span className="it">Carry.</span></a>
+        ) : (
+          <span aria-hidden="true" />
+        )}
         <div className="sim-title">{activeCourse?.name ?? "Live Sim"}</div>
         {stage !== "select" ? (
           <div className="sim-bar-actions">

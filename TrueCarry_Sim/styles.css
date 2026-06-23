@@ -660,7 +660,7 @@ html, body {
 
 .live-club {
   position: fixed;
-  top: 14px;
+  top: 54px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
