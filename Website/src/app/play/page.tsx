@@ -66,6 +66,7 @@ export default function PlayPage() {
   const [simReady, setSimReady] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeCourse, setActiveCourse] = useState<CourseOption | null>(null);
+  const [copied, setCopied] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -127,6 +128,12 @@ export default function PlayPage() {
     iframeRef.current?.contentWindow?.postMessage({ type: msgType, courseId: activeCourse.id }, "*");
   }, [activeCourse, simReady, stage, connected]);
 
+  // Safety net: never sit on the launch screen without a paired phone — the
+  // round can't start, so fall back to the (gated) selector instead of hanging.
+  useEffect(() => {
+    if (stage === "launching" && !connected) setStage("select");
+  }, [stage, connected]);
+
   function writeLaunchUrl(course: CourseOption) {
     const url = new URL(window.location.href);
     url.searchParams.set("mode", course.hrefMode);
@@ -140,10 +147,21 @@ export default function PlayPage() {
 
   function selectCourse(course: CourseOption) {
     if (course.disabled) return;
-    // Phone pairing is optional — you can play in the browser standalone.
+    // Require a paired phone before a round can start — pick is locked until then.
+    if (!connected) return;
     setActiveCourse(course);
     setStage("launching");
     writeLaunchUrl(course);
+  }
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard may be blocked in some embedded browsers — ignore
+    }
   }
 
   function returnToSelect() {
@@ -184,7 +202,7 @@ export default function PlayPage() {
             </button>
           </div>
         ) : (
-          <span className="sim-full-hint">Choose mode</span>
+          <span className="sim-full-hint">{connected ? "Choose mode" : "Pair phone"}</span>
         )}
       </div>
 
@@ -215,60 +233,80 @@ export default function PlayPage() {
       {/* Course selector */}
       {stage === "select" && (
         <div className="sim-stage sim-stage-select">
-          <div className="sim-launch-shell">
+          <div className={`sim-launch-shell${connected ? " is-connected" : " is-locked"}`}>
             <section className="sim-launch-copy" aria-label="Play True Carry">
-              <p className="sim-select-kicker">{connected ? "Phone connected" : "Browser sim ready"}</p>
+              <p className={`sim-select-kicker${connected ? "" : " waiting"}`}>
+                {connected ? "● Phone connected" : "Step 1 — pair your iPhone"}
+              </p>
               <h1 className="sim-select-title">Choose how you want to play.</h1>
               <p className="sim-select-body">
                 {connected
-                  ? "Your phone is paired — pick a mode and it'll feed real shots straight in."
-                  : "Pick the range or an 18-hole course and play right here. Pair your iPhone (code on the right) anytime to add real shots."}
+                  ? "Your phone is paired — pick a mode and every shot you hit feeds straight into the sim."
+                  : "Connect your iPhone with the code on the right to unlock the range and courses. The picks below stay locked until you're paired."}
               </p>
               <div className="sim-status-row">
                 <span><b>{COURSES.filter(c => !c.disabled).length}</b> playable modes</span>
-                <span><b>{connected ? "Live" : "Optional"}</b> phone link</span>
+                <span><b>{connected ? "Live" : "Required"}</b> phone link</span>
               </div>
             </section>
 
             <section className="sim-course-panel" aria-label="Courses">
               <div className="sim-course-panel-head">
                 <p>Course Select</p>
-                <span>{connected ? "Ready for live shots" : "Ready in browser"}</span>
+                <span>{connected ? "Ready for live shots" : "🔒 Pair phone to unlock"}</span>
               </div>
               <div className="sim-course-list">
-                {COURSES.map(c => (
-                  <button
-                    key={c.id}
-                    className={`sim-course-card${c.disabled ? " disabled" : ""}`}
-                    onClick={() => selectCourse(c)}
-                    disabled={c.disabled}
-                  >
-                    <span className="sim-course-icon" aria-hidden="true">{c.mark}</span>
-                    <span className="sim-course-info">
-                      <span className="sim-course-meta">{c.meta}</span>
-                      <span className="sim-course-name">{c.name}</span>
-                      <span className="sim-course-sub">{c.sub}</span>
-                      <span className="sim-course-detail">{c.detail}</span>
-                    </span>
-                    <span className="sim-course-action">{c.disabled ? "Soon" : "Play"}</span>
-                  </button>
-                ))}
+                {COURSES.map(c => {
+                  const locked = !c.disabled && !connected;
+                  return (
+                    <button
+                      key={c.id}
+                      className={`sim-course-card${c.disabled ? " disabled" : ""}${locked ? " locked" : ""}`}
+                      onClick={() => selectCourse(c)}
+                      disabled={c.disabled || !connected}
+                      aria-disabled={c.disabled || !connected}
+                    >
+                      <span className="sim-course-icon" aria-hidden="true">{c.mark}</span>
+                      <span className="sim-course-info">
+                        <span className="sim-course-meta">{c.meta}</span>
+                        <span className="sim-course-name">{c.name}</span>
+                        <span className="sim-course-sub">{c.sub}</span>
+                        <span className="sim-course-detail">{c.detail}</span>
+                      </span>
+                      <span className="sim-course-action">
+                        {c.disabled ? "Soon" : locked ? "🔒" : "Play"}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
-            <aside className="sim-pairing-panel" aria-label="Phone pairing">
+            <aside className={`sim-pairing-panel${connected ? " is-connected" : " is-waiting"}`} aria-label="Phone pairing">
               <div className="sim-pairing-top">
                 <span className={`sim-connection-dot${connected ? " connected" : ""}`} aria-hidden="true" />
-                <span>{connected ? "Connected" : "Pair iPhone"}</span>
+                <span>{connected ? "iPhone connected" : "Pair to play"}</span>
               </div>
-              <h2 className="sim-pairing-title">Live shot input</h2>
+              <h2 className="sim-pairing-title">{connected ? "You're connected" : "Connect your iPhone"}</h2>
               <p className="sim-pairing-sub">
-                Open the TrueCarry app, enter this code in Live Sim, then select any course here.
+                {connected
+                  ? "Pick a mode on the left and start hitting — your shots show up here live."
+                  : "Open the TrueCarry app → Sim → Live Sim, then enter this code to unlock play."}
               </p>
-              <div className="sim-pairing-code">{code}</div>
-              <p className="sim-pairing-hint">
-                {connected ? "Shots will feed the selected mode." : "The website sim works now; pairing adds real shots."}
-              </p>
+              <div className="sim-pairing-code-wrap">
+                <div className="sim-pairing-code">{code}</div>
+                <button type="button" className="sim-pairing-copy" onClick={copyCode}>
+                  {copied ? "Copied ✓" : "Copy"}
+                </button>
+              </div>
+              {connected ? (
+                <p className="sim-pairing-hint">Shots will feed the selected mode in real time.</p>
+              ) : (
+                <div className="sim-pairing-waiting" role="status" aria-live="polite">
+                  <span className="sim-pairing-spinner" aria-hidden="true" />
+                  Waiting for your phone…
+                </div>
+              )}
             </aside>
           </div>
         </div>

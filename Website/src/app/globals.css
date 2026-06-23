@@ -1979,6 +1979,40 @@ code {
 .sim-pairing-sub{ font-size:14px; color:color-mix(in oklab,var(--bone,#f2eee1) 64%,transparent); margin:14px 0 20px; line-height:1.6; }
 .sim-pairing-code{ width:100%; box-sizing:border-box; font-family:var(--r-mono); font-size:clamp(32px,4.2vw,48px); font-weight:700; letter-spacing:.18em; color:var(--carry-gold,#c9a86a); background:rgba(201,168,106,.07); border:1px solid rgba(201,168,106,.25); border-radius:8px; padding:14px 16px; line-height:1; text-align:center; }
 .sim-pairing-hint{ margin:auto 0 0; padding-top:22px; font-family:var(--r-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; line-height:1.55; color:color-mix(in oklab,var(--bone,#f2eee1) 42%,transparent); }
+
+/* ---- connect-first gating ---- */
+.sim-select-kicker.waiting{ color:var(--carry-gold,#c9a86a); }
+.sim-course-card.locked{ opacity:.5; cursor:not-allowed; filter:saturate(.55); }
+.sim-course-card.locked:hover{ transform:none; background:rgba(255,255,255,.045); border-color:rgba(201,168,106,.2); }
+.sim-course-card.locked .sim-course-action{ font-size:14px; }
+.sim-launch-shell.is-locked .sim-course-panel{ border-color:rgba(201,168,106,.16); }
+
+/* pairing panel = the primary call to action while unpaired */
+.sim-pairing-panel.is-waiting{
+  border-color:rgba(201,168,106,.55);
+  animation:simPairGlow 2.6s ease-in-out infinite;
+}
+.sim-pairing-panel.is-connected{ border-color:rgba(143,212,154,.5); }
+@keyframes simPairGlow{
+  0%,100%{ box-shadow:0 24px 70px rgba(0,0,0,.22), 0 0 0 1px rgba(201,168,106,.16), inset 0 1px 0 rgba(255,255,255,.04); }
+  50%{ box-shadow:0 24px 84px rgba(0,0,0,.3), 0 0 28px rgba(201,168,106,.2), inset 0 1px 0 rgba(255,255,255,.04); }
+}
+.sim-connection-dot{ animation:simDotPulse 1.6s ease-in-out infinite; }
+.sim-connection-dot.connected{ animation:none; }
+@keyframes simDotPulse{ 0%,100%{ opacity:1; } 50%{ opacity:.4; } }
+
+.sim-pairing-code-wrap{ display:flex; align-items:stretch; gap:8px; }
+.sim-pairing-code-wrap .sim-pairing-code{ flex:1; }
+.sim-pairing-copy{ flex-shrink:0; font-family:var(--r-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:var(--carry-gold,#c9a86a); background:rgba(201,168,106,.08); border:1px solid rgba(201,168,106,.25); border-radius:8px; padding:0 16px; cursor:pointer; transition:background .15s,color .15s; }
+.sim-pairing-copy:hover{ background:rgba(201,168,106,.18); color:var(--bone,#f2eee1); }
+
+.sim-pairing-waiting{ display:flex; align-items:center; gap:10px; margin:auto 0 0; padding-top:22px; font-family:var(--r-mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--bone,#f2eee1) 60%,transparent); }
+.sim-pairing-spinner{ width:13px; aspect-ratio:1; border-radius:50%; border:2px solid rgba(201,168,106,.28); border-top-color:var(--carry-gold,#c9a86a); animation:simSpin .8s linear infinite; }
+@keyframes simSpin{ to{ transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce){
+  .sim-pairing-panel.is-waiting,.sim-connection-dot,.sim-pairing-spinner{ animation:none; }
+}
+
 .sim-stage-loading{ background:#0a110c; }
 .sim-loading-card{
   width:min(420px,calc(100vw - 32px));
