@@ -100,6 +100,7 @@ struct ProfileSettingsView: View {
                     Text(profile?.displayName ?? user?.name ?? "Guest")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(BSTheme.textPrimary)
+                        .fitOneLine(0.6)
                     HStack(spacing: 8) {
                         StatusPill(text: profile?.handedness.rawValue ?? "Right-handed", color: BSTheme.electricCyan)
                         StatusPill(text: user?.subscriptionStatus.rawValue.capitalized ?? "Free", color: BSTheme.textMuted)
@@ -112,7 +113,7 @@ struct ProfileSettingsView: View {
                         Text(email)
                             .font(.system(size: 12))
                             .foregroundColor(BSTheme.textMuted)
-                            .lineLimit(1)
+                            .fitOneLine()
                     }
                 }
                 Spacer()

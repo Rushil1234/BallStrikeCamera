@@ -159,9 +159,12 @@ struct FeedView: View {
         .sheet(isPresented: $showNotifications) {
             NavigationStack {
                 NotificationsView(notifications: vm.notifications) { postId in
-                    // Open the related post's comments. Small delay lets the sheet dismiss first.
-                    if let post = vm.posts.first(where: { $0.id == postId }) {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { commentingPost = post }
+                    // Open the related post's comments. Resolve the post even when it isn't in the
+                    // currently-loaded feed page; small delay lets the sheet dismiss first.
+                    Task {
+                        guard let post = await vm.findPost(id: postId) else { return }
+                        try? await Task.sleep(nanoseconds: 350_000_000)
+                        commentingPost = post
                     }
                 }
             }
@@ -532,6 +535,7 @@ private struct LeaderboardPreviewRow: View {
                 Text(entry.displayName)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(TCTheme.textPrimary)
+                    .fitOneLine(0.6)
                 Text(entry.metric.title)
                     .font(.system(size: 11))
                     .foregroundColor(TCTheme.textMuted)

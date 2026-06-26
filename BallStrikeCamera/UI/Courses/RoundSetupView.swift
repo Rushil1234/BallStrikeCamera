@@ -75,7 +75,8 @@ struct RoundSetupView: View {
 
                             HStack(spacing: 8) {
                                 TCPill(text: teeBox.name + " Tees", color: TCTheme.sage)
-                                TCPill(text: "\(teeBox.totalYards) yds", color: TCTheme.gold)
+                                let setupYards = course.displayYards(for: teeBox)
+                                TCPill(text: setupYards > 0 ? "\(setupYards) yds" : "GPS estimate", color: TCTheme.gold)
                             }
 
                             if let rating = teeBox.rating, let slope = teeBox.slope {

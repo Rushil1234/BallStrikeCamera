@@ -159,6 +159,7 @@ struct FriendsView: View {
                 Text(profile.displayName)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(TCTheme.textPrimary)
+                    .fitOneLine(0.6)
                 if let home = profile.homeCourseName, !home.isEmpty {
                     Text(home).font(.system(size: 12)).foregroundColor(TCTheme.textMuted)
                 }

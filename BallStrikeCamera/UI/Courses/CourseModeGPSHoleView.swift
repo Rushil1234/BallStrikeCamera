@@ -237,13 +237,13 @@ private final class AimSegmentPolyline: MKPolyline {}
 private final class AimSegmentCasingPolyline: MKPolyline {}
 
 /// A single dispersion shot dot — the selected club's typical landing pattern (#7).
-private final class DispersionDotCircle: MKCircle { var isMiss = false }
+private final class DispersionDotCircle: MKCircle { var fill: UIColor = .systemGreen }
 
-/// A projected dispersion shot: where it lands + whether it's an off-line miss
-/// (drives the green/red coloring, matching the insights dispersion chart).
+/// A projected dispersion shot: where it lands + its fill color (proximity-graded for a single
+/// club, or the club's identity color when several clubs are overlaid at once).
 private struct DispersionDot {
     let coord: CLLocationCoordinate2D
-    let isMiss: Bool
+    let fill: UIColor
 }
 
 extension CLLocationCoordinate2D {
@@ -254,6 +254,12 @@ extension CLLocationCoordinate2D {
         let y = sin(dLon) * cos(la2)
         let x = cos(la1) * sin(la2) - sin(la1) * cos(la2) * cos(dLon)
         return (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+    }
+
+    /// Great-circle distance to another coordinate, in yards.
+    func yards(to b: CLLocationCoordinate2D) -> Double {
+        CLLocation(latitude: latitude, longitude: longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude)) * 1.0936133
     }
 
     /// Move `forward` yards along `bearingDeg`, then `right` yards perpendicular
@@ -656,7 +662,9 @@ private struct SatelliteMapBackground: UIViewRepresentable {
     }
 
     private func preferredHolePath(start: CLLocationCoordinate2D, green: CLLocationCoordinate2D) -> [CLLocationCoordinate2D] {
-        guard pathCoordinates.count >= 2 else { return [start, green] }
+        // A single fairway waypoint is enough to form a dogleg ([start, waypoint, green]); only a
+        // truly empty path falls back to a straight line.
+        guard pathCoordinates.count >= 1 else { return [start, green] }
         var snapped = pathCoordinates.filter { coord in
             Self.metersBetween(coord, start) > 3 && Self.metersBetween(coord, green) > 3
         }
@@ -738,10 +746,10 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             !($0 is MKUserLocation) && !($0 is FlightBallAnnotation)
         })
 
-        // Dispersion dots for the selected club (#7) — circles on the turf.
+        // Dispersion dots for the selected club(s) (#7) — circles on the turf.
         for dot in dispersionDots {
-            let circle = DispersionDotCircle(center: dot.coord, radius: 2.6)
-            circle.isMiss = dot.isMiss
+            let circle = DispersionDotCircle(center: dot.coord, radius: 2.0)
+            circle.fill = dot.fill
             map.addOverlay(circle, level: .aboveLabels)
         }
 
@@ -1166,13 +1174,11 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             if let dot = overlay as? DispersionDotCircle {
                 let r = MKCircleRenderer(circle: dot)
-                // Match the insights dispersion chart: green = on line, red = miss.
-                // Semi-transparent so overlapping shots read darker (density).
-                let good = UIColor(red: 0.45, green: 0.88, blue: 0.38, alpha: 1)
-                let miss = UIColor(red: 0.95, green: 0.38, blue: 0.50, alpha: 1)
-                r.fillColor   = (dot.isMiss ? miss : good).withAlphaComponent(0.80)
-                r.strokeColor = UIColor.black.withAlphaComponent(0.45)
-                r.lineWidth   = 0.6
+                // Per-dot color (proximity-graded or club identity). Opaque so overlapping dots of
+                // different colors never blend into brown; a thin white border keeps them legible.
+                r.fillColor   = dot.fill
+                r.strokeColor = UIColor.white.withAlphaComponent(0.85)
+                r.lineWidth   = 0.5
                 return r
             }
             if let polygon = overlay as? TaggedPolygon {
@@ -1396,9 +1402,10 @@ struct CourseModeGPSHoleView: View {
     @State private var showFinishAlert = false
     @State private var showDeleteRoundConfirm = false
     @State private var gpsOn           = true
-    @State private var dispersionClubId: UUID?     // nil = overlay off
-    @State private var dispersionShots: [SavedShot] = []
+    @State private var dispersionClubIds: [UUID] = []          // empty = overlay off; multiple = multi-club
+    @State private var dispersionShotsByClub: [UUID: [SavedShot]] = [:]
     @State private var showDispersionPicker = false
+    @State private var slopeAdjustDots = false     // shift dispersion dots by slope (plays-like)
     @State private var infoMessage: String?
     @State private var roundStartTime  = Date()
     @State private var recenterToken   = 0
@@ -1582,11 +1589,13 @@ struct CourseModeGPSHoleView: View {
     /// is empty on par 3s / near the green), else the green. Each shot is offset
     /// by its lateral miss; large misses are flagged for the red coloring.
     private var dispersionDots: [DispersionDot] {
-        guard dispersionClubId != nil, !dispersionShots.isEmpty else { return [] }
+        guard !dispersionClubIds.isEmpty else { return [] }
+        _ = elevation.revision   // recompute when a new elevation grid loads (slope mode)
         let gh = currentMapHole ?? currentCourseHole
+        let greenCenter = gh?.greenCenterCoordinate?.clCoordinate
         let target = aimTarget
             ?? activeAimPoints.first
-            ?? gh?.greenCenterCoordinate?.clCoordinate
+            ?? greenCenter
             ?? gh?.greenFrontCoordinate?.clCoordinate
         // Use live GPS only when on the hole; else project from the tee so the
         // pattern lands on the visible hole (not off-screen from a far sim fix).
@@ -1595,14 +1604,62 @@ struct CourseModeGPSHoleView: View {
             ?? gh?.greenFrontCoordinate?.clCoordinate
         guard let target, let origin else { return [] }
         let bearing = origin.bearing(to: target)
-        return dispersionShots.compactMap { shot in
-            guard let p = ShotDispersion.point(for: shot) else { return nil }
-            let coord = origin.projected(yardsForward: p.carry, yardsRight: p.lateral, bearingDeg: bearing)
-            return DispersionDot(coord: coord, isMiss: abs(p.lateral) > 15)
+        // Slope mode: shift each landing point along the aim line by the net elevation change to
+        // where it lands — uphill plays shorter (dot pulls in), downhill plays longer (dot pushes
+        // out). Falls back to the flat landing point when no elevation grid is available.
+        let originElev = slopeAdjustDots ? elevation.elevation(at: origin) : nil
+
+        // Single-club approaches (≤220 yd to the green) and par 3s grade each dot by how close it
+        // lands to the green center. With 2+ clubs we instead color by club so you can tell them
+        // apart. Proximity is measured from the *final* (slope-adjusted) coord, so the colors shift
+        // correctly when slope mode is toggled.
+        let isPar3 = (gh?.par ?? 4) == 3
+        let yardsToGreen = greenCenter.map { origin.yards(to: $0) } ?? .greatestFiniteMagnitude
+        let multiClub = dispersionClubIds.count > 1
+        let useProximity = !multiClub && (isPar3 || yardsToGreen <= 220)
+
+        var dots: [DispersionDot] = []
+        for (selectionIndex, clubId) in dispersionClubIds.enumerated() {
+            // Club identity color is keyed by selection order, so it matches the selector and is
+            // only meaningful when several clubs are overlaid at once.
+            let clubColor = UIColor(TCDispersionColor.club(selectionIndex))
+            for shot in dispersionShotsByClub[clubId] ?? [] {
+                guard let p = ShotDispersion.point(for: shot) else { continue }
+                var carry = p.carry
+                if let originElev {
+                    let flat = origin.projected(yardsForward: p.carry, yardsRight: p.lateral, bearingDeg: bearing)
+                    if let landElev = elevation.elevation(at: flat) {
+                        let vertYds = (landElev - originElev) * ElevationService.yardsPerMeter
+                        carry = max(1, p.carry - vertYds)   // uphill (+vert) → shorter; downhill (−) → longer
+                    }
+                }
+                let coord = origin.projected(yardsForward: carry, yardsRight: p.lateral, bearingDeg: bearing)
+                let fill: UIColor
+                if multiClub {
+                    fill = clubColor
+                } else if useProximity, let greenCenter {
+                    fill = UIColor(TCDispersionColor.byGreenProximity(coord.yards(to: greenCenter)))
+                } else {
+                    fill = UIColor(TCDispersionColor.byLateral(abs(p.lateral)))
+                }
+                dots.append(DispersionDot(coord: coord, fill: fill))
+            }
+        }
+        return dots
+    }
+
+    /// Toggle a club in/out of the dispersion overlay (multi-select).
+    private func toggleDispersionClub(_ club: UserClub) {
+        if let idx = dispersionClubIds.firstIndex(of: club.id) {
+            dispersionClubIds.remove(at: idx)
+            dispersionShotsByClub[club.id] = nil
+        } else {
+            dispersionClubIds.append(club.id)
+            loadDispersionShots(clubId: club.id, clubName: club.name)
         }
     }
 
-    /// Loads the chosen club's past shots to project on the course.
+    /// Loads a club's past shots to project on the course (stored per club for multi-club overlay).
     private func loadDispersionShots(clubId: UUID, clubName: String?) {
         guard let uid = session.currentUser?.id else { return }
         Task {
@@ -1611,7 +1668,7 @@ struct CourseModeGPSHoleView: View {
             let filtered = all.filter { s in
                 s.clubId == clubId || (clubName != nil && s.clubName == clubName)
             }.filter { $0.metrics.carryYards > 0 && !$0.isBadShot }
-            await MainActor.run { dispersionShots = filtered }
+            await MainActor.run { dispersionShotsByClub[clubId] = filtered }
         }
     }
 
@@ -1637,7 +1694,7 @@ struct CourseModeGPSHoleView: View {
     private var currentHolePathCoordinates: [CLLocationCoordinate2D] {
         if let tee = currentMapHole?.teeCoordinate?.clCoordinate,
            let green = currentMapHole?.greenCenterCoordinate?.clCoordinate {
-            if let coords = currentMapHole?.pathCoordinates, coords.count >= 2 {
+            if let coords = currentMapHole?.pathCoordinates, coords.count >= 1 {
                 var path = coords.map(\.clCoordinate).filter { coord in
                     Self.metersBetween(coord, tee) > 3 && Self.metersBetween(coord, green) > 3
                 }
@@ -2226,20 +2283,10 @@ struct CourseModeGPSHoleView: View {
                 .tcAppearance()
             }
         }
-        .confirmationDialog("Show dispersion for…", isPresented: $showDispersionPicker, titleVisibility: .visible) {
-            ForEach(clubs) { c in
-                Button(c.name) {
-                    dispersionClubId = c.id
-                    loadDispersionShots(clubId: c.id, clubName: c.name)
-                }
-            }
-            if dispersionClubId != nil {
-                Button("Hide overlay", role: .destructive) {
-                    dispersionClubId = nil
-                    dispersionShots = []
-                }
-            }
-            Button("Cancel", role: .cancel) {}
+        .sheet(isPresented: $showDispersionPicker) {
+            dispersionPickerSheet
+                .presentationDetents([.medium, .large])
+                .tcAppearance()
         }
         .confirmationDialog(
             "Is this where shot \(vm.currentHoleTrackedShots.count) landed?",
@@ -2667,8 +2714,18 @@ struct CourseModeGPSHoleView: View {
             Spacer(minLength: 0)
             VStack(spacing: 14) {
                 railButton("location.fill", isActive: gpsOn) { gpsOn.toggle() }
-                railButton("scope", isActive: dispersionClubId != nil) {
+                railButton("scope", isActive: !dispersionClubIds.isEmpty) {
                     showDispersionPicker = true
+                }
+                // Slope toggle — only while the dispersion overlay is active. Pulls each dot in
+                // (uphill) or out (downhill) by the plays-like elevation change.
+                if !dispersionClubIds.isEmpty {
+                    railButton("mountain.2.fill", isActive: slopeAdjustDots) {
+                        slopeAdjustDots.toggle()
+                        if slopeAdjustDots {
+                            loadElevationForHole()   // ensure the grid is loaded for the shift
+                        }
+                    }
                 }
                 railButton("camera.fill", isActive: false) { openCamera() }
                 railButton("list.number", isActive: false) { showScorecard = true }
@@ -2677,6 +2734,73 @@ struct CourseModeGPSHoleView: View {
             .frame(width: 56)
             .hudGlass(28)
             Spacer(minLength: 0)
+        }
+    }
+
+    /// Dispersion club picker. Plain list — tap to toggle one or more clubs. A club only takes an
+    /// identity color once *more than one* club is selected (so you can tell overlapping patterns
+    /// apart); the fill matches that club's on-course dots. With a single club it stays neutral and
+    /// the dots grade by green proximity / line instead.
+    private var dispersionPickerSheet: some View {
+        let multi = dispersionClubIds.count > 1
+        return NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 8) {
+                    if clubs.isEmpty {
+                        Text("Add clubs to your bag to overlay shot dispersion.")
+                            .font(.system(size: 14))
+                            .foregroundColor(TCTheme.textMuted)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 50)
+                    }
+                    ForEach(clubs) { club in
+                        let selected = dispersionClubIds.contains(club.id)
+                        let color = TCDispersionColor.club(dispersionClubIds.firstIndex(of: club.id) ?? 0)
+                        let showColor = selected && multi
+                        Button { toggleDispersionClub(club) } label: {
+                            HStack(spacing: 12) {
+                                Text(club.name)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(showColor ? .white : TCTheme.textPrimary)
+                                    .padding(.horizontal, showColor ? 10 : 0)
+                                    .padding(.vertical, showColor ? 5 : 0)
+                                    .background { if showColor { Capsule().fill(color) } }
+                                Spacer()
+                                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(selected ? (showColor ? color : TCTheme.sage) : TCTheme.textUltraMuted)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(TCTheme.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(selected ? (showColor ? color.opacity(0.6) : TCTheme.sage.opacity(0.5)) : TCTheme.border, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, TCTheme.hPad)
+                .padding(.top, 12)
+                .padding(.bottom, 30)
+            }
+            .background(TrueCarryBackground().ignoresSafeArea())
+            .navigationTitle("Dispersion Overlay")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if !dispersionClubIds.isEmpty {
+                        Button("Clear") {
+                            dispersionClubIds.removeAll()
+                            dispersionShotsByClub.removeAll()
+                        }
+                        .foregroundColor(.red)
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showDispersionPicker = false }
+                        .foregroundColor(TCTheme.sage)
+                }
+            }
         }
     }
 

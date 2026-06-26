@@ -117,6 +117,16 @@ enum CourseCatalog {
         let id: String
         let name: String?
         let holes: [CatalogHole]
+        let teeBoxes: [CatalogTeeBox]?
+
+        struct CatalogTeeBox: Decodable {
+            let id: String
+            let name: String?
+            let color: String?
+            let totalYards: Int?
+            let rating: Double?
+            let slope: Int?
+        }
 
         struct CatalogHole: Decodable {
             let number: Int
@@ -155,18 +165,35 @@ enum CourseCatalog {
                 return hole
             }
 
-            // Build TeeBox entries by aggregating per-hole yardages across all holes.
-            var totalsByTee: [String: Int] = [:]
-            for h in holes {
-                for (name, yards) in (h.teeYardsByTeeBox ?? [:]) where yards > 0 {
-                    totalsByTee[name, default: 0] += yards
+            // Tee boxes: prefer the feed's declared tee_boxes (they carry real names/colors like
+            // "Blue", "Black"; the per-hole yardage keys may just be opaque ids). Recompute the
+            // total from the per-hole yardages keyed by the tee id so it stays consistent. Only
+            // when no tee_boxes are present do we synthesize from the per-hole keys (OSM blobs use
+            // the tee name as the key, so that path still yields readable names).
+            let teeBoxes: [TeeBox]
+            if let declared = self.teeBoxes, !declared.isEmpty {
+                teeBoxes = declared.map { tb in
+                    let summed = holes.reduce(0) { $0 + max(0, $1.teeYardsByTeeBox?[tb.id] ?? 0) }
+                    return TeeBox(id: tb.id,
+                                  name: tb.name ?? tb.id,
+                                  color: tb.color ?? (tb.name ?? "white").lowercased(),
+                                  totalYards: summed > 0 ? summed : (tb.totalYards ?? 0),
+                                  rating: tb.rating,
+                                  slope: tb.slope)
                 }
+            } else {
+                var totalsByTee: [String: Int] = [:]
+                for h in holes {
+                    for (name, yards) in (h.teeYardsByTeeBox ?? [:]) where yards > 0 {
+                        totalsByTee[name, default: 0] += yards
+                    }
+                }
+                teeBoxes = totalsByTee
+                    .sorted { $0.value > $1.value }   // longest tee first
+                    .map { name, total in
+                        TeeBox(id: name, name: name, color: name.lowercased(), totalYards: total)
+                    }
             }
-            let teeBoxes: [TeeBox] = totalsByTee
-                .sorted { $0.value > $1.value }   // longest tee first
-                .map { name, total in
-                    TeeBox(id: name, name: name, color: name.lowercased(), totalYards: total)
-                }
 
             var course = GolfCourse(id: catalogId, name: self.name ?? "", holes: golfHoles,
                                     teeBoxes: teeBoxes)
@@ -200,11 +227,31 @@ enum CourseCatalog {
 extension Data {
     var isGzip: Bool { count >= 2 && self[startIndex] == 0x1f && self[startIndex + 1] == 0x8b }
 
-    /// Inflate standard gzip data. Strips the 10-byte gzip header and raw-inflates the DEFLATE
-    /// stream with COMPRESSION_ZLIB. Returns nil on failure.
+    /// Inflate standard gzip data and raw-inflate the DEFLATE stream with COMPRESSION_ZLIB.
+    /// The gzip header is variable-length — the optional FEXTRA/FNAME/FCOMMENT/FHCRC fields
+    /// (some pipelines embed the original filename) must be skipped per the FLG byte, otherwise
+    /// the leftover header bytes corrupt the stream and inflation fails. Returns nil on failure.
     func gunzipped() -> Data? {
-        guard count > 18 else { return nil }                    // header(10) + trailer(8)
-        let deflate = subdata(in: (startIndex + 10)..<endIndex) // skip gzip header
+        guard count > 18,                                       // header(≥10) + trailer(8)
+              self[startIndex] == 0x1f, self[startIndex + 1] == 0x8b else { return nil }
+        let flg = self[startIndex + 3]
+        var headerLen = 10
+        if flg & 0x04 != 0 {                                    // FEXTRA: 2-byte length + payload
+            guard startIndex + headerLen + 1 < endIndex else { return nil }
+            let xlen = Int(self[startIndex + headerLen]) | (Int(self[startIndex + headerLen + 1]) << 8)
+            headerLen += 2 + xlen
+        }
+        if flg & 0x08 != 0 {                                    // FNAME: null-terminated
+            while startIndex + headerLen < endIndex && self[startIndex + headerLen] != 0 { headerLen += 1 }
+            headerLen += 1
+        }
+        if flg & 0x10 != 0 {                                    // FCOMMENT: null-terminated
+            while startIndex + headerLen < endIndex && self[startIndex + headerLen] != 0 { headerLen += 1 }
+            headerLen += 1
+        }
+        if flg & 0x02 != 0 { headerLen += 2 }                   // FHCRC: 2-byte header CRC
+        guard startIndex + headerLen < endIndex else { return nil }
+        let deflate = subdata(in: (startIndex + headerLen)..<endIndex) // skip the full gzip header
 
         let bufferSize = 1 << 16
         var output = Data()

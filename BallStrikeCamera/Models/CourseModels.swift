@@ -59,6 +59,68 @@ struct GolfCourse: Codable, Identifiable {
         guard !playable.isEmpty else { return false }
         return playable.contains { $0.greenCenterCoordinate != nil }
     }
+
+    // MARK: - Tee yardage
+
+    /// Per-hole yardage for `tee`, matched by tee-box id then by name/color
+    /// (mirrors `scorecardYardage` resolution in CourseModeGPSHoleView).
+    private func holeYardage(_ hole: GolfHole, for tee: TeeBox) -> Int? {
+        if let y = hole.teeYardsByTeeBox[tee.id], y > 0 { return y }
+        let key = hole.teeYardsByTeeBox.keys.first {
+            $0.caseInsensitiveCompare(tee.name)  == .orderedSame ||
+            $0.caseInsensitiveCompare(tee.color) == .orderedSame
+        }
+        if let key, let y = hole.teeYardsByTeeBox[key], y > 0 { return y }
+        return nil
+    }
+
+    /// Trusted total yardage for a tee box, or `nil` when the per-hole data can't be trusted.
+    ///
+    /// Two corruption patterns are common in the feed and both yield nonsensical tee yardages:
+    ///   • Duplicated holes (e.g. 18 holes repeated 4×) inflate the stored total to ~24,000 yds.
+    ///   • Partial coverage (e.g. only holes 1–9 carry the White/Yellow/Red tees) makes those
+    ///     totals ~half of the real value next to a full-18 "Blue" tee.
+    ///
+    /// We rebuild the total from one per-hole yardage per *distinct hole number* (de-duplicating),
+    /// and only trust the result when every distinct hole has a yardage for this tee. A tee that
+    /// is missing any hole returns `nil` so the UI can show "GPS estimate" rather than a misleading
+    /// half-length number.
+    /// De-duplicated per-distinct-hole total, but only when this tee carries a yardage for every
+    /// hole. Does NOT apply the orphan/implausibility check — that is layered on in `trustedYards`.
+    private func fullyCoveredYards(for tee: TeeBox) -> Int? {
+        let playable = holes.filter { $0.number > 0 }
+        guard !playable.isEmpty else { return tee.totalYards > 0 ? tee.totalYards : nil }
+        var yardageByHole: [Int: Int] = [:]
+        for hole in playable where yardageByHole[hole.number] == nil {
+            if let y = holeYardage(hole, for: tee) { yardageByHole[hole.number] = y }
+        }
+        let distinctHoles = Set(playable.map { $0.number }).count
+        guard yardageByHole.count == distinctHoles else { return nil }
+        let sum = yardageByHole.values.reduce(0, +)
+        return sum > 0 ? sum : nil
+    }
+
+    /// Longest fully-covered tee on the course — the reference for spotting orphan short tees.
+    private var longestCoveredYards: Int {
+        teeBoxes.compactMap { fullyCoveredYards(for: $0) }.max() ?? 0
+    }
+
+    func trustedYards(for tee: TeeBox) -> Int? {
+        guard let yards = fullyCoveredYards(for: tee) else { return nil }
+        let distinctHoles = max(1, Set(holes.filter { $0.number > 0 }.map { $0.number }).count)
+        let perHole = Double(yards) / Double(distinctHoles)
+        let longest = longestCoveredYards
+        // Drop an "orphan" tee that is both far shorter than the course's real tees (<50% of the
+        // longest fully-covered tee) and implausibly short per hole (<170 yd) — these are corrupted
+        // or mislabeled sets, not a graduated forward tee. Consistently short courses (all tees
+        // near each other, e.g. par-3 layouts) are kept because no tee is <50% of the longest.
+        if longest > 0, Double(yards) < 0.5 * Double(longest), perHole < 170 { return nil }
+        return yards
+    }
+
+    /// Display yardage for a tee box: the trusted total, or 0 when the data is incomplete /
+    /// duplicated / an implausible orphan. Callers treat 0 as "show GPS estimate, not a number".
+    func displayYards(for tee: TeeBox) -> Int { trustedYards(for: tee) ?? 0 }
 }
 
 enum CourseSource: String, Codable {

@@ -613,8 +613,9 @@ private struct TeeSelectorSheet: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(TCTheme.textPrimary)
                     HStack(spacing: 10) {
-                        if tee.totalYards > 0 {
-                            Text("\(tee.totalYards) yd")
+                        let displayYards = course.displayYards(for: tee)
+                        if displayYards > 0 {
+                            Text("\(displayYards) yd")
                                 .font(.system(size: 12))
                                 .foregroundColor(TCTheme.textMuted)
                         } else {

@@ -457,3 +457,20 @@ struct HeroCard<Content: View>: View {
             .shadow(color: BSTheme.electricCyan.opacity(0.12), radius: 24, x: 0, y: 8)
     }
 }
+
+// MARK: - Single-line autofit
+
+extension View {
+    /// Keeps an unbreakable single token (email address, username, handle, course id …) on one
+    /// line by shrinking the font to fit its container instead of wrapping or truncating with "…".
+    ///
+    /// Use this only for single-token text. Multi-word labels and sentences should wrap normally —
+    /// applying this to them would shrink the whole sentence to stay on one line, which is not the
+    /// intent. `truncationMode(.middle)` keeps the readable head + tail (e.g. `noah…@gmail.com`) on
+    /// the rare token too long to shrink to fit.
+    func fitOneLine(_ minScale: CGFloat = 0.5) -> some View {
+        self.lineLimit(1)
+            .minimumScaleFactor(minScale)
+            .truncationMode(.middle)
+    }
+}

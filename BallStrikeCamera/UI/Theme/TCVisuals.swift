@@ -612,32 +612,82 @@ struct TCRangeFinderDispersion: View {
             }
 
             // ── Shot dots ───────────────────────────────────────────────────
+            // Color by how straight the shot was (distance from the 0-line): dark green = dead
+            // straight, light green = close, yellow = drifting, red = well offline.
+            //
+            // Shots that land on (nearly) the same spot are merged into ONE solid dot that grows
+            // with the count — rather than stacking many semi-transparent dots, which blended into
+            // a muddy brown blob. Dots are opaque so overlapping clusters never mix into brown.
+            let bucket = 1.5   // yards; shots within this merge into a single, larger dot
+            var groups: [String: (sumLat: Double, sumCarry: Double, n: Int)] = [:]
             for sp in pts {
-                let pt = CGPoint(x: xCG(sp.lateral), y: yCG(sp.carry))
+                let key = "\(Int((sp.lateral / bucket).rounded()))_\(Int((sp.carry / bucket).rounded()))"
+                var g = groups[key] ?? (0, 0, 0)
+                g.sumLat += sp.lateral; g.sumCarry += sp.carry; g.n += 1
+                groups[key] = g
+            }
+            // Draw denser groups last so the bigger dots sit on top.
+            for (_, g) in groups.sorted(by: { $0.value.n < $1.value.n }) {
+                let lat = g.sumLat / Double(g.n), carry = g.sumCarry / Double(g.n)
+                let pt = CGPoint(x: xCG(lat), y: yCG(carry))
                 guard pt.x >= plotLeft - 8 && pt.x <= plotRight + 8 &&
                       pt.y >= plotTop  - 8 && pt.y <= plotBot  + 8 else { continue }
-                let inFairway = abs(sp.lateral) <= fairwayHalfYds
-                let col: Color = inFairway
-                    ? Color(red: 0.45, green: 0.88, blue: 0.38)
-                    : Color(red: 0.95, green: 0.38, blue: 0.50)
-                let r: CGFloat = 5
+                let col = TCDispersionColor.byLateral(abs(lat))
+                let r: CGFloat = min(5 + CGFloat(g.n - 1) * 1.3, 11)   // grow per extra shot, capped
                 ctx.fill(Path(ellipseIn: CGRect(x: pt.x-r, y: pt.y-r, width: r*2, height: r*2)),
-                         with: .color(col.opacity(0.88)))
+                         with: .color(col))
                 ctx.stroke(Path(ellipseIn: CGRect(x: pt.x-r, y: pt.y-r, width: r*2, height: r*2)),
-                           with: .color(Color.black.opacity(0.40)), lineWidth: 0.8)
+                           with: .color(Color.white.opacity(0.85)), lineWidth: 0.9)
             }
 
-            // ── Mean dot (gold) ─────────────────────────────────────────────
-            if !pts.isEmpty {
-                let avgL = pts.map { $0.lateral }.reduce(0, +) / Double(pts.count)
-                let avgC = pts.map { $0.carry   }.reduce(0, +) / Double(pts.count)
-                let pt = CGPoint(x: xCG(avgL), y: yCG(avgC))
-                ctx.fill(Path(ellipseIn: CGRect(x: pt.x-8, y: pt.y-8, width: 16, height: 16)),
-                         with: .color(TCTheme.gold))
-                ctx.stroke(Path(ellipseIn: CGRect(x: pt.x-8, y: pt.y-8, width: 16, height: 16)),
-                           with: .color(Color.black.opacity(0.50)), lineWidth: 1.5)
-            }
         }
+    }
+}
+
+// MARK: - Dispersion dot coloring (shared by insights chart + course overlay)
+
+enum TCDispersionColor {
+    /// Insights chart: 4-tier by how far offline (yards from the 0-line). Dark green = dead
+    /// straight, light green = close, yellow = drifting, red = well offline.
+    static func byLateral(_ absLateral: Double) -> Color {
+        switch absLateral {
+        case ..<5:   return Color(red: 0.13, green: 0.55, blue: 0.20)   // dark green
+        case ..<12:  return Color(red: 0.42, green: 0.85, blue: 0.36)   // light green
+        case ..<25:  return Color(red: 0.97, green: 0.80, blue: 0.27)   // yellow
+        default:     return Color(red: 0.91, green: 0.30, blue: 0.33)   // red
+        }
+    }
+
+    /// Course overlay (approach / par 3): shaded by distance in yards to the green center.
+    /// ≤15 green, ≤30 yellow, else red — and within each band a deeper shade the closer to perfect
+    /// (a dead-center shot is the darkest green).
+    static func byGreenProximity(_ distanceYds: Double) -> Color {
+        func lerp(_ a: (Double, Double, Double), _ b: (Double, Double, Double), _ t: Double) -> Color {
+            let u = max(0, min(1, t))
+            return Color(red: a.0 + (b.0 - a.0) * u, green: a.1 + (b.1 - a.1) * u, blue: a.2 + (b.2 - a.2) * u)
+        }
+        switch distanceYds {
+        case ..<15: return lerp((0.09, 0.46, 0.15), (0.40, 0.82, 0.36), distanceYds / 15)            // deep→light green
+        case ..<30: return lerp((0.80, 0.60, 0.10), (0.99, 0.85, 0.34), (distanceYds - 15) / 15)     // deep→light yellow
+        default:    return lerp((0.76, 0.15, 0.17), (0.94, 0.40, 0.40), min(1, (distanceYds - 30) / 15)) // deep→light red
+        }
+    }
+
+    /// Distinct, stable colors for the multi-club overlay — one per club.
+    static let clubPalette: [Color] = [
+        Color(red: 0.26, green: 0.74, blue: 1.00),   // cyan
+        Color(red: 1.00, green: 0.56, blue: 0.20),   // orange
+        Color(red: 0.69, green: 0.46, blue: 1.00),   // violet
+        Color(red: 1.00, green: 0.40, blue: 0.72),   // pink
+        Color(red: 0.36, green: 0.84, blue: 0.48),   // green
+        Color(red: 1.00, green: 0.82, blue: 0.27),   // amber
+        Color(red: 0.40, green: 0.93, blue: 0.86),   // teal
+        Color(red: 0.96, green: 0.45, blue: 0.40),   // coral
+    ]
+
+    static func club(_ index: Int) -> Color {
+        guard !clubPalette.isEmpty else { return .green }
+        return clubPalette[((index % clubPalette.count) + clubPalette.count) % clubPalette.count]
     }
 }
 

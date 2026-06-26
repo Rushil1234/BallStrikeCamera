@@ -72,6 +72,18 @@ struct SessionDetailView: View {
 
     @State private var shots: [SavedShot] = []
     @State private var isLoading = true
+    // Shot deletion / multi-select
+    @State private var isSelecting = false
+    @State private var selectedShotIDs: Set<UUID> = []
+    @State private var showDeleteSelected = false
+    @State private var shotToDelete: SavedShot?
+    @State private var deleteError: String?
+
+    /// Range/sim sessions render the per-shot list; course rounds use the shot map instead.
+    private var showsShotsList: Bool {
+        if case .course = item { return false }
+        return true
+    }
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -110,6 +122,45 @@ struct SessionDetailView: View {
         .navigationTitle(item.displayName)
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if showsShotsList && !shots.isEmpty {
+                    if isSelecting {
+                        Button("Done") { exitSelection() }.foregroundColor(TCTheme.sage)
+                    } else {
+                        Button { startSelection() } label: { Image(systemName: "checkmark.circle") }
+                    }
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting { selectionActionBar }
+        }
+        .confirmationDialog("Delete this shot?",
+                            isPresented: Binding(get: { shotToDelete != nil }, set: { if !$0 { shotToDelete = nil } }),
+                            titleVisibility: .visible) {
+            Button("Delete shot", role: .destructive) {
+                if let s = shotToDelete { Task { await deleteShots([s.id]) } }
+                shotToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { shotToDelete = nil }
+        } message: {
+            Text("This removes the shot from your history and cannot be undone.")
+        }
+        .confirmationDialog("Delete \(selectedShotIDs.count) shot\(selectedShotIDs.count == 1 ? "" : "s")?",
+                            isPresented: $showDeleteSelected, titleVisibility: .visible) {
+            Button("Delete \(selectedShotIDs.count) shot\(selectedShotIDs.count == 1 ? "" : "s")", role: .destructive) {
+                Task { await deleteShots(Array(selectedShotIDs)) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the selected shots from your history and cannot be undone.")
+        }
+        .alert("Couldn't delete", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
+            Button("OK", role: .cancel) { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
+        }
         .task { await loadShots() }
     }
 
@@ -268,14 +319,94 @@ struct SessionDetailView: View {
             } else {
                 VStack(spacing: 8) {
                     ForEach(Array(shots.enumerated()), id: \.element.id) { idx, shot in
-                        NavigationLink(destination: ShotDetailView(shot: shot)) {
-                            shotRow(shot, number: idx + 1)
+                        if isSelecting {
+                            Button { toggleSelection(shot) } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: selectedShotIDs.contains(shot.id) ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 22))
+                                        .foregroundColor(selectedShotIDs.contains(shot.id) ? TCTheme.sage : TCTheme.textUltraMuted)
+                                    shotRow(shot, number: idx + 1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            NavigationLink(destination: ShotDetailView(shot: shot)) {
+                                shotRow(shot, number: idx + 1)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button(role: .destructive) { shotToDelete = shot } label: {
+                                    Label("Delete Shot", systemImage: "trash")
+                                }
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
         }
+    }
+
+    /// Bottom bar shown while selecting shots: select-all + delete count.
+    private var selectionActionBar: some View {
+        let allIDs = Set(shots.map(\.id))
+        let allSelected = !allIDs.isEmpty && selectedShotIDs.isSuperset(of: allIDs)
+        return HStack(spacing: 14) {
+            Button {
+                if allSelected { selectedShotIDs.subtract(allIDs) }
+                else { selectedShotIDs.formUnion(allIDs) }
+            } label: {
+                Text(allSelected ? "Deselect All" : "Select All")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(TCTheme.sage)
+            }
+            Spacer()
+            Text("\(selectedShotIDs.count) selected")
+                .font(.system(size: 13))
+                .foregroundColor(TCTheme.textMuted)
+            Button(role: .destructive) { showDeleteSelected = true } label: {
+                Text("Delete")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18).padding(.vertical, 9)
+                    .background(selectedShotIDs.isEmpty ? TCTheme.textUltraMuted : Color.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .disabled(selectedShotIDs.isEmpty)
+        }
+        .padding(.horizontal, TCTheme.hPad)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .top)
+    }
+
+    private func startSelection() {
+        selectedShotIDs.removeAll()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { isSelecting = true }
+    }
+
+    private func exitSelection() {
+        selectedShotIDs.removeAll()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { isSelecting = false }
+    }
+
+    private func toggleSelection(_ shot: SavedShot) {
+        if selectedShotIDs.contains(shot.id) { selectedShotIDs.remove(shot.id) }
+        else { selectedShotIDs.insert(shot.id) }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func deleteShots(_ ids: [UUID]) async {
+        guard let uid = session.currentUser?.id, !ids.isEmpty else { return }
+        let service = ShotPersistenceService(userId: uid, backend: session.backend)
+        for id in ids {
+            do {
+                try await service.deleteShot(id: id)
+                shots.removeAll { $0.id == id }
+            } catch {
+                deleteError = "Delete failed. \(error.localizedDescription)"
+            }
+        }
+        if isSelecting { exitSelection() }
     }
 
     private func shotRow(_ shot: SavedShot, number: Int) -> some View {

@@ -102,6 +102,17 @@ final class FeedViewModel: ObservableObject {
     func hasGimmed(_ post: FeedPost) -> Bool { gimmedByMe.contains(post.id) }
     func commentCount(for post: FeedPost) -> Int { commentCounts[post.id] ?? post.commentsCount }
 
+    /// Resolve a post by id for opening from a notification. Notifications reference the user's own
+    /// posts, which may be older than the currently-loaded feed page, so fall back to a full feed
+    /// fetch when it isn't already in `posts`.
+    func findPost(id: UUID) async -> FeedPost? {
+        if let p = posts.first(where: { $0.id == id }) { return p }
+        if let all = try? await backend.loadFeed(userId: userId) {
+            return all.first(where: { $0.id == id })
+        }
+        return nil
+    }
+
     func createPost(title: String, body: String, type: FeedPostType, highlight: String, authorName: String,
                     visibility: FeedVisibility = .everyone, photoData: Data? = nil, extraStats: [FeedStat] = []) async {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)

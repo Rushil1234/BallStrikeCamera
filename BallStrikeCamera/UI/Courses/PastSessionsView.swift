@@ -17,6 +17,10 @@ struct PastSessionsView: View {
     @State private var itemToDelete: DeletionTarget?
     @State private var showClearHistory = false
     @State private var skeletonPulse = false
+    // Multi-select delete
+    @State private var isSelecting = false
+    @State private var selectedItemIDs: Set<String> = []
+    @State private var showDeleteSelected = false
 
     private var sessionsEmpty: Bool {
         rangeSessions.isEmpty && simSessions.isEmpty && rounds.isEmpty && shots.isEmpty
@@ -66,17 +70,39 @@ struct PastSessionsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if !sessionsEmpty {
-                    Button(role: .destructive) { showClearHistory = true } label: {
-                        Image(systemName: "trash")
+                    if isSelecting {
+                        Button("Done") { exitSelection() }
+                            .foregroundColor(TCTheme.sage)
+                    } else {
+                        Menu {
+                            Button { startSelection() } label: { Label("Select", systemImage: "checkmark.circle") }
+                            Button(role: .destructive) { showClearHistory = true } label: {
+                                Label("Clear All History", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
                     }
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting { selectionActionBar }
         }
         .confirmationDialog("Clear all history?", isPresented: $showClearHistory, titleVisibility: .visible) {
             Button("Delete everything", role: .destructive) { Task { await clearAllHistory() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This permanently deletes every saved session, round, and shot. This cannot be undone.")
+        }
+        .confirmationDialog("Delete \(selectedItemIDs.count) item\(selectedItemIDs.count == 1 ? "" : "s")?",
+                            isPresented: $showDeleteSelected, titleVisibility: .visible) {
+            Button("Delete \(selectedItemIDs.count) item\(selectedItemIDs.count == 1 ? "" : "s")", role: .destructive) {
+                Task { await deleteSelected() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the selected sessions and shots from your history and cannot be undone.")
         }
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
@@ -479,32 +505,126 @@ struct PastSessionsView: View {
 
     @ViewBuilder
     private func timelineCard(_ item: HistoryTimelineItem) -> some View {
-        switch item {
-        case .range(let rangeSession):
-            NavigationLink(destination: SessionDetailView(item: .range(rangeSession))) {
-                timelineRow(item)
+        if isSelecting {
+            Button { toggleSelection(item) } label: { selectableRow(item) }
+                .buttonStyle(.plain)
+        } else {
+            switch item {
+            case .range(let rangeSession):
+                NavigationLink(destination: SessionDetailView(item: .range(rangeSession))) {
+                    timelineRow(item)
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    beginSelection(item)
+                })
+            case .sim(let simSession):
+                NavigationLink(destination: SessionDetailView(item: .sim(simSession))) {
+                    timelineRow(item)
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    beginSelection(item)
+                })
+            case .course(let round):
+                NavigationLink(destination: SessionDetailView(item: .course(round))) {
+                    timelineRow(item)
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    beginSelection(item)
+                })
+            case .shot(let shot):
+                NavigationLink(destination: ShotDetailView(shot: shot)) {
+                    timelineRow(item)
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    beginSelection(item)
+                })
             }
-            .buttonStyle(.plain)
-            .contextMenu { deleteMenu(for: item) }
-        case .sim(let simSession):
-            NavigationLink(destination: SessionDetailView(item: .sim(simSession))) {
-                timelineRow(item)
-            }
-            .buttonStyle(.plain)
-            .contextMenu { deleteMenu(for: item) }
-        case .course(let round):
-            NavigationLink(destination: SessionDetailView(item: .course(round))) {
-                timelineRow(item)
-            }
-            .buttonStyle(.plain)
-            .contextMenu { deleteMenu(for: item) }
-        case .shot(let shot):
-            NavigationLink(destination: ShotDetailView(shot: shot)) {
-                timelineRow(item)
-            }
-            .buttonStyle(.plain)
-            .contextMenu { deleteMenu(for: item) }
         }
+    }
+
+    /// A timeline card with a leading selection dot, shown while in multi-select mode.
+    private func selectableRow(_ item: HistoryTimelineItem) -> some View {
+        let selected = selectedItemIDs.contains(item.id)
+        return HStack(spacing: 10) {
+            Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundColor(selected ? TCTheme.sage : TCTheme.textUltraMuted)
+                .animation(.easeInOut(duration: 0.12), value: selected)
+            timelineRow(item)
+        }
+        .contentShape(Rectangle())
+    }
+
+    /// Bottom bar shown in multi-select mode: cancel / select-all + a red "Delete (N)" button.
+    private var selectionActionBar: some View {
+        let allIDs = Set(visibleItems.map(\.id))
+        let allSelected = !allIDs.isEmpty && selectedItemIDs.isSuperset(of: allIDs)
+        let count = selectedItemIDs.count
+        return HStack(spacing: 14) {
+            Button { exitSelection() } label: {
+                Text("Cancel")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(TCTheme.textSecondary)
+            }
+            Button {
+                if allSelected { selectedItemIDs.subtract(allIDs) }
+                else { selectedItemIDs.formUnion(allIDs) }
+            } label: {
+                Text(allSelected ? "Deselect All" : "Select All")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(TCTheme.sage)
+            }
+            Spacer()
+            Button(role: .destructive) { showDeleteSelected = true } label: {
+                Text(count > 0 ? "Delete (\(count))" : "Delete")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 18).padding(.vertical, 9)
+                    .background(count == 0 ? TCTheme.textUltraMuted : Color.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .disabled(count == 0)
+        }
+        .padding(.horizontal, TCTheme.hPad)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .top)
+    }
+
+    private func startSelection() {
+        selectedItemIDs.removeAll()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { isSelecting = true }
+    }
+
+    /// Long-press entry: enter multi-select mode with this item pre-selected.
+    private func beginSelection(_ item: HistoryTimelineItem) {
+        guard !isSelecting else { return }
+        selectedItemIDs = [item.id]
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { isSelecting = true }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func exitSelection() {
+        selectedItemIDs.removeAll()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { isSelecting = false }
+    }
+
+    private func toggleSelection(_ item: HistoryTimelineItem) {
+        if selectedItemIDs.contains(item.id) { selectedItemIDs.remove(item.id) }
+        else { selectedItemIDs.insert(item.id) }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private func deleteSelected() async {
+        let targets = visibleItems
+            .filter { selectedItemIDs.contains($0.id) }
+            .map(\.deletionTarget)
+        for target in targets { await performDelete(target) }
+        exitSelection()
     }
 
     private func timelineRow(_ item: HistoryTimelineItem) -> some View {

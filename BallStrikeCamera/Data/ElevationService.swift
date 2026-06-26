@@ -92,16 +92,21 @@ final class ElevationService: ObservableObject {
     // MARK: - Network
 
     private static func fetchElevations(lats: [Double], lons: [Double]) async -> [Double]? {
-        // Prefer SRTM (30 m) for terrain accuracy; fall back to Open-Meteo's DEM
-        // if the SRTM endpoint is rate-limited/unreachable so slope still works.
-        if let srtm = await fetchSRTM(lats: lats, lons: lons) { return srtm }
+        // USGS NED 10 m (US) is dramatically more accurate for golf-slope than SRTM 30 m — the
+        // coarse SRTM grid spuriously reports flat holes as 20-25 yds uphill/downhill. Fall back to
+        // SRTM 30 m (near-global) and then Open-Meteo's DEM where NED has no coverage (outside the
+        // US) or the endpoint is unreachable, so slope still works everywhere.
+        if let ned  = await fetchOpenTopo(dataset: "ned10m",  lats: lats, lons: lons) { return ned }
+        if let srtm = await fetchOpenTopo(dataset: "srtm30m", lats: lats, lons: lons) { return srtm }
         return await fetchOpenMeteo(lats: lats, lons: lons)
     }
 
-    /// SRTM 30 m via OpenTopoData (free, no key; up to 100 points/request).
-    private static func fetchSRTM(lats: [Double], lons: [Double]) async -> [Double]? {
+    /// OpenTopoData (free, no key; up to 100 points/request). Returns nil unless every requested
+    /// point has an elevation, so a partially-covered dataset (e.g. NED outside the US returns
+    /// nulls) cleanly falls through to a global dataset instead of treating gaps as 0 m.
+    private static func fetchOpenTopo(dataset: String, lats: [Double], lons: [Double]) async -> [Double]? {
         let locs = zip(lats, lons).map { String(format: "%.6f,%.6f", $0, $1) }.joined(separator: "|")
-        var comps = URLComponents(string: "https://api.opentopodata.org/v1/srtm30m")!
+        var comps = URLComponents(string: "https://api.opentopodata.org/v1/\(dataset)")!
         comps.queryItems = [URLQueryItem(name: "locations", value: locs)]
         guard let url = comps.url else { return nil }
         do {
@@ -113,7 +118,8 @@ final class ElevationService: ObservableObject {
                 let status: String
             }
             let r = try JSONDecoder().decode(Response.self, from: data)
-            guard r.status == "OK", r.results.count == lats.count else { return nil }
+            guard r.status == "OK", r.results.count == lats.count,
+                  r.results.allSatisfy({ $0.elevation != nil }) else { return nil }
             return r.results.map { $0.elevation ?? 0 }
         } catch {
             return nil

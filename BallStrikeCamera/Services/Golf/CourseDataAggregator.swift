@@ -33,6 +33,7 @@ final class CourseDataAggregator {
            catalog.hasTrustedGeometry {
             var result = catalog
             result.id = course.id
+            result = await mergeScorecardTees(into: result)
             OSMGolfService.shared.cacheMergedCourse(result)
             return result
         }
@@ -45,6 +46,66 @@ final class CourseDataAggregator {
 
         // Nothing available — return the original stub so the round can still start.
         return course
+    }
+
+    /// When the GPS geometry carries only a single tee (common for traced courses where only one
+    /// tee box was digitized), pull the full tee set + per-hole yardages from the GolfCourse
+    /// scorecard API and merge in the tees we're missing. Best-effort and non-blocking — any
+    /// failure (API off, no confident name match, no extra tees) returns the geometry unchanged,
+    /// so it never blocks or slows a course that already has a full tee set.
+    private func mergeScorecardTees(into geo: GolfCourse) async -> GolfCourse {
+        guard geo.teeBoxes.count <= 1, !geo.name.isEmpty,
+              GolfCourseAPIConfig.isConfigured else { return geo }
+        let matches = (try? await golfAPI.searchCourses(query: geo.name, near: geo.coordinate)) ?? []
+        guard var scorecard = matches.first(where: { Self.courseNamesMatch($0.name, geo.name) }) else { return geo }
+        // Search results can be summary-only; fetch full detail if per-hole yardages are missing.
+        if scorecard.holes.allSatisfy({ $0.teeYardsByTeeBox.isEmpty }),
+           let detail = try? await golfAPI.loadCourseDetails(courseId: scorecard.id) {
+            scorecard = detail
+        }
+        let existing = Set(geo.teeBoxes.map { $0.name.lowercased() })
+        let newTees = scorecard.teeBoxes.filter { $0.totalYards > 0 && !existing.contains($0.name.lowercased()) }
+        guard !newTees.isEmpty else { return geo }
+
+        var result = geo
+        result.teeBoxes.append(contentsOf: newTees)
+        let newIds = Set(newTees.map { $0.id })
+        // Align scorecard holes to the geometry by par + true tee→green distance, NOT by hole
+        // number. Composite / re-routed courses (e.g. a "Blue/White" 18 stitched from two nines)
+        // can have the scorecard's hole order differ from the geometry's, which would otherwise
+        // graft a par-3's yardage onto a par-5, etc. Greedy 1-to-1 on (par, nearest distance).
+        var availableSC = Array(scorecard.holes.indices)
+        for i in result.holes.indices {
+            let gh = result.holes[i]
+            let geomYards = Double(gh.measuredYardage ?? 0)
+            var bestK: Int?; var bestDiff = Double.greatestFiniteMagnitude
+            for k in availableSC where scorecard.holes[k].par == gh.par {
+                let scYards = Double(scorecard.holes[k].teeYardsByTeeBox.values.max() ?? 0)
+                let diff = geomYards > 0 ? abs(scYards - geomYards) : 0
+                if diff < bestDiff { bestDiff = diff; bestK = k }
+            }
+            guard let k = bestK else { continue }
+            availableSC.removeAll { $0 == k }
+            for (teeId, yards) in scorecard.holes[k].teeYardsByTeeBox where yards > 0 && newIds.contains(teeId) {
+                result.holes[i].teeYardsByTeeBox[teeId] = yards
+            }
+        }
+        #if DEBUG
+        print("[Aggregator] merged \(newTees.count) scorecard tee(s) into \(geo.name)")
+        #endif
+        return result
+    }
+
+    /// Confident match between a GPS course name and a scorecard course name, ignoring punctuation
+    /// and spacing (e.g. "… ~ Blue/White" vs "… - Blue/White"). Requires substantial overlap so we
+    /// don't graft a different course's tees onto this one.
+    static func courseNamesMatch(_ a: String, _ b: String) -> Bool {
+        func norm(_ s: String) -> String {
+            String(String.UnicodeScalarView(s.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }))
+        }
+        let na = norm(a), nb = norm(b)
+        guard na.count >= 8, nb.count >= 8 else { return na == nb }
+        return na == nb || na.contains(nb) || nb.contains(na)
     }
 
     /// Resolve the user-selected tee (chosen from generic MapKit tees) to the authoritative
