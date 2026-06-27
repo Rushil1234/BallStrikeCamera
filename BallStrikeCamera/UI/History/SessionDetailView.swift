@@ -68,7 +68,14 @@ enum SessionItem: Identifiable {
 
 struct SessionDetailView: View {
     @EnvironmentObject var session: AuthSessionStore
+    @Environment(\.dismiss) private var dismiss
     let item: SessionItem
+    /// Called when the session itself is removed (e.g. its last shot was deleted) so the history
+    /// list can drop it without a manual refresh.
+    var onSessionRemoved: ((UUID) -> Void)? = nil
+    /// Called after some (not all) shots are deleted, with the remaining shot ids, so the history
+    /// list can update the session's shot count without a manual refresh.
+    var onShotsChanged: ((UUID, [UUID]) -> Void)? = nil
 
     @State private var shots: [SavedShot] = []
     @State private var isLoading = true
@@ -76,7 +83,6 @@ struct SessionDetailView: View {
     @State private var isSelecting = false
     @State private var selectedShotIDs: Set<UUID> = []
     @State private var showDeleteSelected = false
-    @State private var shotToDelete: SavedShot?
     @State private var deleteError: String?
 
     /// Range/sim sessions render the per-shot list; course rounds use the shot map instead.
@@ -123,29 +129,17 @@ struct SessionDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if showsShotsList && !shots.isEmpty {
-                    if isSelecting {
-                        Button("Done") { exitSelection() }.foregroundColor(TCTheme.sage)
-                    } else {
-                        Button { startSelection() } label: { Image(systemName: "checkmark.circle") }
-                    }
+            if showsShotsList && !shots.isEmpty && isSelecting {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { exitSelection() }.foregroundColor(TCTheme.textSecondary)
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button(allShotsSelected ? "Deselect All" : "Select All") { toggleSelectAllShots() }
+                        .foregroundColor(TCTheme.sage)
+                    Button("Delete (\(selectedShotIDs.count))", role: .destructive) { showDeleteSelected = true }
+                        .disabled(selectedShotIDs.isEmpty)
                 }
             }
-        }
-        .safeAreaInset(edge: .bottom) {
-            if isSelecting { selectionActionBar }
-        }
-        .confirmationDialog("Delete this shot?",
-                            isPresented: Binding(get: { shotToDelete != nil }, set: { if !$0 { shotToDelete = nil } }),
-                            titleVisibility: .visible) {
-            Button("Delete shot", role: .destructive) {
-                if let s = shotToDelete { Task { await deleteShots([s.id]) } }
-                shotToDelete = nil
-            }
-            Button("Cancel", role: .cancel) { shotToDelete = nil }
-        } message: {
-            Text("This removes the shot from your history and cannot be undone.")
         }
         .confirmationDialog("Delete \(selectedShotIDs.count) shot\(selectedShotIDs.count == 1 ? "" : "s")?",
                             isPresented: $showDeleteSelected, titleVisibility: .visible) {
@@ -187,7 +181,9 @@ struct SessionDetailView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(item.shotIds.count)")
+                    // Live count of the actually-present shots so it updates after deletions
+                    // (item.shotIds is the session's original recorded list and never changes).
+                    Text("\(isLoading ? item.shotIds.count : shots.count)")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(TCTheme.textPrimary)
                     Text("SHOTS")
@@ -334,11 +330,9 @@ struct SessionDetailView: View {
                                 shotRow(shot, number: idx + 1)
                             }
                             .buttonStyle(.plain)
-                            .contextMenu {
-                                Button(role: .destructive) { shotToDelete = shot } label: {
-                                    Label("Delete Shot", systemImage: "trash")
-                                }
-                            }
+                            .highPriorityGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                                beginSelection(shot)
+                            })
                         }
                     }
                 }
@@ -346,42 +340,22 @@ struct SessionDetailView: View {
         }
     }
 
-    /// Bottom bar shown while selecting shots: select-all + delete count.
-    private var selectionActionBar: some View {
-        let allIDs = Set(shots.map(\.id))
-        let allSelected = !allIDs.isEmpty && selectedShotIDs.isSuperset(of: allIDs)
-        return HStack(spacing: 14) {
-            Button {
-                if allSelected { selectedShotIDs.subtract(allIDs) }
-                else { selectedShotIDs.formUnion(allIDs) }
-            } label: {
-                Text(allSelected ? "Deselect All" : "Select All")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(TCTheme.sage)
-            }
-            Spacer()
-            Text("\(selectedShotIDs.count) selected")
-                .font(.system(size: 13))
-                .foregroundColor(TCTheme.textMuted)
-            Button(role: .destructive) { showDeleteSelected = true } label: {
-                Text("Delete")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 18).padding(.vertical, 9)
-                    .background(selectedShotIDs.isEmpty ? TCTheme.textUltraMuted : Color.red)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            }
-            .disabled(selectedShotIDs.isEmpty)
-        }
-        .padding(.horizontal, TCTheme.hPad)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .top)
+    private var allShotsSelected: Bool {
+        !shots.isEmpty && selectedShotIDs.isSuperset(of: Set(shots.map(\.id)))
     }
 
-    private func startSelection() {
-        selectedShotIDs.removeAll()
+    private func toggleSelectAllShots() {
+        let allIDs = Set(shots.map(\.id))
+        if allShotsSelected { selectedShotIDs.subtract(allIDs) }
+        else { selectedShotIDs.formUnion(allIDs) }
+    }
+
+    /// Long-press entry: enter multi-select with this shot pre-selected.
+    private func beginSelection(_ shot: SavedShot) {
+        guard !isSelecting else { return }
+        selectedShotIDs = [shot.id]
         withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) { isSelecting = true }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     private func exitSelection() {
@@ -407,6 +381,40 @@ struct SessionDetailView: View {
             }
         }
         if isSelecting { exitSelection() }
+        // An empty session is useless — delete it and return to the history list. Otherwise
+        // persist the trimmed shot list so the session's count is correct everywhere.
+        if shots.isEmpty { await deleteOwningSession(uid: uid) }
+        else { await persistRemainingShots(uid: uid) }
+    }
+
+    /// Save the session with its remaining shot ids so the history list shows the right count
+    /// (and it survives a reload), and notify the list to update immediately.
+    private func persistRemainingShots(uid: UUID) async {
+        let remaining = shots.map(\.id)
+        do {
+            switch item {
+            case .range(var s):  s.shotIds = remaining; try await session.backend.saveRangeSession(s)
+            case .sim(var s):    s.shotIds = remaining; try await session.backend.saveSimSession(s)
+            case .course(var r): r.shotIds = remaining; try await session.backend.saveRound(r)
+            }
+            onShotsChanged?(item.id, remaining)
+        } catch {
+            deleteError = "Couldn't update the session. \(error.localizedDescription)"
+        }
+    }
+
+    private func deleteOwningSession(uid: UUID) async {
+        do {
+            switch item {
+            case .range(let s):  try await session.backend.deleteRangeSession(sessionId: s.id, userId: uid)
+            case .sim(let s):    try await session.backend.deleteSimSession(sessionId: s.id, userId: uid)
+            case .course(let r): try await session.backend.deleteCourseRound(roundId: r.id, userId: uid)
+            }
+            onSessionRemoved?(item.id)
+            dismiss()
+        } catch {
+            deleteError = "Couldn't remove the empty session. \(error.localizedDescription)"
+        }
     }
 
     private func shotRow(_ shot: SavedShot, number: Int) -> some View {

@@ -86,8 +86,8 @@ struct PastSessionsView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            if isSelecting { selectionActionBar }
+        .overlay(alignment: .top) {
+            if isSelecting { selectionTopBar }
         }
         .confirmationDialog("Clear all history?", isPresented: $showClearHistory, titleVisibility: .visible) {
             Button("Delete everything", role: .destructive) { Task { await clearAllHistory() } }
@@ -511,27 +511,33 @@ struct PastSessionsView: View {
         } else {
             switch item {
             case .range(let rangeSession):
-                NavigationLink(destination: SessionDetailView(item: .range(rangeSession))) {
+                NavigationLink(destination: SessionDetailView(item: .range(rangeSession),
+                                                              onSessionRemoved: removeSession,
+                                                              onShotsChanged: updateSessionShots)) {
                     timelineRow(item)
                 }
                 .buttonStyle(.plain)
-                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                .highPriorityGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
                     beginSelection(item)
                 })
             case .sim(let simSession):
-                NavigationLink(destination: SessionDetailView(item: .sim(simSession))) {
+                NavigationLink(destination: SessionDetailView(item: .sim(simSession),
+                                                              onSessionRemoved: removeSession,
+                                                              onShotsChanged: updateSessionShots)) {
                     timelineRow(item)
                 }
                 .buttonStyle(.plain)
-                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                .highPriorityGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
                     beginSelection(item)
                 })
             case .course(let round):
-                NavigationLink(destination: SessionDetailView(item: .course(round))) {
+                NavigationLink(destination: SessionDetailView(item: .course(round),
+                                                              onSessionRemoved: removeSession,
+                                                              onShotsChanged: updateSessionShots)) {
                     timelineRow(item)
                 }
                 .buttonStyle(.plain)
-                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                .highPriorityGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
                     beginSelection(item)
                 })
             case .shot(let shot):
@@ -539,7 +545,7 @@ struct PastSessionsView: View {
                     timelineRow(item)
                 }
                 .buttonStyle(.plain)
-                .simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                .highPriorityGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
                     beginSelection(item)
                 })
             }
@@ -559,17 +565,19 @@ struct PastSessionsView: View {
         .contentShape(Rectangle())
     }
 
-    /// Bottom bar shown in multi-select mode: cancel / select-all + a red "Delete (N)" button.
-    private var selectionActionBar: some View {
+    /// Fixed top bar shown in multi-select mode. Lives at the top (the bottom is covered by the
+    /// floating tab dock), stays visible while scrolling, and always shows Cancel + Delete.
+    private var selectionTopBar: some View {
         let allIDs = Set(visibleItems.map(\.id))
         let allSelected = !allIDs.isEmpty && selectedItemIDs.isSuperset(of: allIDs)
         let count = selectedItemIDs.count
-        return HStack(spacing: 14) {
+        return HStack(spacing: 12) {
             Button { exitSelection() } label: {
                 Text("Cancel")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(TCTheme.textSecondary)
             }
+            Spacer()
             Button {
                 if allSelected { selectedItemIDs.subtract(allIDs) }
                 else { selectedItemIDs.formUnion(allIDs) }
@@ -583,16 +591,17 @@ struct PastSessionsView: View {
                 Text(count > 0 ? "Delete (\(count))" : "Delete")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 18).padding(.vertical, 9)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
                     .background(count == 0 ? TCTheme.textUltraMuted : Color.red)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .disabled(count == 0)
         }
         .padding(.horizontal, TCTheme.hPad)
-        .padding(.vertical, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
         .background(.ultraThinMaterial)
-        .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .top)
+        .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .bottom)
     }
 
     private func startSelection() {
@@ -625,6 +634,22 @@ struct PastSessionsView: View {
             .map(\.deletionTarget)
         for target in targets { await performDelete(target) }
         exitSelection()
+    }
+
+    /// Drop a session from the timeline immediately when its detail view deletes it (e.g. after
+    /// its last shot was removed), so the list reflects it without a manual refresh.
+    private func removeSession(_ id: UUID) {
+        rangeSessions.removeAll { $0.id == id }
+        simSessions.removeAll { $0.id == id }
+        rounds.removeAll { $0.id == id }
+    }
+
+    /// Update a session's shot list locally when its detail view deletes some (not all) shots, so
+    /// the card's shot count matches without a manual refresh.
+    private func updateSessionShots(_ id: UUID, _ remaining: [UUID]) {
+        if let i = rangeSessions.firstIndex(where: { $0.id == id }) { rangeSessions[i].shotIds = remaining }
+        if let i = simSessions.firstIndex(where: { $0.id == id })   { simSessions[i].shotIds = remaining }
+        if let i = rounds.firstIndex(where: { $0.id == id })        { rounds[i].shotIds = remaining }
     }
 
     private func timelineRow(_ item: HistoryTimelineItem) -> some View {
@@ -758,6 +783,7 @@ struct PastSessionsView: View {
             shots = try await backend.loadShots(userId: uid)
             shots = shots.filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
         } catch {
+            if Self.isCancellation(error) { return }   // superseded by a newer load — keep state
             shots = []
             failures.append("shots")
             print("[History] loadShots failed: \(error)")
@@ -766,6 +792,7 @@ struct PastSessionsView: View {
         do {
             rangeSessions = try await backend.loadRangeSessions(userId: uid)
         } catch {
+            if Self.isCancellation(error) { return }
             rangeSessions = []
             failures.append("range sessions")
             print("[History] loadRangeSessions failed: \(error)")
@@ -774,6 +801,7 @@ struct PastSessionsView: View {
         do {
             simSessions = try await backend.loadSimSessions(userId: uid)
         } catch {
+            if Self.isCancellation(error) { return }
             simSessions = []
             failures.append("sim sessions")
             print("[History] loadSimSessions failed: \(error)")
@@ -782,6 +810,7 @@ struct PastSessionsView: View {
         do {
             rounds = try await backend.loadCourseRounds(userId: uid)
         } catch {
+            if Self.isCancellation(error) { return }
             rounds = []
             failures.append("rounds")
             print("[History] loadCourseRounds failed: \(error)")
@@ -790,6 +819,14 @@ struct PastSessionsView: View {
         loadError = failures.isEmpty ? nil : "Could not load \(failures.joined(separator: ", ")). Pull to refresh and try again."
         isLoading = false
         didLoad = true
+    }
+
+    /// A cancelled request (e.g. the load was superseded while auth/token state settled on launch,
+    /// or the user navigated) is not a real failure — bail without clobbering the loaded data.
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        let ns = error as NSError
+        return ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled
     }
 
     private func performDelete(_ target: DeletionTarget) async {
