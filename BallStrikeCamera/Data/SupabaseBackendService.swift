@@ -772,6 +772,51 @@ final class SupabaseBackendService: AppBackend {
         return rows.compactMap { $0.toFriendProfile() }
     }
 
+    // MARK: - Round attestation
+
+    func requestRoundAttestation(round: CourseRound, requesterId: UUID, requesterName: String, attesterId: UUID) async throws {
+        var body: [String: Any] = [
+            "id": UUID().uuidString,
+            "round_id": round.id.uuidString,
+            "requester_id": requesterId.uuidString,
+            "requester_name": requesterName,
+            "attester_id": attesterId.uuidString,
+            "course_name": round.courseName,
+            "round_date": ISO8601DateFormatter().string(from: round.startedAt),
+            "status": "pending"
+        ]
+        if round.scoreSummary.totalScore > 0 { body["score"] = round.scoreSummary.totalScore }
+        if round.scoreSummary.totalPar > 0 {
+            body["to_par"] = round.scoreSummary.totalScore - round.scoreSummary.totalPar
+        }
+        try await upsert(table: "round_attestations", body: body)
+    }
+
+    func loadIncomingAttestations(userId: UUID) async throws -> [IncomingAttestation] {
+        // RLS lets the attester read rows addressed to them; keep only the still-pending ones.
+        let rows: [IncomingAttestation] = try await selectWhere(
+            table: "round_attestations", column: "attester_id", value: userId.uuidString)
+        return rows.filter { $0.status == "pending" }.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+    }
+
+    func respondToAttestation(id: UUID, accept: Bool) async throws {
+        let body: [String: Any] = [
+            "status": accept ? "attested" : "declined",
+            "responded_at": ISO8601DateFormatter().string(from: Date())
+        ]
+        var components = URLComponents(url: restURL("round_attestations"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "id", value: "eq.\(id.uuidString)")]
+        var req = authorizedRequest(url: components.url!, method: "PATCH")
+        req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await performAuthorizedRequest(req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 204 else {
+            logError("respondToAttestation", data: data, response: response)
+            throw BackendError.saveFailed("round_attestations")
+        }
+    }
+
     func loadFeedNotifications() async throws -> [FeedNotification] {
         let rows: [SupabaseFeedNotificationRow] = try await rpc("list_feed_notifications", body: [:])
         return rows.compactMap { $0.toNotification() }

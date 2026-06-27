@@ -248,13 +248,15 @@ final class CourseRoundViewModel: ObservableObject {
             }
         }
         let holes = courseHoles.map { RoundHole(holeNumber: $0.number, par: $0.par) }
-        let round = CourseRound(
+        var round = CourseRound(
             userId: userId,
             courseId: course.id,
             courseName: course.name,
             teeBoxName: teeBox.name,
             holes: holes
         )
+        round.courseRating = teeBox.rating
+        round.slopeRating  = teeBox.slope
         activeRound = round
         selectedCourse = course.holes.isEmpty
             ? GolfCourse(id: course.id, name: course.name, city: course.city,

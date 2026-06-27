@@ -56,6 +56,7 @@ struct PastSessionsView: View {
                     if showSearch { searchField }
                     filterBar
                     summaryStrip
+                    if !rounds.isEmpty { handicapCard }
                     content
                     Spacer(minLength: 140)
                 }
@@ -165,6 +166,39 @@ struct PastSessionsView: View {
         .padding(.horizontal, TCTheme.hPad)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+
+    /// Shortcut into the handicap / scores page, with the current estimated index inline.
+    private var handicapCard: some View {
+        NavigationLink(destination: HandicapView(rounds: rounds)) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(TCTheme.sage.opacity(0.16)).frame(width: 44, height: 44)
+                    Image(systemName: "figure.golf")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(TCTheme.sage)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Handicap & Scores")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text("Index from your last 20 rounds")
+                        .font(.system(size: 12))
+                        .foregroundColor(TCTheme.textMuted)
+                }
+                Spacer()
+                Text(HandicapService.indexString(HandicapService.compute(from: rounds).index))
+                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .foregroundColor(TCTheme.textPrimary)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.textUltraMuted)
+            }
+            .tcCard()
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, TCTheme.hPad)
     }
 
     private var titleBlock: some View {

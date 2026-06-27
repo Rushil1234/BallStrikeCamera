@@ -96,6 +96,19 @@ struct IncomingFriendRequest: Identifiable, Equatable {
     var id: UUID { requestId }
 }
 
+/// A request from a friend asking the current user to attest (verify) one of their rounds.
+/// Decoded from the `round_attestations` table (decoder uses convertFromSnakeCase).
+struct IncomingAttestation: Identifiable, Decodable, Equatable {
+    let id: UUID
+    let roundId: UUID
+    let requesterName: String
+    let courseName: String
+    let score: Int?
+    let toPar: Int?
+    let status: String
+    let createdAt: Date?
+}
+
 // MARK: - Feed Notification (gimmes / comments on your posts)
 
 struct FeedNotification: Identifiable, Equatable {

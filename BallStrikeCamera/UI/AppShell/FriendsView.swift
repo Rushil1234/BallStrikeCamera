@@ -15,6 +15,7 @@ struct FriendsView: View {
                 VStack(alignment: .leading, spacing: TCTheme.sectionGap) {
                     searchSection
                     if !vm.requests.isEmpty { requestsSection }
+                    if !vm.attestations.isEmpty { attestationsSection }
                     inviteSection
                     friendsSection
                     Spacer(minLength: 32)
@@ -85,6 +86,51 @@ struct FriendsView: View {
                 }
             }
         }
+    }
+
+    // MARK: Attestation requests
+
+    private var attestationsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("Attestation requests")
+            ForEach(vm.attestations) { a in
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        AvatarCircle(name: a.requesterName, size: 40)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(a.requesterName)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(TCTheme.textPrimary)
+                                .fitOneLine(0.6)
+                            Text(attestationDetail(a))
+                                .font(.system(size: 12))
+                                .foregroundColor(TCTheme.textMuted)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                    }
+                    HStack(spacing: 8) {
+                        actionButton("Attest", filled: true) { Task { await vm.respondAttestation(a, accept: true) } }
+                        actionButton("Decline", filled: false) { Task { await vm.respondAttestation(a, accept: false) } }
+                    }
+                }
+                .tcCard(padding: 12)
+            }
+        }
+    }
+
+    private func attestationDetail(_ a: IncomingAttestation) -> String {
+        var parts: [String] = []
+        if !a.courseName.isEmpty { parts.append(a.courseName) }
+        if let score = a.score {
+            if let toPar = a.toPar {
+                let tp = toPar == 0 ? "E" : (toPar > 0 ? "+\(toPar)" : "\(toPar)")
+                parts.append("\(score) (\(tp))")
+            } else {
+                parts.append("\(score)")
+            }
+        }
+        return parts.isEmpty ? "Wants you to verify a round" : parts.joined(separator: " · ")
     }
 
     // MARK: Invite

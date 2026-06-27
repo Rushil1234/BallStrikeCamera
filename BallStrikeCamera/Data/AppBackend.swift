@@ -86,6 +86,11 @@ protocol AppBackend {
     func createInviteCode(userId: UUID) async throws -> String
     func redeemInvite(code: String) async throws
 
+    // Round attestation (ask a friend to verify a round)
+    func requestRoundAttestation(round: CourseRound, requesterId: UUID, requesterName: String, attesterId: UUID) async throws
+    func loadIncomingAttestations(userId: UUID) async throws -> [IncomingAttestation]
+    func respondToAttestation(id: UUID, accept: Bool) async throws
+
     // Entitlements & usage
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement
     func loadUsageCounter(userId: UUID, date: String) async throws -> UsageCounter?
@@ -107,6 +112,11 @@ extension AppBackend {
 
     // Default: no social graph locally.
     func golfersAtHomeCourse() async throws -> [FriendProfile] { [] }
+
+    // Default: no attestation support (local backend has no social graph).
+    func requestRoundAttestation(round: CourseRound, requesterId: UUID, requesterName: String, attesterId: UUID) async throws {}
+    func loadIncomingAttestations(userId: UUID) async throws -> [IncomingAttestation] { [] }
+    func respondToAttestation(id: UUID, accept: Bool) async throws {}
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)

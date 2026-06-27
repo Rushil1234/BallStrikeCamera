@@ -84,6 +84,10 @@ struct SessionDetailView: View {
     @State private var selectedShotIDs: Set<UUID> = []
     @State private var showDeleteSelected = false
     @State private var deleteError: String?
+    // Attestation
+    @State private var showAttestSheet = false
+    @State private var friends: [FriendProfile] = []
+    @State private var attestMessage: String?
 
     /// Range/sim sessions render the per-shot list; course rounds use the shot map instead.
     private var showsShotsList: Bool {
@@ -112,6 +116,7 @@ struct SessionDetailView: View {
                             headerCard
                             if case .range(let rs) = item { rangeStatsCard(rs) }
                             if case .course(let r)  = item { courseStatsCard(r) }
+                            if case .course = item { attestButton }
                             if case .course(let r)  = item {
                                 let hasMap = !r.nfcShots.isEmpty || shots.contains { $0.shotLatitude != nil }
                                 if hasMap { roundShotLogSection(r, shots: shots) }
@@ -155,7 +160,98 @@ struct SessionDetailView: View {
         } message: {
             Text(deleteError ?? "")
         }
+        .sheet(isPresented: $showAttestSheet) { attestPickerSheet.tcAppearance() }
+        .alert("Attestation", isPresented: Binding(get: { attestMessage != nil }, set: { if !$0 { attestMessage = nil } })) {
+            Button("OK", role: .cancel) { attestMessage = nil }
+        } message: {
+            Text(attestMessage ?? "")
+        }
         .task { await loadShots() }
+    }
+
+    // MARK: Attestation
+
+    private var attestButton: some View {
+        Button { showAttestSheet = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.seal")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(TCTheme.sage)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Request Attestation")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text("Ask a friend to verify this round")
+                        .font(.system(size: 12))
+                        .foregroundColor(TCTheme.textMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.textUltraMuted)
+            }
+            .tcCard()
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var attestPickerSheet: some View {
+        NavigationStack {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 8) {
+                    if friends.isEmpty {
+                        Text("Add friends to request a round attestation.")
+                            .font(.system(size: 14))
+                            .foregroundColor(TCTheme.textMuted)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 50)
+                    }
+                    ForEach(friends) { friend in
+                        Button { Task { await sendAttestation(to: friend) } } label: {
+                            HStack(spacing: 12) {
+                                AvatarCircle(name: friend.displayName, size: 38)
+                                Text(friend.displayName)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(TCTheme.textPrimary)
+                                Spacer()
+                                Image(systemName: "paperplane.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(TCTheme.sage)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                            .background(TCTheme.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(TCTheme.border, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, TCTheme.hPad)
+                .padding(.vertical, 12)
+            }
+            .background(TrueCarryBackground().ignoresSafeArea())
+            .navigationTitle("Request Attestation")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showAttestSheet = false }.foregroundColor(TCTheme.sage)
+                }
+            }
+        }
+        .task { friends = (try? await session.backend.loadFriends()) ?? [] }
+    }
+
+    private func sendAttestation(to friend: FriendProfile) async {
+        guard case .course(let round) = item, let me = session.currentUser else { return }
+        let name = session.userProfile?.displayName ?? me.name
+        showAttestSheet = false
+        do {
+            try await session.backend.requestRoundAttestation(round: round, requesterId: me.id,
+                                                              requesterName: name, attesterId: friend.userId)
+            attestMessage = "Attestation request sent to \(friend.displayName)."
+        } catch {
+            attestMessage = "Couldn't send the request. \(error.localizedDescription)"
+        }
     }
 
     // MARK: Header

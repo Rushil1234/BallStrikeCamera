@@ -346,6 +346,10 @@ struct CourseRound: Codable, Identifiable {
     var holes: [RoundHole] = []
     var shotIds: [UUID] = []
     var scoreSummary: RoundScoreSummary = RoundScoreSummary()
+    /// Course/slope rating of the tee played, captured at round start, for handicap differentials.
+    /// Optional — older rounds and tees without ratings fall back to par/neutral slope.
+    var courseRating: Double? = nil
+    var slopeRating: Int? = nil
     /// NFC-recorded club taps during this round, used for shot location tracking and score inference.
     var nfcShots: [NFCShot] = []
 }

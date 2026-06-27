@@ -279,6 +279,7 @@ final class FriendsViewModel: ObservableObject {
     @Published var results: [FriendProfile] = []
     @Published var friends: [FriendProfile] = []
     @Published var requests: [IncomingFriendRequest] = []
+    @Published var attestations: [IncomingAttestation] = []
     @Published var sentRequestIds: Set<UUID> = []
     @Published var inviteCode: String?
     @Published var redeemCode = ""
@@ -296,6 +297,17 @@ final class FriendsViewModel: ObservableObject {
     func loadAll() async {
         friends = (try? await backend.loadFriends()) ?? []
         requests = (try? await backend.loadIncomingRequests()) ?? []
+        attestations = (try? await backend.loadIncomingAttestations(userId: userId)) ?? []
+    }
+
+    func respondAttestation(_ attestation: IncomingAttestation, accept: Bool) async {
+        do {
+            try await backend.respondToAttestation(id: attestation.id, accept: accept)
+            attestations.removeAll { $0.id == attestation.id }
+            statusMessage = accept ? "Round attested." : "Request declined."
+        } catch {
+            statusMessage = "Couldn't respond to the request."
+        }
     }
 
     func search() async {
