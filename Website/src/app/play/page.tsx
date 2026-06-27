@@ -3,7 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 
 function makeCode() {
-  return String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0");
+  // Cryptographically-random pairing code — Math.random() is predictable and
+  // must not be used for a value that gates access to a live session channel.
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
+  return String(n).padStart(6, "0");
 }
 
 type CourseOption = {
@@ -86,6 +89,8 @@ export default function PlayPage() {
   // Listen for messages from the sim iframe.
   useEffect(() => {
     function onMessage(e: MessageEvent) {
+      // Only trust messages from our own sim iframe (served same-origin).
+      if (e.origin !== window.location.origin) return;
       if (e.data?.type === "SIM_READY") {
         setSimReady(true);
       }
