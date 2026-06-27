@@ -56,7 +56,7 @@ export default function BridgePage() {
           alignItems: "center",
           justifyContent: "space-between",
           padding: "20px 32px",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          borderBottom: "1px solid var(--border)",
         }}
       >
         <Link href="/" style={{ textDecoration: "none" }}>
@@ -123,7 +123,7 @@ export default function BridgePage() {
         <div
           style={{
             backgroundColor: "var(--surface)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: "24px 26px",
           }}
@@ -146,7 +146,7 @@ export default function BridgePage() {
               padding: "13px 16px",
               borderRadius: 10,
               backgroundColor: "var(--cream)",
-              color: "#1E2A22",
+              color: "var(--c-forest)",
               fontSize: 15,
               fontWeight: 700,
               textDecoration: "none",
@@ -202,7 +202,7 @@ export default function BridgePage() {
           style={{
             marginTop: 28,
             backgroundColor: "var(--surface)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: "24px 26px",
           }}
@@ -297,7 +297,7 @@ function PlatformCard({
     <div
       style={{
         backgroundColor: "var(--surface)",
-        border: "1px solid rgba(255,255,255,0.08)",
+        border: "1px solid var(--border)",
         borderRadius: 16,
         padding: "24px 26px",
       }}

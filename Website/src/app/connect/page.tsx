@@ -82,7 +82,7 @@ export default function ConnectPage() {
           alignItems: "center",
           justifyContent: "space-between",
           padding: "20px 32px",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          borderBottom: "1px solid var(--border)",
         }}
       >
         <Link href="/" style={{ textDecoration: "none" }}>
@@ -147,7 +147,7 @@ export default function ConnectPage() {
         <div
           style={{
             backgroundColor: "var(--surface)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: "8px 24px",
             marginTop: 16,
@@ -303,7 +303,7 @@ function StepRow({
           width: 24,
           height: 24,
           borderRadius: "50%",
-          backgroundColor: done ? "rgba(63,182,139,0.18)" : "rgba(255,255,255,0.06)",
+          backgroundColor: done ? "rgba(63,182,139,0.18)" : "var(--border)",
           border: `1px solid ${color}`,
           color,
           fontSize: 13,
@@ -324,5 +324,5 @@ function StepRow({
 }
 
 function Divider() {
-  return <div style={{ height: 1, backgroundColor: "rgba(255,255,255,0.06)" }} />;
+  return <div style={{ height: 1, backgroundColor: "var(--border)" }} />;
 }
