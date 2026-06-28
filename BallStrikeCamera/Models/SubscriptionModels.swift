@@ -19,18 +19,18 @@ enum SubscriptionTier: String, Codable, CaseIterable {
 
     var monthlyShotLimit: Int {
         switch self {
-        case .free:      return 20
-        case .basic:     return 200
-        case .pro:       return 1000
+        case .free:      return 50
+        case .basic:     return 500
+        case .pro:       return 2500
         case .unlimited: return Int.max
         }
     }
 
     var dailyShotLimit: Int {
         switch self {
-        case .free:      return 5
-        case .basic:     return 30
-        case .pro:       return 150
+        case .free:      return 15
+        case .basic:     return 75
+        case .pro:       return 300
         case .unlimited: return Int.max
         }
     }
