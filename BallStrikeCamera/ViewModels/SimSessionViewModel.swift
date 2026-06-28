@@ -16,10 +16,6 @@ final class SimSessionViewModel: ObservableObject {
     private let simOutput = SimOutputService()
     private(set) var userId: UUID
 
-    /// Per-session frame-storage cap from the subscription tier (metrics always save).
-    var sessionFrameLimit: Int = .max
-    private(set) var framedShotCount = 0
-    var framesAllowed: Bool { framedShotCount < sessionFrameLimit }
     private let idleTimeout: TimeInterval = 15 * 60
     private var idleTask: Task<Void, Never>?
 
@@ -83,10 +79,6 @@ final class SimSessionViewModel: ObservableObject {
         guard activeSession == nil else { return }
         var session = SimSession(userId: userId, provider: provider)
         session.usedOpenGolfSim = usedOGS
-        framedShotCount = 0
-        if let ent = try? await backend.loadEntitlement(userId: userId) {
-            sessionFrameLimit = ent.effectiveTier.sessionFrameLimit
-        }
         do {
             try await backend.saveSimSession(session)
             activeSession = session
@@ -104,7 +96,6 @@ final class SimSessionViewModel: ObservableObject {
     func addShot(_ shot: SavedShot) async {
         await ensureSessionStarted()
         shots.append(shot)
-        if shot.media.frameCount > 0 { framedShotCount += 1 }
         lastShotJSON = simOutput.jsonString(metrics: shot.metrics, shotNumber: shots.count)
         guard var session = activeSession else { return }
         session.shotIds.append(shot.id)
@@ -167,7 +158,6 @@ final class SimSessionViewModel: ObservableObject {
         }
         activeSession = nil
         shots = []
-        framedShotCount = 0
     }
 
     func computeDefaultName() async -> String {

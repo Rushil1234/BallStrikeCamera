@@ -4,8 +4,8 @@ struct ShotDetailView: View {
     let shot: SavedShot
     @EnvironmentObject private var session: AuthSessionStore
 
-    @State private var resolvedFramesDir: String?   // local dir after ensuring frames (cloud → disk)
-    @State private var framesResolved = false
+    @State private var resolvedComposite: URL?      // local composite file (cloud → disk if needed)
+    @State private var compositeResolved = false
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -30,17 +30,16 @@ struct ShotDetailView: View {
         .navigationTitle(shot.clubName ?? "Shot")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
-        .task { await resolveFrames() }
+        .task { await resolveComposite() }
     }
 
-    /// Ensures the replay frames exist on disk (downloading from cloud if this
-    /// device doesn't have them), then points the player at the local folder.
-    private func resolveFrames() async {
-        guard !framesResolved, shot.media.frameCount > 0,
-              let uid = session.currentUser?.id else { framesResolved = true; return }
+    /// Ensures the composite image exists on disk (downloading from cloud if this device
+    /// doesn't have it), then points the view at the local file.
+    private func resolveComposite() async {
+        guard !compositeResolved, let uid = session.currentUser?.id else { compositeResolved = true; return }
         let svc = ShotPersistenceService(userId: uid, backend: session.backend)
-        resolvedFramesDir = (await svc.ensureFramesAvailable(for: shot))?.path
-        framesResolved = true
+        resolvedComposite = await svc.ensureCompositeAvailable(for: shot)
+        compositeResolved = true
     }
 
     // MARK: - Replay
@@ -50,16 +49,8 @@ struct ShotDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             TCSectionHeader(title: "Replay")
             Group {
-                if let framesDir = resolvedFramesDir, shot.media.frameCount > 0 {
-                    AnimatedFramesView(framesDir: framesDir, frameCount: shot.media.frameCount)
-                        .frame(height: 220)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                } else if !framesResolved, shot.media.frameCount > 0 {
-                    // Fetching frames from cloud for this device.
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 220)
-                } else if let composite = shot.media.compositePath {
-                    AsyncImage(url: URL(fileURLWithPath: composite)) { phase in
+                if let comp = resolvedComposite {
+                    AsyncImage(url: comp) { phase in
                         switch phase {
                         case .success(let img):
                             img.resizable().scaledToFit()
@@ -69,6 +60,10 @@ struct ShotDetailView: View {
                     }
                     .frame(height: 220)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else if !compositeResolved {
+                    // Fetching the composite from cloud for this device.
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 220)
                 } else {
                     replayPlaceholder
                 }

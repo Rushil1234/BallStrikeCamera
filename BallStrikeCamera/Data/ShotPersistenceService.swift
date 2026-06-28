@@ -29,22 +29,17 @@ final class ShotPersistenceService {
     /// Persist a shot from the camera pipeline.
     /// - Parameters:
     ///   - metrics: Calculated launch monitor metrics.
-    ///   - compositeImage: The ball-flight composite image (39-frame overlay).
-    ///   - originalFrames: The 41 raw captured frames (only saved when opted-in).
+    ///   - compositeImage: The single per-shot composite image (saved as JPEG + uploaded to cloud).
     ///   - clubId: Selected club UUID.
     ///   - clubName: Selected club display name.
     ///   - mode: Shot capture mode.
-    ///   - saveOriginalFrames: Whether to persist the raw frames.
     /// - Returns: The persisted SavedShot.
     @discardableResult
     func saveShot(metrics: SavedShotMetrics,
                   compositeImage: UIImage?,
-                  originalFrames: [UIImage] = [],
                   clubId: UUID? = nil,
                   clubName: String? = nil,
                   mode: ShotMode = .range,
-                  saveOriginalFrames: Bool = false,
-                  framesAllowed: Bool? = nil,
                   visibility: ShotVisibility = .friends,
                   sessionId: UUID? = nil,
                   roundId: UUID? = nil,
@@ -58,68 +53,31 @@ final class ShotPersistenceService {
         // Rule: bad shots are never saved — no metrics, no frames, nothing persisted.
         guard !isBadShot else { throw ShotPersistenceError.discardedBadShot }
 
-        // Decide whether this shot may store frames. If the caller already decided (range/sim
-        // view models track it), use that. Otherwise compute it here from the subscription tier
-        // and how many shots in this session/round already have frames — so the per-session frame
-        // cap applies uniformly (course mode included) without per-screen plumbing.
-        let allowFrames: Bool
-        if let framesAllowed {
-            allowFrames = framesAllowed
-        } else if !originalFrames.isEmpty, (sessionId != nil || roundId != nil) {
-            let tier = (try? await backend.loadEntitlement(userId: userId))?.effectiveTier ?? .free
-            let existing = (try? await backend.loadShots(userId: userId)) ?? []
-            let framed = existing.filter { s in
-                guard s.media.frameCount > 0 else { return false }
-                if let sid = sessionId, s.sessionId == sid { return true }
-                if let rid = roundId, s.roundId == rid { return true }
-                return false
-            }.count
-            allowFrames = framed < tier.sessionFrameLimit
-        } else {
-            allowFrames = true
-        }
-
+        // Each shot stores ONE composite image (saved as JPEG + uploaded); raw frames are never
+        // persisted, so there's no per-session frame cap.
         let shotId = UUID()
         let mediaDir = AppStorageManager.shotFramesDir(userId: userId, shotId: shotId)
         AppStorageManager.ensureDirectory(mediaDir)
 
         var media = SavedShotMedia()
-        media.saveOriginalFrames = saveOriginalFrames
+        media.frameCount = 0   // no frames; the composite is the replay
 
-        // Thumbnail & composite
+        // Composite (single JPEG) + thumbnail. The composite is uploaded to cloud storage so
+        // replay works cross-device / after reinstall, the role frames used to serve.
+        var compositeJPEG: Data? = nil
         if let img = compositeImage {
-            let compPath = mediaDir.appendingPathComponent("composite.png")
-            if let data = img.pngData() {
+            let compPath = mediaDir.appendingPathComponent("composite.jpg")
+            if let data = img.jpegData(compressionQuality: 0.85) {
+                compositeJPEG = data
                 try? data.write(to: compPath)
                 media.compositePath = compPath.path
-                // Thumbnail: scale down to 120px wide
                 if let thumb = img.resizedToWidth(120),
-                   let thumbData = thumb.pngData() {
-                    let thumbPath = mediaDir.appendingPathComponent("thumb.png")
+                   let thumbData = thumb.jpegData(compressionQuality: 0.8) {
+                    let thumbPath = mediaDir.appendingPathComponent("thumb.jpg")
                     try? thumbData.write(to: thumbPath)
                     media.thumbnailPath = thumbPath.path
                 }
             }
-        }
-
-        // Impact frames — saved only when the per-session frame cap hasn't been hit
-        // (`framesAllowed`). Metrics are always saved; once a session exceeds its tier's frame
-        // limit, further shots keep metrics but skip frame storage so we don't over-store frames.
-        var framePNGs: [Data] = []
-        if allowFrames && !originalFrames.isEmpty {
-            let framesDir = mediaDir.appendingPathComponent("frames")
-            AppStorageManager.ensureDirectory(framesDir)
-            let limit = saveOriginalFrames ? 41 : 11
-            for (idx, frame) in originalFrames.prefix(limit).enumerated() {
-                if let data = frame.pngData() {
-                    framePNGs.append(data)
-                    let name = String(format: "frame_%03d.png", idx)
-                    try? data.write(to: framesDir.appendingPathComponent(name))
-                }
-            }
-            media.originalFramesFolderPath = framesDir.path
-            media.frameCount = min(limit, originalFrames.count)
-            media.framesUploaded = true   // optimistic; replay falls back to local if cloud misses
         }
 
         // Metrics JSON sidecar
@@ -149,36 +107,43 @@ final class ShotPersistenceService {
         shot.visibility    = visibility
 
         try await backend.saveShot(shot)
-        // Best-effort: mirror replay frames to cloud storage so they survive a
-        // reinstall and work on other devices (local files only exist here).
-        if !framePNGs.isEmpty {
-            try? await backend.uploadShotFrames(userId: userId, shotId: shotId, frames: framePNGs)
+        // Mirror the composite to cloud storage so the replay image survives a reinstall and works
+        // on other devices. Retry once on failure and record the outcome so it's observable (the
+        // previous frame upload silently swallowed errors, which hid that uploads were being denied).
+        if let jpeg = compositeJPEG {
+            var uploaded = false
+            for attempt in 1...2 {
+                do {
+                    try await backend.uploadShotComposite(userId: userId, shotId: shotId, jpeg: jpeg)
+                    uploaded = true
+                    break
+                } catch {
+                    print("composite upload failed (attempt \(attempt)) for shot \(shotId): \(error)")
+                }
+            }
+            if uploaded {
+                shot.media.framesUploaded = true
+                try? await backend.saveShot(shot)   // persist the uploaded flag
+            }
         }
         return shot
     }
 
-    /// Returns the on-disk frames directory for a shot, downloading the frames
-    /// from cloud storage first if they're not already on this device (e.g. the
-    /// shot was captured on another device or after a reinstall). nil if none.
-    func ensureFramesAvailable(for shot: SavedShot) async -> URL? {
-        guard shot.media.frameCount > 0 else { return nil }
-        let framesDir = AppStorageManager.shotFramesDir(userId: userId, shotId: shot.id)
-            .appendingPathComponent("frames")
+    /// Returns a local file URL for the shot's composite image, downloading it from cloud storage
+    /// first if it isn't already on this device (captured elsewhere / after a reinstall). nil if none.
+    func ensureCompositeAvailable(for shot: SavedShot) async -> URL? {
+        let compURL = AppStorageManager.shotFramesDir(userId: userId, shotId: shot.id)
+            .appendingPathComponent("composite.jpg")
         let fm = FileManager.default
-        // Already local?
-        if let files = try? fm.contentsOfDirectory(atPath: framesDir.path),
-           files.contains(where: { $0.hasPrefix("frame_") }) {
-            return framesDir
-        }
+        if fm.fileExists(atPath: compURL.path) { return compURL }
+        // Fall back to a path already recorded on the model (older PNG composites).
+        if let p = shot.media.compositePath, fm.fileExists(atPath: p) { return URL(fileURLWithPath: p) }
         // Pull from cloud.
-        guard let datas = try? await backend.downloadShotFrames(
-            userId: userId, shotId: shot.id, count: shot.media.frameCount), !datas.isEmpty
-        else { return nil }
-        AppStorageManager.ensureDirectory(framesDir)
-        for (idx, data) in datas.enumerated() {
-            try? data.write(to: framesDir.appendingPathComponent(String(format: "frame_%03d.png", idx)))
-        }
-        return framesDir
+        let fetched = try? await backend.downloadShotComposite(userId: userId, shotId: shot.id)
+        guard let data = fetched ?? nil, !data.isEmpty else { return nil }
+        AppStorageManager.ensureDirectory(compURL.deletingLastPathComponent())
+        try? data.write(to: compURL)
+        return compURL
     }
 
     // MARK: - Load

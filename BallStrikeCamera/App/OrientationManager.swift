@@ -48,10 +48,14 @@ final class OrientationManager {
             let mask: UIInterfaceOrientationMask = (orientation == .portrait || orientation == .portraitUpsideDown)
                 ? .portrait
                 : .landscapeRight
+            // Refresh the controller's supported orientations FIRST (it reads currentLock, already
+            // updated above) so the geometry request is validated against the new set. Doing it the
+            // other way round makes the system reject the request against the stale (portrait) set:
+            // "None of the requested orientations are supported … Requested: landscapeRight; Supported: portrait".
+            scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
             scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
                 print("OrientationManager geometry update error: \(error.localizedDescription)")
             }
-            scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
         } else {
             UIDevice.current.setValue(orientation.rawValue, forKey: "orientation")
             UIViewController.attemptRotationToDeviceOrientation()

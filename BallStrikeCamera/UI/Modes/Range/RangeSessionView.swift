@@ -200,19 +200,6 @@ struct RangeSessionView: View {
         VStack(spacing: 20) {
             clubPickerCard
 
-            Toggle(isOn: $vm.saveOriginalFrames) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Save Original Frames")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(BSTheme.textPrimary)
-                    Text("41 raw frames per shot (~12 MB each)")
-                        .font(.system(size: 12))
-                        .foregroundColor(BSTheme.textMuted)
-                }
-            }
-            .tint(BSTheme.electricCyan)
-            .premiumCard(padding: 16)
-
             PremiumActionButton(
                 title: "Start Session",
                 icon: "play.fill",

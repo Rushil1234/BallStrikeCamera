@@ -33,6 +33,10 @@ protocol AppBackend {
     func uploadShotFrames(userId: UUID, shotId: UUID, frames: [Data]) async throws
     func downloadShotFrames(userId: UUID, shotId: UUID, count: Int) async throws -> [Data]
 
+    // Per-shot composite image (single JPEG; replaces frame storage for replay)
+    func uploadShotComposite(userId: UUID, shotId: UUID, jpeg: Data) async throws
+    func downloadShotComposite(userId: UUID, shotId: UUID) async throws -> Data?
+
     // Range sessions — userId embedded in model
     func saveRangeSession(_ session: PracticeSession) async throws
     func deleteRangeSession(sessionId: UUID, userId: UUID) async throws
@@ -106,6 +110,8 @@ extension AppBackend {
     // Default: no cloud frame storage (local backend keeps frames on-device).
     func uploadShotFrames(userId: UUID, shotId: UUID, frames: [Data]) async throws {}
     func downloadShotFrames(userId: UUID, shotId: UUID, count: Int) async throws -> [Data] { [] }
+    func uploadShotComposite(userId: UUID, shotId: UUID, jpeg: Data) async throws {}
+    func downloadShotComposite(userId: UUID, shotId: UUID) async throws -> Data? { nil }
 
     // Default: no notifications (local backend has no social graph).
     func loadFeedNotifications() async throws -> [FeedNotification] { [] }

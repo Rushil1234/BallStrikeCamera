@@ -134,12 +134,7 @@ struct SimCameraScreen: View {
     private func autoSave(analysis: ShotAnalysisResult, metrics: SavedShotMetrics) async {
         guard let uid = session.currentUser?.id else { return }
 
-        let composite = ShotCompositeRenderer().render(analysis: analysis, mode: .darkenedHighContrast)
-        let impact = analysis.detectedImpactFrameIndex
-        let frames = analysis.frames
-            .sorted { $0.frameIndex < $1.frameIndex }
-            .filter { abs($0.frameIndex - impact) <= 5 }
-            .map { $0.originalFrame.image }
+        let composite = ShotCompositeRenderer().render(analysis: analysis)
 
         await simVM.ensureSessionStarted()
         let service = ShotPersistenceService(userId: uid, backend: session.backend)
@@ -147,12 +142,9 @@ struct SimCameraScreen: View {
         guard let shot = try? await service.saveShot(
             metrics: metrics,
             compositeImage: composite,
-            originalFrames: frames,
             clubId: selectedClubId,
             clubName: selectedClub,
             mode: .sim,
-            saveOriginalFrames: false,
-            framesAllowed: simVM.framesAllowed,
             visibility: ShotVisibility(rawValue: visRaw) ?? .friends,
             sessionId: simVM.activeSession?.id
         ) else { return }

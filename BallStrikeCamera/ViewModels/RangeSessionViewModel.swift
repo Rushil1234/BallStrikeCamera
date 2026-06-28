@@ -7,20 +7,11 @@ final class RangeSessionViewModel: ObservableObject {
     @Published var shots: [SavedShot] = []
     @Published var selectedClub: UserClub?
     @Published var clubs: [UserClub] = []
-    @Published var saveOriginalFrames = false
     @Published var isLoading = false
     @Published var errorMessage: String?
 
     private let backend: AppBackend
     private let userId: UUID
-
-    /// Per-session FRAME-storage cap from the user's subscription tier. Metrics always save;
-    /// once this many shots in the session have stored frames, further shots keep metrics only.
-    var sessionFrameLimit: Int = .max
-    private(set) var framedShotCount = 0
-
-    /// True while this session may still store captured frames for a new shot.
-    var framesAllowed: Bool { framedShotCount < sessionFrameLimit }
 
     /// Auto-stop a session after this much inactivity (no new shot).
     private let idleTimeout: TimeInterval = 15 * 60
@@ -83,17 +74,11 @@ final class RangeSessionViewModel: ObservableObject {
         let session = PracticeSession(
             userId: userId,
             selectedClubId: selectedClub?.id,
-            selectedClubName: selectedClub?.name,
-            saveOriginalFrames: saveOriginalFrames
+            selectedClubName: selectedClub?.name
         )
         // Set immediately so the UI is interactive regardless of network status.
         activeSession = session
         shots = []
-        framedShotCount = 0
-        // Resolve the per-session frame cap from the user's subscription tier.
-        if let ent = try? await backend.loadEntitlement(userId: userId) {
-            sessionFrameLimit = ent.effectiveTier.sessionFrameLimit
-        }
         do {
             try await backend.saveRangeSession(session)
         } catch {
@@ -110,7 +95,6 @@ final class RangeSessionViewModel: ObservableObject {
     func addShot(_ shot: SavedShot) async {
         await ensureSessionStarted()           // every shot must live in a session
         shots.append(shot)
-        if shot.media.frameCount > 0 { framedShotCount += 1 }
         guard var session = activeSession else { return }
         if session.selectedClubId == nil {
             session.selectedClubId = shot.clubId
@@ -173,7 +157,6 @@ final class RangeSessionViewModel: ObservableObject {
         }
         activeSession = nil
         shots = []
-        framedShotCount = 0
     }
 
     func computeDefaultName() async -> String {

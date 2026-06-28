@@ -13,7 +13,6 @@ struct ProfileSettingsView: View {
     @AppStorage("tc_camera_frame_rate") private var frameRate = "240 fps"
     @AppStorage("tc_camera_exposure") private var exposureMode = "Auto"
     @AppStorage("tc_camera_side") private var cameraSide = "Down-the-line"
-    @AppStorage("tc_save_original_frames") private var saveOriginalFrames = false
     @AppStorage("tc_default_play_mode") private var defaultPlayMode = "Range"
     @AppStorage("tc_dev_mode") private var devMode = false   // same key as EntitlementViewModel
 
@@ -230,9 +229,6 @@ struct ProfileSettingsView: View {
             MenuSettingsRow(icon: "arrow.left.arrow.right", title: "Camera Side", accent: BSTheme.simBlue,
                             value: cameraSide,
                             options: ["Down-the-line", "Face-on", "Auto from handedness"]) { cameraSide = $0 }
-            BSDivider()
-            ToggleSettingsRow(icon: "film.stack.fill", title: "Save Original Frames",
-                              accent: BSTheme.simBlue, isOn: $saveOriginalFrames)
         }
     }
 
@@ -285,7 +281,6 @@ struct ProfileSettingsView: View {
         frameRate = "240 fps"
         exposureMode = "Auto"
         cameraSide = "Down-the-line"
-        saveOriginalFrames = false
         defaultPlayMode = "Range"
         FeedSharing.autoShareEnabled = true
         UserDefaults.standard.set(AppAppearance.dark.rawValue, forKey: AppearanceStore.key)

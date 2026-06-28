@@ -263,11 +263,14 @@ final class SupabaseBackendService: AppBackend {
     private static let framesBucket = "shot-frames"
 
     private func frameObjectURL(userId: UUID, shotId: UUID, index: Int) -> URL {
+        // Lowercase the UUIDs: the shot-frames RLS policy compares the path's first folder against
+        // auth.uid() as TEXT (case-sensitive), and auth.uid() is lowercase — but Swift's
+        // UUID.uuidString is uppercase, which would make every upload fail RLS.
         config.storageBaseURL
             .appendingPathComponent("object")
             .appendingPathComponent(Self.framesBucket)
-            .appendingPathComponent(userId.uuidString)
-            .appendingPathComponent(shotId.uuidString)
+            .appendingPathComponent(userId.uuidString.lowercased())
+            .appendingPathComponent(shotId.uuidString.lowercased())
             .appendingPathComponent("frame_\(String(format: "%03d", index)).png")
     }
 
@@ -295,6 +298,36 @@ final class SupabaseBackendService: AppBackend {
             out.append(data)
         }
         return out
+    }
+
+    // Per-shot composite (single JPEG) — stored in the same bucket alongside (former) frames.
+    private func compositeObjectURL(userId: UUID, shotId: UUID) -> URL {
+        config.storageBaseURL
+            .appendingPathComponent("object")
+            .appendingPathComponent(Self.framesBucket)
+            .appendingPathComponent(userId.uuidString.lowercased())
+            .appendingPathComponent(shotId.uuidString.lowercased())
+            .appendingPathComponent("composite.jpg")
+    }
+
+    func uploadShotComposite(userId: UUID, shotId: UUID, jpeg: Data) async throws {
+        var req = authorizedRequest(url: compositeObjectURL(userId: userId, shotId: shotId), method: "POST")
+        req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        req.setValue("true", forHTTPHeaderField: "x-upsert")
+        req.httpBody = jpeg
+        let (respData, response) = try await performAuthorizedRequest(req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 201 else {
+            logError("uploadComposite", data: respData, response: response)
+            throw BackendError.saveFailed("shot-frames")
+        }
+    }
+
+    func downloadShotComposite(userId: UUID, shotId: UUID) async throws -> Data? {
+        let req = authorizedRequest(url: compositeObjectURL(userId: userId, shotId: shotId))
+        let (data, response) = try await performAuthorizedRequest(req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { return nil }
+        return data
     }
 
     // MARK: - Range Sessions

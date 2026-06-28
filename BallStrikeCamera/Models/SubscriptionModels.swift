@@ -41,17 +41,6 @@ enum SubscriptionTier: String, Codable, CaseIterable {
     var canAccessAdvancedInsights: Bool { self == .pro || self == .unlimited }
     var maxDevices: Int              { self == .free ? 1 : 1 }
 
-    /// How many shots in a single session keep their captured FRAMES (for replay/analysis).
-    /// Every good shot still saves its metrics regardless — only frame storage is capped, so
-    /// we don't store more frames than necessary. Bad shots are never saved at all.
-    var sessionFrameLimit: Int {
-        switch self {
-        case .free:      return 10
-        case .basic:     return 100
-        case .pro:       return 1000
-        case .unlimited: return Int.max
-        }
-    }
 }
 
 // MARK: - Payment Status

@@ -299,19 +299,13 @@ struct ShotResultView: View {
         defer { isSavingCourseShot = false }
         do {
             let service = ShotPersistenceService(userId: uid, backend: session.backend)
-            let impact = analysis.detectedImpactFrameIndex
-            let frames = analysis.frames
-                .sorted { $0.frameIndex < $1.frameIndex }
-                .filter { abs($0.frameIndex - impact) <= 5 }
-                .map { $0.originalFrame.image }
+            let composite = ShotCompositeRenderer().render(analysis: analysis)
             let shot = try await service.saveShot(
                 metrics: SavedShotMetrics(metrics),
-                compositeImage: nil,
-                originalFrames: frames,
+                compositeImage: composite,
                 clubId: selectedClubId,
                 clubName: selectedClubName,
                 mode: context?.shotMode ?? .course,
-                saveOriginalFrames: false,
                 visibility: ShotVisibility(rawValue: defaultVisibilityRaw) ?? .friends,
                 roundId: context?.courseRoundId,
                 holeNumber: context?.holeNumber,
