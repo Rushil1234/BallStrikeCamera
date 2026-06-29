@@ -93,6 +93,7 @@ protocol AppBackend {
     // Round attestation (ask a friend to verify a round)
     func requestRoundAttestation(round: CourseRound, requesterId: UUID, requesterName: String, attesterId: UUID) async throws
     func loadIncomingAttestations(userId: UUID) async throws -> [IncomingAttestation]
+    func loadSentAttestations(userId: UUID) async throws -> [SentAttestation]
     func respondToAttestation(id: UUID, accept: Bool) async throws
 
     // Entitlements & usage
@@ -122,6 +123,7 @@ extension AppBackend {
     // Default: no attestation support (local backend has no social graph).
     func requestRoundAttestation(round: CourseRound, requesterId: UUID, requesterName: String, attesterId: UUID) async throws {}
     func loadIncomingAttestations(userId: UUID) async throws -> [IncomingAttestation] { [] }
+    func loadSentAttestations(userId: UUID) async throws -> [SentAttestation] { [] }
     func respondToAttestation(id: UUID, accept: Bool) async throws {}
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {

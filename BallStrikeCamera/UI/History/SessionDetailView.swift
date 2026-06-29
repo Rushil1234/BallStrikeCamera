@@ -88,6 +88,7 @@ struct SessionDetailView: View {
     @State private var showAttestSheet = false
     @State private var friends: [FriendProfile] = []
     @State private var attestMessage: String?
+    @State private var roundAttestation: SentAttestation?
 
     /// Range/sim sessions render the per-shot list; course rounds use the shot map instead.
     private var showsShotsList: Bool {
@@ -116,7 +117,7 @@ struct SessionDetailView: View {
                             headerCard
                             if case .range(let rs) = item { rangeStatsCard(rs) }
                             if case .course(let r)  = item { courseStatsCard(r) }
-                            if case .course = item { attestButton }
+                            if case .course = item { attestSection }
                             if case .course(let r)  = item {
                                 let hasMap = !r.nfcShots.isEmpty || shots.contains { $0.shotLatitude != nil }
                                 if hasMap { roundShotLogSection(r, shots: shots) }
@@ -167,9 +168,67 @@ struct SessionDetailView: View {
             Text(attestMessage ?? "")
         }
         .task { await loadShots() }
+        .task { await loadAttestationStatus() }
     }
 
     // MARK: Attestation
+
+    /// Shows the request button until a request exists, then its live status.
+    @ViewBuilder private var attestSection: some View {
+        if let a = roundAttestation {
+            attestStatusCard(a)
+        } else {
+            attestButton
+        }
+    }
+
+    private func attestStatusCard(_ a: SentAttestation) -> some View {
+        let icon: String
+        let tint: Color
+        let title: String
+        let detail: String
+        switch a.status {
+        case "attested":
+            icon = "checkmark.seal.fill"; tint = TCTheme.sage
+            title = "Verified"
+            detail = a.attesterName.isEmpty ? "A friend verified this round." : "Verified by \(a.attesterName)."
+        case "declined":
+            icon = "xmark.seal.fill"; tint = TCTheme.dangerRed
+            title = "Attestation declined"
+            detail = "The friend you asked declined this request."
+        default:
+            icon = "clock.fill"; tint = TCTheme.gold
+            title = "Attestation pending"
+            detail = "Waiting for your friend to verify this round."
+        }
+        return HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(TCTheme.textPrimary)
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundColor(TCTheme.textMuted)
+            }
+            Spacer()
+            if a.status == "declined" {
+                Button("Ask again") { showAttestSheet = true }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(TCTheme.sage)
+                    .buttonStyle(.plain)
+            }
+        }
+        .tcCard()
+    }
+
+    private func loadAttestationStatus() async {
+        guard case .course(let round) = item, let me = session.currentUser else { return }
+        let sent = (try? await session.backend.loadSentAttestations(userId: me.id)) ?? []
+        roundAttestation = sent.first { $0.roundId == round.id }
+    }
 
     private var attestButton: some View {
         Button { showAttestSheet = true } label: {
@@ -249,6 +308,7 @@ struct SessionDetailView: View {
             try await session.backend.requestRoundAttestation(round: round, requesterId: me.id,
                                                               requesterName: name, attesterId: friend.userId)
             attestMessage = "Attestation request sent to \(friend.displayName)."
+            await loadAttestationStatus()
         } catch {
             attestMessage = "Couldn't send the request. \(error.localizedDescription)"
         }

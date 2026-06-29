@@ -832,22 +832,20 @@ final class SupabaseBackendService: AppBackend {
         return rows.filter { $0.status == "pending" }.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
     }
 
+    func loadSentAttestations(userId: UUID) async throws -> [SentAttestation] {
+        // RLS lets the requester read rows they created, so they can see status.
+        let rows: [SentAttestation] = try await selectWhere(
+            table: "round_attestations", column: "requester_id", value: userId.uuidString)
+        return rows.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
+    }
+
     func respondToAttestation(id: UUID, accept: Bool) async throws {
-        let body: [String: Any] = [
-            "status": accept ? "attested" : "declined",
-            "responded_at": ISO8601DateFormatter().string(from: Date())
-        ]
-        var components = URLComponents(url: restURL("round_attestations"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "id", value: "eq.\(id.uuidString)")]
-        var req = authorizedRequest(url: components.url!, method: "PATCH")
-        req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await performAuthorizedRequest(req)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        guard status == 200 || status == 204 else {
-            logError("respondToAttestation", data: data, response: response)
-            throw BackendError.saveFailed("round_attestations")
-        }
+        // Goes through respond_to_attestation() so the responder's display name is
+        // stamped onto the row (from their profile) for the requester's "Verified by" UI.
+        try await rpcVoid("respond_to_attestation", body: [
+            "p_id": id.uuidString,
+            "p_accept": accept,
+        ])
     }
 
     func loadFeedNotifications() async throws -> [FeedNotification] {

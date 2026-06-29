@@ -109,6 +109,20 @@ struct IncomingAttestation: Identifiable, Decodable, Equatable {
     let createdAt: Date?
 }
 
+/// An attestation the current user REQUESTED, so they can see its status and who
+/// verified it. Decoded from `round_attestations` (decoder uses convertFromSnakeCase).
+struct SentAttestation: Identifiable, Decodable, Equatable {
+    let id: UUID
+    let roundId: UUID
+    let attesterName: String   // filled in once the friend responds
+    let courseName: String
+    let score: Int?
+    let toPar: Int?
+    let status: String         // pending | attested | declined
+    let createdAt: Date?
+    let respondedAt: Date?
+}
+
 // MARK: - Feed Notification (gimmes / comments on your posts)
 
 struct FeedNotification: Identifiable, Equatable {
