@@ -265,36 +265,9 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
 .success-msg { color: var(--sage); font-size: 14px; }
 
 /* ============================================================
-   Shared interactive primitives — buttons & cards.
-   Canonical building blocks for new/migrated UI. Feature-specific
-   classes may still layer on top, but should compose these where possible.
+   Card primitive. Buttons use the established .btn / .btn-gold /
+   .btn-outline / .btn-muted / .btn-lg / .btn-block system defined above.
    ============================================================ */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 13px 24px; min-height: 48px;
-  border: 1px solid transparent; border-radius: 999px;
-  font: 700 13px/1 var(--font-sans), sans-serif;
-  letter-spacing: 0.12em; text-transform: uppercase;
-  text-decoration: none; cursor: pointer;
-  transition: background .2s var(--ease), color .2s var(--ease),
-              border-color .2s var(--ease), opacity .2s var(--ease);
-}
-.btn:disabled, .btn[aria-disabled="true"] { opacity: .55; cursor: not-allowed; }
-.btn--primary { background: var(--cream); border-color: var(--cream); color: var(--button-text); }
-.btn--primary:hover:not(:disabled) { background: var(--gold-bright); border-color: var(--gold-bright); }
-.btn--gold { background: var(--gold); border-color: var(--gold); color: var(--c-forest-deep); }
-.btn--gold:hover:not(:disabled) { background: var(--gold-bright); border-color: var(--gold-bright); }
-.btn--ghost { background: transparent; border-color: var(--border-strong); color: var(--text); }
-.btn--ghost:hover:not(:disabled) { border-color: var(--text); }
-.btn--social {
-  width: 100%; min-height: 52px; letter-spacing: 0.08em;
-  background: color-mix(in oklab, var(--elevated) 68%, transparent);
-  border-color: var(--border-strong); color: var(--text);
-}
-.btn--social:hover:not(:disabled) { border-color: var(--text); }
-.btn--sm { min-height: 40px; padding: 9px 16px; font-size: 11px; }
-.btn--block { width: 100%; }
-
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -303,6 +276,14 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
 }
 .card--elevated { background: var(--elevated); box-shadow: var(--shadow); }
 .card--flush { padding: 0; }
+
+/* Support page quick-link cards */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.support-card { display: flex; flex-direction: column; gap: 6px; text-decoration: none;
+  transition: border-color .2s var(--ease), background .2s var(--ease); }
+.support-card:hover { border-color: var(--border-strong); background: var(--elevated); }
+.support-card-title { color: var(--cream); font-weight: 700; font-size: 16px; }
+.support-card-detail { color: var(--muted); font-size: 13px; line-height: 1.6; }
 
 /* Consistent keyboard focus across interactive elements (0-specificity so it
    never fights existing styles except on actual keyboard focus). */

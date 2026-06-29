@@ -24,7 +24,8 @@ export default function PrivacyPage() {
             Payment processing is handled by Stripe. We do not store credit card information.
           </p>
           <p>
-            For questions, email <a href="mailto:support@truecarry.app">support@truecarry.app</a>.
+            For questions, visit our <a href="/support">support page</a> or email{" "}
+            <a href="mailto:Rushil@truecarrygolf.com">Rushil@truecarrygolf.com</a>.
           </p>
         </div>
       </main>

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import CopyCommand from "./CopyCommand";
+import SiteNav from "@/components/SiteNav";
+import SiteFooter from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
   title: "TrueCarry Bridge — Connect to GSPro or OpenGolfSim",
@@ -40,42 +42,17 @@ const FAQ = [
 
 export default function BridgePage() {
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "var(--bg)",
-        color: "var(--text)",
-        fontFamily: "var(--font-sans), sans-serif",
-        padding: "0 0 80px",
-      }}
-    >
-      {/* Nav */}
-      <nav
+    <>
+      <SiteNav />
+      <main
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "20px 32px",
-          borderBottom: "1px solid var(--border)",
+          minHeight: "100vh",
+          backgroundColor: "var(--bg)",
+          color: "var(--text)",
+          fontFamily: "var(--font-sans), sans-serif",
+          padding: "40px 0 80px",
         }}
       >
-        <Link href="/" style={{ textDecoration: "none" }}>
-          <span
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: 22,
-              color: "var(--gold)",
-              letterSpacing: "-0.3px",
-            }}
-          >
-            True Carry
-          </span>
-        </Link>
-        <Link href="/" style={{ fontSize: 13, color: "var(--muted)", textDecoration: "none" }}>
-          ← Back to home
-        </Link>
-      </nav>
-
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "0 24px" }}>
         {/* Hero */}
         <div style={{ textAlign: "center", padding: "56px 0 40px" }}>
@@ -278,7 +255,9 @@ export default function BridgePage() {
           .
         </p>
       </div>
-    </main>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 
