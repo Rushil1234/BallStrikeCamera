@@ -1,0 +1,68 @@
+# Supabase project config — auth email (custom sender + branded templates).
+#
+# ⚠️  IMPORTANT before `supabase config push`:
+#   `config push` syncs the auth config below to the LINKED hosted project. This
+#   file only contains the auth/email blocks — if you push it as-is it may reset
+#   OTHER remote auth settings (OAuth providers, etc.) to defaults. Do ONE of:
+#     (a) run `supabase init` to generate a full config.toml, then merge the
+#         [auth.*] blocks below into it, THEN `supabase config push`; or
+#     (b) skip the CLI and set SMTP + paste the templates in the Dashboard
+#         (Authentication → Emails / SMTP Settings). See AUTH_EMAIL_SETUP.md.
+#
+# The [auth.email.smtp] block is ignored for local dev (`supabase start` routes
+# mail to Mailpit); it only applies to the hosted project on push.
+
+project_id = "aoxturoezgecwceudeef"
+
+[auth]
+# Public site URL — must match your production origin.
+site_url = "https://truecarry.app"
+# Exact origins (wildcards allowed) auth links/redirects may return to.
+# Trim to the domains you actually use in production.
+additional_redirect_urls = [
+  "https://truecarry.app/**",
+  "https://www.truecarry.app/**",
+  "https://truecarrygolf.com/**",
+  "https://www.truecarrygolf.com/**",
+  "https://truecarry.vercel.app/**",
+  "http://localhost:3000/**",
+]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+
+[auth.email]
+enable_signup = true
+# Require users to confirm their email before the account is usable.
+enable_confirmations = true
+# Require the current password (or a fresh login) to change the password.
+secure_password_change = true
+
+# ── Custom SMTP: send all auth mail from rushil@truecarrygolf.com ───────────────
+# Secrets are read from a .env file at the project root (see AUTH_EMAIL_SETUP.md).
+# Use a provider that has verified the truecarrygolf.com domain (Resend, SendGrid,
+# Postmark, AWS SES, etc.) so messages pass SPF/DKIM and don't land in spam.
+[auth.email.smtp]
+enabled      = true
+host         = "env(SMTP_HOST)"
+port         = 587
+user         = "env(SMTP_USER)"
+pass         = "env(SMTP_PASS)"
+admin_email  = "rushil@truecarrygolf.com"
+sender_name  = "True Carry"
+
+# ── Branded templates ───────────────────────────────────────────────────────────
+[auth.email.template.confirmation]
+subject      = "Confirm your True Carry email"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject      = "Reset your True Carry password"
+content_path = "./supabase/templates/recovery.html"
+
+[auth.email.template.magic_link]
+subject      = "Your True Carry sign-in link"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.email_change]
+subject      = "Confirm your new True Carry email"
+content_path = "./supabase/templates/email_change.html"

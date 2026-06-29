@@ -64,7 +64,11 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", accessTok
         if (error) throw error;
         if (data.session) setToken(data.session.access_token);
       } else {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/?checkout=premium#h07")}` },
+        });
         if (error) throw error;
         if (data.session) {
           setToken(data.session.access_token);

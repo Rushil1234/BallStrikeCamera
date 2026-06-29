@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#F4EFE2;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1E2A22;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#F4EFE2;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#FBF8F0;border:1px solid rgba(14,20,15,0.10);border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="background:#1E2A22;padding:28px 32px;">
+                <span style="font-family:Georgia,'Times New Roman',serif;font-size:24px;color:#ECE4D2;letter-spacing:-0.5px;">True <em style="color:#B89A5E;">Carry.</em></span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:36px 32px 8px;">
+                <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#1E2A22;">Reset your password</h1>
+                <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#5C5A4F;">
+                  We got a request to reset the password for your True Carry account. Tap below to choose a new one. This link expires in 1 hour.
+                </p>
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="border-radius:999px;background:#B89A5E;">
+                      <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 32px;font-size:14px;font-weight:700;letter-spacing:0.04em;color:#1E2A22;text-decoration:none;border-radius:999px;">Reset password</a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#8A8576;">
+                  If the button doesn't work, copy and paste this link into your browser:<br />
+                  <a href="{{ .ConfirmationURL }}" style="color:#8C7240;word-break:break-all;">{{ .ConfirmationURL }}</a>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 32px 32px;border-top:1px solid rgba(14,20,15,0.08);">
+                <p style="margin:0;font-size:12px;line-height:1.6;color:#8A8576;">
+                  Didn't request this? You can safely ignore this email — your password won't change.<br />
+                  Questions? <a href="mailto:rushil@truecarrygolf.com" style="color:#8C7240;">rushil@truecarrygolf.com</a>
+                </p>
+              </td>
+            </tr>
+          </table>
+          <p style="margin:18px 0 0;font-size:11px;color:#8A8576;">© True Carry</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

@@ -42,7 +42,7 @@ function LoginForm() {
       const { error } = await supabase.auth.resend({
         type: "signup",
         email: confirmationEmail,
-        options: { emailRedirectTo: `${window.location.origin}/login` },
+        options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/account` },
       });
       if (error) throw error;
       setSuccess(`Confirmation email resent to ${confirmationEmail}.`);
@@ -82,7 +82,11 @@ function LoginForm() {
         if (error) throw error;
         router.push(redirect);
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/account` },
+        });
         if (error) throw error;
         setSuccess("Account created — check your email to confirm, then sign in.");
         setConfirmationEmail(email);
