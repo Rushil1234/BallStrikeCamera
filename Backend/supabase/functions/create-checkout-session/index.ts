@@ -5,7 +5,13 @@
 import Stripe from "npm:stripe@21";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// Pinned explicitly so SDK updates can't silently change checkout behaviour.
+// This surface intentionally runs a newer (dahlia) API version than the webhook
+// because it relies on the embedded Checkout params (ui_mode "embedded_page",
+// redirect_on_completion). It does not read subscription period fields, so the
+// 2025-03-31 (basil) period-field move does not affect it.
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
+  apiVersion: "2026-05-27.dahlia",
   httpClient: Stripe.createFetchHttpClient(),
 });
 

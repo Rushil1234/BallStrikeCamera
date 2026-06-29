@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import SiteNav from "@/components/SiteNav";
+import SiteFooter from "@/components/SiteFooter";
 
 // The bridge serves its status here (see Bridge/bridge.py → STATUS_HTTP_PORT).
 const STATUS_URL = "http://127.0.0.1:8421/status";
@@ -66,42 +68,17 @@ export default function ConnectPage() {
   const simName = status?.sim ?? "your simulator";
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        backgroundColor: "var(--bg)",
-        color: "var(--text)",
-        fontFamily: "var(--font-sans), sans-serif",
-        padding: "0 0 80px",
-      }}
-    >
-      {/* Nav */}
-      <nav
+    <>
+      <SiteNav />
+      <main
         style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "20px 32px",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          minHeight: "100vh",
+          backgroundColor: "var(--bg)",
+          color: "var(--text)",
+          fontFamily: "var(--font-sans), sans-serif",
+          padding: "40px 0 80px",
         }}
       >
-        <Link href="/" style={{ textDecoration: "none" }}>
-          <span
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: 22,
-              color: "var(--gold)",
-              letterSpacing: "-0.3px",
-            }}
-          >
-            True Carry
-          </span>
-        </Link>
-        <Link href="/bridge" style={{ fontSize: 13, color: "var(--muted)", textDecoration: "none" }}>
-          Need the bridge? →
-        </Link>
-      </nav>
-
       <div style={{ maxWidth: 620, margin: "0 auto", padding: "0 24px" }}>
         {/* Hero */}
         <div style={{ textAlign: "center", padding: "56px 0 36px" }}>
@@ -147,7 +124,7 @@ export default function ConnectPage() {
         <div
           style={{
             backgroundColor: "var(--surface)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            border: "1px solid var(--border)",
             borderRadius: 16,
             padding: "8px 24px",
             marginTop: 16,
@@ -202,7 +179,9 @@ export default function ConnectPage() {
           . If the status never updates, open this page in Chrome or Edge on the computer running the bridge.
         </p>
       </div>
-    </main>
+      </main>
+      <SiteFooter />
+    </>
   );
 }
 
@@ -303,7 +282,7 @@ function StepRow({
           width: 24,
           height: 24,
           borderRadius: "50%",
-          backgroundColor: done ? "rgba(63,182,139,0.18)" : "rgba(255,255,255,0.06)",
+          backgroundColor: done ? "rgba(63,182,139,0.18)" : "var(--border)",
           border: `1px solid ${color}`,
           color,
           fontSize: 13,
@@ -324,5 +303,5 @@ function StepRow({
 }
 
 function Divider() {
-  return <div style={{ height: 1, backgroundColor: "rgba(255,255,255,0.06)" }} />;
+  return <div style={{ height: 1, backgroundColor: "var(--border)" }} />;
 }

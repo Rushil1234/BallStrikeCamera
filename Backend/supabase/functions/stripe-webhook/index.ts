@@ -5,6 +5,11 @@
 import Stripe from "npm:stripe@14";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// API version is pinned intentionally. This handler reads
+// `subscription.current_period_start` / `current_period_end`, which were moved
+// onto subscription *items* in the 2025-03-31 (basil) release. Do NOT bump this
+// to a basil/dahlia version without also rewriting tierFromSubscription and the
+// period-date reads below, or entitlements will be written with Invalid Dates.
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2024-04-10",
   httpClient: Stripe.createFetchHttpClient(),
@@ -168,7 +173,7 @@ async function handlePaymentFailed(inv: Stripe.Invoice) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function tierFromSubscription(sub: Stripe.Subscription): string {
-  const priceId = sub.items.data[0]?.price.id ?? "";
+  const priceId = sub.items.data[0]?.price?.id ?? "";
   return normalizeTier(PRICE_TO_TIER[priceId] ?? sub.metadata?.app_tier ?? "basic");
 }
 

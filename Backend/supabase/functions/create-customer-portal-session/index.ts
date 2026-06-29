@@ -5,6 +5,9 @@
 import Stripe from "npm:stripe@14";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// Pinned to match the stripe-webhook function so billing reads/writes stay on a
+// single, well-tested API shape. This function only creates a Billing Portal
+// session, so the version choice is not behaviour-sensitive here.
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
   apiVersion: "2024-04-10",
   httpClient: Stripe.createFetchHttpClient(),

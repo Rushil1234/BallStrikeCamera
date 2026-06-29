@@ -62,7 +62,7 @@ export default function ResetPasswordPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password.length < 6) { setError("Use at least 6 characters."); return; }
+    if (password.trim().length < 6) { setError("Use at least 6 characters."); return; }
     if (password !== confirm) { setError("Passwords don't match."); return; }
     setSaving(true);
     try {

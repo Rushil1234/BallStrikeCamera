@@ -856,7 +856,9 @@ final class SupabaseBackendService: AppBackend {
     }
 
     func createInviteCode(userId: UUID) async throws -> String {
-        let code = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8)).uppercased()
+        // 12 hex chars (~48 bits) — invite codes gate friend creation via the
+        // public redeem_invite RPC, so they must not be feasibly guessable.
+        let code = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)).uppercased()
         try await upsert(table: "invite_codes", body: ["code": code, "user_id": userId.uuidString])
         return code
     }

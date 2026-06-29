@@ -32,6 +32,13 @@ export default function SiteFooter() {
           </div>
 
           <div className="footer-links">
+            <span style={{ color: "var(--faint)", fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>Help</span>
+            <Link href="/support">Support</Link>
+            <Link href="/bridge">Bridge setup</Link>
+            <Link href="/connect">Connection</Link>
+          </div>
+
+          <div className="footer-links">
             <span style={{ color: "var(--faint)", fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 4 }}>Legal</span>
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>

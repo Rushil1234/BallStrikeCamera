@@ -5,46 +5,73 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Surfaces — Carry Forest (Brand Guidelines v1) */
-  --forest:    #1E2A22;
-  --forest-deep:#16201A;
-  --bg:        #1E2A22;   /* Carry Forest — primary surface */
-  --bg-soft:   #1A241D;
-  --surface:   #243127;   /* raised panel */
-  --surface-2: #2A3A2E;   /* Fairway Moss */
-  --elevated:  #324433;
+  /* ---- Brand primitives (raw values — the single source of truth).
+     Never reference these directly in components; use the semantic tokens
+     below so theming (e.g. .auth-page light theme) stays in one place. ---- */
+  --c-forest:       #1E2A22; /* Carry Forest */
+  --c-forest-deep:  #16201A;
+  --c-forest-soft:  #1A241D;
+  --c-forest-raise: #243127;
+  --c-moss:         #2A3A2E; /* Fairway Moss */
+  --c-moss-light:   #324433;
+  --c-ink:          #0E140F;
+  --c-gold:         #B89A5E; /* Marker Gold */
+  --c-gold-bright:  #CBB079;
+  --c-gold-deep:    #8C7240;
+  --c-bone:         #ECE4D2; /* Range Bone */
+  --c-sage:         #8CA585;
+  --c-silver:       #C8C5BD; /* Atlas Silver */
+  --c-pewter:       #8A8880;
+  --c-stone:        #AEB0A2;
+  --c-paper:        #F4EFE2;
+  --c-paper-bright: #FBF8F0;
+  --c-clay:         #5C5A4F;
+  --c-clay-faint:   #8A8576;
 
-  /* Marker Gold — reserved for the most important number. Bone for everything bright. */
-  --gold:        #B89A5E;
-  --gold-bright: #CBB079;
-  --cream:       #ECE4D2; /* Range Bone */
-  --green-bright:#8CA585;
-  --sage:        #8CA585;
-  --silver:      #C8C5BD; /* Atlas Silver */
+  /* ---- Surfaces (semantic) ---- */
+  --forest:    var(--c-forest);
+  --forest-deep:var(--c-forest-deep);
+  --bg:        var(--c-forest);   /* primary surface */
+  --bg-soft:   var(--c-forest-soft);
+  --surface:   var(--c-forest-raise); /* raised panel */
+  --surface-2: var(--c-moss);
+  --elevated:  var(--c-moss-light);
 
-  /* Text — warm bone on forest */
-  --text:   #ECE4D2;
-  --muted:  #AEB0A2;
-  --faint:  #8A8880; /* Pewter */
+  /* ---- Accents (semantic). Gold reserved for the most important number. ---- */
+  --gold:        var(--c-gold);
+  --gold-bright: var(--c-gold-bright);
+  --cream:       var(--c-bone);
+  --green-bright:var(--c-sage);
+  --sage:        var(--c-sage);
+  --silver:      var(--c-silver);
+  --danger:      #E07A6F;
 
-  /* Hairlines — bone-based on forest */
+  /* ---- Text — warm bone on forest ---- */
+  --text:   var(--c-bone);
+  --muted:  var(--c-stone);
+  --faint:  var(--c-pewter);
+
+  /* ---- Hairlines — bone-based on forest ---- */
   --border:        rgba(236, 228, 210, 0.12);
   --border-strong: rgba(236, 228, 210, 0.22);
   --border-gold:   rgba(184, 154, 94, 0.4);
 
   --radius:    4px;
-  --radius-sm: 4px;
   --radius-lg: 8px;
 
   --shadow:      0 40px 90px -45px rgba(0, 0, 0, 0.75);
   --shadow-gold: 0 40px 90px -45px rgba(0, 0, 0, 0.75);
-  --nav-bg: #16201A;
-  --button-text: #16201A;
+  --nav-bg: var(--c-forest-deep);
+  --button-text: var(--c-forest-deep);
   --overlay: rgba(8, 12, 10, 0.74);
 
   --maxw: 1240px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/* Back-compat: --radius-sm was a duplicate of --radius. Keep the alias so any
+   stray references keep resolving while we converge on --radius. */
+:root { --radius-sm: var(--radius); }
 
 html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 
@@ -234,23 +261,52 @@ input:focus, textarea:focus { border-color: var(--text); }
 input::placeholder { color: var(--faint); }
 label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16em; color: var(--muted); margin-bottom: 9px; text-transform: uppercase; }
 
-.error-msg { color: #e07a6f; font-size: 14px; }
+.error-msg { color: var(--danger); font-size: 14px; }
 .success-msg { color: var(--sage); font-size: 14px; }
+
+/* ============================================================
+   Card primitive. Buttons use the established .btn / .btn-gold /
+   .btn-outline / .btn-muted / .btn-lg / .btn-block system defined above.
+   ============================================================ */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+.card--elevated { background: var(--elevated); box-shadow: var(--shadow); }
+.card--flush { padding: 0; }
+
+/* Support page quick-link cards */
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.support-card { display: flex; flex-direction: column; gap: 6px; text-decoration: none;
+  transition: border-color .2s var(--ease), background .2s var(--ease); }
+.support-card:hover { border-color: var(--border-strong); background: var(--elevated); }
+.support-card-title { color: var(--cream); font-weight: 700; font-size: 16px; }
+.support-card-detail { color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+/* Consistent keyboard focus across interactive elements (0-specificity so it
+   never fights existing styles except on actual keyboard focus). */
+:where(a, button, .btn, input, textarea, select):focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 2px;
+}
 
 /* ---------- Auth pages ---------- */
 .auth-page {
-  --bg:        #F4EFE2;
-  --bg-soft:   #FBF8F0;
-  --surface:   #FBF8F0;
-  --surface-2: #ECE4D2;
+  /* Light "paper" theme — overrides the semantic tokens only. */
+  --bg:        var(--c-paper);
+  --bg-soft:   var(--c-paper-bright);
+  --surface:   var(--c-paper-bright);
+  --surface-2: var(--c-bone);
   --elevated:  #FFFFFF;
-  --cream:     #16201A;
-  --text:      #16201A;
-  --muted:     #5C5A4F;
-  --faint:     #8A8576;
+  --cream:     var(--c-forest-deep);
+  --text:      var(--c-forest-deep);
+  --muted:     var(--c-clay);
+  --faint:     var(--c-clay-faint);
   --border:        rgba(14, 20, 15, 0.12);
   --border-strong: rgba(14, 20, 15, 0.2);
-  --button-text: #F4EFE2;
+  --button-text: var(--c-paper);
   --shadow: 0 30px 72px -46px rgba(30, 42, 34, 0.45);
 
   min-height: 100vh;
@@ -657,10 +713,12 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
 }
 .phone-screen {
   height: 100%; border-radius: 32px; overflow: hidden; position: relative;
-  background: linear-gradient(180deg, #1E2A22, #16201A);
-  border: 1px solid #2A3A2E;
-  --faint: #8A8880; --muted: #AEB0A2; --text: #ECE4D2; --border: rgba(236,228,210,0.12);
-  --gold-bright: #CBB079; --cream: #ECE4D2; --button-text: #16201A;
+  background: linear-gradient(180deg, var(--c-forest), var(--c-forest-deep));
+  border: 1px solid var(--c-moss);
+  /* Intentional dark island inside the light .auth-page theme: re-assert the
+     dark semantic tokens locally so the device mockup renders forest-on-bone. */
+  --faint: var(--c-pewter); --muted: var(--c-stone); --text: var(--c-bone); --border: rgba(236,228,210,0.12);
+  --gold-bright: var(--c-gold-bright); --cream: var(--c-bone); --button-text: var(--c-forest-deep);
   display: flex; flex-direction: column; justify-content: space-between; padding: 26px 20px 22px;
 }
 .phone-notch {
@@ -1208,9 +1266,11 @@ code {
    Each section is a golf hole; fixed header, ball-trail, scorecard.
    ============================================================ */
 .round{
-  --forest:#1E2A22; --forest-deep:#16201A; --forest-darker:#0E140F;
-  --moss:#2A3A2E; --bone:#ECE4D2; --paper:#F4EFE2; --silver:#C8C5BD;
-  --carry-gold:#B89A5E; --carry-gold-deep:#8C7240; --ink:#0E140F;
+  /* Brand-named aliases for this editorial section. All map to the same
+     primitives as the global tokens — one palette, two naming dialects. */
+  --forest:var(--c-forest); --forest-deep:var(--c-forest-deep); --forest-darker:var(--c-ink);
+  --moss:var(--c-moss); --bone:var(--c-bone); --paper:var(--c-paper); --silver:var(--c-silver);
+  --carry-gold:var(--c-gold); --carry-gold-deep:var(--c-gold-deep); --ink:var(--c-ink);
   --display: var(--font-serif), "Times New Roman", serif;
   --r-sans: var(--font-sans), system-ui, sans-serif;
   --r-mono: var(--font-mono), ui-monospace, monospace;
@@ -2183,7 +2243,7 @@ code {
 .product-foot{ margin-top:auto; display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .product-status{ font-family:var(--r-mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:color-mix(in oklab,var(--bone,#f2eee1) 50%,transparent); }
 .product-status.live{ color:#8fd49a; }
-.product-cta{ display:inline-block; padding:11px 22px; border-radius:999px; font-family:var(--r-mono); font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; text-decoration:none; background:var(--bone,#f2eee1); color:#0c1a10; transition:background .2s,color .2s; }
+.product-cta{ display:inline-block; padding:11px 22px; border-radius:999px; font-family:var(--r-mono); font-size:10.5px; letter-spacing:.2em; text-transform:uppercase; text-decoration:none; background:var(--bone); color:var(--c-forest-deep); transition:background .2s,color .2s; }
 .product-cta:hover{ background:var(--carry-gold,#c9a86a); }
 .product-cta.ghost{ background:none; border:1px solid color-mix(in oklab,var(--bone,#f2eee1) 30%,transparent); color:var(--bone,#f2eee1); }
 .product-cta.ghost:hover{ background:var(--bone,#f2eee1); color:#0c1a10; }
