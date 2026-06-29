@@ -194,7 +194,7 @@ export default function AccountPage() {
         {!premium ? (
           <FreeAccountUpsell userEmail={user?.email ?? ""} onUpgrade={handleUpgrade} loading={checkoutLoading} />
         ) : dashboard ? (
-          <PremiumDashboard dashboard={dashboard} userEmail={user?.email ?? ""} />
+          <PremiumDashboard dashboard={dashboard} userEmail={user?.email ?? ""} onChanged={loadAccount} />
         ) : (
           <div className="card">No premium app data was found for this account yet.</div>
         )}
@@ -213,9 +213,62 @@ export default function AccountPage() {
   );
 }
 
-function PremiumDashboard({ dashboard, userEmail }: { dashboard: AccountDashboard; userEmail: string }) {
+function DevicesPanel({ devices, onChanged }: { devices: AccountDashboard["devices"]; onChanged: () => void }) {
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function removeDevice(id: string) {
+    setErr(null);
+    setRemoving(id);
+    try {
+      const { error } = await supabase.from("user_devices").delete().eq("id", id);
+      if (error) throw error;
+      onChanged();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Could not remove device.");
+    } finally {
+      setRemoving(null);
+    }
+  }
+
+  return (
+    <div className="card account-panel">
+      <div className="panel-head">
+        <div>
+          <span className="badge">Devices</span>
+          <h2>Signed-in devices</h2>
+        </div>
+        <span className="account-pill">{devices.length} of 2</span>
+      </div>
+      {err && <p className="error-msg" style={{ marginBottom: 12 }}>{err}</p>}
+      {devices.length === 0 ? (
+        <div className="device-card">
+          <strong>No device registered</strong>
+          <span>Open the iOS app and sign in to register this account.</span>
+        </div>
+      ) : (
+        <div className="device-list">
+          {devices.map((d) => (
+            <div className="device-row" key={d.id}>
+              <div>
+                <strong>{d.device_name || "Unnamed device"}</strong>
+                <span>{d.platform} · {d.app_version || "app version unknown"}</span>
+                <small>Last seen {formatDate(d.last_seen_at)}</small>
+              </div>
+              <button type="button" className="device-remove" onClick={() => removeDevice(d.id)} disabled={removing === d.id}>
+                {removing === d.id ? "Removing…" : "Remove"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <p className="device-hint">Each account can be active on up to 2 devices. Remove one here to free a slot for a new phone or tablet.</p>
+    </div>
+  );
+}
+
+function PremiumDashboard({ dashboard, userEmail, onChanged }: { dashboard: AccountDashboard; userEmail: string; onChanged: () => void }) {
   const profile = dashboard.profile;
-  const primaryDevice = dashboard.devices[0];
   const usageTotal = dashboard.usage.reduce(
     (sum, day) => sum + day.range_shots + day.sim_shots + day.course_rounds,
     0
@@ -250,23 +303,7 @@ function PremiumDashboard({ dashboard, userEmail }: { dashboard: AccountDashboar
           </div>
         </div>
 
-        <div className="card account-panel">
-          <div className="panel-head">
-            <div>
-              <span className="badge">Device</span>
-              <h2>Active app install</h2>
-            </div>
-          </div>
-          <div className="device-card">
-            <strong>{primaryDevice?.device_name ?? "No device registered"}</strong>
-            <span>{primaryDevice ? `${primaryDevice.platform} · ${primaryDevice.app_version || "app version unknown"}` : "Open the iOS app and sign in to register this account."}</span>
-            <small>
-              {primaryDevice
-                ? `Last seen ${formatDate(primaryDevice.last_seen_at)}`
-                : "Device status will appear after the app syncs."}
-            </small>
-          </div>
-        </div>
+        <DevicesPanel devices={dashboard.devices} onChanged={onChanged} />
 
         <div className="card account-panel account-panel-wide">
           <div className="panel-head">

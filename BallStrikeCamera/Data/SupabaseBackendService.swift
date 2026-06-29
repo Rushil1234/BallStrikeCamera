@@ -903,6 +903,35 @@ final class SupabaseBackendService: AppBackend {
         }
     }
 
+    /// Registers (or refreshes) this device and enforces the per-account device
+    /// cap via the register_device RPC. Returns true if the device is allowed,
+    /// false if the account is already at its limit. Fails OPEN (returns true)
+    /// on any transient/RPC error so a legitimate user is never locked out.
+    func registerDevice(token: String, name: String, platform: String, appVersion: String) async -> Bool {
+        let url = config.rpcBaseURL.appendingPathComponent("register_device")
+        var req = authorizedRequest(url: url, method: "POST")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "p_device_token": token,
+            "p_device_name":  name,
+            "p_platform":     platform,
+            "p_app_version":  appVersion,
+        ])
+        do {
+            let (data, response) = try await performAuthorizedRequest(req)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                logError("registerDevice", data: data, response: response)
+                return true   // fail open
+            }
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let allowed = obj["allowed"] as? Bool {
+                return allowed
+            }
+            return true       // unexpected shape → fail open
+        } catch {
+            return true       // network error → fail open
+        }
+    }
+
     // MARK: - REST helpers
 
     private func restURL(_ table: String) -> URL {

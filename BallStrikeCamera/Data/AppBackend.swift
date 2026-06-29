@@ -361,6 +361,7 @@ enum BackendError: LocalizedError {
     case saveFailed(String)
     case loadFailed(String)
     case networkError(String)
+    case deviceLimitReached
 
     var errorDescription: String? {
         switch self {
@@ -373,6 +374,8 @@ enum BackendError: LocalizedError {
         case .saveFailed(let m):   return "Save failed: \(m)"
         case .loadFailed(let m):   return "Load failed: \(m)"
         case .networkError(let m): return "Network error: \(m)"
+        case .deviceLimitReached:
+            return "This account is already active on 2 devices. Remove one at truecarry.app/account to use True Carry here."
         }
     }
 }

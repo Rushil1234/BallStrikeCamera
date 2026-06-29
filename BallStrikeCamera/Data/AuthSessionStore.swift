@@ -82,6 +82,7 @@ final class AuthSessionStore: ObservableObject {
         if let user = try? await configuredBackend.currentUser() {
             activateBackend(configuredBackend)
             currentUser = user
+            await registerThisDevice()   // refresh last-seen; non-blocking on restore
             userProfile = await ensureProfileAndBag(for: user)
             await entitlementVM.load(userId: user.id)
         await preloadData()
@@ -100,6 +101,7 @@ final class AuthSessionStore: ObservableObject {
     func signIn(email: String, password: String) async throws {
         activateBackend(configuredBackend)
         let user = try await configuredBackend.signIn(email: email, password: password)
+        try await enforceDeviceLimit()           // signs out + throws if over the 2-device cap
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
@@ -109,10 +111,36 @@ final class AuthSessionStore: ObservableObject {
     func createAccount(name: String, email: String, password: String) async throws {
         activateBackend(configuredBackend)
         let user = try await configuredBackend.createAccount(name: name, email: email, password: password)
+        try await enforceDeviceLimit()           // new account counts as this device
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
         await preloadData()
+    }
+
+    // MARK: - Device registration / 2-device cap
+
+    /// Registers/refreshes this device with the hosted backend. No-op for the
+    /// guest/local backend. Returns whether the device is allowed (under the cap).
+    @discardableResult
+    private func registerThisDevice() async -> Bool {
+        guard let supabase = configuredBackend as? SupabaseBackendService else { return true }
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        return await supabase.registerDevice(
+            token: AuthSessionStore.deviceId,
+            name: UIDevice.current.name,
+            platform: "iOS",
+            appVersion: version
+        )
+    }
+
+    /// On an explicit sign-in/create, block (and sign back out) if the account is
+    /// already active on its maximum number of devices.
+    private func enforceDeviceLimit() async throws {
+        if await registerThisDevice() == false {
+            await signOut()
+            throw BackendError.deviceLimitReached
+        }
     }
 
     func sendPasswordReset(email: String) async throws {
