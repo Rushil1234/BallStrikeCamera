@@ -1,0 +1,17 @@
+{
+  "name": "Golf Tracking Tripod Hub",
+  "description": "Modular, field-stakeable hub for a golf shot-tracking rig. A central column with a downward ground spike and three angled tripod-leg sockets (sized for 20mm aluminium tubes) carries a sealed battery/wiring core with an NFC tap zone on the top deck, a downward-facing LED light bar with a glare hood, a side OLED screen bezel, and a phone rest with a sun-shade canopy. Fully parametric and OpenSCAD-Customizer ready.",
+  "source": "GolfTrackingTripodHub.scad",
+  "license": "CC-BY-4.0",
+  "tags": ["functional", "golf", "tripod", "outdoor", "electronics-enclosure", "phone-mount", "parametric"],
+  "parameter_groups": [
+    { "name": "Render Options", "parameters": ["show_base", "show_core", "show_light", "show_phone", "explode"] },
+    { "name": "Tripod Base", "parameters": ["hub_radius", "hub_height", "leg_count", "leg_length", "leg_splay", "leg_width", "leg_thick", "leg_taper", "foot_diameter", "foot_height", "include_stake", "stake_diameter", "stake_into_ground"] },
+    { "name": "Core Housing", "parameters": ["core_w", "core_d", "core_h", "nfc_diameter", "nfc_depth", "wire_channel_d"] },
+    { "name": "Light Bar & OLED Mount", "parameters": ["led_bar_w", "led_bar_h", "led_bar_depth", "led_mount_angle", "hood_overhang", "oled_w", "oled_h", "oled_recess", "bezel_frame", "bezel_depth"] },
+    { "name": "Phone Rest & Canopy", "parameters": ["phone_width", "backing_height", "phone_lip_d", "phone_lip_h", "canopy_depth", "canopy_thick", "canopy_fascia_h"] },
+    { "name": "Construction", "parameters": ["wall_thickness"] },
+    { "name": "Quality", "parameters": ["$fn"] }
+  ],
+  "print_notes": "The tripod stands on three splayed feet (z=0) with an optional central anchor spike (toggle include_stake). The splayed legs and the back canopy overhang are bridged/cantilevered, so print with supports or split modules via the show_* flags to orient each part separately. Widen leg_splay or leg_length for more stability under the tall phone plate; increase canopy_thick / wall_thickness for a stiffer canopy."
+}
