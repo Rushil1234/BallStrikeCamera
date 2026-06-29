@@ -2216,7 +2216,19 @@ code {
 /* ============================================================
    /store — the pro shop
    ============================================================ */
-.store-page{ background:var(--forest-darker, #0c1a10); min-height:100vh; color:var(--bone,#f2eee1); }
+.store-page{
+  /* Map the brand-dialect names this page uses to the site-wide tokens/fonts.
+     The store sits OUTSIDE .round, where --bone/--carry-gold/--display/--r-*
+     would otherwise be undefined and fall back to off-brand colors and system
+     fonts — which is why the store looked different from the rest of the site. */
+  --forest-darker: var(--bg);
+  --bone:          var(--cream);
+  --carry-gold:    var(--gold);
+  --display: var(--font-serif), "Times New Roman", serif;
+  --r-sans:  var(--font-sans), system-ui, sans-serif;
+  --r-mono:  var(--font-mono), ui-monospace, monospace;
+  background: var(--bg); min-height:100vh; color: var(--text);
+}
 .store-hero{ padding:clamp(120px,16vw,180px) 24px clamp(48px,7vw,90px); border-bottom:1px solid color-mix(in oklab,var(--bone,#f2eee1) 10%,transparent); }
 .store-hero-inner{ max-width:1180px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:clamp(32px,5vw,72px); align-items:center; }
 .store-kicker{ font-family:var(--r-mono); font-size:11px; letter-spacing:.3em; text-transform:uppercase; color:var(--carry-gold,#c9a86a); margin:0 0 16px; }

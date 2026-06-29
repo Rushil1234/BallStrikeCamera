@@ -140,7 +140,6 @@ export default function HomePage() {
           <nav className="nav">
             <a className="l" href="#h03">What it does</a>
             <a className="l" href="/play">The Sim</a>
-            <a className="l" href="/bridge">Connect sim</a>
             <a className="l" href="/store">Store</a>
             <a className="l" href="#h07">Pricing</a>
             <a className="l btn" href="/login">Sign in</a>
