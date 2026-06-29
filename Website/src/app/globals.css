@@ -151,50 +151,50 @@ h1, h2, h3 {
 .brand-logo:hover { color: var(--cream); opacity: 0.82; }
 
 /* ---------- Navigation ---------- */
+/* Site nav — mirrors the homepage header (.round .head) so every page shares
+   one identical bar. */
 .site-nav {
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  position: sticky; top: 0; z-index: 55; padding: 14px 0;
   background: var(--nav-bg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  transition: background 0.3s var(--ease), border-color 0.3s var(--ease);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(236, 228, 210, 0.12);
+  transition: box-shadow 0.3s var(--ease), border-color 0.3s var(--ease);
 }
 .site-nav.scrolled {
-  background: var(--nav-bg);
   border-bottom-color: rgba(236, 228, 210, 0.18);
   box-shadow: 0 18px 50px -38px rgba(0, 0, 0, 0.85);
 }
 .nav-inner {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 22px 32px;
-  max-width: var(--maxw); margin: 0 auto;
+  padding: 0 clamp(20px, 4vw, 64px);
 }
-.nav-logo {
-  font-family: var(--font-serif), serif;
-  font-size: 21px; font-weight: 500; color: var(--cream);
-  display: inline-flex; align-items: baseline; gap: 0;
-  letter-spacing: -0.01em;
+.site-nav .brand {
+  display: inline-flex; align-items: center; gap: 14px;
+  text-decoration: none; color: var(--cream);
 }
-.nav-logo:hover { color: var(--cream); opacity: 0.8; }
-.nav-logo .mark { display: none; }
-.nav-links { display: flex; gap: 34px; align-items: center; }
-.site-nav .brand-logo,
-.site-nav .nav-logo {
-  color: #ECE4D2;
+.site-nav .brand img { width: 52px; height: 52px; object-fit: contain; margin: -10px 0; }
+.site-nav .brand .n { font-family: var(--font-serif), serif; font-size: 22px; line-height: 1; }
+.site-nav .brand .it { font-style: italic; color: var(--gold); }
+.site-nav .brand:hover { opacity: 0.9; }
+
+.site-nav .nav { display: inline-flex; align-items: center; gap: 24px; }
+.site-nav .nav a,
+.site-nav .nav .l {
+  font-family: var(--font-sans), sans-serif; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: color-mix(in oklab, var(--cream) 72%, transparent);
+  text-decoration: none; cursor: pointer; background: none; border: none;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
-.site-nav .brand-logo:hover,
-.site-nav .nav-logo:hover {
-  color: #ECE4D2;
+.site-nav .nav a:hover,
+.site-nav .nav .l:hover { color: var(--cream); }
+.site-nav .nav .btn {
+  border: 1px solid color-mix(in oklab, var(--cream) 32%, transparent);
+  padding: 9px 14px; border-radius: 2px; color: var(--cream);
 }
-.nav-links a { color: rgba(236, 228, 210, 0.76); font-size: 14px; font-weight: 400; letter-spacing: 0.01em; position: relative; }
-.nav-links a:not(.btn)::after {
-  content: ""; position: absolute; left: 0; bottom: -5px; width: 0; height: 1px;
-  background: #ECE4D2; transition: width 0.25s var(--ease);
-}
-.nav-links a:not(.btn):hover { color: #ECE4D2; }
-.nav-links a:not(.btn):hover::after { width: 100%; }
+.site-nav .nav .btn:hover { background: var(--cream); color: var(--c-forest-deep); border-color: var(--cream); }
+.site-nav .nav .btn.primary { background: var(--cream); color: var(--c-forest-deep); border-color: var(--cream); }
+.site-nav .nav .btn.primary:hover { background: var(--gold-bright); border-color: var(--gold-bright); }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -868,8 +868,8 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
 
 @media (max-width: 760px) {
   .container, .narrow { padding: 0 24px; }
-  .nav-links { gap: 22px; }
-  .nav-links .hide-sm { display: none; }
+  .site-nav .nav { gap: 16px; }
+  .site-nav .hide-sm { display: none; }
 }
 
 /* ============================================================

@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
-/** Sticky, scroll-aware glass navigation used across marketing pages. */
+/**
+ * Sticky brand navigation, visually identical to the homepage header so every
+ * page shares one consistent bar. Pass `actions` to override the default
+ * right-side links (e.g. on the signed-in account page).
+ */
 export default function SiteNav({ actions }: { actions?: ReactNode }) {
   const [scrolled, setScrolled] = useState(false);
 
@@ -17,22 +21,21 @@ export default function SiteNav({ actions }: { actions?: ReactNode }) {
   return (
     <nav className={`site-nav${scrolled ? " scrolled" : ""}`}>
       <div className="nav-inner">
-        <Link href="/" className="brand-logo">
-          <img src="/truecarry-logo.png" alt="" aria-hidden />
-          True Carry
+        <Link href="/" className="brand" aria-label="True Carry home">
+          <img src="/truecarry-header-logo.png" alt="" aria-hidden />
+          <span className="n">True <span className="it">Carry.</span></span>
         </Link>
-        <div className="nav-links">
+        <div className="nav">
           {actions ?? (
             <>
-              <Link href="/#h03" className="hide-sm">What it does</Link>
-              <Link href="/play" className="hide-sm">The Sim</Link>
-              <Link href="/course" className="hide-sm">Courses</Link>
-              <Link href="/store">Store</Link>
-              <Link href="/#pricing">Pricing</Link>
-              <Link href="/support" className="hide-sm">Support</Link>
-              <Link href="/login" className="btn btn-gold" style={{ padding: "10px 22px", fontSize: 14 }}>
-                Sign In
-              </Link>
+              <Link className="l hide-sm" href="/#h03">What it does</Link>
+              <Link className="l hide-sm" href="/play">The Sim</Link>
+              <Link className="l hide-sm" href="/course">Courses</Link>
+              <Link className="l" href="/store">Store</Link>
+              <Link className="l" href="/#h07">Pricing</Link>
+              <Link className="l hide-sm" href="/support">Support</Link>
+              <Link className="l btn" href="/login">Sign in</Link>
+              <Link className="l btn primary" href="/#h07">Get the app</Link>
             </>
           )}
         </div>
