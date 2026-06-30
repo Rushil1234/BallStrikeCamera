@@ -5,7 +5,10 @@ import UIKit
 
 @MainActor
 final class AuthSessionStore: ObservableObject {
-    @Published var currentUser: AppUser?
+    @Published var currentUser: AppUser? {
+        // Bind the RFID hub to this user so it only auto-connects to their paired device.
+        didSet { RFIDHubManager.shared.currentUserId = currentUser?.id }
+    }
     @Published var userProfile: UserProfile?
     @Published var isLoading = true
 

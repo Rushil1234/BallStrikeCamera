@@ -15,6 +15,7 @@ struct ProfileSettingsView: View {
     @AppStorage("tc_camera_side") private var cameraSide = "Down-the-line"
     @AppStorage("tc_default_play_mode") private var defaultPlayMode = "Range"
     @AppStorage("tc_dev_mode") private var devMode = false   // same key as EntitlementViewModel
+    @ObservedObject private var hub = RFIDHubManager.shared
 
     private var profile: UserProfile? { session.userProfile }
     private var user: AppUser?        { session.currentUser }
@@ -50,6 +51,7 @@ struct ProfileSettingsView: View {
                     clubsSection
                     preferencesSection
                     cameraSection
+                    hubSection
                     appSection
                     signOutButton
                     Spacer(minLength: 32)
@@ -229,6 +231,31 @@ struct ProfileSettingsView: View {
             MenuSettingsRow(icon: "arrow.left.arrow.right", title: "Camera Side", accent: BSTheme.simBlue,
                             value: cameraSide,
                             options: ["Down-the-line", "Face-on", "Auto from handedness"]) { cameraSide = $0 }
+        }
+    }
+
+    // MARK: TrueCarry Hub (BLE pairing)
+
+    private var hubSection: some View {
+        BSSettingsSection("TrueCarry Hub") {
+            if hub.isPaired {
+                BSSettingsRow(icon: "dot.radiowaves.left.and.right", title: "Hub",
+                              subtitle: hub.connectionState.label,
+                              accent: hub.connectionState.isConnected ? BSTheme.fairwayGreen : BSTheme.simBlue)
+                BSDivider()
+                BSSettingsRow(icon: "arrow.triangle.2.circlepath", title: "Reset & Re-pair Hub",
+                              subtitle: "Forget this hub and pair again", accent: BSTheme.dangerRed) {
+                    hub.resetPairing()
+                }
+            } else {
+                BSSettingsRow(icon: "dot.radiowaves.left.and.right", title: "Pair Hub",
+                              subtitle: hub.connectionState == .pairing
+                                  ? "Pairing… hold your hub next to the phone"
+                                  : "Tap, then hold your hub next to the phone",
+                              accent: BSTheme.simBlue) {
+                    hub.startPairing()
+                }
+            }
         }
     }
 
