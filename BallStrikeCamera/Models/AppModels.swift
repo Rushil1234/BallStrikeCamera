@@ -29,6 +29,9 @@ struct UserProfile: Codable, Identifiable {
     var speedUnit: SpeedUnit = .mph
     var homeCourseName: String = ""
     var profileImagePath: String? = nil
+    /// Whether the user finished the first-run tutorial. Optional so profiles saved
+    /// before the column existed still decode (treat nil as not-done).
+    var onboardingCompleted: Bool? = nil
 }
 
 enum Handedness: String, Codable, CaseIterable {

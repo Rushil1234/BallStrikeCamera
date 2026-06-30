@@ -1086,6 +1086,10 @@ final class SupabaseBackendService: AppBackend {
         ]
         if let path = p.profileImagePath { d["profile_image_path"] = path }
         if let u = p.username, !u.isEmpty { d["username"] = u }
+        if let done = p.onboardingCompleted {
+            d["onboarding_completed"] = done
+            if done { d["onboarding_completed_at"] = ISO8601DateFormatter().string(from: Date()) }
+        }
         return d
     }
 

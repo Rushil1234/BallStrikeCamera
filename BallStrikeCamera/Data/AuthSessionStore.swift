@@ -233,6 +233,18 @@ final class AuthSessionStore: ObservableObject {
         await saveProfile(p)
     }
 
+    /// True once the profile is loaded and the user hasn't finished the tutorial.
+    var needsOnboarding: Bool {
+        isLoggedIn && userProfile != nil && (userProfile?.onboardingCompleted != true)
+    }
+
+    /// Marks the first-run tutorial complete and persists it to Supabase.
+    func completeOnboarding() async {
+        guard var p = userProfile else { return }
+        p.onboardingCompleted = true
+        await saveProfile(p)
+    }
+
     func updateHomeCourseName(_ name: String) async {
         guard var p = userProfile else { return }
         p.homeCourseName = name

@@ -12,6 +12,12 @@ struct AppRootView: View {
                 TrueCarryLoadingView()
             } else if session.isLoggedIn {
                 MainTabView()
+                    .fullScreenCover(isPresented: Binding(
+                        get: { session.needsOnboarding },
+                        set: { _ in }   // dismissed when completeOnboarding() flips the flag
+                    )) {
+                        OnboardingView()
+                    }
             } else {
                 LoginView(startEntrance: launchComplete)
             }
