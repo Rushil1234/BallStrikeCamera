@@ -193,7 +193,7 @@ struct SessionDetailView: View {
             title = "Verified"
             detail = a.attesterName.isEmpty ? "A friend verified this round." : "Verified by \(a.attesterName)."
         case "declined":
-            icon = "xmark.seal.fill"; tint = TCTheme.dangerRed
+            icon = "xmark.seal.fill"; tint = TCTheme.danger
             title = "Attestation declined"
             detail = "The friend you asked declined this request."
         default:

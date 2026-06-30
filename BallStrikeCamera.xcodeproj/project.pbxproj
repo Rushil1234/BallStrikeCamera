@@ -110,6 +110,7 @@
 		BF0000030000000000000010 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000010 /* AppRootView.swift */; };
 		BF0000030000000000000011 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000011 /* AuthViewModel.swift */; };
 		BF0000030000000000000012 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000012 /* LoginView.swift */; };
+		BF00000300000000000000A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF00000200000000000000A1 /* OnboardingView.swift */; };
 		BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000013 /* ClubBagViewModel.swift */; };
 		BF0000030000000000000014 /* RangeSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000014 /* RangeSessionViewModel.swift */; };
 		BF0000030000000000000015 /* SimSessionViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000015 /* SimSessionViewModel.swift */; };
@@ -344,6 +345,7 @@
 		BF0000020000000000000010 /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000011 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		BF0000020000000000000012 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		BF00000200000000000000A1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000013 /* ClubBagViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubBagViewModel.swift; sourceTree = "<group>"; };
 		BF0000020000000000000014 /* RangeSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RangeSessionViewModel.swift; sourceTree = "<group>"; };
 		BF0000020000000000000015 /* SimSessionViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimSessionViewModel.swift; sourceTree = "<group>"; };
@@ -791,6 +793,7 @@
 				BF0000020000000000000010 /* AppRootView.swift */,
 				BF0000020000000000000011 /* AuthViewModel.swift */,
 				BF0000020000000000000012 /* LoginView.swift */,
+				BF00000200000000000000A1 /* OnboardingView.swift */,
 				BF0000020000000000000099 /* TrueCarryLaunchView.swift */,
 			);
 			path = Auth;
@@ -1189,6 +1192,7 @@
 				BF0000030000000000000010 /* AppRootView.swift in Sources */,
 				BF0000030000000000000011 /* AuthViewModel.swift in Sources */,
 				BF0000030000000000000012 /* LoginView.swift in Sources */,
+				BF00000300000000000000A1 /* OnboardingView.swift in Sources */,
 				BF0000030000000000000099 /* TrueCarryLaunchView.swift in Sources */,
 				BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */,
 				BF0000030000000000000014 /* RangeSessionViewModel.swift in Sources */,
