@@ -351,9 +351,16 @@ final class FriendsViewModel: ObservableObject {
         let code = redeemCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard !code.isEmpty else { return }
         do {
-            try await backend.redeemInvite(code: code)
+            var rewardDays = 0
+            if let supa = backend as? SupabaseBackendService {
+                rewardDays = try await supa.redeemInviteReward(code: code)
+            } else {
+                try await backend.redeemInvite(code: code)
+            }
             redeemCode = ""
-            statusMessage = "You're now connected!"
+            statusMessage = rewardDays > 0
+                ? "You're connected — you both earned \(rewardDays) days of Pro!"
+                : "You're now connected!"
             await loadAll()
         } catch {
             statusMessage = "Invalid or expired code."

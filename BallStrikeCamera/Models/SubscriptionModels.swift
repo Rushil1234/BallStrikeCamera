@@ -75,6 +75,9 @@ struct UserEntitlement: Codable, Identifiable {
     var currentPeriodEnd: Date?
     var cancelAtPeriodEnd: Bool = false
     var updatedAt: Date = Date()
+    /// Referral/comp Pro grant that's additive to any Stripe subscription.
+    /// Optional so entitlements saved before the column existed still decode.
+    var compProUntil: Date? = nil
 
     static func freeTier(userId: UUID) -> UserEntitlement {
         UserEntitlement(
@@ -88,8 +91,17 @@ struct UserEntitlement: Codable, Identifiable {
         tier == .free || paymentStatus.isActive
     }
 
+    /// True while an active referral/comp Pro grant is in effect.
+    var hasCompPro: Bool {
+        if let until = compProUntil { return until > Date() }
+        return false
+    }
+
     var effectiveTier: SubscriptionTier {
-        isEntitled ? tier : .free
+        let base: SubscriptionTier = isEntitled ? tier : .free
+        // Comp Pro grants Pro-level access without downgrading a higher paid tier.
+        guard hasCompPro else { return base }
+        return base == .unlimited ? .unlimited : .pro
     }
 }
 

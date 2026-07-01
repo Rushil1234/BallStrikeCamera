@@ -865,6 +865,26 @@ final class SupabaseBackendService: AppBackend {
         try await rpcVoid("redeem_invite", body: ["p_code": code])
     }
 
+    /// Redeems an invite and returns the Pro days granted to the caller (0 if the
+    /// reward didn't apply, e.g. the user was already referred).
+    func redeemInviteReward(code: String) async throws -> Int {
+        let url = config.rpcBaseURL.appendingPathComponent("redeem_invite")
+        var req = authorizedRequest(url: url, method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["p_code": code])
+        let (data, response) = try await performAuthorizedRequest(req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 201 || status == 204 else {
+            logError("rpc:redeem_invite", data: data, response: response)
+            throw BackendError.saveFailed("rpc:redeem_invite")
+        }
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           (obj["granted"] as? Bool) == true,
+           let days = obj["reward_days"] as? Int {
+            return days
+        }
+        return 0
+    }
+
     // MARK: - Entitlement
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {

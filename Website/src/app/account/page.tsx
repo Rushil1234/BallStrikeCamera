@@ -23,6 +23,7 @@ interface Entitlement {
   current_period_end: string | null;
   cancel_at_period_end: boolean;
   stripe_customer_id: string | null;
+  comp_pro_until: string | null;
 }
 
 export default function AccountPage() {
@@ -144,6 +145,9 @@ export default function AccountPage() {
         day: "numeric",
       })
     : null;
+  const compUntil = entitlement?.comp_pro_until && new Date(entitlement.comp_pro_until) > new Date()
+    ? new Date(entitlement.comp_pro_until).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })
+    : null;
 
   return (
     <>
@@ -175,6 +179,8 @@ export default function AccountPage() {
             <span>
               {periodEnd
                 ? `${entitlement?.cancel_at_period_end ? "Cancels" : "Renews"} ${periodEnd}`
+                : compUntil
+                ? `Referral Pro until ${compUntil}`
                 : "Billing status syncs after checkout completes."}
             </span>
             {premium ? (
@@ -190,6 +196,8 @@ export default function AccountPage() {
         </section>
 
         {error && <p className="error-msg account-error">{error}</p>}
+
+        {user && <ReferralCard userId={user.id} />}
 
         {!premium ? (
           <FreeAccountUpsell userEmail={user?.email ?? ""} onUpgrade={handleUpgrade} loading={checkoutLoading} />
@@ -210,6 +218,78 @@ export default function AccountPage() {
         />
       )}
     </>
+  );
+}
+
+function makeInviteCode() {
+  // 12 hex chars (~48 bits) — matches the iOS generator.
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+function ReferralCard({ userId }: { userId: string }) {
+  const [code, setCode] = useState<string | null>(null);
+  const [referred, setReferred] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: existing } = await supabase
+          .from("invite_codes").select("code").eq("user_id", userId)
+          .order("created_at", { ascending: true }).limit(1).maybeSingle();
+        let c = existing?.code as string | undefined;
+        if (!c) {
+          c = makeInviteCode();
+          const { error } = await supabase.from("invite_codes").insert({ code: c, user_id: userId });
+          if (error) {
+            const { data: re } = await supabase.from("invite_codes").select("code").eq("user_id", userId).limit(1).maybeSingle();
+            c = (re?.code as string | undefined) ?? c;
+          }
+        }
+        const { count } = await supabase
+          .from("referrals").select("*", { count: "exact", head: true }).eq("referrer_id", userId);
+        if (!cancelled) { setCode(c ?? null); setReferred(count ?? 0); }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  async function copy() {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard may be blocked */
+    }
+  }
+
+  return (
+    <div className="card account-panel referral-card">
+      <div className="panel-head">
+        <div>
+          <span className="badge">Invite friends</span>
+          <h2>Give 14 days, get 14 days</h2>
+        </div>
+        {referred > 0 && <span className="account-pill">{referred} referred</span>}
+      </div>
+      <p className="referral-copy">
+        Share your invite code. When a friend joins True Carry and enters it in the app,
+        you <strong>both</strong> get 14 days of Pro — free.
+      </p>
+      <div className="referral-code-row">
+        <code className="referral-code">{loading ? "…" : code ?? "—"}</code>
+        <button type="button" className="device-remove" onClick={copy} disabled={!code}>
+          {copied ? "Copied" : "Copy code"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -443,7 +523,10 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 }
 
 function hasPremiumAccess(entitlement: Entitlement | null) {
-  if (!entitlement || entitlement.tier === "free") return false;
+  if (!entitlement) return false;
+  // Referral comp Pro grants access regardless of Stripe tier/status.
+  if (entitlement.comp_pro_until && new Date(entitlement.comp_pro_until) > new Date()) return true;
+  if (entitlement.tier === "free") return false;
   return ["active", "trialing"].includes(entitlement.payment_status);
 }
 

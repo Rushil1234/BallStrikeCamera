@@ -1149,6 +1149,14 @@ code {
   justify-content: space-between;
   gap: 18px;
 }
+/* Referral / invite card */
+.referral-copy { color: var(--muted); font-size: 14px; line-height: 1.6; margin: 4px 0 16px; }
+.referral-copy strong { color: var(--cream); }
+.referral-code-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.referral-code { font-family: var(--font-mono), monospace; font-size: 20px; letter-spacing: 0.16em;
+  color: var(--gold-bright); background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 10px 16px; }
+
 /* Multi-device list + remove (2-device cap) */
 .device-list { display: flex; flex-direction: column; gap: 10px; }
 .device-row { display: flex; align-items: center; justify-content: space-between; gap: 12px;
