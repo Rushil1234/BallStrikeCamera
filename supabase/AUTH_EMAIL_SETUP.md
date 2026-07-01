@@ -50,6 +50,13 @@ or AWS SES. From that provider you get: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`.
    (The SMTP block is ignored for local `supabase start`, which routes mail to
    Mailpit at http://localhost:54324 — handy for previewing the templates.)
 
+## Also enable: leaked-password protection (one toggle)
+
+Dashboard → **Authentication → Policies / Password security** → turn on
+**"Leaked password protection"** (checks new passwords against HaveIBeenPwned).
+It's an auth-config setting, so it can't be applied via SQL/migration — flip it in
+the dashboard. Flagged by the security advisor as WARN.
+
 ## Verify it works
 
 - Sign up with a real address → confirmation email arrives **from

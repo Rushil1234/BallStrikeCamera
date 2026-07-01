@@ -55,11 +55,14 @@ extension LiveSimState: Codable {
 final class LiveSimService: ObservableObject {
     @Published var enteredCode: String = "" {
         didSet {
-            let digits = String(enteredCode.filter(\.isNumber).prefix(6))
+            // Accept 6–10 numeric digits. Codes are currently 6 digits, but
+            // accepting a range now means a future longer-code rollout on the web
+            // won't break already-installed apps (staged pairing-code hardening).
+            let digits = String(enteredCode.filter(\.isNumber).prefix(10))
             if digits != enteredCode { enteredCode = digits; return }
-            // Only reset connection state when the actual 6-digit code changes.
+            // Only reset connection state when the actual code changes.
             // Avoids double-reset from SwiftUI re-firing didSet on focus changes.
-            let prevDigits = String(oldValue.filter(\.isNumber).prefix(6))
+            let prevDigits = String(oldValue.filter(\.isNumber).prefix(10))
             if digits != prevDigits {
                 shotsSent = 0
                 lastBroadcastError = nil
@@ -94,7 +97,7 @@ final class LiveSimService: ObservableObject {
         self.config = SupabaseConfig.load()
     }
 
-    var isReadyToConnect: Bool { enteredCode.count == 6 }
+    var isReadyToConnect: Bool { (6...10).contains(enteredCode.count) }
 
     /// Sends a ping to the website so it advances from the code screen to the course selector.
     /// Only marks the session connected if the broadcast actually went through.
@@ -182,7 +185,7 @@ final class LiveSimService: ObservableObject {
 
     func broadcast(metrics: SavedShotMetrics) async {
         guard isReadyToConnect else {
-            lastBroadcastError = "Enter the 6-digit code shown on screen"
+            lastBroadcastError = "Enter the code shown on screen"
             return
         }
 

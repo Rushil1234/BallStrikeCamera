@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ShotDetailView: View {
     let shot: SavedShot
@@ -6,6 +7,8 @@ struct ShotDetailView: View {
 
     @State private var resolvedComposite: URL?      // local composite file (cloud → disk if needed)
     @State private var compositeResolved = false
+    @State private var showShare = false
+    @State private var shareItems: [Any] = []
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -30,7 +33,29 @@ struct ShotDetailView: View {
         .navigationTitle(shot.clubName ?? "Shot")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { prepareShare() } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .disabled(resolvedComposite == nil)
+                .accessibilityLabel("Share shot")
+            }
+        }
+        .sheet(isPresented: $showShare) { ShareSheet(items: shareItems) }
         .task { await resolveComposite() }
+    }
+
+    /// Builds a shareable card: the composite image + a caption of the key numbers.
+    private func prepareShare() {
+        guard let url = resolvedComposite, let image = UIImage(contentsOfFile: url.path) else { return }
+        var parts: [String] = []
+        if let club = shot.clubName, !club.isEmpty { parts.append(club) }
+        if m.carryYards  > 0 { parts.append("\(Int(m.carryYards.rounded())) yd carry") }
+        if m.ballSpeedMph > 0 { parts.append("\(Int(m.ballSpeedMph.rounded())) mph ball") }
+        let caption = (parts.isEmpty ? "My shot" : parts.joined(separator: " · ")) + " — measured with True Carry"
+        shareItems = [image, caption]
+        showShare = true
     }
 
     /// Ensures the composite image exists on disk (downloading from cloud if this device
