@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 /**
- * Sticky brand navigation, visually identical to the homepage header so every
- * page shares one consistent bar. Pass `actions` to override the default
- * right-side links (e.g. on the signed-in account page).
+ * Sticky brand navigation, visually + tab-for-tab identical to the homepage
+ * header so every page shares one consistent bar, with the current section
+ * highlighted. Pass `actions` to override the default right-side links.
  */
 export default function SiteNav({ actions }: { actions?: ReactNode }) {
   const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname() || "/";
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -17,6 +19,12 @@ export default function SiteNav({ actions }: { actions?: ReactNode }) {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const onSim = pathname.startsWith("/play") || pathname.startsWith("/sim");
+  const onStore = pathname.startsWith("/store");
+  const onSupport = pathname.startsWith("/support");
+  const link = (active: boolean, hideSm = false) =>
+    `l${active ? " active" : ""}${hideSm ? " hide-sm" : ""}`;
 
   return (
     <nav className={`site-nav${scrolled ? " scrolled" : ""}`}>
@@ -29,11 +37,10 @@ export default function SiteNav({ actions }: { actions?: ReactNode }) {
           {actions ?? (
             <>
               <Link className="l hide-sm" href="/#h03">What it does</Link>
-              <Link className="l hide-sm" href="/play">The Sim</Link>
-              <Link className="l hide-sm" href="/course">Courses</Link>
-              <Link className="l" href="/store">Store</Link>
+              <Link className={link(onSim, true)} href="/play" aria-current={onSim ? "page" : undefined}>The Sim</Link>
+              <Link className={link(onStore)} href="/store" aria-current={onStore ? "page" : undefined}>Store</Link>
               <Link className="l" href="/#h07">Pricing</Link>
-              <Link className="l hide-sm" href="/support">Support</Link>
+              <Link className={link(onSupport, true)} href="/support" aria-current={onSupport ? "page" : undefined}>Support</Link>
               <Link className="l btn" href="/login">Sign in</Link>
               <Link className="l btn primary" href="/#h07">Get the app</Link>
             </>

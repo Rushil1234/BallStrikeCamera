@@ -142,6 +142,7 @@ export default function HomePage() {
             <a className="l" href="/play">The Sim</a>
             <a className="l" href="/store">Store</a>
             <a className="l" href="#h07">Pricing</a>
+            <a className="l" href="/support">Support</a>
             <a className="l btn" href="/login">Sign in</a>
             <a className="l btn primary" href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>
               Get the app

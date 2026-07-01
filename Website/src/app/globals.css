@@ -180,6 +180,7 @@ h1, h2, h3 {
 .site-nav .nav { display: inline-flex; align-items: center; gap: 24px; }
 .site-nav .nav a,
 .site-nav .nav .l {
+  position: relative;
   font-family: var(--font-sans), sans-serif; font-size: 12px; font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase;
   color: color-mix(in oklab, var(--cream) 72%, transparent);
@@ -188,6 +189,12 @@ h1, h2, h3 {
 }
 .site-nav .nav a:hover,
 .site-nav .nav .l:hover { color: var(--cream); }
+/* Active section highlight (not on the pill buttons) */
+.site-nav .nav .l.active:not(.btn) { color: var(--gold-bright); }
+.site-nav .nav .l.active:not(.btn)::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -7px; height: 2px;
+  border-radius: 2px; background: var(--gold);
+}
 .site-nav .nav .btn {
   border: 1px solid color-mix(in oklab, var(--cream) 32%, transparent);
   padding: 9px 14px; border-radius: 2px; color: var(--cream);
@@ -1964,6 +1971,15 @@ code {
 
 /* /play — full-screen sim host */
 .sim-host{ position:fixed; inset:0; display:flex; flex-direction:column; background:#0a110c; color:var(--bone,#f2eee1); }
+
+/* Cool entrance when you arrive at the sim */
+@keyframes tc-sim-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.985); filter: saturate(0.6); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sim-host, .sim-landing { animation: tc-sim-in 0.55s var(--ease) both; }
+}
 .sim-bar{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:16px; padding:10px 18px; background:#0a110c; border-bottom:1px solid color-mix(in oklab,var(--carry-gold, #c9a86a) 30%,transparent); z-index:20; }
 .sim-bar a{ text-decoration:none; }
 .sim-back{ font-family:var(--display); font-size:18px; color:var(--bone, #f2eee1); }
