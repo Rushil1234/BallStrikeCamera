@@ -39,6 +39,12 @@ courses_combined*.jsonl
 *.csv
 combined_courses*.csv
 courses_*.csv
+*.json.gz
+multitee_courses/
+multitee_gps/
+
+# experimental scratch (standalone scripts, not in the app target)
+BallStrikeCamera/Experimental/CompositePrototype/
 
 # Service role key — never commit
 Config/service_role.key
