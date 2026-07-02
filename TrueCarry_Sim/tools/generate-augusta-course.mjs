@@ -454,7 +454,7 @@ const worldRealism = {
     // Georgia parkland look, tuned to reference photos of the real course:
     // walls of tall loblolly pines, pine-straw floor, azalea banks, blinding
     // white quartz ("Spruce Pine") bunker sand, bright tightly-mown second cut.
-    forest: { pineShare: 0.88, scaleMin: 1.05, scaleRange: 1.5 },
+    forest: { pineShare: 0.88, scaleMin: 0.95, scaleRange: 0.85 },
     forestFloor: { color: 0x8a6742, start: 24 },
     flora: 'azalea',
     waterColor: 0x0d3a5c,

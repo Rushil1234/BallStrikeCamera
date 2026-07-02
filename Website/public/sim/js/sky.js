@@ -10,12 +10,12 @@ export function makeSky(scene, renderer, assets) {
   scene.environmentIntensity = 0.55;
 
   // gentle aerial perspective; the HDRI horizon takes over past the fog
-  scene.fog = new THREE.Fog(0xcfdce6, 500, 2900);
+  scene.fog = new THREE.Fog(0xd2dee8, 430, 2600);
 
   const sunDir = assets.sunDir.clone();
 
   // small fill so foliage (non-PBR materials) isn't flat black in shade
-  const hemi = new THREE.HemisphereLight(0xbdd3e8, 0x44603a, 0.5);
+  const hemi = new THREE.HemisphereLight(0xbdd3e8, 0x44603a, 0.62);
   scene.add(hemi);
 
   const sun = new THREE.DirectionalLight(0xfff1d8, 2.0);

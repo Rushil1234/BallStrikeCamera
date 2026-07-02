@@ -210,6 +210,33 @@ function normalsUp(geo) {
   return geo;
 }
 
+// Southern loblolly pine: a tall bare pole with an irregular crown in the top
+// third only — the signature silhouette of Georgia parkland courses.
+function loblollyCanopy(seed) {
+  const rng = makeRng(seed);
+  const sprig = cardGeo(2.7, 4.2, PINE_SPRIG);
+  const cards = [];
+  for (let y = 10.2; y <= 14.0; y += 0.72) {
+    const t = (y - 10.2) / 3.8;
+    const n = Math.round(5.5 - 2.4 * t);
+    const s = 1.3 - 0.5 * t;
+    for (let i = 0; i < n; i++) {
+      const yaw = (i / n) * Math.PI * 2 + rng() * 1.4;
+      const pitch = -(Math.PI / 2) + 0.5 + rng() * 0.32;
+      const rad = 0.25 + (1 - t) * 0.55 * rng();
+      cards.push(placed(
+        sprig,
+        Math.cos(yaw) * rad, y + (rng() - 0.5) * 0.45, Math.sin(yaw) * rad,
+        pitch, yaw, 0,
+        s * (0.9 + rng() * 0.35),
+      ));
+    }
+  }
+  cards.push(placed(sprig, 0, 14.15, 0, -0.1, rng() * Math.PI, 0, 0.85));
+  cards.push(placed(sprig, 0, 14.05, 0, -0.14, rng() * Math.PI + Math.PI / 2, 0, 0.78));
+  return normalsUp(mergeGeometries(cards));
+}
+
 function pineCanopy(seed) {
   const rng = makeRng(seed);
   const sprig = cardGeo(1.9, 3.2, PINE_SPRIG);
@@ -306,10 +333,13 @@ function treeKit(assets) {
       { geo: pineCanopy(47), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pine' },
       { geo: leafCanopy(23), mat: canopyMat(t.leafCard, 0.4), depth: depthMat(t.leafCard, 0.4), trunk: 'leaf' },
       { geo: leafCanopy(89), mat: canopyMat(t.leafCard, 0.4), depth: depthMat(t.leafCard, 0.4), trunk: 'leaf' },
+      { geo: loblollyCanopy(31), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pineTall' },
+      { geo: loblollyCanopy(73), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pineTall' },
     ],
     trunks: {
       pine: { geo: trunkGeo(0.07, 0.30, 8.6, 3), mat: new THREE.MeshLambertMaterial({ map: t.pineBark }) },
       leaf: { geo: trunkGeo(0.14, 0.36, 4.8, 2), mat: new THREE.MeshLambertMaterial({ map: t.leafBark }) },
+      pineTall: { geo: trunkGeo(0.10, 0.38, 14.4, 5), mat: new THREE.MeshLambertMaterial({ map: t.pineBark }) },
     },
     swayShaders,
   };
@@ -1165,10 +1195,14 @@ export function buildCourse(hole, assets) {
           : (mappedWood ? 0.86 + rng() * 1.08 : 0.58 + rng() * 0.82),
         ry: rng() * Math.PI * 2,
         tilt: (rng() - 0.5) * 0.08,
-        kind: rng() < pineShare ? (rng() < 0.5 ? 0 : 1) : (rng() < 0.5 ? 2 : 3),
-        tint: (hasOcean || forest)
-          ? [0.62 + rng() * 0.22, 0.72 + rng() * 0.22, 0.60 + rng() * 0.18]
-          : [0.82 + rng() * 0.34, 0.84 + rng() * 0.34, 0.82 + rng() * 0.28],
+        kind: rng() < pineShare
+          ? (forest ? (rng() < 0.5 ? 4 : 5) : (rng() < 0.5 ? 0 : 1))
+          : (rng() < 0.5 ? 2 : 3),
+        tint: forest
+          ? [0.78 + rng() * 0.3, 0.95 + rng() * 0.33, 0.72 + rng() * 0.24]
+          : hasOcean
+            ? [0.62 + rng() * 0.22, 0.72 + rng() * 0.22, 0.60 + rng() * 0.18]
+            : [0.82 + rng() * 0.34, 0.84 + rng() * 0.34, 0.82 + rng() * 0.28],
       });
     }
     if (visualZones.flora === 'azalea') {
@@ -1305,7 +1339,7 @@ export function buildCourse(hole, assets) {
       im.castShadow = true;
       setInstances(im, mine, true);
     }
-    for (const species of ['pine', 'leaf']) {
+    for (const species of ['pine', 'leaf', 'pineTall']) {
       const mine = spots.filter(t => kit.canopies[t.kind].trunk === species);
       if (!mine.length) continue;
       const tk = kit.trunks[species];
