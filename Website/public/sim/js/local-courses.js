@@ -1,12 +1,12 @@
-import { HOLES } from './holes.js?v=augusta-2';
-import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=augusta-2';
-import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=augusta-2';
-import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=augusta-2';
-import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=augusta-2';
-import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=augusta-2';
-import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=augusta-2';
-import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=augusta-2';
-import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=augusta-2';
+import { HOLES } from './holes.js?v=augusta-3';
+import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=augusta-3';
+import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=augusta-3';
+import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=augusta-3';
+import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=augusta-3';
+import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=augusta-3';
+import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=augusta-3';
+import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=augusta-3';
+import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=augusta-3';
 
 const PEBBLE_HOLES_WITH_OSM = PEBBLE_PRIVATE_HOLES.map((hole) => ({
   ...hole,

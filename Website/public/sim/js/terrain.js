@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { Water } from 'three/addons/objects/Water.js';
-import { makeFbm, makeRng } from './noise.js';
-import { SURF } from './physics.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=augusta-3';
+import { Water } from 'three/addons/objects/Water.js?v=augusta-3';
+import { makeFbm, makeRng } from './noise.js?v=augusta-3';
+import { SURF } from './physics.js?v=augusta-3';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -881,8 +881,9 @@ export function buildCourse(hole, assets) {
       fringe: new THREE.Color(0x467c38),
       greenA: new THREE.Color(0x67a64f), greenB: new THREE.Color(0x5d9b46),
       tee: new THREE.Color(0x5c9d48),
-      rough: new THREE.Color(0x3b662e), deep: new THREE.Color(0x2c4f22),
-      sand: new THREE.Color(0xd5c28c),
+      rough: new THREE.Color(visualZones.roughColor ?? 0x3b662e),
+      deep: new THREE.Color(visualZones.deepColor ?? 0x2c4f22),
+      sand: new THREE.Color(visualZones.sandColor ?? 0xd5c28c),
       bed: new THREE.Color(0x31464a),
       beach: new THREE.Color(0xb9ab82),
       scrub: new THREE.Color(0x626c51),
@@ -1139,8 +1140,8 @@ export function buildCourse(hole, assets) {
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];
-    const candidates = Math.floor((hasOcean ? 960 : 1700) * (hole.treeDensity || 1));
-    const maxRandomTrees = hasOcean ? 245 : (forest ? 640 : 460);
+    const candidates = Math.floor((hasOcean ? 960 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
+    const maxRandomTrees = hasOcean ? 245 : (forest ? 950 : 460);
     for (let i = 0; i < candidates && spots.length < maxRandomTrees; i++) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
       const z = minZ + 14 + rng() * (maxZ - minZ - 28);
@@ -1154,6 +1155,7 @@ export function buildCourse(hole, assets) {
       if (hasWater && waterMask(x, z).m > 0.05) continue;
       if (visualSand.length && inFeaturePolys(visualSand, x, z)) continue;
       if (hasOcean && !mappedWood && p.dist > fhw + 72 && rng() < 0.72) continue;
+      if (forest && p.dist > fhw + 95 && rng() < 0.45) continue; // wall hugs the corridor
       if (!forest && fbmDetail(x * 0.02 + 90, z * 0.02) < -0.12) continue; // clearings
       const pineShare = forest?.pineShare ?? (hasOcean ? 0.78 : 0.6);
       spots.push({

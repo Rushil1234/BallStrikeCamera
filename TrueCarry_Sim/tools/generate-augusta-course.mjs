@@ -451,12 +451,16 @@ const worldRealism = {
   attribution: '(c) OpenStreetMap contributors (ODbL)',
   paths: worldPaths,
   visualZones: {
-    // Georgia parkland look: dense tall loblolly pines, pine-straw floor,
-    // azalea banks along the corridors.
-    forest: { pineShare: 0.85, scaleMin: 0.95, scaleRange: 1.3 },
+    // Georgia parkland look, tuned to reference photos of the real course:
+    // walls of tall loblolly pines, pine-straw floor, azalea banks, blinding
+    // white quartz ("Spruce Pine") bunker sand, bright tightly-mown second cut.
+    forest: { pineShare: 0.88, scaleMin: 1.05, scaleRange: 1.5 },
     forestFloor: { color: 0x8a6742, start: 24 },
     flora: 'azalea',
     waterColor: 0x0d3a5c,
+    sandColor: 0xefe9dc,
+    roughColor: 0x4d8236,
+    deepColor: 0x3f702c,
   },
 };
 

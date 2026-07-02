@@ -2,18 +2,18 @@
 // cameras, shot lifecycle, scoring.
 
 import * as THREE from 'three';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js';
-import { createShot, simulateCarry, SURF } from './physics.js';
-import { RANGE, holeLength } from './holes.js?v=augusta-2';
-import { buildCourse } from './terrain.js';
-import { makeSky } from './sky.js';
-import { loadAssets } from './assets.js';
-import { HUD, toParStr } from './ui.js?v=augusta-2';
-import { SFX } from './audio.js';
-import { getLiveCode, connectLive, publishLiveState } from './live.js';
-import { fetchSimCourses } from './courses.js';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=augusta-2';
-import { layoutIslandCourse } from './world.js';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=augusta-3';
+import { createShot, simulateCarry, SURF } from './physics.js?v=augusta-3';
+import { RANGE, holeLength } from './holes.js?v=augusta-3';
+import { buildCourse } from './terrain.js?v=augusta-3';
+import { makeSky } from './sky.js?v=augusta-3';
+import { loadAssets } from './assets.js?v=augusta-3';
+import { HUD, toParStr } from './ui.js?v=augusta-3';
+import { SFX } from './audio.js?v=augusta-3';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=augusta-3';
+import { fetchSimCourses } from './courses.js?v=augusta-3';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=augusta-3';
+import { layoutIslandCourse } from './world.js?v=augusta-3';
 
 // ---------- boot ----------
 
