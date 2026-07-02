@@ -35,12 +35,13 @@ if (typeof AUGUSTA_PRIVATE_HOLES !== 'undefined') {
   const augustaWorld = {
     profile: 'coastal',
     ...(typeof AUGUSTA_PRIVATE_WORLD !== 'undefined' ? AUGUSTA_PRIVATE_WORLD : { prepositioned: true }),
+    ...(typeof AUGUSTA_WORLD_REALISM !== 'undefined' ? AUGUSTA_WORLD_REALISM : {}),
     elevation: typeof AUGUSTA_ELEVATION !== 'undefined' ? AUGUSTA_ELEVATION : null,
   };
   const laidOutAugusta = typeof layoutIslandCourse !== 'undefined'
     ? layoutIslandCourse(augustaHoles, augustaWorld).holes
     : augustaHoles;
-  TEST_COURSES.push({ name: 'Magnolia Hills', holes: laidOutAugusta });
+  TEST_COURSES.push({ name: 'Augusta National', holes: laidOutAugusta });
 }
 
 let failures = 0;
@@ -86,7 +87,7 @@ function playCourse(courseName, holes) {
         }
       }
     }
-    if (courseName.indexOf('Magnolia Hills') >= 0) {
+    if (courseName.indexOf('Augusta') >= 0) {
       // Real course accuracy: centerline length must track the official card.
       let pathM = 0;
       for (let pi = 1; pi < hole.path.length; pi++) {

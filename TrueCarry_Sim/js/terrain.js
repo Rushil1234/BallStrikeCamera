@@ -532,6 +532,9 @@ export function buildCourse(hole, assets) {
   const visualWoods = visualZones.woods || [];
   const visualSand = visualZones.sand || [];
   const visualScrub = visualZones.scrub || [];
+  const forest = visualZones.forest || null;
+  const forestFloor = visualZones.forestFloor || null;
+  const forestFloorStart = forestFloor?.start ?? 26;
   const rawCoastLandPts = isCoastal ? (hole.island?.coastline?.land || []) : [];
   const rawCoastEdgePts = isCoastal ? (hole.island?.coastline?.beach || rawCoastLandPts) : [];
   const coastLandPts = smoothPolyline(rawCoastLandPts, 3, true);
@@ -797,13 +800,15 @@ export function buildCourse(hole, assets) {
           localMinH = Math.min(localMinH, heightAt(x, z));
         }
       }
-      const baseY = hole.island.profile === 'coastal' ? waterLevel - 0.45 : localMinH - 0.7;
+      const baseY = (hole.island.profile === 'coastal' && hasOcean)
+        ? waterLevel - 0.45
+        : localMinH - 0.7;
       const ib = hole.island.bounds;
       const icx = (ib.minX + ib.maxX) / 2;
       const icz = (ib.minZ + ib.maxZ) / 2;
       const iw = ib.maxX - ib.minX;
       const ih = ib.maxZ - ib.minZ;
-      if (hole.island.profile === 'coastal') {
+      if (hole.island.profile === 'coastal' && hasOcean) {
         // A vast, reflective ocean stretching to the horizon — the course sits
         // on a coastal headland, not a tidy little island pond.
         const ocean = new Water(new THREE.PlaneGeometry(26000, 26000), {
@@ -820,6 +825,15 @@ export function buildCourse(hole, assets) {
         ocean.position.set(icx, waterLevel - 0.02, icz);
         group.add(ocean);
         oceanMesh = ocean;
+      } else if (hole.island.profile === 'coastal') {
+        // Inland real-data course: forested land to the horizon, no sea.
+        const landSkirt = new THREE.Mesh(
+          new THREE.PlaneGeometry(26000, 26000),
+          new THREE.MeshLambertMaterial({ color: 0x2b4f27 }),
+        );
+        landSkirt.rotation.x = -Math.PI / 2;
+        landSkirt.position.set(icx, baseY - 0.05, icz);
+        group.add(landSkirt);
       } else {
         const islandWater = new THREE.Mesh(
           new THREE.PlaneGeometry(iw + 650, ih + 650),
@@ -874,6 +888,7 @@ export function buildCourse(hole, assets) {
       scrub: new THREE.Color(0x626c51),
       rock: new THREE.Color(0x51463a),
     };
+    const strawColor = new THREE.Color(forestFloor?.color ?? 0x8a6742);
     const tmp = new THREE.Color();
 
     let vi = 0;
@@ -888,8 +903,8 @@ export function buildCourse(hole, assets) {
 
         const surf = surfaceAt(x, z);
         const p = pathInfo(x, z);
-        const inMappedSand = hasOcean && inFeaturePolys(visualSand, x, z);
-        const inMappedScrub = hasOcean && inFeaturePolys(visualScrub, x, z);
+        const inMappedSand = visualSand.length > 0 && inFeaturePolys(visualSand, x, z);
+        const inMappedScrub = visualScrub.length > 0 && inFeaturePolys(visualScrub, x, z);
         const coastDist = hasOcean ? distToPolyline(coastEdgePts, x, z).dist : Infinity;
         let sg = 0, sr = 0, ss = 0, sw = 0;   // grass, rough, sand, tight-mow
 
@@ -922,6 +937,14 @@ export function buildCourse(hole, assets) {
           const t = sstep(fhw + 10, fhw + 45, p.dist);
           tmp.copy(C.rough).lerp(C.deep, t);
           sr = 1;
+          if (forestFloor && p.dist > fhw + forestFloorStart) {
+            // Pine-straw carpet under the tree lines (parkland courses).
+            const ft = sstep(fhw + forestFloorStart, fhw + forestFloorStart + 24, p.dist)
+              * (0.5 + 0.5 * sstep(-0.3, 0.35, fbmDetail(x * 0.016 + 7, z * 0.016)));
+            tmp.lerp(strawColor, ft * 0.85);
+            ss = ft * 0.55;
+            sr = 1 - ss;
+          }
         }
         const vmod = 1 + fbmDetail(x * 0.11 + 31, z * 0.11) * 0.07;
         colors[vi * 3] = tmp.r * vmod;
@@ -953,7 +976,7 @@ export function buildCourse(hole, assets) {
     terrain.receiveShadow = true;
     group.add(terrain);
 
-    if (hasOcean) {
+    if (hasOcean || worldPaths.length) {
       const pathMat = new THREE.MeshStandardMaterial({
         color: 0x2e302c,
         roughness: 0.92,
@@ -1085,7 +1108,7 @@ export function buildCourse(hole, assets) {
         waterNormals: assets.waterN,
         sunDirection: assets.sunDir.clone(),
         sunColor: 0xffffff,
-        waterColor: 0x0e3526,
+        waterColor: visualZones.waterColor ?? 0x0e3526,
         distortionScale: 2.6,
         fog: true,
       });
@@ -1093,6 +1116,23 @@ export function buildCourse(hole, assets) {
       water.position.set(cx, waterLevel, cz);
       group.add(water);
       waters.push(water);
+      if (visualZones.waterColor != null) {
+        // The reflective shader reads silver from tee height; a translucent
+        // tint plate keeps ponds/creeks reading as deep water.
+        const tint = new THREE.Mesh(
+          new THREE.PlaneGeometry(sx, sz),
+          new THREE.MeshBasicMaterial({
+            color: visualZones.waterColor,
+            transparent: true,
+            opacity: 0.45,
+            depthWrite: false,
+            fog: true,
+          }),
+        );
+        tint.rotation.x = -Math.PI / 2;
+        tint.position.set(cx, waterLevel + 0.03, cz);
+        group.add(tint);
+      }
     }
     // (combined animation hook assigned after trees/birds are built)
 
@@ -1100,7 +1140,7 @@ export function buildCourse(hole, assets) {
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];
     const candidates = Math.floor((hasOcean ? 960 : 1700) * (hole.treeDensity || 1));
-    const maxRandomTrees = hasOcean ? 245 : 460;
+    const maxRandomTrees = hasOcean ? 245 : (forest ? 640 : 460);
     for (let i = 0; i < candidates && spots.length < maxRandomTrees; i++) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
       const z = minZ + 14 + rng() * (maxZ - minZ - 28);
@@ -1112,20 +1152,53 @@ export function buildCourse(hole, assets) {
       if (ellipseVal(hole.green, x, z) < 3.0) continue;
       if (Math.hypot(x - tee.x, z - tee.z) < 20) continue;
       if (hasWater && waterMask(x, z).m > 0.05) continue;
-      if (hasOcean && inFeaturePolys(visualSand, x, z)) continue;
+      if (visualSand.length && inFeaturePolys(visualSand, x, z)) continue;
       if (hasOcean && !mappedWood && p.dist > fhw + 72 && rng() < 0.72) continue;
-      if (fbmDetail(x * 0.02 + 90, z * 0.02) < -0.12) continue; // clearings
+      if (!forest && fbmDetail(x * 0.02 + 90, z * 0.02) < -0.12) continue; // clearings
+      const pineShare = forest?.pineShare ?? (hasOcean ? 0.78 : 0.6);
       spots.push({
         x, z, h: heightAt(x, z),
-        s: mappedWood ? 0.86 + rng() * 1.08 : 0.58 + rng() * 0.82,
+        s: forest
+          ? (forest.scaleMin ?? 0.85) + rng() * (forest.scaleRange ?? 1.25)
+          : (mappedWood ? 0.86 + rng() * 1.08 : 0.58 + rng() * 0.82),
         ry: rng() * Math.PI * 2,
         tilt: (rng() - 0.5) * 0.08,
-        kind: hasOcean ? (rng() < 0.78 ? (rng() < 0.5 ? 0 : 1) : (rng() < 0.5 ? 2 : 3))
-          : (rng() < 0.6 ? (rng() < 0.5 ? 0 : 1) : (rng() < 0.5 ? 2 : 3)),
-        tint: hasOcean
+        kind: rng() < pineShare ? (rng() < 0.5 ? 0 : 1) : (rng() < 0.5 ? 2 : 3),
+        tint: (hasOcean || forest)
           ? [0.62 + rng() * 0.22, 0.72 + rng() * 0.22, 0.60 + rng() * 0.18]
           : [0.82 + rng() * 0.34, 0.84 + rng() * 0.34, 0.82 + rng() * 0.28],
       });
+    }
+    if (visualZones.flora === 'azalea') {
+      // Flowering banks under the tree lines: small leaf-canopy instances in
+      // azalea pinks/whites, hugging the corridor edges (never in play).
+      const aRng = makeRng(hole.seed * 97 + 13);
+      // Foliage texture is green-heavy, so pink needs a strong red multiplier.
+      const palette = [
+        [2.7, 0.55, 1.15], [2.9, 0.4, 0.7], [2.3, 2.15, 2.25],
+        [2.7, 0.8, 0.5], [2.4, 0.5, 1.35],
+      ];
+      let placed = 0;
+      for (let i = 0; i < 2600 && placed < 130; i++) {
+        const x = minX + 14 + aRng() * (maxX - minX - 28);
+        const z = minZ + 14 + aRng() * (maxZ - minZ - 28);
+        const p = pathInfo(x, z);
+        if (p.dist < fhw + 8 || p.dist > fhw + 46) continue;
+        if (inFeaturePolys(osmFairways, x, z) || inFeaturePolys(osmGreens, x, z)
+          || inFeaturePolys(osmTees, x, z) || inFeaturePolys(osmBunkers, x, z)) continue;
+        if (ellipseVal(hole.green, x, z) < 2.2) continue;
+        if (hasWater && waterMask(x, z).m > 0.05) continue;
+        const tint = palette[Math.floor(aRng() * palette.length)];
+        spots.push({
+          x, z, h: heightAt(x, z),
+          s: 0.15 + aRng() * 0.16,
+          ry: aRng() * Math.PI * 2,
+          tilt: 0,
+          kind: aRng() < 0.5 ? 2 : 3,
+          tint: [tint[0], tint[1], tint[2]],
+        });
+        placed++;
+      }
     }
     if (hasOcean) {
       const coastTreeRng = makeRng(hole.seed * 211 + 5);

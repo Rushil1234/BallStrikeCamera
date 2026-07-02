@@ -1,11 +1,12 @@
-import { HOLES } from './holes.js?v=magnolia-1';
-import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=magnolia-1';
-import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=magnolia-1';
-import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=magnolia-1';
-import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=magnolia-1';
-import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=magnolia-1';
-import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=magnolia-1';
-import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=magnolia-1';
+import { HOLES } from './holes.js?v=augusta-2';
+import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=augusta-2';
+import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=augusta-2';
+import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=augusta-2';
+import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=augusta-2';
+import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=augusta-2';
+import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=augusta-2';
+import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=augusta-2';
+import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=augusta-2';
 
 const PEBBLE_HOLES_WITH_OSM = PEBBLE_PRIVATE_HOLES.map((hole) => ({
   ...hole,
@@ -41,12 +42,13 @@ export const LOCAL_COURSES = [
     local: true,
   },
   {
-    courseId: 'magnolia-hills',
-    courseName: 'Magnolia Hills',
+    courseId: 'augusta-national',
+    courseName: 'Augusta National',
     sub: 'Georgia parkland classic · OSM surfaces + USGS terrain',
     holes: AUGUSTA_HOLES_WITH_OSM,
     world: {
       ...AUGUSTA_PRIVATE_WORLD,
+      ...AUGUSTA_WORLD_REALISM,
       elevation: AUGUSTA_ELEVATION,
     },
     local: true,
