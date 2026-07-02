@@ -28,6 +28,21 @@ if (typeof PEBBLE_PRIVATE_HOLES !== 'undefined') {
   TEST_COURSES.push({ name: 'Cypress Coast Links', holes: laidOutPebble });
 }
 
+if (typeof AUGUSTA_PRIVATE_HOLES !== 'undefined') {
+  const augustaHoles = typeof AUGUSTA_OSM_BY_HOLE !== 'undefined'
+    ? AUGUSTA_PRIVATE_HOLES.map(h => ({ ...h, osm: AUGUSTA_OSM_BY_HOLE[h.id] || null }))
+    : AUGUSTA_PRIVATE_HOLES;
+  const augustaWorld = {
+    profile: 'coastal',
+    ...(typeof AUGUSTA_PRIVATE_WORLD !== 'undefined' ? AUGUSTA_PRIVATE_WORLD : { prepositioned: true }),
+    elevation: typeof AUGUSTA_ELEVATION !== 'undefined' ? AUGUSTA_ELEVATION : null,
+  };
+  const laidOutAugusta = typeof layoutIslandCourse !== 'undefined'
+    ? layoutIslandCourse(augustaHoles, augustaWorld).holes
+    : augustaHoles;
+  TEST_COURSES.push({ name: 'Magnolia Hills', holes: laidOutAugusta });
+}
+
 let failures = 0;
 
 function playCourse(courseName, holes) {
@@ -71,6 +86,37 @@ function playCourse(courseName, holes) {
         }
       }
     }
+    if (courseName.indexOf('Magnolia Hills') >= 0) {
+      // Real course accuracy: centerline length must track the official card.
+      let pathM = 0;
+      for (let pi = 1; pi < hole.path.length; pi++) {
+        pathM += Math.hypot(hole.path[pi].x - hole.path[pi - 1].x, hole.path[pi].z - hole.path[pi - 1].z);
+      }
+      const pathY = pathM * 1.09361;
+      if (hole.cardYards && Math.abs(pathY - hole.cardYards) / hole.cardYards > 0.15) {
+        print("  !!! centerline " + Math.round(pathY) + "y vs card " + hole.cardYards + "y");
+        failures++;
+      }
+      // Water holes (Amen Corner creek, 15/16 ponds) must classify as water.
+      if (hole.id === 12 || hole.id === 15 || hole.id === 16) {
+        if (!hole.water.length) {
+          print("  !!! expected water features on hole " + hole.id);
+          failures++;
+        } else {
+          let wet = false;
+          for (const w of hole.water) {
+            const probe = w.type === 'pond'
+              ? { x: w.cx, z: w.cz }
+              : w.pts[Math.floor(w.pts.length / 2)];
+            if (course.surfaceAt(probe.x, probe.z) === 'water') { wet = true; break; }
+          }
+          if (!wet) {
+            print("  !!! hole " + hole.id + " water probes did not classify as water");
+            failures++;
+          }
+        }
+      }
+    }
     // boundary sanity: the playing corridor is in bounds, way offline is not
     const mid = course.pointAtAlong(holeLength(hole) / 2);
     const tee = hole.path[0];
@@ -87,11 +133,12 @@ function playCourse(courseName, holes) {
     }
 
     let pos = { x: course.teePos.x, y: course.teePos.y + 0.0214, z: course.teePos.z };
-    let lie = 'tee', strokes = 0, holed = false;
+    let lie = 'tee', strokes = 0, holed = false, waterBias = 0, retryClubBump = 0;
     const pin = course.pinPos;
 
     for (let shot = 1; shot <= 16 && !holed; shot++) {
-      const rem = Math.hypot(pos.x - pin.x, pos.z - pin.z);
+      // After a splash the replay is from the same spot; carry further each try.
+      const rem = Math.hypot(pos.x - pin.x, pos.z - pin.z) + waterBias;
       const lieE = LIE_EFFECT[lie] || LIE_EFFECT.fairway;
       let c, power, mode = 'fly';
 
@@ -107,6 +154,10 @@ function playCourse(courseName, holes) {
           else break;
         }
         if (lie === 'sand' && rem < 110) c = CLUBS[CLUBS.length - 2];
+        if (retryClubBump > 0) {
+          // Replaying over water: a longer club, not the same splash again.
+          c = CLUBS[Math.max(0, CLUBS.indexOf(c) - retryClubBump)];
+        }
         const frac = Math.min(rem * 0.97 / (c.carryM * lieE.speed), 1.05);
         power = Math.min(Math.max((Math.pow(frac, 1 / 1.8) - 0.3) / 0.7, 0.2), 1);
       }
@@ -114,7 +165,7 @@ function playCourse(courseName, holes) {
       let target = pin;
       if (mode === 'fly' && rem > 125) {
         const current = course.pathInfo(pos.x, pos.z);
-        const advance = Math.max(72, Math.min(c.carryM * 0.82, rem * 0.78));
+        const advance = Math.max(72, Math.min(c.carryM * 0.82, rem * 0.78)) + waterBias;
         target = course.pointAtAlong(Math.min(holeLength(hole), current.along + advance));
       }
       const dx = target.x - pos.x, dz = target.z - pos.z, L = Math.hypot(dx, dz) || 1;
@@ -133,11 +184,15 @@ function playCourse(courseName, holes) {
       if (sim.state === 'holed') holed = true;
       else if (sim.state === 'water') {
         strokes++;
+        waterBias += 18;
+        retryClubBump++;
         print("  shot " + shot + " " + c.name + " pw" + power.toFixed(2) + " -> WATER (+1, replay)");
         continue;
       } else {
         pos = { x: sim.pos.x, y: sim.pos.y, z: sim.pos.z };
         lie = course.surfaceAt(pos.x, pos.z);
+        waterBias = 0;
+        retryClubBump = 0;
       }
       print("  shot " + shot + " " + c.name + " pw" + power.toFixed(2) + " -> " +
             (holed ? "HOLED" : lie) + "  remaining " +

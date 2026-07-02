@@ -1,12 +1,20 @@
-import { HOLES } from './holes.js?v=range-upgrade-1';
-import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=range-upgrade-1';
-import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=range-upgrade-1';
-import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=range-upgrade-1';
-import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=range-upgrade-1';
+import { HOLES } from './holes.js?v=magnolia-1';
+import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=magnolia-1';
+import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=magnolia-1';
+import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=magnolia-1';
+import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=magnolia-1';
+import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=magnolia-1';
+import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=magnolia-1';
+import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=magnolia-1';
 
 const PEBBLE_HOLES_WITH_OSM = PEBBLE_PRIVATE_HOLES.map((hole) => ({
   ...hole,
   osm: PEBBLE_OSM_BY_HOLE[hole.id] || null,
+}));
+
+const AUGUSTA_HOLES_WITH_OSM = AUGUSTA_PRIVATE_HOLES.map((hole) => ({
+  ...hole,
+  osm: AUGUSTA_OSM_BY_HOLE[hole.id] || null,
 }));
 
 export const LOCAL_COURSES = [
@@ -29,6 +37,17 @@ export const LOCAL_COURSES = [
       ...PEBBLE_OSM_WORLD,
       ...PEBBLE_WORLD_REALISM,
       elevation: PEBBLE_ELEVATION,
+    },
+    local: true,
+  },
+  {
+    courseId: 'magnolia-hills',
+    courseName: 'Magnolia Hills',
+    sub: 'Georgia parkland classic · OSM surfaces + USGS terrain',
+    holes: AUGUSTA_HOLES_WITH_OSM,
+    world: {
+      ...AUGUSTA_PRIVATE_WORLD,
+      elevation: AUGUSTA_ELEVATION,
     },
     local: true,
   },

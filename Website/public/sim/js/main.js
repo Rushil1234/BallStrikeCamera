@@ -4,15 +4,15 @@
 import * as THREE from 'three';
 import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js';
 import { createShot, simulateCarry, SURF } from './physics.js';
-import { RANGE, holeLength } from './holes.js?v=range-upgrade-1';
+import { RANGE, holeLength } from './holes.js?v=magnolia-1';
 import { buildCourse } from './terrain.js';
 import { makeSky } from './sky.js';
 import { loadAssets } from './assets.js';
-import { HUD, toParStr } from './ui.js?v=range-upgrade-1';
+import { HUD, toParStr } from './ui.js?v=magnolia-1';
 import { SFX } from './audio.js';
 import { getLiveCode, connectLive, publishLiveState } from './live.js';
 import { fetchSimCourses } from './courses.js';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=range-upgrade-1';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=magnolia-1';
 import { layoutIslandCourse } from './world.js';
 
 // ---------- boot ----------
