@@ -240,8 +240,12 @@ export class HUD {
       this.el.mapWrap.classList.toggle('map-mode-hole', this.mapMode !== 'all');
     }
     if (this.el.mapCaption) {
-      const isCoastal = this.mapWorld?.profile === 'coastal' || (this.mapWorld?.water?.length || 0) > 2;
-      const allMapLabel = isCoastal ? 'COASTAL MAP' : 'ISLAND MAP';
+      // A sea is only real when the course ships a coastline; inland
+      // real-data courses (e.g. parkland) are 'coastal' profile but landlocked.
+      const hasSea = !!(this.mapWorld?.coastline?.land?.length) || (this.mapWorld?.water?.length || 0) > 2;
+      const allMapLabel = hasSea
+        ? 'COASTAL MAP'
+        : (this.mapWorld?.profile === 'coastal' ? 'COURSE MAP' : 'ISLAND MAP');
       this.el.mapCaption.textContent = this.mapMode === 'all'
         ? allMapLabel
         : (this.mapHole?.id != null ? `HOLE ${this.mapHole.id} MAP` : 'HOLE MAP');
@@ -399,8 +403,18 @@ export class HUD {
     const ctx = this.mapCtx;
     const W = this.el.minimap.width, H = this.el.minimap.height;
     const b = this.mapWorld?.bounds || this.mapHole?.island?.bounds;
-    if (this.mapWorld?.profile === 'coastal' || (this.mapWorld?.water?.length || 0) > 2) {
+    const hasSea = !!(this.mapWorld?.coastline?.land?.length) || (this.mapWorld?.water?.length || 0) > 2;
+    if (hasSea) {
       this.drawCoastalBase();
+      return;
+    }
+    if (this.mapWorld?.profile === 'coastal') {
+      // Landlocked real-data course: the whole frame is forested land.
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(33, 62, 28, 0.96)';
+      ctx.beginPath();
+      ctx.roundRect(0, 0, W, H, 8);
+      ctx.fill();
       return;
     }
     ctx.clearRect(0, 0, W, H);
