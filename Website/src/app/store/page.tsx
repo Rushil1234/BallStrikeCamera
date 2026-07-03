@@ -95,7 +95,7 @@ export default function StorePage() {
                 <div className="product-foot">
                   <span className={`product-status${p.status === "Available now" ? " live" : ""}`}>{p.status}</span>
                   {p.status === "Available now" ? (
-                    <a className="product-cta" href="/login">Get it</a>
+                    <a className="product-cta" href="/#h07">Get it</a>
                   ) : (
                     <a
                       className="product-cta ghost"
