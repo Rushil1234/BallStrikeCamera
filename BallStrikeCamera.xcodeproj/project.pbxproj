@@ -51,6 +51,7 @@
 		BF0000010000000000000028 /* ExperimentalImpactFrameDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000128 /* ExperimentalImpactFrameDetector.swift */; };
 		BF0000010000000000000029 /* CameraCalibration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000129 /* CameraCalibration.swift */; };
 		BF000001000000000000002A /* ShotMetricsCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012A /* ShotMetricsCalculator.swift */; };
+		CAFE0000000000000000FC11 /* FlightArcModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FC10 /* FlightArcModel.swift */; };
 		BF000001000000000000002B /* ClubTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012B /* ClubTracker.swift */; };
 		BF000001000000000000002C /* DistanceEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012C /* DistanceEstimator.swift */; };
 		BF000001000000000000002D /* ExperimentalMetricsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012D /* ExperimentalMetricsModels.swift */; };
@@ -283,6 +284,7 @@
 		BF0000010000000000000128 /* ExperimentalImpactFrameDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalImpactFrameDetector.swift; sourceTree = "<group>"; };
 		BF0000010000000000000129 /* CameraCalibration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCalibration.swift; sourceTree = "<group>"; };
 		BF000001000000000000012A /* ShotMetricsCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotMetricsCalculator.swift; sourceTree = "<group>"; };
+		CAFE0000000000000000FC10 /* FlightArcModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightArcModel.swift; sourceTree = "<group>"; };
 		BF000001000000000000012B /* ClubTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubTracker.swift; sourceTree = "<group>"; };
 		BF000001000000000000012C /* DistanceEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistanceEstimator.swift; sourceTree = "<group>"; };
 		BF000001000000000000012D /* ExperimentalMetricsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalMetricsModels.swift; sourceTree = "<group>"; };
@@ -637,6 +639,7 @@
 				BF000001000000000000011E /* PostImpactBallTracker.swift */,
 				BF0000010000000000000129 /* CameraCalibration.swift */,
 				BF000001000000000000012A /* ShotMetricsCalculator.swift */,
+				CAFE0000000000000000FC10 /* FlightArcModel.swift */,
 				BF000001000000000000012B /* ClubTracker.swift */,
 				BF0000010000000000000153 /* EnsembleBFSClubTracker.swift */,
 				BF000001000000000000012C /* DistanceEstimator.swift */,
@@ -1100,6 +1103,7 @@
 				BF000001000000000000001E /* PostImpactBallTracker.swift in Sources */,
 				BF0000010000000000000029 /* CameraCalibration.swift in Sources */,
 				BF000001000000000000002A /* ShotMetricsCalculator.swift in Sources */,
+				CAFE0000000000000000FC11 /* FlightArcModel.swift in Sources */,
 				BF000001000000000000002B /* ClubTracker.swift in Sources */,
 				BF0000010000000000000053 /* EnsembleBFSClubTracker.swift in Sources */,
 				BF000001000000000000002C /* DistanceEstimator.swift in Sources */,

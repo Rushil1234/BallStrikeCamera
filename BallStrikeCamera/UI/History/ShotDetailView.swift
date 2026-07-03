@@ -23,6 +23,7 @@ struct ShotDetailView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: TCTheme.sectionGap) {
                     replaySection
+                    if m.ballSpeedMph > 0 || m.carryYards > 0 { flightSection }
                     metricsSection
                     Spacer(minLength: 40)
                 }
@@ -113,6 +114,30 @@ struct ShotDetailView: View {
             }
         }
         .tcCard()
+    }
+
+    // MARK: - Flight path
+
+    private var flightSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            TCSectionHeader(title: "Flight Path")
+            BallFlightPreviewView(
+                carryYards: m.carryYards > 0 ? m.carryYards : nil,
+                totalYards: m.totalYards > 0 ? m.totalYards : nil,
+                hlaDegrees: signedHla,
+                vlaDegrees: m.vlaDegrees > 0 ? m.vlaDegrees : nil,
+                ballSpeedMph: m.ballSpeedMph > 0 ? m.ballSpeedMph : nil,
+                backspinRpm: m.backspinRpm > 0 ? m.backspinRpm : nil,
+                sidespinRpm: m.sidespinRpm
+            )
+            .frame(height: 260)
+        }
+        .tcCard()
+    }
+
+    private var signedHla: Double? {
+        guard m.hlaDegrees > 0 || !m.hlaDirection.isEmpty else { return nil }
+        return m.hlaDirection == "left" ? -m.hlaDegrees : m.hlaDegrees
     }
 
     private var replayPlaceholder: some View {

@@ -5,6 +5,22 @@ struct BallFlightPreviewView: View {
     var totalYards: Double?
     var hlaDegrees: Double?
     var vlaDegrees: Double?
+    // When launch conditions are provided, the airborne path is integrated with
+    // FlightArcModel (shared aerodynamics with the web sim) so draws/fades curve.
+    var ballSpeedMph: Double?
+    var backspinRpm: Double?
+    var sidespinRpm: Double?
+
+    private var arcSamples: [FlightArcModel.Sample] {
+        guard let speed = ballSpeedMph, let vla = vlaDegrees else { return [] }
+        return FlightArcModel.trajectory(
+            ballSpeedMph: speed,
+            vlaDeg: vla,
+            hlaDeg: hlaDegrees ?? 0,
+            backspinRpm: backspinRpm ?? 0,
+            sidespinRpm: sidespinRpm ?? 0
+        )
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -70,17 +86,44 @@ struct BallFlightPreviewView: View {
         ctx.fill(Path(CGRect(x: 0, y: 0, width: size.width, height: size.height)),
                  with: .color(Color(white: 0.07)))
 
-        // --- Compute offline from HLA + total if not provided directly ---
-        let hlaRad = (hlaDegrees ?? 0) * .pi / 180.0
-        let refDist = totalYards ?? carryYards ?? 0
-        let offlineYd: Double = tan(hlaRad) * refDist   // positive = right, negative = left
+        // --- Offline: physics arc landing when available, else HLA projection ---
+        let arcPts = scaledArcPoints()
+        let offlineYd: Double
+        if let land = arcPts.last {
+            let carryYd = carryYards ?? land.down
+            let totalYd = totalYards ?? carryYd
+            offlineYd = land.off + arcRolloutSlope(arcPts) * max(0, totalYd - carryYd)
+        } else {
+            let hlaRad = (hlaDegrees ?? 0) * .pi / 180.0
+            let refDist = totalYards ?? carryYards ?? 0
+            offlineYd = tan(hlaRad) * refDist   // positive = right, negative = left
+        }
 
         let scale = computeScale(totalYd: totalYards ?? carryYards, offlineYd: offlineYd)
 
         drawGridLines(ctx: ctx, layout: layout, scale: scale)
         drawTargetLine(ctx: ctx, layout: layout, scale: scale)
-        drawShotPath(ctx: ctx, layout: layout, scale: scale, offlineYd: offlineYd)
+        drawShotPath(ctx: ctx, layout: layout, scale: scale, offlineYd: offlineYd, arcPts: arcPts)
         drawLabels(ctx: ctx, layout: layout, scale: scale, offlineYd: offlineYd)
+    }
+
+    // MARK: - Physics arc helpers
+
+    /// Integrated samples scaled so the airborne landing matches the measured carry.
+    private func scaledArcPoints() -> [(off: Double, down: Double)] {
+        let arc = arcSamples
+        guard let last = arc.last, last.downrangeYd > 5 else { return [] }
+        let k = (carryYards ?? last.downrangeYd) / last.downrangeYd
+        return arc.map { (off: $0.offlineYd * k, down: $0.downrangeYd * k) }
+    }
+
+    /// Horizontal direction of the final flight segment (offline yd per downrange yd).
+    private func arcRolloutSlope(_ pts: [(off: Double, down: Double)]) -> Double {
+        guard pts.count >= 2 else { return 0 }
+        let a = pts[pts.count - 2], b = pts[pts.count - 1]
+        let dd = b.down - a.down
+        guard dd > 0.01 else { return 0 }
+        return (b.off - a.off) / dd
     }
 
     // MARK: - Grid Lines
@@ -149,8 +192,48 @@ struct BallFlightPreviewView: View {
 
     // MARK: - Shot Path
 
-    private func drawShotPath(ctx: GraphicsContext, layout: Layout, scale: Scale, offlineYd: Double) {
+    private func drawShotPath(ctx: GraphicsContext, layout: Layout, scale: Scale, offlineYd: Double,
+                              arcPts: [(off: Double, down: Double)] = []) {
         let origin = toPoint(offlineYd: 0, downrangeYd: 0, scale: scale, layout: layout)
+
+        // Physics-integrated path: curved draw/fade shape from real launch data.
+        if arcPts.count >= 2 {
+            let land = arcPts[arcPts.count - 1]
+            let carryYd = carryYards ?? land.down
+            let totalYd = max(totalYards ?? carryYd, carryYd)
+            let carryPt = toPoint(offlineYd: land.off, downrangeYd: land.down, scale: scale, layout: layout)
+            let totalPt = toPoint(offlineYd: offlineYd, downrangeYd: totalYd, scale: scale, layout: layout)
+
+            var flightPath = Path()
+            flightPath.move(to: origin)
+            for p in arcPts.dropFirst() {
+                flightPath.addLine(to: toPoint(offlineYd: p.off, downrangeYd: p.down, scale: scale, layout: layout))
+            }
+            ctx.stroke(flightPath, with: .color(Color(red: 0.0, green: 0.85, blue: 1.0)),
+                       style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+            let hasRollout = totalYd > carryYd + 1
+            if hasRollout {
+                var rollPath = Path()
+                rollPath.move(to: carryPt)
+                rollPath.addLine(to: totalPt)
+                ctx.stroke(rollPath, with: .color(Color(red: 1.0, green: 0.60, blue: 0.0)),
+                           style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+            }
+
+            filledDot(ctx: ctx, at: origin, r: 5, color: .white)
+            if hasRollout {
+                filledDot(ctx: ctx, at: carryPt, r: 4.5, color: Color(red: 0.0, green: 0.85, blue: 1.0))
+            }
+            filledDot(ctx: ctx, at: totalPt, r: 5.5, color: Color(red: 0.3, green: 0.9, blue: 0.4))
+
+            var dropLine = Path()
+            dropLine.move(to: totalPt)
+            dropLine.addLine(to: CGPoint(x: totalPt.x, y: origin.y))
+            ctx.stroke(dropLine, with: .color(Color.white.opacity(0.12)),
+                       style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+            return
+        }
 
         let hasRealData = (totalYards ?? carryYards) != nil
 
