@@ -9,6 +9,13 @@ struct ProfileSettingsView: View {
     @State private var showEditProfile = false
     @State private var showResetPreferences = false
 
+    // Account: export + delete
+    @State private var isExporting = false
+    @State private var exportFile: ExportFile?
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
+    @State private var accountError: String?
+
     @AppStorage("tc_notifications_enabled") private var notificationsOn = true
     @AppStorage("tc_camera_frame_rate") private var frameRate = "240 fps"
     @AppStorage("tc_camera_exposure") private var exposureMode = "Auto"
@@ -24,20 +31,6 @@ struct ProfileSettingsView: View {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
         return "\(v) (\(b))"
-    }
-
-    private var exportSummary: String {
-        let p = profile
-        return """
-        True Carry — Player Data Export
-        Name: \(p?.displayName ?? user?.name ?? "Guest")
-        Handedness: \(p?.handedness.rawValue ?? "—")
-        Distance units: \(p?.distanceUnit.rawValue ?? "—")
-        Speed units: \(p?.speedUnit.rawValue ?? "—")
-        Home course: \(p?.homeCourseName.isEmpty == false ? p!.homeCourseName : "Not set")
-        Plan: \(user?.subscriptionStatus.rawValue.capitalized ?? "Free")
-        Exported: \(Date().formatted())
-        """
     }
 
     var body: some View {
@@ -167,12 +160,60 @@ struct ProfileSettingsView: View {
             ToggleSettingsRow(icon: "bell.fill", title: "Notifications",
                               accent: BSTheme.simBlue, isOn: $notificationsOn)
             BSDivider()
-            ShareLink(item: exportSummary) {
-                BSSettingsRow(icon: "square.and.arrow.up", title: "Export Data", accent: BSTheme.fairwayGreen)
-            }.buttonStyle(.plain)
+            // Real GDPR/CCPA export: pulls the caller's full data as JSON from the backend.
+            Button { Task { await exportData() } } label: {
+                BSSettingsRow(icon: "square.and.arrow.up",
+                              title: isExporting ? "Preparing…" : "Export Data",
+                              accent: BSTheme.fairwayGreen)
+            }.buttonStyle(.plain).disabled(isExporting)
             BSDivider()
             LinkSettingsRow(icon: "lock.fill", title: "Privacy",
                             url: AppConfig.websiteURL.appendingPathComponent("privacy"), accent: BSTheme.textMuted)
+            BSDivider()
+            // Apple requires an in-app way to delete the account + all data.
+            Button(role: .destructive) { showDeleteConfirm = true } label: {
+                BSSettingsRow(icon: "trash.fill",
+                              title: isDeleting ? "Deleting…" : "Delete Account",
+                              accent: BSTheme.dangerRed)
+            }.buttonStyle(.plain).disabled(isDeleting)
+        }
+        .sheet(item: $exportFile) { file in
+            ActivityViewController(activityItems: [file.url])
+        }
+        .alert("Delete Account?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete Everything", role: .destructive) { Task { await deleteAccount() } }
+        } message: {
+            Text("This permanently deletes your account and all data — clubs, shots, rounds, videos, and stats. This cannot be undone.")
+        }
+        .alert("Something went wrong", isPresented: Binding(
+            get: { accountError != nil }, set: { if !$0 { accountError = nil } })) {
+            Button("OK", role: .cancel) { accountError = nil }
+        } message: { Text(accountError ?? "") }
+    }
+
+    // MARK: Account actions
+
+    private func exportData() async {
+        isExporting = true; defer { isExporting = false }
+        do {
+            let data = try await session.backend.exportMyData()
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("truecarry-data-export.json")
+            try data.write(to: url, options: .atomic)
+            exportFile = ExportFile(url: url)
+        } catch {
+            accountError = "Couldn't export your data. \(error.localizedDescription)"
+        }
+    }
+
+    private func deleteAccount() async {
+        isDeleting = true; defer { isDeleting = false }
+        do {
+            try await session.backend.deleteAccount()
+            await session.signOut()   // account is gone; drop the local session
+        } catch {
+            accountError = "Couldn't delete your account. Please try again. \(error.localizedDescription)"
         }
     }
 
@@ -493,4 +534,10 @@ private struct HandednessRow: View {
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }
+}
+
+// Identifiable wrapper so the export share sheet can be presented via .sheet(item:).
+private struct ExportFile: Identifiable {
+    let id = UUID()
+    let url: URL
 }

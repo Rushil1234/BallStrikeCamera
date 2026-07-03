@@ -84,6 +84,29 @@ final class SupabaseBackendService: AppBackend {
         return appUser(from: auth.user)
     }
 
+    /// Native Sign in with Apple: exchanges the Apple identity token (+ raw nonce)
+    /// for a Supabase session via the id_token grant. No web redirect.
+    func signInWithApple(idToken: String, nonce: String) async throws -> AppUser {
+        let url = config.authBaseURL
+            .appendingPathComponent("token")
+            .appending(queryItems: [URLQueryItem(name: "grant_type", value: "id_token")])
+        var req = baseRequest(url: url, method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [
+            "provider": "apple",
+            "id_token": idToken,
+            "nonce": nonce,
+        ])
+        let (data, response) = try await session.data(for: req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("signInWithApple", data: data, response: response)
+            throw BackendError.notAuthenticated
+        }
+        let auth = try decoder.decode(SupabaseAuthResponse.self, from: data)
+        persistSession(auth)
+        print("[TrueCarry][Supabase] signInWithApple — \(auth.user.email ?? "?")")
+        return appUser(from: auth.user)
+    }
+
     func createAccount(name: String, email: String, password: String) async throws -> AppUser {
         let url = config.authBaseURL.appendingPathComponent("signup")
         var req = baseRequest(url: url, method: "POST")
@@ -236,6 +259,12 @@ final class SupabaseBackendService: AppBackend {
             table: "shots",
             body: try payloadRowBody(id: shot.id, userId: shot.userId, payload: shot, dateColumn: "timestamp", date: shot.timestamp)
         )
+        // Product telemetry (fire-and-forget) — powers most-used-club / usage dashboards.
+        await logAnalyticsEvent("shot_saved", properties: [
+            "club": shot.clubName ?? "",
+            "source": shot.source.rawValue,
+            "carry": shot.metrics.carryYards,
+        ], sessionId: shot.sessionId)
     }
 
     func loadShots(userId: UUID) async throws -> [SavedShot] {
@@ -392,6 +421,12 @@ final class SupabaseBackendService: AppBackend {
             table: "course_rounds",
             body: try payloadRowBody(id: round.id, userId: round.userId, payload: round, dateColumn: "started_at", date: round.startedAt)
         )
+        // Telemetry (fire-and-forget) — course usage / rounds-played dashboards.
+        await logAnalyticsEvent("round_completed", properties: [
+            "course": round.courseName,
+            "score": round.scoreSummary.totalScore,
+            "to_par": round.scoreSummary.totalScore - round.scoreSummary.totalPar,
+        ], sessionId: nil)
     }
 
     func deleteCourseRound(roundId: UUID, userId: UUID) async throws {
@@ -1041,6 +1076,68 @@ final class SupabaseBackendService: AppBackend {
             logError("rpc:\(name)", data: data, response: response)
             throw BackendError.saveFailed("rpc:\(name)")
         }
+    }
+
+    // MARK: - Account lifecycle, export & telemetry
+
+    /// Hard-deletes the signed-in account via the delete-account Edge Function
+    /// (service role: removes the auth user + cascades all data + storage). On
+    /// success the caller should clear the local session.
+    func deleteAccount() async throws {
+        let url = config.functionsBaseURL.appendingPathComponent("delete-account")
+        var req = authorizedRequest(url: url, method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [:])
+        let (data, response) = try await performAuthorizedRequest(req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("delete-account", data: data, response: response)
+            throw BackendError.saveFailed("delete-account")
+        }
+    }
+
+    /// Returns the caller's complete data as a JSON document (GDPR/CCPA export),
+    /// via the export_my_data() RPC (scalar jsonb → returned as-is).
+    func exportMyData() async throws -> Data {
+        let url = config.rpcBaseURL.appendingPathComponent("export_my_data")
+        var req = authorizedRequest(url: url, method: "POST")
+        req.httpBody = try JSONSerialization.data(withJSONObject: [:])
+        let (data, response) = try await performAuthorizedRequest(req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("rpc:export_my_data", data: data, response: response)
+            throw BackendError.loadFailed("export_my_data")
+        }
+        return data
+    }
+
+    /// Appends a product-telemetry event. Fire-and-forget: swallows all errors so
+    /// analytics can never break or slow a user flow.
+    func logAnalyticsEvent(_ event: String, properties: [String: Any], sessionId: UUID?) async {
+        var body: [String: Any] = ["event": event, "properties": properties]
+        if let uid = accessTokenUserId { body["user_id"] = uid }
+        if let sid = sessionId { body["session_id"] = sid.uuidString }
+        body["app_version"] = Self.appVersion
+        body["platform"] = "iOS"
+        do {
+            var req = authorizedRequest(url: restURL("analytics_events"), method: "POST")
+            req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+            _ = try? await performAuthorizedRequest(req)
+        } catch { /* telemetry must never throw */ }
+    }
+
+    private static let appVersion: String =
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
+
+    /// Decodes the `sub` (user id) claim from the current access token's JWT payload.
+    private var accessTokenUserId: String? {
+        guard let token = accessToken else { return nil }
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        guard let data = Data(base64Encoded: b64),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sub = obj["sub"] as? String else { return nil }
+        return sub
     }
 
     private func upsert(table: String, body: [String: Any], onConflict: String? = nil) async throws {

@@ -18,6 +18,11 @@ struct AppRootView: View {
                     )) {
                         OnboardingView()
                     }
+                    .task(id: session.currentUser?.id) {
+                        // DAU / retention telemetry (fire-and-forget).
+                        await session.backend.logAnalyticsEvent(
+                            "app_open", properties: [:], sessionId: nil)
+                    }
             } else {
                 LoginView(startEntrance: launchComplete)
             }

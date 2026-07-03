@@ -1,4 +1,6 @@
 import SwiftUI
+import AuthenticationServices
+import CryptoKit
 
 struct LoginView: View {
     @EnvironmentObject var session: AuthSessionStore
@@ -9,6 +11,7 @@ struct LoginView: View {
     var startEntrance: Bool = true
     @State private var showCreate = false
     @State private var hasAppeared = false
+    @State private var currentNonce: String?   // raw nonce for Sign in with Apple
 
     var body: some View {
         ZStack {
@@ -28,9 +31,6 @@ struct LoginView: View {
                     Spacer(minLength: 18)
                     createAccountButton
                         .modifier(AppearMod(active: hasAppeared, delay: 0.32, rise: 14, reduceMotion: reduceMotion))
-                    Spacer(minLength: 12)
-                    guestButton
-                        .modifier(AppearMod(active: hasAppeared, delay: 0.40, rise: 14, reduceMotion: reduceMotion))
                     Spacer(minLength: 48)
                 }
                 .padding(.horizontal, TCTheme.hPad)
@@ -73,6 +73,7 @@ struct LoginView: View {
                 .foregroundColor(TCTheme.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .center)
 
+            appleSignInButton
             googleSignInButton
             orDivider
 
@@ -134,6 +135,64 @@ struct LoginView: View {
             .opacity(vm.isLoading ? 0.6 : 1)
         }
         .tcGlassCard(padding: 18)
+    }
+
+    // MARK: Apple sign-in (native)
+
+    private var appleSignInButton: some View {
+        SignInWithAppleButton(.signIn) { request in
+            let nonce = LoginView.randomNonce()
+            currentNonce = nonce
+            request.requestedScopes = [.fullName, .email]
+            request.nonce = LoginView.sha256(nonce)
+        } onCompletion: { result in
+            switch result {
+            case .success(let auth):
+                guard
+                    let cred = auth.credential as? ASAuthorizationAppleIDCredential,
+                    let tokenData = cred.identityToken,
+                    let idToken = String(data: tokenData, encoding: .utf8),
+                    let nonce = currentNonce
+                else {
+                    vm.errorMessage = "Apple sign-in returned no identity token."
+                    return
+                }
+                Task {
+                    vm.errorMessage = nil
+                    do { try await session.signInWithApple(idToken: idToken, nonce: nonce) }
+                    catch { vm.errorMessage = error.localizedDescription }
+                }
+            case .failure(let error):
+                // User-cancelled is not an error worth surfacing.
+                if (error as? ASAuthorizationError)?.code != .canceled {
+                    vm.errorMessage = error.localizedDescription
+                }
+            }
+        }
+        .signInWithAppleButtonStyle(.white)
+        .frame(maxWidth: .infinity)
+        .frame(height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+        .disabled(vm.isLoading)
+        .opacity(vm.isLoading ? 0.6 : 1)
+    }
+
+    // Nonce plumbing for Apple's replay protection: send SHA-256(nonce) in the
+    // request, hand the RAW nonce to Supabase to verify against the token.
+    private static func randomNonce(_ length: Int = 32) -> String {
+        let chars = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._")
+        var result = ""
+        var remaining = length
+        while remaining > 0 {
+            var random: UInt8 = 0
+            _ = SecRandomCopyBytes(kSecRandomDefault, 1, &random)
+            if random < chars.count { result.append(chars[Int(random)]); remaining -= 1 }
+        }
+        return result
+    }
+
+    private static func sha256(_ input: String) -> String {
+        SHA256.hash(data: Data(input.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     // MARK: Google sign-in
@@ -203,24 +262,6 @@ struct LoginView: View {
         .buttonStyle(.plain)
     }
 
-    private var guestButton: some View {
-        Button {
-            Task { await vm.continueAsGuest(store: session) }
-        } label: {
-            Text("Continue as guest")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(TCTheme.textPrimary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(TCTheme.background)
-                .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
-                        .strokeBorder(TCTheme.borderMedium, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-    }
 
 }
 

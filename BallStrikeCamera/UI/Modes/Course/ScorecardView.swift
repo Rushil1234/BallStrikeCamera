@@ -6,6 +6,7 @@ struct ScorecardView: View {
 
     let round: CourseRound
     let course: GolfCourse?
+    var backButtonTitle: String = "Back to Hole"
 
     // MARK: - Computed
 
@@ -57,7 +58,7 @@ struct ScorecardView: View {
 
                         // Action buttons
                         VStack(spacing: 10) {
-                            TCPrimaryGoldButton(title: "Back to Hole", icon: "arrow.left") {
+                            TCPrimaryGoldButton(title: backButtonTitle, icon: "arrow.left") {
                                 dismiss()
                             }
                             TCOutlineButton(title: "Round Summary", color: TCTheme.sage) {
