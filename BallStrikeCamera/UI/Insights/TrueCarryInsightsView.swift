@@ -78,6 +78,7 @@ struct TrueCarryInsightsView: View {
                     VStack(spacing: TCTheme.sectionGap) {
                         pageTitleSection
                         clubPicker
+                        if !gappingRows.isEmpty { gappingSection }
                         if availableClubs.isEmpty {
                             emptyState
                         } else if selectedClub != nil {
@@ -174,6 +175,91 @@ struct TrueCarryInsightsView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Bag gapping
+
+    private struct ClubGap: Identifiable {
+        var id: String { club }
+        let club: String
+        let avgCarry: Double
+        let shots: Int
+        let gapToNext: Double?   // yards down to the next-shorter club
+    }
+
+    /// Clubs with enough data (3+ shots), longest first, with the carry gap to
+    /// the next club down. Needs two qualifying clubs to be meaningful.
+    private var gappingRows: [ClubGap] {
+        let entries: [(club: String, carry: Double, count: Int)] = availableClubs.compactMap { club in
+            let s = shotsFor(club)
+            guard s.count >= 3 else { return nil }
+            let carry = avgCarry(s)
+            guard carry > 0 else { return nil }
+            return (club, carry, s.count)
+        }
+        guard entries.count >= 2 else { return [] }
+        let sorted = entries.sorted { $0.carry > $1.carry }
+        return sorted.enumerated().map { i, e in
+            ClubGap(club: e.club, avgCarry: e.carry, shots: e.count,
+                    gapToNext: i + 1 < sorted.count ? e.carry - sorted[i + 1].carry : nil)
+        }
+    }
+
+    private func gapNote(_ gap: Double) -> (text: String, color: Color)? {
+        if gap > 25 { return ("\(Int(gap.rounded()))y — big gap", TCTheme.gold) }
+        if gap < 8 { return ("\(Int(gap.rounded()))y — overlap", TCTheme.cyan) }
+        return nil
+    }
+
+    private var gappingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("BAG GAPPING")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(TCTheme.textMuted)
+                    .tracking(1.5)
+                Spacer()
+                Text("avg carry · 3+ shots")
+                    .font(.system(size: 10))
+                    .foregroundColor(TCTheme.textUltraMuted)
+            }
+            let maxCarry = gappingRows.first?.avgCarry ?? 1
+            ForEach(gappingRows) { row in
+                VStack(spacing: 4) {
+                    HStack(spacing: 10) {
+                        Text(row.club)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .frame(width: 84, alignment: .leading)
+                            .lineLimit(1)
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule().fill(TCTheme.panelRaised)
+                                Capsule()
+                                    .fill(TCTheme.gold.opacity(0.8))
+                                    .frame(width: max(8, geo.size.width * CGFloat(row.avgCarry / maxCarry)))
+                            }
+                        }
+                        .frame(height: 6)
+                        Text("\(Int(row.avgCarry.rounded()))y")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .frame(width: 48, alignment: .trailing)
+                    }
+                    if let gap = row.gapToNext, let note = gapNote(gap) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(note.text)
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundColor(note.color)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                }
+            }
+        }
+        .tcCard(padding: 14)
     }
 
     // MARK: - Empty / Prompt
