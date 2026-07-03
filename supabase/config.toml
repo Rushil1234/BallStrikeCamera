@@ -29,6 +29,24 @@ additional_redirect_urls = [
 ]
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
+# Anonymous sign-in powers "Continue as Guest". Left ON, but treated as an abuse
+# vector: capped per-IP below (anonymous_users) and by the DB insert limits in
+# migration 026 so throwaway accounts can't spray data. Revisit if abuse appears.
+enable_anonymous_sign_ins = true
+
+# ── Auth endpoint rate limits (platform-enforced) ──────────────────────────────
+# Backstops credential-stuffing, signup spam, and email/SMS bomb abuse. These are
+# per-IP / per-window platform limits; app-level data limits live in migration 026.
+[auth.rate_limit]
+# Emails sent (signup confirm, magic link, recovery) per hour.
+email_sent = 30
+# Login / token / verify attempts per 5 minutes per IP.
+token_refresh = 150
+sign_in_sign_ups = 30
+# One-time-password / verify attempts per 5 minutes per IP.
+token_verifications = 30
+# Anonymous users created per hour per IP (moot while anon is disabled, but safe).
+anonymous_users = 10
 
 [auth.email]
 enable_signup = true

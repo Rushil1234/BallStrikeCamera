@@ -9,6 +9,9 @@ struct BallStrikeCameraApp: App {
     @StateObject private var camera  = CameraController()
 
     init() {
+        // Install crash/error reporting first so early failures are captured.
+        // Reads an optional Sentry DSN from Secrets.plist (`SentryDSN`); nil = first-party only.
+        CrashReporter.shared.configure(dsn: CrashReporter.secretsDSN())
         WatchConnectivityBridge.shared.activate()
         // Touch the singleton so CBCentralManager is created and begins scanning
         // as soon as Bluetooth is available — before any camera screen opens.
@@ -20,6 +23,10 @@ struct BallStrikeCameraApp: App {
             ContentView()
                 .environmentObject(session)
                 .environmentObject(camera)
+                .task {
+                    // Wire crash/error telemetry to the backend + report any prior crash.
+                    CrashReporter.shared.attach(backend: session.backend)
+                }
                 .onChange(of: scenePhase) { phase in
                     guard phase == .active else { return }
                     Task { await session.refreshSessionAndEntitlement() }

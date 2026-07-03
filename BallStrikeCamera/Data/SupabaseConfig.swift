@@ -13,6 +13,7 @@ struct SupabaseConfig {
     var authBaseURL: URL     { baseURL.appendingPathComponent("auth/v1") }
     var storageBaseURL: URL  { baseURL.appendingPathComponent("storage/v1") }
     var rpcBaseURL: URL      { restBaseURL.appendingPathComponent("rpc") }
+    var functionsBaseURL: URL { baseURL.appendingPathComponent("functions/v1") }
 
     static func load() -> SupabaseConfig? {
         guard

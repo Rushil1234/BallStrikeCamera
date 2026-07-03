@@ -220,6 +220,20 @@ final class AuthSessionStore: ObservableObject {
         await preloadData()
     }
 
+    /// Completes native Sign in with Apple. `idToken` is the Apple identity token
+    /// and `nonce` is the RAW nonce whose SHA-256 was sent in the Apple request.
+    func signInWithApple(idToken: String, nonce: String) async throws {
+        guard let supabase = configuredBackend as? SupabaseBackendService else {
+            throw BackendError.notAuthenticated
+        }
+        activateBackend(configuredBackend)
+        let user = try await supabase.signInWithApple(idToken: idToken, nonce: nonce)
+        currentUser = user
+        userProfile = await ensureProfileAndBag(for: user)
+        await entitlementVM.load(userId: user.id)
+        await preloadData()
+    }
+
     // MARK: - Profile Updates
 
     func saveProfile(_ profile: UserProfile) async {

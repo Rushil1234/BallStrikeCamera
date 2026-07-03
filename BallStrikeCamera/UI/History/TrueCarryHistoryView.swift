@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 // History tab — reuses PastSessionsView which already supports
 // Range / Course / Sim / Saved Shots with filter tabs and search.
@@ -100,11 +101,12 @@ struct HandicapView: View {
             TrueCarryBackground().ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(spacing: TCTheme.sectionGap) {
-                    indexCard
                     if result.differentials.isEmpty {
+                        indexCard
                         emptyState
                     } else {
-                        roundsSection
+                        summaryCard      // estimated index + last-20 trend graph, up top
+                        roundsSection    // tappable scorecards, counted rounds highlighted
                     }
                     Spacer(minLength: 120)
                 }
@@ -112,7 +114,7 @@ struct HandicapView: View {
                 .padding(.top, 12)
             }
         }
-        .navigationTitle("Handicap")
+        .navigationTitle("Scores & Handicap")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
     }
@@ -136,6 +138,85 @@ struct HandicapView: View {
         .tcCard()
     }
 
+    // MARK: Top summary — estimated index headline + last-20 trend graph
+
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("HANDICAP INDEX")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(TCTheme.textMuted)
+                        .tracking(1.4)
+                    Text(HandicapService.indexString(result.index))
+                        .font(.system(size: 46, weight: .black, design: .rounded))
+                        .foregroundColor(TCTheme.textPrimary)
+                }
+                Spacer()
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundColor(TCTheme.textMuted)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: 132)
+            }
+            trendChart
+            legend
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .tcCard()
+    }
+
+    /// Last-20 differentials oldest→newest for a left-to-right chronological chart.
+    private var chartData: [(idx: Int, diff: HandicapService.RoundDifferential)] {
+        Array(result.differentials.reversed().enumerated()).map { ($0.offset, $0.element) }
+    }
+
+    private var trendChart: some View {
+        Chart {
+            ForEach(chartData, id: \.diff.id) { item in
+                BarMark(
+                    x: .value("Round", item.idx),
+                    y: .value("Differential", item.diff.differential)
+                )
+                .foregroundStyle(item.diff.counted ? TCTheme.sage : TCTheme.textUltraMuted.opacity(0.45))
+                .cornerRadius(3)
+            }
+            if let idx = result.index {
+                RuleMark(y: .value("Index", idx))
+                    .foregroundStyle(TCTheme.gold.opacity(0.85))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text("Index \(HandicapService.indexString(idx))")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(TCTheme.gold)
+                    }
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis {
+            AxisMarks(position: .leading) { _ in
+                AxisGridLine().foregroundStyle(TCTheme.border.opacity(0.5))
+                AxisValueLabel().foregroundStyle(TCTheme.textMuted)
+            }
+        }
+        .frame(height: 150)
+    }
+
+    private var legend: some View {
+        HStack(spacing: 16) {
+            legendKey(color: TCTheme.sage, label: "Counted toward index")
+            legendKey(color: TCTheme.textUltraMuted.opacity(0.45), label: "Other rounds")
+            Spacer()
+        }
+    }
+
+    private func legendKey(color: Color, label: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 10, height: 10)
+            Text(label).font(.system(size: 10)).foregroundColor(TCTheme.textMuted)
+        }
+    }
+
     private var subtitle: String {
         if result.index == nil {
             return "Play \(max(0, 3 - result.totalScored)) more scored round\(3 - result.totalScored == 1 ? "" : "s") to get an estimated index."
@@ -145,11 +226,18 @@ struct HandicapView: View {
 
     private var roundsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            TCSectionHeader(title: "Last \(result.differentials.count) Round\(result.differentials.count == 1 ? "" : "s")")
+            TCSectionHeader(title: "Scorecards · Last \(result.differentials.count) Round\(result.differentials.count == 1 ? "" : "s")")
             VStack(spacing: 8) {
-                ForEach(result.differentials) { d in roundRow(d) }
+                ForEach(result.differentials) { d in
+                    NavigationLink {
+                        ScorecardView(round: d.round, course: nil, backButtonTitle: "Back to Scores")
+                    } label: {
+                        roundRow(d)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
-            Text("Dots mark the rounds counted toward your index. Differentials use each tee's course & slope rating when available, otherwise score relative to par.")
+            Text("Tap a round to open its scorecard. Dots mark the rounds counted toward your index; differentials use each tee's course & slope rating when available, otherwise score relative to par.")
                 .font(.system(size: 11))
                 .foregroundColor(TCTheme.textUltraMuted)
                 .padding(.top, 2)
@@ -184,6 +272,9 @@ struct HandicapView: View {
                     .font(.system(size: 10))
                     .foregroundColor(d.counted ? TCTheme.sage : TCTheme.textMuted)
             }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(TCTheme.textUltraMuted)
         }
         .padding(.vertical, 11)
         .padding(.horizontal, 14)

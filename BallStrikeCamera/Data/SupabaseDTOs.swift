@@ -47,6 +47,7 @@ struct SupabaseProfileRow: Codable {
     var speedUnit: String
     var homeCourseName: String
     var profileImagePath: String?
+    var onboardingCompleted: Bool?
 
     func toUserProfile() -> UserProfile? {
         guard let uid = UUID(uuidString: userId) else { return nil }
@@ -59,7 +60,8 @@ struct SupabaseProfileRow: Codable {
             distanceUnit: DistanceUnit(rawValue: distanceUnit) ?? .yards,
             speedUnit: SpeedUnit(rawValue: speedUnit) ?? .mph,
             homeCourseName: homeCourseName,
-            profileImagePath: profileImagePath
+            profileImagePath: profileImagePath,
+            onboardingCompleted: onboardingCompleted
         )
     }
 }

@@ -100,11 +100,25 @@ protocol AppBackend {
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement
     func loadUsageCounter(userId: UUID, date: String) async throws -> UsageCounter?
     func incrementUsage(userId: UUID, action: EntitlementAction) async throws
+
+    // Account lifecycle & privacy (GDPR/CCPA + App Store account-deletion requirement)
+    func deleteAccount() async throws
+    func exportMyData() async throws -> Data
+
+    // Product telemetry — fire-and-forget, never throws / blocks the UI.
+    func logAnalyticsEvent(_ event: String, properties: [String: Any], sessionId: UUID?) async
 }
 
 // MARK: - Default implementations (local fallback)
 
 extension AppBackend {
+    // Local backend has no cloud account/telemetry — safe no-ops.
+    func deleteAccount() async throws {}
+    func exportMyData() async throws -> Data {
+        try JSONSerialization.data(withJSONObject: ["exported_at": ISO8601DateFormatter().string(from: Date())])
+    }
+    func logAnalyticsEvent(_ event: String, properties: [String: Any], sessionId: UUID?) async {}
+
     func deleteSimSession(sessionId: UUID, userId: UUID) async throws {}
     func deleteCourseRound(roundId: UUID, userId: UUID) async throws {}
 

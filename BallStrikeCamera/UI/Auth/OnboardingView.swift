@@ -13,7 +13,7 @@ struct OnboardingView: View {
     private let slides: [Slide] = [
         Slide(icon: "iphone.gen3",
               title: "Welcome to True Carry",
-              body: "Your iPhone is the launch monitor. Stand it on a tripod beside the ball — no extra hardware to buy."),
+              body: "Your iPhone is the launch monitor. Stand it on a tripod beside the ball."),
         Slide(icon: "camera.aperture",
               title: "It reads the strike",
               body: "True Carry captures impact at 240 frames per second to measure ball speed, launch angle, and the carry the ball actually flies."),
