@@ -281,20 +281,32 @@ html, body {
 }
 #lie-chip.bad   { color: var(--gold);  border-color: rgba(201,168,106,0.5); }
 #lie-chip.hazard{ color: var(--red);   border-color: rgba(226,101,79,0.5); }
+#pin-plays {
+  margin-top: 4px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.12em;
+  color: var(--cream-dim);
+}
+#pin-plays b { color: var(--gold-hi); font-weight: 700; }
 
 /* ---------------- launch monitor data ---------------- */
 
 #shot-data {
   left: 22px; top: 50%; transform: translateY(-50%);
   padding: 12px 18px;
-  min-width: 168px;
+  min-width: 220px;
+}
+.sd-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 20px;
 }
 .sd-row {
-  display: flex; justify-content: space-between; gap: 18px;
+  display: flex; justify-content: space-between; gap: 14px;
   padding: 3px 0;
   border-bottom: 1px solid rgba(201,168,106,0.12);
 }
-.sd-row:last-child { border-bottom: none; }
+.sd-grid .sd-row:nth-last-child(-n+2) { border-bottom: none; }
+.sd-hero .sd-val { color: var(--cream); font-size: 18px; }
 .sd-label {
   font-size: 10px; font-weight: 600; letter-spacing: 0.22em;
   color: var(--cream-dim); align-self: center;

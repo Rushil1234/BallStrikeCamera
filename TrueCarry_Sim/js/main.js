@@ -2,18 +2,18 @@
 // cameras, shot lifecycle, scoring.
 
 import * as THREE from 'three';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=augusta-3';
-import { createShot, simulateCarry, SURF } from './physics.js?v=augusta-3';
-import { RANGE, holeLength } from './holes.js?v=augusta-3';
-import { buildCourse } from './terrain.js?v=augusta-3';
-import { makeSky } from './sky.js?v=augusta-3';
-import { loadAssets } from './assets.js?v=augusta-3';
-import { HUD, toParStr } from './ui.js?v=augusta-3';
-import { SFX } from './audio.js?v=augusta-3';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=augusta-3';
-import { fetchSimCourses } from './courses.js?v=augusta-3';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=augusta-3';
-import { layoutIslandCourse } from './world.js?v=augusta-3';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-1';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-1';
+import { RANGE, holeLength } from './holes.js?v=gspro-1';
+import { buildCourse } from './terrain.js?v=gspro-1';
+import { makeSky } from './sky.js?v=gspro-1';
+import { loadAssets } from './assets.js?v=gspro-1';
+import { HUD, toParStr } from './ui.js?v=gspro-1';
+import { SFX } from './audio.js?v=gspro-1';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-1';
+import { fetchSimCourses } from './courses.js?v=gspro-1';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-1';
+import { layoutIslandCourse } from './world.js?v=gspro-1';
 
 // ---------- boot ----------
 
@@ -78,8 +78,10 @@ for (const c of CLUBS) {
 // ---------- persistent scene objects ----------
 
 const ball = new THREE.Mesh(
-  new THREE.SphereGeometry(0.034, 18, 14),
-  new THREE.MeshPhongMaterial({ color: 0xfdfdf6, specular: 0x999999, shininess: 60 }),
+  new THREE.SphereGeometry(0.034, 24, 18),
+  new THREE.MeshStandardMaterial({
+    color: 0xfdfdf6, roughness: 0.32, metalness: 0.0, envMapIntensity: 0.9,
+  }),
 );
 ball.castShadow = true;
 scene.add(ball);
@@ -103,19 +105,33 @@ const blob = new THREE.Mesh(
 blob.rotation.x = -Math.PI / 2;
 scene.add(blob);
 
-// shot tracer
+// shot tracer — broadcast style: bright at the ball, fading down the tail
 const TRACER_MAX = 2400;
 const tracerPos = new Float32Array(TRACER_MAX * 3);
+const tracerCol = new Float32Array(TRACER_MAX * 3);
 const tracerGeo = new THREE.BufferGeometry();
 tracerGeo.setAttribute('position', new THREE.BufferAttribute(tracerPos, 3));
+tracerGeo.setAttribute('color', new THREE.BufferAttribute(tracerCol, 3));
 tracerGeo.setDrawRange(0, 0);
 const tracer = new THREE.Line(
   tracerGeo,
-  new THREE.LineBasicMaterial({ color: 0xecd9ad, transparent: true, opacity: 0.85 }),
+  new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 }),
 );
 tracer.frustumCulled = false;
 scene.add(tracer);
 let tracerCount = 0;
+
+function tracerRepaint() {
+  // gradient: dim gold at the start of the trail → near-white at the ball
+  for (let i = 0; i < tracerCount; i++) {
+    const t = tracerCount > 1 ? i / (tracerCount - 1) : 1;
+    const k = 0.25 + 0.75 * t * t;
+    tracerCol[i * 3] = 0.93 * k + 0.07;
+    tracerCol[i * 3 + 1] = 0.85 * k + 0.06;
+    tracerCol[i * 3 + 2] = 0.62 * k + 0.05;
+  }
+  tracerGeo.attributes.color.needsUpdate = true;
+}
 
 // aim guide: dashed line + landing ring
 const aimGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
@@ -404,7 +420,7 @@ function setupShot() {
   }
 
   hud.setStroke(game.strokes + 1, totalToPar());
-  hud.setPin(rem);
+  hud.setPin(rem, game.course.heightAt(pin.x, pin.z) - game.ballPos.y);
   if (game.isRange) {
     const pinNum = document.getElementById('pin-num');
     const pinLabel = document.getElementById('pin-label');
@@ -498,16 +514,35 @@ function fire(accuracyRaw) {
   };
 
   const jitter = 1 + (Math.random() - 0.5) * 2 * lie.jitter;
+
+  // flyer lie: grass trapped between face and ball kills spin and the
+  // shot comes out hot — a classic flyer from the rough (~1 in 3)
+  const flyer = game.lie === SURF.ROUGH && !c.putter && Math.random() < 0.33;
+
   const speed = c.putter
     ? c.speed * power * (game.lie === SURF.GREEN || game.lie === SURF.FRINGE ? 1 : 0.55)
-    : c.speed * (0.3 + 0.7 * power) * lie.speed * jitter;
+    : c.speed * (0.3 + 0.7 * power) * lie.speed * jitter * (flyer ? 1.06 : 1);
   const launchDeg = c.putter ? 0 : c.launch + (game.lie === SURF.ROUGH ? 1.5 : 0);
-  const backspinRpm = c.putter ? 0 : c.spin * lie.spin * (0.55 + 0.45 * power);
+  const backspinRpm = c.putter ? 0
+    : c.spin * lie.spin * (0.55 + 0.45 * power) * (flyer ? 0.6 : 1);
 
+  // gusts: the hole wind is the average; each shot flies through a gust
+  // sampled around it (±15%)
+  const gust = 0.85 + Math.random() * 0.30;
+  const shotWind = { x: game.wind.x * gust, z: game.wind.z * gust };
+
+  const sideDeg = pushRad * 180 / Math.PI;
   if (c.putter) {
     hud.shotDataHide();
   } else {
-    hud.shotDataShow({ speedMph: speed * 2.237, launchDeg, spinRpm: backspinRpm });
+    hud.shotDataShow({
+      speedMph: speed * 2.237,
+      clubMph: c.smash ? speed * 2.237 / c.smash : null,
+      launchDeg,
+      sideDeg,
+      spinRpm: backspinRpm,
+    });
+    if (flyer) hud.toast('<span class="t-gold">FLYER LIE</span><span class="t-sub">JUMPING OUT HOT — LESS SPIN</span>', 1800);
   }
   if (game.isRange && !c.putter) {
     lastRangeShot = { speedMph: speed * 2.237, launchDeg, spinRpm: backspinRpm, apexFt: 0 };
@@ -523,7 +558,7 @@ function fire(accuracyRaw) {
     launchDeg,
     backspinRpm,
     sidespinRpm: c.putter ? 0 : -acc * 2100,
-    wind: game.wind,
+    wind: shotWind,
     course: game.course,
     pin: { x: game.course.pinPos.x, z: game.course.pinPos.z },
     mode: c.putter ? 'roll' : 'fly',
@@ -569,7 +604,13 @@ function resolveShot() {
       finalZ: sim.pos.z,
       clubName: club().name,
     });
-    if (!club().putter) hud.shotDataResult(fmtYards(carry), fmtYards(total));
+    if (!club().putter) {
+      hud.shotDataResult(fmtYards(carry), fmtYards(total), {
+        descentDeg: sim.descentDeg,
+        offlineM: result.offline,
+        hangTime: sim.hangTime,
+      });
+    }
     // populate last-shot pill
     const rangePill = document.getElementById('range-pill');
     if (rangePill) {
@@ -646,7 +687,17 @@ function resolveShot() {
     ? Math.hypot(sim.carryPos.x - game.shotStart.x, sim.carryPos.z - game.shotStart.z) : 0;
   const total = Math.hypot(game.ballPos.x - game.shotStart.x, game.ballPos.z - game.shotStart.z);
 
-  if (!club().putter) hud.shotDataResult(fmtYards(carry), fmtYards(total));
+  if (!club().putter) {
+    // offline: signed lateral miss vs the aim line at address
+    const right = { x: -game.aimDir.z, z: game.aimDir.x };
+    const offline = (game.ballPos.x - game.shotStart.x) * right.x
+                  + (game.ballPos.z - game.shotStart.z) * right.z;
+    hud.shotDataResult(fmtYards(carry), fmtYards(total), {
+      descentDeg: sim.descentDeg,
+      offlineM: offline,
+      hangTime: sim.hangTime,
+    });
+  }
 
   if (!club().putter && total > 15) {
     hud.toast(
@@ -1159,6 +1210,7 @@ function pushTracer(p) {
   tracerCount++;
   tracerGeo.setDrawRange(0, tracerCount);
   tracerGeo.attributes.position.needsUpdate = true;
+  tracerRepaint();
 }
 
 function updateMeter() {

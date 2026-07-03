@@ -1,7 +1,7 @@
 // HUD: telemetry panels, 3-click swing meter, toasts, scorecard,
 // and the top-down minimap (drawn straight from the hole definition).
 
-import { fmtYards } from './clubs.js?v=augusta-3';
+import { fmtYards } from './clubs.js?v=gspro-1';
 
 const $ = (id) => document.getElementById(id);
 
@@ -21,10 +21,12 @@ export class HUD {
       clubName: $('club-name'), clubCarry: $('club-carry'),
       clubPrev: $('club-prev'), clubNext: $('club-next'),
       pinNum: $('pin-num'), pinUnit: document.querySelector('.pin-unit'),
-      pinLabel: $('pin-label'), lieChip: $('lie-chip'),
+      pinLabel: $('pin-label'), lieChip: $('lie-chip'), pinPlays: $('pin-plays'),
       shotData: $('shot-data'),
-      sdSpeed: $('sd-speed'), sdLaunch: $('sd-launch'), sdSpin: $('sd-spin'),
-      sdApex: $('sd-apex'), sdCarry: $('sd-carry'), sdTotal: $('sd-total'),
+      sdSpeed: $('sd-speed'), sdClub: $('sd-club'), sdLaunch: $('sd-launch'),
+      sdSide: $('sd-side'), sdSpin: $('sd-spin'),
+      sdApex: $('sd-apex'), sdDesc: $('sd-desc'), sdOffline: $('sd-offline'),
+      sdCarry: $('sd-carry'), sdTotal: $('sd-total'),
       meter: $('meter'), meterFill: $('meter-fill'), meterCursor: $('meter-cursor'),
       meterPowermark: $('meter-powermark'), meterReadout: $('meter-readout'),
       title: $('title-screen'), btnStart: $('btn-start'),
@@ -71,13 +73,24 @@ export class HUD {
     this.el.clubCarry.textContent = putter ? 'ON THE DANCE FLOOR' : `${fmtYards(carryMeters)}y CARRY`;
   }
 
-  setPin(meters) {
+  setPin(meters, elevM = null) {
     if (meters < 23) {
       this.el.pinNum.textContent = Math.round(meters * 3.28084);
       this.el.pinUnit.textContent = 'ft';
     } else {
       this.el.pinNum.textContent = fmtYards(meters);
       this.el.pinUnit.textContent = 'y';
+    }
+    // elevation-adjusted "plays like" distance (GSPro-style)
+    const plays = this.el.pinPlays;
+    if (!plays) return;
+    if (elevM == null || meters < 23 || Math.abs(elevM) < 0.9) {
+      plays.classList.add('hidden');
+    } else {
+      const elevFt = Math.round(elevM * 3.28084);
+      const playsY = fmtYards(meters + elevM);
+      plays.innerHTML = `${elevFt > 0 ? '▲' : '▼'} ${Math.abs(elevFt)}ft · PLAYS <b>${playsY}y</b>`;
+      plays.classList.remove('hidden');
     }
   }
 
@@ -94,11 +107,21 @@ export class HUD {
 
   // ---------- launch monitor ----------
 
-  shotDataShow({ speedMph, launchDeg, spinRpm }) {
+  shotDataShow({ speedMph, clubMph = null, launchDeg, sideDeg = null, spinRpm }) {
     this.el.sdSpeed.textContent = `${Math.round(speedMph)} mph`;
+    if (this.el.sdClub) {
+      this.el.sdClub.textContent = clubMph ? `${Math.round(clubMph)} mph` : '—';
+    }
     this.el.sdLaunch.textContent = `${launchDeg.toFixed(1)}°`;
+    if (this.el.sdSide) {
+      this.el.sdSide.textContent = sideDeg == null || Math.abs(sideDeg) < 0.05
+        ? '0.0°'
+        : `${Math.abs(sideDeg).toFixed(1)}° ${sideDeg > 0 ? 'R' : 'L'}`;
+    }
     this.el.sdSpin.textContent = `${Math.round(spinRpm / 10) * 10} rpm`;
     this.el.sdApex.textContent = '—';
+    if (this.el.sdDesc) this.el.sdDesc.textContent = '—';
+    if (this.el.sdOffline) this.el.sdOffline.textContent = '—';
     this.el.sdCarry.textContent = '—';
     this.el.sdTotal.textContent = '—';
     this.el.shotData.classList.remove('hidden');
@@ -108,9 +131,17 @@ export class HUD {
     this.el.sdApex.textContent = `${Math.round(ft)} ft`;
   }
 
-  shotDataResult(carryY, totalY) {
+  shotDataResult(carryY, totalY, extra = null) {
     if (carryY != null) this.el.sdCarry.textContent = `${carryY}y`;
     if (totalY != null) this.el.sdTotal.textContent = `${totalY}y`;
+    if (!extra) return;
+    if (this.el.sdDesc && extra.descentDeg != null) {
+      this.el.sdDesc.textContent = `${extra.descentDeg.toFixed(0)}°`;
+    }
+    if (this.el.sdOffline && extra.offlineM != null) {
+      const y = Math.round(Math.abs(extra.offlineM) * 1.09361);
+      this.el.sdOffline.textContent = y === 0 ? '0y' : `${y}y ${extra.offlineM < 0 ? 'L' : 'R'}`;
+    }
   }
 
   shotDataHide() { this.el.shotData.classList.add('hidden'); }

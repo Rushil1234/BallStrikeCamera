@@ -98,15 +98,13 @@ struct TrueCarryPlayView: View {
             }
             .tcAppearance()
         }
-        .alert("Course Mode", isPresented: $showUpgradeAlert) {
+        .alert(upgradeAlertTitle, isPresented: $showUpgradeAlert) {
             Button("Upgrade") {
-                if let url = URL(string: "https://truecarry.app/pricing") {
-                    UIApplication.shared.open(url)
-                }
+                UIApplication.shared.open(AppConfig.pricingURL)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Course Mode is available with Basic, Pro, or Unlimited plans.")
+            Text(upgradeAlertMessage)
         }
         .fullScreenCover(item: $pendingRound) { pr in
             CourseModeGPSHoleView(
@@ -245,15 +243,29 @@ struct TrueCarryPlayView: View {
     private func handleStart() {
         switch selectedMode {
         case .range:  showCamera = true
-        case .sim:    showSim = true
+        case .sim:
+            if session.entitlementVM.canPerform(.simMode).allowed {
+                showSim = true
+            } else {
+                showUpgradeAlert = true
+            }
         case .course:
-            let decision = session.entitlementVM.canPerform(.courseMode)
-            if decision.allowed {
+            if session.entitlementVM.canPerform(.courseMode).allowed {
                 showCourseSearch = true
             } else {
                 showUpgradeAlert = true
             }
         }
+    }
+
+    private var upgradeAlertTitle: String {
+        selectedMode == .sim ? "Sim Mode" : "Course Mode"
+    }
+
+    private var upgradeAlertMessage: String {
+        selectedMode == .sim
+            ? "Sim Mode is available with the Pro plan."
+            : "Course Mode is available with Basic, Pro, or Unlimited plans."
     }
 
     private func applyDefaultModeIfNeeded() {

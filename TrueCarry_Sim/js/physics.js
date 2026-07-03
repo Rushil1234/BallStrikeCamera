@@ -89,6 +89,14 @@ export function createShot(opts) {
 
   const windV = v3(wind.x, 0, wind.z);
   const SUB = 1 / 240;
+  // boundary-layer wind profile: reported speed is the ~2m reading; the ball
+  // sees more wind at apex, less right off the ground (power-law profile)
+  const ground0 = course.heightAt(sim.pos.x, sim.pos.z);
+  function windAt(y) {
+    const alt = Math.max(y - ground0, 0.4);
+    const f = Math.min(1.35, Math.max(0.70, Math.pow(alt / 2.0, 0.14)));
+    return scl(windV, f);
+  }
 
   function groundNormal(x, z) {
     return course.normalAt(x, z);
@@ -122,7 +130,7 @@ export function createShot(opts) {
   }
 
   function stepFly(dt) {
-    const vrel = sub(sim.vel, windV);
+    const vrel = sub(sim.vel, windAt(sim.pos.y));
     const vmag = len(vrel);
     let acc = v3(0, -G, 0);
     if (vmag > 0.01) {
@@ -221,7 +229,14 @@ export function createShot(opts) {
 
       if (!sim.carryPos) {
         sim.carryPos = { ...sim.pos };
-        sim.events.push({ type: 'land', pos: { ...sim.pos }, surface: surf });
+        // launch-monitor landing stats: descent angle + hang time
+        const hsp = Math.hypot(sim.vel.x, sim.vel.z);
+        sim.descentDeg = Math.atan2(Math.max(-sim.vel.y, 0), hsp) * 180 / Math.PI;
+        sim.hangTime = sim.age;
+        sim.events.push({
+          type: 'land', pos: { ...sim.pos }, surface: surf,
+          descentDeg: sim.descentDeg,
+        });
       }
       if (surf === SURF.WATER) { enterWater(); return; }
 
