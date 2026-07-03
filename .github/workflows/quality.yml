@@ -1,0 +1,54 @@
+name: Quality
+
+# Build + regression gates for the iOS app and the browser sim.
+# Catches the failure classes that have actually bitten this repo:
+# files missing from the Xcode target, physics regressions, logic breaks.
+
+on:
+  push:
+    branches: [main, rushil]
+    paths:
+      - "BallStrikeCamera/**"
+      - "BallStrikeCamera.xcodeproj/**"
+      - "BallStrikeCameraWatch/**"
+      - "BallStrikeCameraWidget/**"
+      - "TrueCarry_Sim/**"
+      - "tools/**"
+      - ".github/workflows/quality.yml"
+  pull_request:
+    paths:
+      - "BallStrikeCamera/**"
+      - "BallStrikeCamera.xcodeproj/**"
+      - "TrueCarry_Sim/**"
+      - "tools/**"
+  workflow_dispatch: {}
+
+jobs:
+  ios:
+    name: iOS build + logic tests
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (iphonesimulator, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project BallStrikeCamera.xcodeproj \
+            -scheme BallStrikeCamera \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tail -40
+      - name: Logic golden tests
+        run: tools/ios-logic-tests.sh
+
+  sim:
+    name: Sim physics/course regression
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bot plays all courses (JavaScriptCore)
+        run: |
+          set -o pipefail
+          TrueCarry_Sim/tools/test.sh | tail -12
