@@ -200,7 +200,7 @@ final class RFIDHubManager: NSObject, ObservableObject {
 
 // MARK: - CBCentralManagerDelegate
 
-extension RFIDHubManager: CBCentralManagerDelegate {
+extension RFIDHubManager: @preconcurrency CBCentralManagerDelegate {
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         print("[RFIDHub] centralManagerDidUpdateState: \(central.state.rawValue)")
@@ -268,7 +268,7 @@ extension RFIDHubManager: CBCentralManagerDelegate {
 
 // MARK: - CBPeripheralDelegate
 
-extension RFIDHubManager: CBPeripheralDelegate {
+extension RFIDHubManager: @preconcurrency CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard let services = peripheral.services else { return }

@@ -181,6 +181,7 @@
 		CAFE000000000000000000B3 /* OpenGolfSimClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B2 /* OpenGolfSimClient.swift */; };
 		CAFE000000000000000000B5 /* OpenGolfSimViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */; };
 		CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C0 /* SessionSaveSheet.swift */; };
+		CAFE0000000000000000FA11 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FA10 /* ShareSheet.swift */; };
 		CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C2 /* SimCameraScreen.swift */; };
 		CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C4 /* SessionDetailView.swift */; };
 		CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C6 /* ShotDetailView.swift */; };
@@ -416,6 +417,7 @@
 		CAFE000000000000000000B2 /* OpenGolfSimClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimClient.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000B4 /* OpenGolfSimViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenGolfSimViewModel.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C0 /* SessionSaveSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSaveSheet.swift; sourceTree = "<group>"; };
+		CAFE0000000000000000FA10 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C2 /* SimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimCameraScreen.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C4 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C6 /* ShotDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotDetailView.swift; sourceTree = "<group>"; };
@@ -853,6 +855,7 @@
 				BF0000060000000000000007 /* TCBottomDock.swift */,
 				BF000006000000000000002F /* SpinningGolfBallView.swift */,
 				CAFE000000000000000000C0 /* SessionSaveSheet.swift */,
+				CAFE0000000000000000FA10 /* ShareSheet.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -1246,6 +1249,7 @@
 				CAFE00000000000000000103 /* GSProClient.swift in Sources */,
 				CAFE00000000000000000105 /* GSProViewModel.swift in Sources */,
 				CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */,
+				CAFE0000000000000000FA11 /* ShareSheet.swift in Sources */,
 				CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */,
 				LIVE00000000000000000001 /* LiveSimService.swift in Sources */,
 				LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */,
