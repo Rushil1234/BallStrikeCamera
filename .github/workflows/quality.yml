@@ -35,6 +35,28 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
           xcodebuild -version
           xcrun simctl list runtimes | head -5
+      - name: Generate placeholder Secrets.plist (real one is gitignored)
+        # Placeholder values make the app fall back to LocalBackendService by
+        # design (SupabaseConfig checks for YOUR_..._HERE); build-only anyway.
+        run: |
+          cat > BallStrikeCamera/Resources/Secrets.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>GolfCourseAPIKey</key>
+            <string>YOUR_GOLF_COURSE_API_KEY_HERE</string>
+            <key>PricingURL</key>
+            <string>https://truecarry.app/pricing</string>
+            <key>SupabaseAnonKey</key>
+            <string>YOUR_SUPABASE_ANON_KEY_HERE</string>
+            <key>SupabaseURL</key>
+            <string>YOUR_SUPABASE_URL_HERE</string>
+            <key>TrueCarryWebsiteURL</key>
+            <string>https://truecarry.app</string>
+          </dict>
+          </plist>
+          PLIST
       - name: Build (iphonesimulator, unsigned)
         run: |
           set -o pipefail
