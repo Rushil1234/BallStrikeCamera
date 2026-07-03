@@ -2,20 +2,21 @@
 // launch in degrees, spin in rpm. Carries are computed at boot by
 // simulating each club on flat ground (see main.js).
 
+// smash = ball speed / club speed (used to estimate club speed for the HUD)
 export const CLUBS = [
-  { id: 'DR', name: 'DRIVER',  speed: 74, launch: 12.0, spin: 2500 },
-  { id: 'W3', name: '3 WOOD',  speed: 69, launch: 13.5, spin: 3400 },
-  { id: 'W5', name: '5 WOOD',  speed: 66, launch: 15.0, spin: 4100 },
-  { id: 'HY', name: 'HYBRID',  speed: 63, launch: 16.0, spin: 4600 },
-  { id: 'I4', name: '4 IRON',  speed: 60, launch: 16.5, spin: 5100 },
-  { id: 'I5', name: '5 IRON',  speed: 58, launch: 17.5, spin: 5700 },
-  { id: 'I6', name: '6 IRON',  speed: 55, launch: 18.5, spin: 6400 },
-  { id: 'I7', name: '7 IRON',  speed: 53, launch: 20.0, spin: 7100 },
-  { id: 'I8', name: '8 IRON',  speed: 50, launch: 22.0, spin: 7900 },
-  { id: 'I9', name: '9 IRON',  speed: 47, launch: 24.5, spin: 8700 },
-  { id: 'PW', name: 'P WEDGE', speed: 44, launch: 27.0, spin: 9400 },
-  { id: 'GW', name: 'G WEDGE', speed: 40, launch: 30.0, spin: 9900 },
-  { id: 'SW', name: 'S WEDGE', speed: 36, launch: 33.0, spin: 10300 },
+  { id: 'DR', name: 'DRIVER',  speed: 74, launch: 12.0, spin: 2500, smash: 1.49 },
+  { id: 'W3', name: '3 WOOD',  speed: 69, launch: 13.5, spin: 3400, smash: 1.47 },
+  { id: 'W5', name: '5 WOOD',  speed: 66, launch: 15.0, spin: 4100, smash: 1.46 },
+  { id: 'HY', name: 'HYBRID',  speed: 63, launch: 16.0, spin: 4600, smash: 1.44 },
+  { id: 'I4', name: '4 IRON',  speed: 60, launch: 16.5, spin: 5100, smash: 1.42 },
+  { id: 'I5', name: '5 IRON',  speed: 58, launch: 17.5, spin: 5700, smash: 1.41 },
+  { id: 'I6', name: '6 IRON',  speed: 55, launch: 18.5, spin: 6400, smash: 1.39 },
+  { id: 'I7', name: '7 IRON',  speed: 53, launch: 20.0, spin: 7100, smash: 1.37 },
+  { id: 'I8', name: '8 IRON',  speed: 50, launch: 22.0, spin: 7900, smash: 1.34 },
+  { id: 'I9', name: '9 IRON',  speed: 47, launch: 24.5, spin: 8700, smash: 1.31 },
+  { id: 'PW', name: 'P WEDGE', speed: 44, launch: 27.0, spin: 9400, smash: 1.27 },
+  { id: 'GW', name: 'G WEDGE', speed: 40, launch: 30.0, spin: 9900, smash: 1.22 },
+  { id: 'SW', name: 'S WEDGE', speed: 36, launch: 33.0, spin: 10300, smash: 1.15 },
   { id: 'PT', name: 'PUTTER',  speed: 7.2, launch: 0, spin: 0, putter: true },
 ];
 

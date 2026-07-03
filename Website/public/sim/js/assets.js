@@ -3,7 +3,7 @@
 // All CC0 from Poly Haven, water normals from three.js examples (MIT).
 
 import * as THREE from 'three';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js?v=augusta-3';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js?v=gspro-1';
 
 function loadTex(loader, url, { srgb = false, aniso = 8 } = {}) {
   return new Promise((resolve, reject) => {
@@ -101,7 +101,7 @@ function sunFromEquirect(tex) {
 
 export async function loadAssets(renderer) {
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
-  const aniso = Math.min(8, maxAniso);
+  const aniso = Math.min(16, maxAniso);
   const tl = new THREE.TextureLoader();
   const t = (url, opts = {}) => loadTex(tl, url, { aniso, ...opts });
 

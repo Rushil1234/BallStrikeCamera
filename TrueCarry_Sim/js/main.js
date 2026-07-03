@@ -38,7 +38,21 @@ const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerH
 
 let activeCourse = LOCAL_COURSES[0];
 let selectableCourses = [...LOCAL_COURSES];
-let courseWorld = layoutIslandCourse(activeCourse.holes, activeCourse.world);
+
+// Daily pin rotation: courses that ship multiple pin positions per green
+// (hole.pins) get a deterministic daily selection, so the course changes
+// day to day the way a real setup crew moves cups.
+function applyDailyPins(world) {
+  const day = Math.floor(Date.now() / 86400000);
+  for (const hole of world.holes || []) {
+    if (Array.isArray(hole.pins) && hole.pins.length > 1) {
+      hole.pin = hole.pins[(day + hole.id) % hole.pins.length];
+    }
+  }
+  return world;
+}
+
+let courseWorld = applyDailyPins(layoutIslandCourse(activeCourse.holes, activeCourse.world));
 let courseHoles = courseWorld.holes;
 hud.mapSetCourse(courseHoles, courseWorld);
 
@@ -239,7 +253,7 @@ function setActiveCourse(course) {
     : course;
   if (!nextCourse?.holes?.length) return;
   activeCourse = nextCourse;
-  courseWorld = layoutIslandCourse(nextCourse.holes, nextCourse.world || {});
+  courseWorld = applyDailyPins(layoutIslandCourse(nextCourse.holes, nextCourse.world || {}));
   courseHoles = courseWorld.holes;
   if (game.course) {
     scene.remove(game.course.group);
