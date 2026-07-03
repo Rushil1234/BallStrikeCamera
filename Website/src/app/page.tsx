@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
 import PhoneDemo from "@/components/PhoneDemo";
 import ClubCards from "@/components/ClubCards";
+import SiteNav from "@/components/SiteNav";
 
 type Hole = { n: number; name: string; par: number; yd: number; id: string };
 
@@ -130,26 +131,9 @@ export default function HomePage() {
 
   return (
     <div className="round">
-      {/* Header */}
-      <header className="head">
-        <div className="row">
-          <a className="brand" href="#h01">
-            <img src="/truecarry-header-logo.png" alt="" />
-            <span className="n">True <span className="it">Carry.</span></span>
-          </a>
-          <nav className="nav">
-            <a className="l" href="#h03">What it does</a>
-            <a className="l" href="/play">The Sim</a>
-            <a className="l" href="/store">Store</a>
-            <a className="l" href="#h07">Pricing</a>
-            <a className="l" href="/support">Support</a>
-            <a className="l btn" href="/login">Sign in</a>
-            <a className="l btn primary" href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>
-              Get the app
-            </a>
-          </nav>
-        </div>
-      </header>
+      {/* Header — the shared site nav (session-aware), with the primary
+          action opening the embedded checkout instead of a plain link. */}
+      <SiteNav onGetApp={openCheckout} />
 
       {/* Ball trail */}
       <div className="ball-trail" ref={trailRef}>
