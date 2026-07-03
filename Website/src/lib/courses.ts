@@ -43,7 +43,7 @@ export const SIM_COURSES: SimCourse[] = [
     holes: 18,
     par: 72,
     location: "True Carry built-in",
-    preview: "/sim-preview.jpg",
+    preview: "/pine-hollow-preview.jpg",
   },
   {
     id: "pebble-private",
@@ -56,7 +56,7 @@ export const SIM_COURSES: SimCourse[] = [
     holes: 18,
     par: 72,
     location: "Coastal links",
-    preview: "/sim-preview.jpg",
+    preview: "/pebble-preview.jpg",
   },
   {
     id: "augusta-national",
