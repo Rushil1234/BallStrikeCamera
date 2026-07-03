@@ -9,11 +9,14 @@ struct ClubAnalytics {
     let avgCarryYds: Double
     let avgTotalYds: Double
     /// One-sigma lateral dispersion in yards (left/right of intended line).
-    let lateralStdDevYds: Double
+    /// nil until intended-line capture exists — TrackedShot has no aim vector,
+    /// so lateral spread is not computable yet (a 0 would read as "perfect").
+    let lateralStdDevYds: Double?
     /// One-sigma longitudinal dispersion in yards (short/long of average).
     let longitudinalStdDevYds: Double
     /// Miss tendency: signed yards (negative = left, positive = right).
-    let missBiasYds: Double
+    /// nil until intended-line capture exists (see lateralStdDevYds).
+    let missBiasYds: Double?
     /// Confidence in [0, 1] based on sample size and outlier ratio.
     let confidence: Double
 }
@@ -63,12 +66,6 @@ enum ClubAnalyticsService {
         let avgCarry  = carryVals.reduce(0, +) / Double(carryVals.count)
         let avgTotal  = totalVals.reduce(0, +) / Double(totalVals.count)
 
-        // Lateral dispersion: project end coord onto a per-shot tee→hole-center axis.
-        // Approximation: assume the shot vector itself is the "intended" axis for now.
-        // (Replaces with intended-line vector once aim direction is stored.)
-        let lateralDevs    = kept.map { lateralDeviation(of: $0) }
-        let lateralMean    = lateralDevs.reduce(0, +) / Double(lateralDevs.count)
-        let lateralStd     = stdDev(lateralDevs, mean: lateralMean)
         let longitudinalStd = stdDev(totalVals, mean: avgTotal)
 
         // Confidence: scales with sample size and the inverse of outlier ratio.
@@ -81,9 +78,9 @@ enum ClubAnalyticsService {
             sampleCount:           kept.count,
             avgCarryYds:           avgCarry,
             avgTotalYds:           avgTotal,
-            lateralStdDevYds:      lateralStd,
+            lateralStdDevYds:      nil,   // needs intended-line capture
             longitudinalStdDevYds: longitudinalStd,
-            missBiasYds:           lateralMean,
+            missBiasYds:           nil,    // needs intended-line capture
             confidence:            confidence
         )
     }
@@ -96,11 +93,4 @@ enum ClubAnalyticsService {
         return sqrt(sq / Double(xs.count - 1))
     }
 
-    /// Signed lateral deviation in yards. Sign convention: positive = right of start→end axis.
-    /// MVP: zero, since we don't store an intended line yet — kept as a stub so callers can
-    /// compute miss bias once aim is captured.
-    private static func lateralDeviation(of shot: TrackedShot) -> Double {
-        // Placeholder for future intended-line analysis.
-        0
-    }
 }
