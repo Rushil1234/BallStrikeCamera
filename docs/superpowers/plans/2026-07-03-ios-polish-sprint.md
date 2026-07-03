@@ -1,5 +1,16 @@
 # iOS Polish Sprint (Track 2) Implementation Plan
 
+> **STATUS: EXECUTED 2026-07-03** (commits 997be3c..41cba98). Reality diverged
+> from the plan in three ways discovered mid-execution: (1) the baseline build
+> was broken (ShareSheet not in target; RFIDHubManager Swift-6 conformances) —
+> fixed as Task 0; (2) the mock-data screens (ModeSelectionView,
+> HomeDashboardView, SessionsView, AnalyticsView, RangeModeView) were all
+> ORPHANS of an old shell — deleted rather than de-mocked; the live screens
+> already use real data, so SessionStatsService was never needed (YAGNI);
+> (3) raw frames were never persisted, so T3 added burst persistence at
+> capture time; BallFlightPreviewView was orphaned too and was revived as a
+> Flight Path card on ShotDetailView.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Remove every user-visible "unfinished" edge in the TrueCarry iOS app: stale coming-soon copy, mock-data screens, unwired shot replay, fake flight path, map stub, dead sheets.
