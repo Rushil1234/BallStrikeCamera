@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import SiteNav from "@/components/SiteNav";
+import SimHost from "@/components/SimHost";
 import Link from "next/link";
 
 function SimContent() {
@@ -35,26 +36,18 @@ function SimContent() {
 
   if (launched && activeCode) {
     return (
-      <div className="sim-fullscreen">
-        <iframe
-          key={activeCode}
-          src={`/sim/index.html?code=${activeCode}`}
-          className="sim-iframe"
-          allow="autoplay; fullscreen"
-          title="True Carry Live Sim"
-        />
-        <button
-          className="sim-change-code"
-          onClick={() => {
-            setLaunched(false);
-            setInputCode("");
-            setActiveCode("");
-            setTimeout(() => inputRef.current?.focus(), 100);
-          }}
-        >
-          ✕ Change Code
-        </button>
-      </div>
+      <SimHost
+        key={activeCode}
+        src={`/sim/index.html?code=${activeCode}`}
+        title="True Carry Live Sim"
+        backLabel="✕ Change Code"
+        onBack={() => {
+          setLaunched(false);
+          setInputCode("");
+          setActiveCode("");
+          setTimeout(() => inputRef.current?.focus(), 100);
+        }}
+      />
     );
   }
 

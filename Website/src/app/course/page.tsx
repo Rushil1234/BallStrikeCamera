@@ -2,91 +2,23 @@
 
 import { useState } from "react";
 import SiteNav from "@/components/SiteNav";
+import SimHost from "@/components/SimHost";
+import { SIM_COURSES, simCoursePath, type SimCourse } from "@/lib/courses";
 import Link from "next/link";
 
-type Course = {
-  id: string;
-  name: string;
-  location: string;
-  holes: number;
-  par: number;
-  path: string;
-  preview: string;
-};
-
-const COURSES: Course[] = [
-  {
-    id: "pine-hollow",
-    name: "Pine Hollow National",
-    location: "True Carry built-in",
-    holes: 18,
-    par: 72,
-    path: "/sim/index.html?mode=course&course=pine-hollow",
-    preview: "/sim-preview.jpg",
-  },
-  {
-    id: "pebble-private",
-    name: "Cypress Coast Links",
-    location: "Coastal prototype",
-    holes: 18,
-    par: 72,
-    path: "/sim/index.html?mode=course&course=pebble-private",
-    preview: "/sim-preview.jpg",
-  },
-];
+const COURSES = SIM_COURSES.filter((c) => c.hrefMode === "course");
 
 export default function CoursePage() {
-  const [launched, setLaunched] = useState<Course | null>(null);
+  const [launched, setLaunched] = useState<SimCourse | null>(null);
 
   if (launched) {
     return (
-      <>
-        <div className="course-fullscreen">
-          <iframe
-            src={launched.path}
-            className="course-iframe"
-            allow="autoplay; fullscreen"
-            title={launched.name}
-          />
-          <button
-            className="course-back-btn"
-            onClick={() => setLaunched(null)}
-          >
-            ← Courses
-          </button>
-        </div>
-        <style>{`
-          .course-fullscreen {
-            position: fixed;
-            inset: 0;
-            background: #0a110c;
-            z-index: 1000;
-          }
-          .course-iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-            display: block;
-          }
-          .course-back-btn {
-            position: fixed;
-            top: 14px;
-            left: 14px;
-            z-index: 1001;
-            padding: 7px 16px;
-            border-radius: 18px;
-            border: 1px solid rgba(255,255,255,0.18);
-            background: rgba(0,0,0,0.58);
-            color: rgba(255,255,255,0.7);
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            backdrop-filter: blur(8px);
-            transition: color 0.15s;
-          }
-          .course-back-btn:hover { color: #fff; }
-        `}</style>
-      </>
+      <SimHost
+        src={simCoursePath(launched)}
+        title={launched.name}
+        backLabel="← Courses"
+        onBack={() => setLaunched(null)}
+      />
     );
   }
 

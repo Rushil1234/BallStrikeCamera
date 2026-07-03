@@ -2323,3 +2323,34 @@ code {
 .locker-link-btn:hover { text-decoration: underline; }
 .locker-link-btn.danger { color: #d47a6a; }
 .locker-link-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------- Shared fullscreen sim host (/sim, /course) ---------- */
+.sim-hostframe {
+  position: fixed; inset: 0; background: #0a110c; z-index: 1000;
+  animation: tc-sim-in 0.55s var(--ease, ease) both;
+}
+.sim-hostframe-iframe { width: 100%; height: 100%; border: none; display: block; }
+.sim-hostframe-loading {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px;
+  background: #0a110c; color: rgba(236, 228, 210, 0.75);
+  font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.sim-hostframe-spinner {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid rgba(236, 228, 210, 0.18); border-top-color: var(--gold, #c9a86a);
+  animation: tc-sim-spin 0.9s linear infinite;
+}
+@keyframes tc-sim-spin { to { transform: rotate(360deg); } }
+.sim-hostframe-back {
+  position: fixed; top: 14px; left: 14px; z-index: 1001;
+  padding: 7px 16px; border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.58); color: rgba(255, 255, 255, 0.7);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  backdrop-filter: blur(8px); transition: color 0.15s;
+}
+.sim-hostframe-back:hover { color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .sim-hostframe { animation: none; }
+}

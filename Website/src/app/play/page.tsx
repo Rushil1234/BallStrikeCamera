@@ -9,56 +9,10 @@ function makeCode() {
   return String(n).padStart(6, "0");
 }
 
-type CourseOption = {
-  id: string;
-  name: string;
-  sub: string;
-  detail: string;
-  meta: string;
-  mark: string;
-  hrefMode: "range" | "course";
-  disabled?: boolean;
-};
+import { SIM_COURSES, type SimCourse } from "@/lib/courses";
 
-const COURSES: CourseOption[] = [
-  {
-    id: "range",
-    name: "Range",
-    sub: "Free practice · no scoring",
-    detail: "Target greens, dispersion feedback, carry windows, and club gapping without starting a round.",
-    meta: "Practice",
-    mark: "R",
-    hrefMode: "range",
-  },
-  {
-    id: "pine-hollow",
-    name: "Pine Hollow National",
-    sub: "18 holes · par 72 · 6,900 yd",
-    detail: "The built-in parkland course with the current scoring, map, hole picker, and full round flow.",
-    meta: "Classic",
-    mark: "18",
-    hrefMode: "course",
-  },
-  {
-    id: "pebble-private",
-    name: "Cypress Coast Links",
-    sub: "18 holes · coastal links · par 72",
-    detail: "A rugged Pacific-style routing with ocean edges, cliffside holes, cypress belts, and coastal wind visuals.",
-    meta: "New course",
-    mark: "CC",
-    hrefMode: "course",
-  },
-  {
-    id: "augusta",
-    name: "Augusta National",
-    sub: "Coming soon",
-    detail: "Reserved for a future private course build.",
-    meta: "Preview",
-    mark: "A",
-    hrefMode: "course",
-    disabled: true,
-  },
-];
+type CourseOption = SimCourse;
+const COURSES: CourseOption[] = SIM_COURSES;
 
 type Stage = "select" | "launching" | "playing";
 
@@ -137,7 +91,7 @@ export default function PlayPage() {
   useEffect(() => {
     if (stage !== "launching" || !activeCourse || !simReady || !connected) return;
     const msgType = activeCourse.id === "range" ? "START_RANGE" : "START_SIM";
-    iframeRef.current?.contentWindow?.postMessage({ type: msgType, courseId: activeCourse.id }, "*");
+    iframeRef.current?.contentWindow?.postMessage({ type: msgType, courseId: activeCourse.id }, window.location.origin);
   }, [activeCourse, simReady, stage, connected]);
 
   // Safety net: never sit on the launch screen without a paired phone — the
@@ -192,7 +146,7 @@ export default function PlayPage() {
   }
 
   function endSession() {
-    iframeRef.current?.contentWindow?.postMessage({ type: "END_SESSION" }, "*");
+    iframeRef.current?.contentWindow?.postMessage({ type: "END_SESSION" }, window.location.origin);
     setConnected(false);
     setShowEndConfirm(false);
     returnToSelect();
