@@ -54,6 +54,21 @@ if let iron = analytics[.iron] {
 let sparse = [150.0, 151, 149].enumerated().map { shot($0.offset, yards: $0.element) }
 check(ClubAnalyticsService.aggregate(sparse)[.iron] == nil, "below minSamples -> no analytics")
 
+// ---------- DistanceEstimator fallback (aero-integrated, no trained model) ----------
+
+let est = DistanceEstimator()
+let full = est.estimate(ballSpeedMph: 150, vlaDegrees: 12, hlaDegrees: 0, flightModel: nil, backspinRpm: 2600)
+check((190...260).contains(Int(full.carryYards ?? 0)),
+      "estimator fallback carry \(Int(full.carryYards ?? 0))yd in 190...260 (was vacuum*0.75)")
+check(full.method.hasPrefix("aero_integrated"), "fallback method is aero_integrated (\(full.method))")
+
+let chip = est.estimate(ballSpeedMph: 40, vlaDegrees: 30, hlaDegrees: 0, flightModel: nil, backspinRpm: nil)
+check((15...45).contains(Int(chip.carryYards ?? 0)), "40mph chip carry \(Int(chip.carryYards ?? 0))yd in 15...45")
+
+let putt = est.estimate(ballSpeedMph: 6, vlaDegrees: 0.5, hlaDegrees: 0, flightModel: nil, backspinRpm: nil)
+check(putt.method == "putt_rolling_physics" && putt.carryYards == nil,
+      "putt bypasses flight model (\(putt.method))")
+
 // ---------- result ----------
 print(failures == 0 ? "ALL LOGIC TESTS PASSED" : "\(failures) LOGIC TEST(S) FAILED")
 exit(failures == 0 ? 0 : 1)

@@ -9,6 +9,9 @@ xcrun swiftc -O \
   BallStrikeCamera/Models/TrackedShotModels.swift \
   BallStrikeCamera/Models/CourseModels.swift \
   BallStrikeCamera/Services/Golf/ClubAnalyticsService.swift \
+  BallStrikeCamera/Analysis/DistanceEstimator.swift \
+  BallStrikeCamera/Analysis/FlightModelPredictor.swift \
+  BallStrikeCamera/Analysis/ModelResourceLoader.swift \
   tools/ios-logic-tests/main.swift \
   -o "$OUT/logic-tests"
 "$OUT/logic-tests"
