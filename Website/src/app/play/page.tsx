@@ -5,8 +5,11 @@ import { useState, useEffect, useRef } from "react";
 function makeCode() {
   // Cryptographically-random pairing code — Math.random() is predictable and
   // must not be used for a value that gates access to a live session channel.
-  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
-  return String(n).padStart(6, "0");
+  // 9 digits (~30 bits): stage 2 of the pairing hardening; the iOS app has
+  // accepted 6-10 digit codes since the 2026-07-01 build (stage 1).
+  // Three digits per uint32 keeps every position uniform without BigInt.
+  const buf = crypto.getRandomValues(new Uint32Array(3));
+  return Array.from(buf, (v) => String(v % 1000).padStart(3, "0")).join("");
 }
 
 import { SIM_COURSES, type SimCourse } from "@/lib/courses";

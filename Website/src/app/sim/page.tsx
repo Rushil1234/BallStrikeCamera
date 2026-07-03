@@ -17,7 +17,7 @@ function SimContent() {
 
   // If the URL already has a code, auto-launch.
   useEffect(() => {
-    if (urlCode && urlCode.length === 6) {
+    if (urlCode && /^\d{6,10}$/.test(urlCode)) {
       setActiveCode(urlCode);
       setLaunched(true);
     }
@@ -25,7 +25,7 @@ function SimContent() {
 
   function launch(code: string) {
     const trimmed = code.trim();
-    if (trimmed.length !== 6 || !/^\d{6}$/.test(trimmed)) return;
+    if (!/^\d{6,10}$/.test(trimmed)) return;
     setActiveCode(trimmed);
     setLaunched(true);
     // Push ?code= into the URL so the user can share / bookmark.
@@ -75,17 +75,17 @@ function SimContent() {
               className="sim-code-input"
               type="text"
               inputMode="numeric"
-              maxLength={6}
+              maxLength={10}
               placeholder="000000"
               value={inputCode}
-              onChange={(e) => setInputCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) => setInputCode(e.target.value.replace(/\D/g, "").slice(0, 10))}
               autoFocus
               autoComplete="off"
             />
             <button
               className="sim-code-btn"
               type="submit"
-              disabled={inputCode.length !== 6}
+              disabled={inputCode.length < 6}
             >
               Open Simulator
             </button>
