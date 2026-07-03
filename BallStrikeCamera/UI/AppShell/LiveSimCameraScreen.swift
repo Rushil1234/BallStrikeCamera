@@ -123,6 +123,7 @@ struct LiveSimCameraScreen: View {
         guard let shot = try? await service.saveShot(
             metrics: metrics,
             compositeImage: composite,
+            replayFrames: analysis.frames.compactMap { $0.brightenedImage },
             clubId: selectedClubId,
             clubName: selectedClub,
             mode: .sim,

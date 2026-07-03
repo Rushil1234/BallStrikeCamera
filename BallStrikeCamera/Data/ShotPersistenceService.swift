@@ -37,6 +37,7 @@ final class ShotPersistenceService {
     @discardableResult
     func saveShot(metrics: SavedShotMetrics,
                   compositeImage: UIImage?,
+                  replayFrames: [UIImage] = [],
                   clubId: UUID? = nil,
                   clubName: String? = nil,
                   mode: ShotMode = .range,
@@ -78,6 +79,25 @@ final class ShotPersistenceService {
                     media.thumbnailPath = thumbPath.path
                 }
             }
+        }
+
+        // Local replay burst: a capped, downscaled JPEG sequence for the scrubbing
+        // replay player. Local-only (never uploaded) — the composite remains the
+        // cross-device replay image. deleteShot removes the whole media dir.
+        if !replayFrames.isEmpty {
+            let maxFrames = 40
+            let step = max(1, Int((Double(replayFrames.count) / Double(maxFrames)).rounded(.up)))
+            var written = 0
+            for (i, img) in replayFrames.enumerated() where i % step == 0 {
+                guard let small = img.resizedToWidth(540),
+                      let data = small.jpegData(compressionQuality: 0.55) else { continue }
+                let path = mediaDir.appendingPathComponent(String(format: "frame_%03d.jpg", written))
+                try? data.write(to: path)
+                written += 1
+            }
+            media.frameCount = written
+            media.saveOriginalFrames = written > 0
+            media.originalFramesFolderPath = written > 0 ? mediaDir.path : nil
         }
 
         // Metrics JSON sidecar

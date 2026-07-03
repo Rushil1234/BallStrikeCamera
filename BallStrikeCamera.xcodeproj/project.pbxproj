@@ -180,6 +180,7 @@
 		CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C2 /* SimCameraScreen.swift */; };
 		CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C4 /* SessionDetailView.swift */; };
 		CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C6 /* ShotDetailView.swift */; };
+		CAFE0000000000000000FB11 /* ReplayPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FB10 /* ReplayPlayerView.swift */; };
 		CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C8 /* ShotGIFExporter.swift */; };
 		CAFE00000000000000000101 /* GSProModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000100 /* GSProModels.swift */; };
 		CAFE00000000000000000103 /* GSProClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000102 /* GSProClient.swift */; };
@@ -411,6 +412,7 @@
 		CAFE000000000000000000C2 /* SimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimCameraScreen.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C4 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C6 /* ShotDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotDetailView.swift; sourceTree = "<group>"; };
+		CAFE0000000000000000FB10 /* ReplayPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayPlayerView.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C8 /* ShotGIFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotGIFExporter.swift; sourceTree = "<group>"; };
 		CAFE00000000000000000100 /* GSProModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProModels.swift; sourceTree = "<group>"; };
 		CAFE00000000000000000102 /* GSProClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProClient.swift; sourceTree = "<group>"; };
@@ -937,6 +939,7 @@
 				CAFE000000000000000000A0 /* TrueCarryHistoryView.swift */,
 				CAFE000000000000000000C4 /* SessionDetailView.swift */,
 				CAFE000000000000000000C6 /* ShotDetailView.swift */,
+				CAFE0000000000000000FB10 /* ReplayPlayerView.swift */,
 				CAFE000000000000000000C8 /* ShotGIFExporter.swift */,
 				CAFE00000000000000000106 /* RoundShotLogView.swift */,
 			);
@@ -1236,6 +1239,7 @@
 				LIVE00000000000000000005 /* LiveSimCameraScreen.swift in Sources */,
 				CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */,
 				CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */,
+				CAFE0000000000000000FB11 /* ReplayPlayerView.swift in Sources */,
 				CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */,
 				CAFE00000000000000000107 /* RoundShotLogView.swift in Sources */,
 				CAFE00000000000000000109 /* SimNetworkScanner.swift in Sources */,

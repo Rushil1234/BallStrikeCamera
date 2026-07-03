@@ -58,6 +58,12 @@ struct ShotDetailView: View {
         showShare = true
     }
 
+    /// Local replay frame directory for this shot (replay frames are device-local only).
+    private var localFramesDir: URL? {
+        guard let uid = session.currentUser?.id else { return nil }
+        return AppStorageManager.shotFramesDir(userId: uid, shotId: shot.id)
+    }
+
     /// Ensures the composite image exists on disk (downloading from cloud if this device
     /// doesn't have it), then points the view at the local file.
     private func resolveComposite() async {
@@ -74,7 +80,9 @@ struct ShotDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             TCSectionHeader(title: "Replay")
             Group {
-                if let comp = resolvedComposite {
+                if let dir = localFramesDir, ReplayPlayerView.framesExist(in: dir) {
+                    ReplayPlayerView(framesDir: dir)
+                } else if let comp = resolvedComposite {
                     AsyncImage(url: comp) { phase in
                         switch phase {
                         case .success(let img):

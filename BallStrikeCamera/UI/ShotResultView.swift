@@ -303,6 +303,7 @@ struct ShotResultView: View {
             let shot = try await service.saveShot(
                 metrics: SavedShotMetrics(metrics),
                 compositeImage: composite,
+                replayFrames: analysis.frames.compactMap { $0.brightenedImage },
                 clubId: selectedClubId,
                 clubName: selectedClubName,
                 mode: context?.shotMode ?? .course,
