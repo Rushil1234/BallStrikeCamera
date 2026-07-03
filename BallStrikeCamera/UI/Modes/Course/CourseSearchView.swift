@@ -15,6 +15,11 @@ struct CourseSearchView: View {
     @State private var selectedCourse: GolfCourse?
     @State private var searchTask: Task<Void, Never>?
     @State private var resolvingCourseId: String?
+    @State private var showMap = false
+    @State private var mapRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 39.5, longitude: -98.35),
+        span: MKCoordinateSpan(latitudeDelta: 40, longitudeDelta: 40)
+    )
 
     let userId: UUID
     let onSelect: (GolfCourse, TeeBox) -> Void
@@ -103,7 +108,71 @@ struct CourseSearchView: View {
                     .padding(.bottom, 8)
                 }
 
+                // List / map switch
+                Picker("View", selection: $showMap) {
+                    Text("List").tag(false)
+                    Text("Map").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, TCTheme.hPad)
+                .padding(.bottom, 8)
+
                 // Content
+                if showMap {
+                    courseMap
+                } else {
+                    courseList
+                }
+            }
+        }
+        .navigationBarHidden(true)
+        .sheet(item: $selectedCourse) { course in
+            TeeSelectorSheet(course: course) { tee in
+                onSelect(course, tee)
+                dismiss()
+            }
+            .tcAppearance()
+        }
+        .onChange(of: query) { newVal in
+            searchTask?.cancel()
+            if newVal.isEmpty {
+                searchResults = []
+                isSearching = false
+                return
+            }
+            let trimmed = newVal.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.count >= 3 else {
+                searchResults = []
+                isSearching = false
+                return
+            }
+            searchTask = Task {
+                try? await Task.sleep(nanoseconds: 220_000_000)
+                guard !Task.isCancelled else { return }
+                await searchCourses(query: trimmed)
+            }
+        }
+        .onChange(of: location.currentLocation?.latitude) { _ in
+            guard location.currentLocation != nil, query.isEmpty, nearbyCourses.isEmpty else { return }
+            Task { await loadNearby() }
+        }
+        .task {
+            location.requestPermission()
+            // Wait briefly for location to arrive after authorization
+            for _ in 0..<10 {
+                if location.currentLocation != nil { break }
+                try? await Task.sleep(nanoseconds: 300_000_000)
+            }
+            if location.currentLocation != nil {
+                await loadNearby()
+            }
+        }
+    }
+
+
+    // MARK: - Content views
+
+    private var courseList: some View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         // Nearby section
@@ -173,50 +242,82 @@ struct CourseSearchView: View {
                         Spacer(minLength: 60)
                     }
                 }
+    }
+
+    private struct MapCourse: Identifiable {
+        let id: String
+        let course: GolfCourse
+        let coord: CLLocationCoordinate2D
+    }
+
+    private var mapCourses: [MapCourse] {
+        let list = query.isEmpty ? nearbyCourses : searchResults
+        return list.compactMap { c in
+            c.coordinate.map { MapCourse(id: c.id, course: c, coord: $0) }
+        }
+    }
+
+    private var courseMap: some View {
+        Map(coordinateRegion: $mapRegion, showsUserLocation: true, annotationItems: mapCourses) { item in
+            MapAnnotation(coordinate: item.coord) {
+                Button {
+                    Task { await selectCourse(item.course) }
+                } label: {
+                    VStack(spacing: 2) {
+                        ZStack {
+                            Circle()
+                                .fill(TCTheme.gold)
+                                .frame(width: 26, height: 26)
+                                .shadow(color: .black.opacity(0.4), radius: 3, y: 1)
+                            if resolvingCourseId == item.course.id {
+                                ProgressView().tint(.white).scaleEffect(0.6)
+                            } else {
+                                Image(systemName: "flag.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        Text(item.course.name)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.black.opacity(0.55))
+                            .clipShape(Capsule())
+                            .frame(maxWidth: 110)
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
-        .navigationBarHidden(true)
-        .sheet(item: $selectedCourse) { course in
-            TeeSelectorSheet(course: course) { tee in
-                onSelect(course, tee)
-                dismiss()
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, TCTheme.hPad)
+        .padding(.bottom, 12)
+        .onAppear { fitMapRegion() }
+        .onChange(of: mapCourses.map(\.id)) { _ in fitMapRegion() }
+    }
+
+    private func fitMapRegion() {
+        let coords = mapCourses.map(\.coord)
+        guard !coords.isEmpty else {
+            if let user = location.currentLocation {
+                mapRegion = MKCoordinateRegion(
+                    center: user,
+                    span: MKCoordinateSpan(latitudeDelta: 0.35, longitudeDelta: 0.35))
             }
-            .tcAppearance()
+            return
         }
-        .onChange(of: query) { newVal in
-            searchTask?.cancel()
-            if newVal.isEmpty {
-                searchResults = []
-                isSearching = false
-                return
-            }
-            let trimmed = newVal.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.count >= 3 else {
-                searchResults = []
-                isSearching = false
-                return
-            }
-            searchTask = Task {
-                try? await Task.sleep(nanoseconds: 220_000_000)
-                guard !Task.isCancelled else { return }
-                await searchCourses(query: trimmed)
-            }
+        var minLat = coords[0].latitude, maxLat = coords[0].latitude
+        var minLon = coords[0].longitude, maxLon = coords[0].longitude
+        for c in coords {
+            minLat = min(minLat, c.latitude); maxLat = max(maxLat, c.latitude)
+            minLon = min(minLon, c.longitude); maxLon = max(maxLon, c.longitude)
         }
-        .onChange(of: location.currentLocation?.latitude) { _ in
-            guard location.currentLocation != nil, query.isEmpty, nearbyCourses.isEmpty else { return }
-            Task { await loadNearby() }
-        }
-        .task {
-            location.requestPermission()
-            // Wait briefly for location to arrive after authorization
-            for _ in 0..<10 {
-                if location.currentLocation != nil { break }
-                try? await Task.sleep(nanoseconds: 300_000_000)
-            }
-            if location.currentLocation != nil {
-                await loadNearby()
-            }
-        }
+        mapRegion = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(latitudeDelta: max(0.05, (maxLat - minLat) * 1.5),
+                                   longitudeDelta: max(0.05, (maxLon - minLon) * 1.5)))
     }
 
     // MARK: - Subviews
@@ -260,7 +361,7 @@ struct CourseSearchView: View {
                             } else if course.hasPartialHoleData || course.hasRealGeometry {
                                 courseBadge("Partial Map", TCTheme.sage)
                             } else {
-                                courseBadge("Map coming soon", TCTheme.textMuted)
+                                courseBadge("No GPS map yet", TCTheme.textMuted)
                             }
                             if course.teeBoxes.contains(where: { $0.totalYards > 0 }) {
                                 courseBadge("\(course.teeBoxes.count) Tees", TCTheme.sage)
@@ -438,7 +539,14 @@ struct CourseSearchView: View {
             near: course.coordinate,
             limit: 5
         )
-        let best = matches.first { namesOverlap($0.name, course.name) } ?? matches.first
+        // Only accept a match whose name overlaps, or that sits within ~1.2 miles of
+        // the MapKit pin — an arbitrary first result can silently load the wrong course.
+        let best = matches.first { namesOverlap($0.name, course.name) }
+            ?? matches.first { m in
+                guard let a = m.coordinate, let b = course.coordinate else { return false }
+                return CLLocation(latitude: a.latitude, longitude: a.longitude)
+                    .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude)) < 2_000
+            }
         return best ?? course
     }
 
