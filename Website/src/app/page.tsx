@@ -5,6 +5,7 @@ import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
 import PhoneDemo from "@/components/PhoneDemo";
 import ClubCards from "@/components/ClubCards";
 import SiteNav from "@/components/SiteNav";
+import { PLANS } from "@/lib/plans";
 
 type Hole = { n: number; name: string; par: number; yd: number; id: string };
 
@@ -16,19 +17,6 @@ const HOLES: Hole[] = [
   { n: 5, name: "One plan", par: 4, yd: 425, id: "h07" },
   { n: 6, name: "When you're ready", par: 3, yd: 158, id: "h08" },
   { n: 7, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
-];
-
-type Plan = { id: string; name: string; price: string; per: string; tag: string; features: string[]; featured?: boolean; href?: string; cta?: string };
-
-const PLANS: Plan[] = [
-  { id: "free", name: "Free", price: "$0", per: "forever", tag: "Get a feel for it.", cta: "Get the app", href: "/login",
-    features: ["Range mode", "10 shots a day", "Ball speed & carry", "On-device storage"] },
-  { id: "basic", name: "Basic", price: "$5", per: "/ month", tag: "For the regular range-goer.",
-    features: ["All modes — range, sim, course", "Unlimited shots", "100 cloud-saved shots", "Basic analytics", "Cloud sync"] },
-  { id: "pro", name: "Pro", price: "$10", per: "/ month", tag: "For the player chasing gains.", featured: true,
-    features: ["Everything in Basic", "1,000 cloud shots", "Advanced analytics", "In-round suggestions", "Video export"] },
-  { id: "atlas", name: "Atlas", price: "$25", per: "/ month", tag: "The whole bag.",
-    features: ["Everything in Pro", "Unlimited cloud shots", "Full media storage", "Apple Watch companion", "Priority support"] },
 ];
 
 function HoleStrip({ hole }: { hole: Hole }) {

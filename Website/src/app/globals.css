@@ -2354,3 +2354,6 @@ code {
 @media (prefers-reduced-motion: reduce) {
   .sim-hostframe { animation: none; }
 }
+
+/* Pricing page: plan CTA as a real button */
+button.plan-cta { font: inherit; cursor: pointer; width: 100%; border: none; }
