@@ -26,7 +26,7 @@ on:
 jobs:
   ios:
     name: iOS build + logic tests
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +52,7 @@ jobs:
 
   sim:
     name: Sim physics/course regression
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
