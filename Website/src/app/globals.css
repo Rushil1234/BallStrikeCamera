@@ -2302,3 +2302,24 @@ code {
 .store-note p{ font-family:var(--r-sans); font-size:14.5px; line-height:1.7; color:color-mix(in oklab,var(--bone,#f2eee1) 65%,transparent); max-width:52ch; margin:0; }
 .store-sim-link{ font-family:var(--r-mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--carry-gold,#c9a86a); text-decoration:none; }
 .store-sim-link:hover{ color:var(--bone,#f2eee1); }
+
+/* ---------- Locker editing (account profile + bag forms) ---------- */
+.locker-mini-btn { font-size: 12px; padding: 8px 16px; }
+.locker-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 6px; }
+.locker-form label { display: flex; flex-direction: column; gap: 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: color-mix(in oklab, var(--cream) 60%, transparent); }
+.locker-form input,
+.locker-form select {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid color-mix(in oklab, var(--cream) 22%, transparent);
+  border-radius: 6px; padding: 10px 12px;
+  color: var(--cream); font-size: 14px; font-family: inherit;
+}
+.locker-form input:focus,
+.locker-form select:focus { outline: none; border-color: var(--gold); }
+.locker-form-actions { grid-column: 1 / -1; display: flex; gap: 10px; }
+.locker-club-form { border: 1px solid color-mix(in oklab, var(--cream) 14%, transparent); border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+.club-row-actions { display: inline-flex; gap: 12px; justify-content: flex-end; }
+.locker-link-btn { background: none; border: none; padding: 0; cursor: pointer; font-size: 12px; font-weight: 700; color: var(--gold); }
+.locker-link-btn:hover { text-decoration: underline; }
+.locker-link-btn.danger { color: #d47a6a; }
+.locker-link-btn:disabled { opacity: 0.5; cursor: default; }
