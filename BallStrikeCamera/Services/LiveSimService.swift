@@ -13,6 +13,30 @@ struct LiveSimState: Equatable {
     var simState: String?
     var lastShot: LiveShot?
     var lastAckSeq: Int?
+    var roundSummary: RoundSummary?
+
+    struct RoundSummary: Codable, Equatable {
+        struct HoleScore: Codable, Equatable {
+            var hole: Int?
+            var par: Int?
+            var strokes: Int?
+        }
+        var courseId: String?
+        var courseName: String?
+        var holes: [HoleScore]?
+        var totalStrokes: Int?
+        var toPar: Int?
+        var endedAt: String?
+
+        /// e.g. "Augusta National — 91 strokes (+19), 18 holes"
+        var display: String {
+            let name = courseName ?? "Live Sim round"
+            let played = (holes ?? []).filter { $0.strokes != nil }.count
+            guard let total = totalStrokes else { return name }
+            let par = toPar.map { $0 == 0 ? "E" : ($0 > 0 ? "+\($0)" : "\($0)") } ?? ""
+            return "\(name) — \(total) strokes (\(par)), \(played) holes"
+        }
+    }
 
     struct LiveShot: Codable, Equatable {
         var carryYards: Double?
@@ -31,6 +55,7 @@ extension LiveSimState: Codable {
         case simState = "sim_state"
         case lastShot = "last_shot"
         case lastAckSeq = "last_ack_seq"
+        case roundSummary = "round_summary"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -47,6 +72,7 @@ extension LiveSimState: Codable {
         else { distanceToPinYards = nil }
         simState = try? c.decode(String.self, forKey: .simState)
         lastAckSeq = try? c.decode(Int.self, forKey: .lastAckSeq)
+        roundSummary = try? c.decode(RoundSummary.self, forKey: .roundSummary)
         lastShot = try? c.decode(LiveShot.self, forKey: .lastShot)
     }
 }

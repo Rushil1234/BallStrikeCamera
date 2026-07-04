@@ -818,6 +818,25 @@ function nextHole() {
   } else {
     game.state = 'ROUND_DONE';
     hud.summaryShow(courseHoles, game.scores);
+    // Round-results sync: hand the finished scorecard to the paired phone so
+    // the app can enrich its saved session with the real round.
+    if (liveCode) {
+      const holes = courseHoles.map((h, i) => ({ hole: h.id, par: h.par, strokes: game.scores[i] }));
+      const played = holes.filter((h) => h.strokes != null);
+      const total = played.reduce((a, h) => a + h.strokes, 0);
+      const toPar = played.reduce((a, h) => a + (h.strokes - h.par), 0);
+      publishLiveState(liveCode, {
+        sim_state: 'ROUND_DONE',
+        round_summary: {
+          courseId: activeCourse.courseId,
+          courseName: activeCourse.courseName,
+          holes,
+          totalStrokes: total,
+          toPar,
+          endedAt: new Date().toISOString(),
+        },
+      });
+    }
   }
 }
 
