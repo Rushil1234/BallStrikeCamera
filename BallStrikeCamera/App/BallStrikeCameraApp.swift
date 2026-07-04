@@ -34,7 +34,16 @@ struct BallStrikeCameraApp: App {
                 // Silent NFC club detection — two delivery paths:
                 // 1. URL routing: truecarry://nfc/{uuid} when app is backgrounded
                 .onOpenURL { url in
-                    if url.scheme == "truecarry" { print("[NFC] onOpenURL: \(url.absoluteString)") }
+                    if url.scheme == "truecarry" { print("[DeepLink] onOpenURL: \(url.absoluteString)") }
+                    // QR pairing: truecarry://livesim?code=XXXXXXXXX from the web sim.
+                    if url.host == "livesim",
+                       let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                           .queryItems?.first(where: { $0.name == "code" })?.value,
+                       (6...10).contains(code.count), code.allSatisfy(\.isNumber) {
+                        LiveSimService.pendingDeepLinkCode = code
+                        NotificationCenter.default.post(name: .tcOpenLiveSim, object: nil)
+                        return
+                    }
                     NFCManager.shared.handleNFCURL(url)
                 }
                 // 2. NSUserActivity: delivered directly to foreground app with zero UI

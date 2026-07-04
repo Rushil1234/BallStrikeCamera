@@ -188,6 +188,43 @@ html, body {
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+/* ---------------- live connection badge ---------------- */
+
+.live-badge {
+  position: absolute;
+  top: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 16px;
+  background: rgba(9, 16, 11, 0.72);
+  border: 1px solid var(--glass-edge);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
+  color: var(--gold);
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 20;
+  pointer-events: none;
+}
+.live-badge b { color: var(--cream); letter-spacing: 0.22em; margin: 0 2px; }
+.live-badge .lb-ico { font-size: 13px; }
+.live-badge.connected {
+  color: var(--pine);
+  border-color: rgba(143, 212, 154, 0.55);
+}
+.live-badge .lb-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--pine);
+  box-shadow: 0 0 8px var(--pine);
+  animation: lb-pulse 1.4s ease-in-out infinite;
+}
+@keyframes lb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+@media (max-width: 860px) {
+  .live-badge { font-size: 9px; padding: 5px 10px; letter-spacing: 0.1em; }
+}
+
 /* ---------------- club card (bottom-left) ---------------- */
 
 #club-card {
@@ -244,20 +281,32 @@ html, body {
 }
 #lie-chip.bad   { color: var(--gold);  border-color: rgba(201,168,106,0.5); }
 #lie-chip.hazard{ color: var(--red);   border-color: rgba(226,101,79,0.5); }
+#pin-plays {
+  margin-top: 4px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.12em;
+  color: var(--cream-dim);
+}
+#pin-plays b { color: var(--gold-hi); font-weight: 700; }
 
 /* ---------------- launch monitor data ---------------- */
 
 #shot-data {
   left: 22px; top: 50%; transform: translateY(-50%);
   padding: 12px 18px;
-  min-width: 168px;
+  min-width: 220px;
+}
+.sd-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 20px;
 }
 .sd-row {
-  display: flex; justify-content: space-between; gap: 18px;
+  display: flex; justify-content: space-between; gap: 14px;
   padding: 3px 0;
   border-bottom: 1px solid rgba(201,168,106,0.12);
 }
-.sd-row:last-child { border-bottom: none; }
+.sd-grid .sd-row:nth-last-child(-n+2) { border-bottom: none; }
+.sd-hero .sd-val { color: var(--cream); font-size: 18px; }
 .sd-label {
   font-size: 10px; font-weight: 600; letter-spacing: 0.22em;
   color: var(--cream-dim); align-self: center;
@@ -791,39 +840,20 @@ html, body {
   }
 }
 
-/* ---------------- live connection badge ---------------- */
-
-.live-badge {
-  position: absolute;
-  top: 20px; left: 50%; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 8px;
-  padding: 7px 16px;
-  background: rgba(9, 16, 11, 0.72);
-  border: 1px solid var(--glass-edge);
-  border-radius: 999px;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  font-size: 11px; font-weight: 700; letter-spacing: 0.16em;
-  color: var(--gold);
-  white-space: nowrap;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-  z-index: 20;
+/* Swing replay picture-in-picture (live mode) */
+#swing-pip {
+  position: fixed; right: 18px; bottom: 92px; z-index: 60; width: 244px;
+  opacity: 0; transform: translateY(14px); transition: opacity .35s ease, transform .35s ease;
   pointer-events: none;
 }
-.live-badge b { color: var(--cream); letter-spacing: 0.22em; margin: 0 2px; }
-.live-badge .lb-ico { font-size: 13px; }
-.live-badge.connected {
-  color: var(--pine);
-  border-color: rgba(143, 212, 154, 0.55);
+#swing-pip.show { opacity: 1; transform: none; }
+#swing-pip img {
+  width: 100%; display: block; border-radius: 10px;
+  border: 1px solid rgba(236, 228, 210, 0.25);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
 }
-.live-badge .lb-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--pine);
-  box-shadow: 0 0 8px var(--pine);
-  animation: lb-pulse 1.4s ease-in-out infinite;
-}
-@keyframes lb-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-
-@media (max-width: 860px) {
-  .live-badge { font-size: 9px; padding: 5px 10px; letter-spacing: 0.1em; }
+#swing-pip .swing-pip-label {
+  display: inline-block; margin-bottom: 6px; padding: 3px 8px;
+  font: 700 9px/1 system-ui; letter-spacing: 0.12em; color: #d8c896;
+  background: rgba(0, 0, 0, 0.6); border-radius: 999px;
 }

@@ -2,18 +2,23 @@
 // cameras, shot lifecycle, scoring.
 
 import * as THREE from 'three';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=augusta-3';
-import { createShot, simulateCarry, SURF } from './physics.js?v=augusta-3';
-import { RANGE, holeLength } from './holes.js?v=augusta-3';
-import { buildCourse } from './terrain.js?v=augusta-3';
-import { makeSky } from './sky.js?v=augusta-3';
-import { loadAssets } from './assets.js?v=augusta-3';
-import { HUD, toParStr } from './ui.js?v=augusta-3';
-import { SFX } from './audio.js?v=augusta-3';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=augusta-3';
-import { fetchSimCourses } from './courses.js?v=augusta-3';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=augusta-3';
-import { layoutIslandCourse } from './world.js?v=augusta-3';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-2';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-2';
+import { RANGE, holeLength } from './holes.js?v=gspro-2';
+import { buildCourse } from './terrain.js?v=gspro-2';
+import { makeSky } from './sky.js?v=gspro-2';
+import { loadAssets } from './assets.js?v=gspro-2';
+import { HUD, toParStr } from './ui.js?v=gspro-2';
+import { SFX } from './audio.js?v=gspro-2';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-2';
+import { fetchSimCourses } from './courses.js?v=gspro-2';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-2';
+import { layoutIslandCourse } from './world.js?v=gspro-2';
 
 // ---------- boot ----------
 
@@ -36,9 +41,49 @@ document.getElementById('app').prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 6000);
 
+// ---------- post-processing (broadcast look: subtle AO + bloom) ----------
+// Multisampled target keeps MSAA through the composer (WebGL2). If anything
+// in the chain fails on an exotic GPU, fall back to the direct render path.
+let composer = null;
+try {
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const target = new THREE.WebGLRenderTarget(size.x, size.y, {
+    samples: 4,
+    type: THREE.HalfFloatType,
+  });
+  composer = new EffectComposer(renderer, target);
+  composer.addPass(new RenderPass(scene, camera));
+  const sao = new SAOPass(scene, camera);
+  sao.params.saoIntensity = 0.012;
+  sao.params.saoScale = 64;
+  sao.params.saoKernelRadius = 18;
+  sao.params.saoBlur = true;
+  composer.addPass(sao);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.22, 0.5, 0.88);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+} catch (err) {
+  console.warn('post-processing unavailable, falling back to direct render', err);
+  composer = null;
+}
+
 let activeCourse = LOCAL_COURSES[0];
 let selectableCourses = [...LOCAL_COURSES];
-let courseWorld = layoutIslandCourse(activeCourse.holes, activeCourse.world);
+
+// Daily pin rotation: courses that ship multiple pin positions per green
+// (hole.pins) get a deterministic daily selection, so the course changes
+// day to day the way a real setup crew moves cups.
+function applyDailyPins(world) {
+  const day = Math.floor(Date.now() / 86400000);
+  for (const hole of world.holes || []) {
+    if (Array.isArray(hole.pins) && hole.pins.length > 1) {
+      hole.pin = hole.pins[(day + hole.id) % hole.pins.length];
+    }
+  }
+  return world;
+}
+
+let courseWorld = applyDailyPins(layoutIslandCourse(activeCourse.holes, activeCourse.world));
 let courseHoles = courseWorld.holes;
 hud.mapSetCourse(courseHoles, courseWorld);
 
@@ -65,6 +110,10 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  if (composer) {
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    composer.setSize(size.x, size.y);
+  }
 });
 
 // precompute realistic carry numbers for the bag
@@ -78,8 +127,10 @@ for (const c of CLUBS) {
 // ---------- persistent scene objects ----------
 
 const ball = new THREE.Mesh(
-  new THREE.SphereGeometry(0.034, 18, 14),
-  new THREE.MeshPhongMaterial({ color: 0xfdfdf6, specular: 0x999999, shininess: 60 }),
+  new THREE.SphereGeometry(0.034, 24, 18),
+  new THREE.MeshStandardMaterial({
+    color: 0xfdfdf6, roughness: 0.32, metalness: 0.0, envMapIntensity: 0.9,
+  }),
 );
 ball.castShadow = true;
 scene.add(ball);
@@ -103,19 +154,81 @@ const blob = new THREE.Mesh(
 blob.rotation.x = -Math.PI / 2;
 scene.add(blob);
 
-// shot tracer
+// shot tracer — broadcast style: bright at the ball, fading down the tail
 const TRACER_MAX = 2400;
-const tracerPos = new Float32Array(TRACER_MAX * 3);
+const tracerPts = new Float32Array(TRACER_MAX * 3);   // raw flight points
+// Broadcast-style tracer RIBBON: a camera-facing tapered strip (GL lines are
+// stuck at 1px). Two vertices per point, billboarded in JS each repaint;
+// additive blending gives the comet glow through the bloom pass.
+const tracerPos = new Float32Array(TRACER_MAX * 6);
+const tracerCol = new Float32Array(TRACER_MAX * 6);
+const tracerIdx = new Uint32Array((TRACER_MAX - 1) * 6);
+for (let i = 0; i < TRACER_MAX - 1; i++) {
+  const a = i * 2;
+  tracerIdx[i * 6] = a; tracerIdx[i * 6 + 1] = a + 1; tracerIdx[i * 6 + 2] = a + 2;
+  tracerIdx[i * 6 + 3] = a + 1; tracerIdx[i * 6 + 4] = a + 3; tracerIdx[i * 6 + 5] = a + 2;
+}
 const tracerGeo = new THREE.BufferGeometry();
 tracerGeo.setAttribute('position', new THREE.BufferAttribute(tracerPos, 3));
+tracerGeo.setAttribute('color', new THREE.BufferAttribute(tracerCol, 3));
+tracerGeo.setIndex(new THREE.BufferAttribute(tracerIdx, 1));
 tracerGeo.setDrawRange(0, 0);
-const tracer = new THREE.Line(
+const tracer = new THREE.Mesh(
   tracerGeo,
-  new THREE.LineBasicMaterial({ color: 0xecd9ad, transparent: true, opacity: 0.85 }),
+  new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.85,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  }),
 );
 tracer.frustumCulled = false;
+tracer.renderOrder = 5;
 scene.add(tracer);
 let tracerCount = 0;
+
+const _tv = {
+  tan: new THREE.Vector3(), view: new THREE.Vector3(),
+  right: new THREE.Vector3(), pt: new THREE.Vector3(),
+};
+function tracerRepaint() {
+  for (let i = 0; i < tracerCount; i++) {
+    const t = tracerCount > 1 ? i / (tracerCount - 1) : 1;
+    _tv.pt.set(tracerPts[i * 3], tracerPts[i * 3 + 1], tracerPts[i * 3 + 2]);
+    const j = Math.min(i + 1, tracerCount - 1);
+    const k0 = Math.max(i - 1, 0);
+    _tv.tan.set(
+      tracerPts[j * 3] - tracerPts[k0 * 3],
+      tracerPts[j * 3 + 1] - tracerPts[k0 * 3 + 1],
+      tracerPts[j * 3 + 2] - tracerPts[k0 * 3 + 2],
+    );
+    if (_tv.tan.lengthSq() < 1e-8) _tv.tan.set(0, 0, 1);
+    _tv.view.subVectors(_tv.pt, camera.position);
+    const dist = Math.max(_tv.view.length(), 2);
+    _tv.right.crossVectors(_tv.view, _tv.tan);
+    if (_tv.right.lengthSq() < 1e-6) {
+      // Camera looking straight down the flight line: fall back to a stable
+      // horizontal-ish perpendicular instead of a degenerate cross product.
+      _tv.right.set(-_tv.tan.z, 0, _tv.tan.x);
+      if (_tv.right.lengthSq() < 1e-6) _tv.right.set(1, 0, 0);
+    }
+    _tv.right.normalize();
+    // Screen-proportional width (like a TV tracer): slim tail, comet head.
+    const w = Math.min(2.2, Math.max(0.04, dist * (0.0022 + 0.0055 * t * t)));
+    const gk = 0.22 + 0.78 * t * t;   // dim gold tail -> near-white head
+    for (let sdx = 0; sdx < 2; sdx++) {
+      const v = i * 2 + sdx;
+      const sign = sdx === 0 ? 1 : -1;
+      tracerPos[v * 3] = _tv.pt.x + _tv.right.x * w * sign;
+      tracerPos[v * 3 + 1] = _tv.pt.y + _tv.right.y * w * sign;
+      tracerPos[v * 3 + 2] = _tv.pt.z + _tv.right.z * w * sign;
+      tracerCol[v * 3] = 0.93 * gk + 0.07;
+      tracerCol[v * 3 + 1] = 0.85 * gk + 0.06;
+      tracerCol[v * 3 + 2] = 0.62 * gk + 0.05;
+    }
+  }
+  tracerGeo.setDrawRange(0, Math.max(0, (tracerCount - 1) * 6));
+  tracerGeo.attributes.position.needsUpdate = true;
+  tracerGeo.attributes.color.needsUpdate = true;
+}
 
 // aim guide: dashed line + landing ring
 const aimGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
@@ -223,7 +336,7 @@ function setActiveCourse(course) {
     : course;
   if (!nextCourse?.holes?.length) return;
   activeCourse = nextCourse;
-  courseWorld = layoutIslandCourse(nextCourse.holes, nextCourse.world || {});
+  courseWorld = applyDailyPins(layoutIslandCourse(nextCourse.holes, nextCourse.world || {}));
   courseHoles = courseWorld.holes;
   if (game.course) {
     scene.remove(game.course.group);
@@ -404,7 +517,7 @@ function setupShot() {
   }
 
   hud.setStroke(game.strokes + 1, totalToPar());
-  hud.setPin(rem);
+  hud.setPin(rem, game.course.heightAt(pin.x, pin.z) - game.ballPos.y);
   if (game.isRange) {
     const pinNum = document.getElementById('pin-num');
     const pinLabel = document.getElementById('pin-label');
@@ -498,16 +611,35 @@ function fire(accuracyRaw) {
   };
 
   const jitter = 1 + (Math.random() - 0.5) * 2 * lie.jitter;
+
+  // flyer lie: grass trapped between face and ball kills spin and the
+  // shot comes out hot — a classic flyer from the rough (~1 in 3)
+  const flyer = game.lie === SURF.ROUGH && !c.putter && Math.random() < 0.33;
+
   const speed = c.putter
     ? c.speed * power * (game.lie === SURF.GREEN || game.lie === SURF.FRINGE ? 1 : 0.55)
-    : c.speed * (0.3 + 0.7 * power) * lie.speed * jitter;
+    : c.speed * (0.3 + 0.7 * power) * lie.speed * jitter * (flyer ? 1.06 : 1);
   const launchDeg = c.putter ? 0 : c.launch + (game.lie === SURF.ROUGH ? 1.5 : 0);
-  const backspinRpm = c.putter ? 0 : c.spin * lie.spin * (0.55 + 0.45 * power);
+  const backspinRpm = c.putter ? 0
+    : c.spin * lie.spin * (0.55 + 0.45 * power) * (flyer ? 0.6 : 1);
 
+  // gusts: the hole wind is the average; each shot flies through a gust
+  // sampled around it (±15%)
+  const gust = 0.85 + Math.random() * 0.30;
+  const shotWind = { x: game.wind.x * gust, z: game.wind.z * gust };
+
+  const sideDeg = pushRad * 180 / Math.PI;
   if (c.putter) {
     hud.shotDataHide();
   } else {
-    hud.shotDataShow({ speedMph: speed * 2.237, launchDeg, spinRpm: backspinRpm });
+    hud.shotDataShow({
+      speedMph: speed * 2.237,
+      clubMph: c.smash ? speed * 2.237 / c.smash : null,
+      launchDeg,
+      sideDeg,
+      spinRpm: backspinRpm,
+    });
+    if (flyer) hud.toast('<span class="t-gold">FLYER LIE</span><span class="t-sub">JUMPING OUT HOT — LESS SPIN</span>', 1800);
   }
   if (game.isRange && !c.putter) {
     lastRangeShot = { speedMph: speed * 2.237, launchDeg, spinRpm: backspinRpm, apexFt: 0 };
@@ -523,7 +655,7 @@ function fire(accuracyRaw) {
     launchDeg,
     backspinRpm,
     sidespinRpm: c.putter ? 0 : -acc * 2100,
-    wind: game.wind,
+    wind: shotWind,
     course: game.course,
     pin: { x: game.course.pinPos.x, z: game.course.pinPos.z },
     mode: c.putter ? 'roll' : 'fly',
@@ -569,7 +701,13 @@ function resolveShot() {
       finalZ: sim.pos.z,
       clubName: club().name,
     });
-    if (!club().putter) hud.shotDataResult(fmtYards(carry), fmtYards(total));
+    if (!club().putter) {
+      hud.shotDataResult(fmtYards(carry), fmtYards(total), {
+        descentDeg: sim.descentDeg,
+        offlineM: result.offline,
+        hangTime: sim.hangTime,
+      });
+    }
     // populate last-shot pill
     const rangePill = document.getElementById('range-pill');
     if (rangePill) {
@@ -646,7 +784,17 @@ function resolveShot() {
     ? Math.hypot(sim.carryPos.x - game.shotStart.x, sim.carryPos.z - game.shotStart.z) : 0;
   const total = Math.hypot(game.ballPos.x - game.shotStart.x, game.ballPos.z - game.shotStart.z);
 
-  if (!club().putter) hud.shotDataResult(fmtYards(carry), fmtYards(total));
+  if (!club().putter) {
+    // offline: signed lateral miss vs the aim line at address
+    const right = { x: -game.aimDir.z, z: game.aimDir.x };
+    const offline = (game.ballPos.x - game.shotStart.x) * right.x
+                  + (game.ballPos.z - game.shotStart.z) * right.z;
+    hud.shotDataResult(fmtYards(carry), fmtYards(total), {
+      descentDeg: sim.descentDeg,
+      offlineM: offline,
+      hangTime: sim.hangTime,
+    });
+  }
 
   if (!club().putter && total > 15) {
     hud.toast(
@@ -670,6 +818,25 @@ function nextHole() {
   } else {
     game.state = 'ROUND_DONE';
     hud.summaryShow(courseHoles, game.scores);
+    // Round-results sync: hand the finished scorecard to the paired phone so
+    // the app can enrich its saved session with the real round.
+    if (liveCode) {
+      const holes = courseHoles.map((h, i) => ({ hole: h.id, par: h.par, strokes: game.scores[i] }));
+      const played = holes.filter((h) => h.strokes != null);
+      const total = played.reduce((a, h) => a + h.strokes, 0);
+      const toPar = played.reduce((a, h) => a + (h.strokes - h.par), 0);
+      publishLiveState(liveCode, {
+        sim_state: 'ROUND_DONE',
+        round_summary: {
+          courseId: activeCourse.courseId,
+          courseName: activeCourse.courseName,
+          holes,
+          totalStrokes: total,
+          toPar,
+          endedAt: new Date().toISOString(),
+        },
+      });
+    }
   }
 }
 
@@ -1153,12 +1320,11 @@ const clock = new THREE.Clock();
 
 function pushTracer(p) {
   if (tracerCount >= TRACER_MAX) return;
-  tracerPos[tracerCount * 3] = p.x;
-  tracerPos[tracerCount * 3 + 1] = p.y;
-  tracerPos[tracerCount * 3 + 2] = p.z;
+  tracerPts[tracerCount * 3] = p.x;
+  tracerPts[tracerCount * 3 + 1] = p.y;
+  tracerPts[tracerCount * 3 + 2] = p.z;
   tracerCount++;
-  tracerGeo.setDrawRange(0, tracerCount);
-  tracerGeo.attributes.position.needsUpdate = true;
+  tracerRepaint();
 }
 
 function updateMeter() {
@@ -1309,7 +1475,8 @@ function frame() {
   }
 
   if (sky) sky.update(game.time, camera.position);
-  renderer.render(scene, camera);
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
 }
 
 frame();
@@ -1453,6 +1620,23 @@ if (liveCode) {
     liveClub.classList.remove('hidden');
   }
 
+
+// Swing replay PiP: the phone sends a small composite of the real swing
+// after each live shot; show it beside the flight for a few seconds.
+function showSwingPip(b64) {
+  let pip = document.getElementById('swing-pip');
+  if (!pip) {
+    pip = document.createElement('div');
+    pip.id = 'swing-pip';
+    pip.innerHTML = '<span class="swing-pip-label">YOUR SWING</span><img alt="Your swing replay">';
+    document.body.appendChild(pip);
+  }
+  pip.querySelector('img').src = 'data:image/jpeg;base64,' + b64;
+  pip.classList.add('show');
+  clearTimeout(showSwingPip._t);
+  showSwingPip._t = setTimeout(() => pip.classList.remove('show'), 9000);
+}
+
   connectLive(liveCode,
     // onShotReceived
     function (metrics) {
@@ -1491,7 +1675,9 @@ if (liveCode) {
       updateLiveBadge();
       updateLiveStatus('Phone disconnected — re-enter the code on your phone', '');
       window.parent?.postMessage({ type: 'APP_DISCONNECTED' }, '*');
-    }
+    },
+    // onSwingImage — picture-in-picture of the player's real swing
+    showSwingPip
   );
 }
 

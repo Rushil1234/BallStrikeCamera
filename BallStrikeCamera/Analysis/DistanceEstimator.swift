@@ -115,9 +115,19 @@ struct DistanceEstimator {
             )
         }
 
-        // Physics fallback
+        // Physics fallback — integrate the shared aerodynamic model (drag +
+        // Magnus + spin decay, same constants as the web sim) instead of the
+        // old vacuum-carry × fudge-factor approximation. Spin defaults by VLA
+        // when unmeasured; the legacy correction factor remains only as the
+        // last resort if integration produces nothing.
         let correctionFactor = clamp(carryCorrectionFactor, 0.40, 1.20)
-        let carry = clamp(idealCarryYards * correctionFactor, 0, 450)
+        let assumedSpin = backspinRpm ?? Self.defaultSpin(forVLA: clampedVLA)
+        let integrated = FlightArcModel.trajectory(
+            ballSpeedMph: ballSpeedMph, vlaDeg: clampedVLA, hlaDeg: 0,
+            backspinRpm: assumedSpin, sidespinRpm: 0
+        ).last?.downrangeYd ?? 0
+        let usedIntegration = integrated > 1
+        let carry = clamp(usedIntegration ? integrated : idealCarryYards * correctionFactor, 0, 450)
 
         let baseRollout: Double
         let vlaBucket: String
@@ -156,9 +166,14 @@ struct DistanceEstimator {
         if total > 350 {
             warnings.append("Total distance estimate >350 yd — verify calibration and FOV settings.")
         }
-        warnings.append("Total = carry + VLA-based rollout. Spin and ground conditions unknown.")
-        warnings.append(String(format: "Carry: idealCarry=%.0f yd × correctionFactor=%.2f = %.0f yd",
-                               idealCarryYards, correctionFactor, carry))
+        warnings.append("Total = carry + VLA-based rollout. Ground conditions unknown.")
+        if usedIntegration {
+            warnings.append(String(format: "Carry: aero-integrated (spin %@%.0f rpm) = %.0f yd",
+                                   backspinRpm == nil ? "assumed " : "", assumedSpin, carry))
+        } else {
+            warnings.append(String(format: "Carry: idealCarry=%.0f yd × correctionFactor=%.2f = %.0f yd",
+                                   idealCarryYards, correctionFactor, carry))
+        }
         warnings.append(String(format: "Rollout: %.0f%% of carry (VLA bucket: %@)", rolloutFraction * 100, vlaBucket))
 
         return DistanceEstimate(
@@ -169,10 +184,21 @@ struct DistanceEstimator {
             totalYards: total > 0 ? total : nil,
             rolloutFraction: rolloutFraction,
             vlaBucket: vlaBucket,
-            method: String(format: "physics_carry_cf%.2f_rollout%.0fpct_%@",
-                           correctionFactor, rolloutFraction * 100, vlaBucket),
+            method: usedIntegration
+                ? String(format: "aero_integrated_rollout%.0fpct_%@", rolloutFraction * 100, vlaBucket)
+                : String(format: "physics_carry_cf%.2f_rollout%.0fpct_%@",
+                         correctionFactor, rolloutFraction * 100, vlaBucket),
             warnings: warnings
         )
+    }
+
+    /// Typical backspin when unmeasured, bucketed by launch angle
+    /// (driver-ish low launch → wedge-ish high launch).
+    private static func defaultSpin(forVLA vla: Double) -> Double {
+        if vla < 12 { return 2800 }
+        if vla < 18 { return 4500 }
+        if vla < 26 { return 6500 }
+        return 8500
     }
 
     private func clamp(_ value: Double, _ lower: Double, _ upper: Double) -> Double {

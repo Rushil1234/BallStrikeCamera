@@ -5,10 +5,15 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
+  deactivateAccountClub,
   getAccountDashboard,
   getUserEntitlement,
+  saveAccountClub,
   supabase,
+  updateAccountProfile,
+  type AccountClub,
   type AccountDashboard,
+  type AccountProfile,
 } from "@/lib/supabase";
 import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
 import SiteFooter from "@/components/SiteFooter";
@@ -48,8 +53,9 @@ export default function AccountPage() {
     }
 
     const ent = (await getUserEntitlement(user.id)) as Entitlement | null;
-    const premium = hasPremiumAccess(ent);
-    const accountData = premium ? await getAccountDashboard(user.id) : null;
+    // The locker (profile, bag, devices) is available on every tier;
+    // only the analytics sections are premium-gated at render time.
+    const accountData = await getAccountDashboard(user.id);
 
     setUser(user);
     setEntitlement(ent);
@@ -199,12 +205,18 @@ export default function AccountPage() {
 
         {user && <ReferralCard userId={user.id} />}
 
-        {!premium ? (
-          <FreeAccountUpsell userEmail={user?.email ?? ""} onUpgrade={handleUpgrade} loading={checkoutLoading} />
-        ) : dashboard ? (
-          <PremiumDashboard dashboard={dashboard} userEmail={user?.email ?? ""} onChanged={loadAccount} />
+        {dashboard && user ? (
+          <LockerDashboard
+            dashboard={dashboard}
+            userId={user.id}
+            userEmail={user.email ?? ""}
+            premium={premium}
+            onChanged={loadAccount}
+            onUpgrade={handleUpgrade}
+            upgradeLoading={checkoutLoading}
+          />
         ) : (
-          <div className="card">No premium app data was found for this account yet.</div>
+          <div className="card">No app data was found for this account yet.</div>
         )}
       </main>
 
@@ -347,8 +359,23 @@ function DevicesPanel({ devices, onChanged }: { devices: AccountDashboard["devic
   );
 }
 
-function PremiumDashboard({ dashboard, userEmail, onChanged }: { dashboard: AccountDashboard; userEmail: string; onChanged: () => void }) {
-  const profile = dashboard.profile;
+function LockerDashboard({
+  dashboard,
+  userId,
+  userEmail,
+  premium,
+  onChanged,
+  onUpgrade,
+  upgradeLoading,
+}: {
+  dashboard: AccountDashboard;
+  userId: string;
+  userEmail: string;
+  premium: boolean;
+  onChanged: () => void;
+  onUpgrade: () => void;
+  upgradeLoading: boolean;
+}) {
   const usageTotal = dashboard.usage.reduce(
     (sum, day) => sum + day.range_shots + day.sim_shots + day.course_rounds,
     0
@@ -356,60 +383,40 @@ function PremiumDashboard({ dashboard, userEmail, onChanged }: { dashboard: Acco
 
   return (
     <>
-      <section className="account-kpis">
-        <MetricCard label="Saved shots" value={dashboard.totals.shots} detail="Camera captures synced from iOS" />
-        <MetricCard label="Avg carry" value={dashboard.totals.avgCarry ?? "—"} suffix={dashboard.totals.avgCarry ? "yd" : ""} detail="Recent tracked shots" />
-        <MetricCard label="Best carry" value={dashboard.totals.bestCarry ?? "—"} suffix={dashboard.totals.bestCarry ? "yd" : ""} detail="Best synced carry number" />
-        <MetricCard label="Rounds" value={dashboard.totals.courseRounds} detail="Course mode scorecards" />
-      </section>
+      {premium && (
+        <section className="account-kpis">
+          <MetricCard label="Saved shots" value={dashboard.totals.shots} detail="Camera captures synced from iOS" />
+          <MetricCard label="Avg carry" value={dashboard.totals.avgCarry ?? "—"} suffix={dashboard.totals.avgCarry ? "yd" : ""} detail="Recent tracked shots" />
+          <MetricCard label="Best carry" value={dashboard.totals.bestCarry ?? "—"} suffix={dashboard.totals.bestCarry ? "yd" : ""} detail="Best synced carry number" />
+          <MetricCard label="Rounds" value={dashboard.totals.courseRounds} detail="Course mode scorecards" />
+        </section>
+      )}
 
       <section className="account-grid">
-        <div className="card account-panel account-panel-wide">
-          <div className="panel-head">
-            <div>
-              <span className="badge">Player profile</span>
-              <h2>Golf app identity</h2>
-            </div>
-            <span className="account-pill">{userEmail}</span>
-          </div>
-
-          <div className="profile-grid">
-            <ProfileFact label="Display name" value={profile?.display_name || "Not set"} />
-            <ProfileFact label="Handedness" value={profile?.handedness || "Not set"} />
-            <ProfileFact label="Distance" value={profile?.distance_unit || "Yards"} />
-            <ProfileFact label="Speed" value={profile?.speed_unit || "mph"} />
-            <ProfileFact label="Home course" value={profile?.home_course_name || "Not set"} />
-            <ProfileFact label="Profile image" value={profile?.profile_image_path ? "Uploaded" : "Not uploaded"} />
-          </div>
-        </div>
+        <ProfilePanel profile={dashboard.profile} userId={userId} userEmail={userEmail} onChanged={onChanged} />
 
         <DevicesPanel devices={dashboard.devices} onChanged={onChanged} />
 
-        <div className="card account-panel account-panel-wide">
-          <div className="panel-head">
-            <div>
-              <span className="badge">Club bag</span>
-              <h2>Carry map</h2>
+        <BagPanel clubs={dashboard.clubs} userId={userId} onChanged={onChanged} />
+
+        {!premium && (
+          <div className="card account-panel account-panel-wide account-lock">
+            <span className="badge">Premium analytics</span>
+            <h2>Shot history, usage, and activity unlock with Premium.</h2>
+            <p>
+              Your profile, bag, and devices are always available. Upgrade to see synced shot
+              history, carry analytics, 14-day usage, and round activity here.
+            </p>
+            <div className="account-lock-row">
+              <span>{userEmail}</span>
+              <button className="btn btn-gold" onClick={onUpgrade} disabled={upgradeLoading}>
+                {upgradeLoading ? "Preparing checkout..." : "Upgrade to Premium"}
+              </button>
             </div>
-            <span className="account-pill">{dashboard.totals.activeClubs} active clubs</span>
           </div>
+        )}
 
-          {dashboard.clubs.length ? (
-            <div className="club-table">
-              {dashboard.clubs.slice(0, 14).map((club) => (
-                <div className="club-row" key={club.id}>
-                  <span>{club.name}</span>
-                  <span>{club.type}</span>
-                  <strong>{club.expected_carry_yards} yd carry</strong>
-                  <span>{club.expected_total_yards} yd total</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="No clubs synced yet" body="Create or sync your bag in the iOS app to see gapping here." />
-          )}
-        </div>
-
+        {premium && (
         <div className="card account-panel">
           <div className="panel-head">
             <div>
@@ -432,7 +439,9 @@ function PremiumDashboard({ dashboard, userEmail, onChanged }: { dashboard: Acco
             <EmptyState title="No recent usage" body="Your daily usage counters will fill in as the app records shots and rounds." />
           )}
         </div>
+        )}
 
+        {premium && (
         <div className="card account-panel account-panel-wide">
           <div className="panel-head">
             <div>
@@ -457,40 +466,255 @@ function PremiumDashboard({ dashboard, userEmail, onChanged }: { dashboard: Acco
             <EmptyState title="No shots or rounds yet" body="Once your iPhone syncs practice, sim, or course activity, it will land here." />
           )}
         </div>
+        )}
       </section>
     </>
   );
 }
 
-function FreeAccountUpsell({
+function ProfilePanel({
+  profile,
+  userId,
   userEmail,
-  onUpgrade,
-  loading,
+  onChanged,
 }: {
+  profile: AccountProfile | null;
+  userId: string;
   userEmail: string;
-  onUpgrade: () => void;
-  loading: boolean;
+  onChanged: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState(profile?.display_name ?? "");
+  const [handedness, setHandedness] = useState(profile?.handedness ?? "");
+  const [homeCourse, setHomeCourse] = useState(profile?.home_course_name ?? "");
+
+  async function save() {
+    setSaving(true);
+    setErr(null);
+    try {
+      await updateAccountProfile(userId, {
+        display_name: displayName.trim(),
+        handedness,
+        home_course_name: homeCourse.trim(),
+      });
+      setEditing(false);
+      onChanged();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Could not save profile");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <section className="account-grid">
-      <div className="card account-panel account-panel-wide account-lock">
-        <span className="badge">Premium dashboard</span>
-        <h2>Your app data is ready when Premium is active.</h2>
-        <p>
-          Sign in with this account in the iOS app, then upgrade to Premium to unlock synced profile data,
-          club gapping, shot history, range sessions, simulator sessions, course rounds, device status, and usage.
-        </p>
-        <div className="account-lock-row">
-          <span>{userEmail}</span>
-          <button className="btn btn-gold" onClick={onUpgrade} disabled={loading}>
-            {loading ? "Preparing checkout..." : "Upgrade to Premium"}
-          </button>
+    <div className="card account-panel account-panel-wide">
+      <div className="panel-head">
+        <div>
+          <span className="badge">Player profile</span>
+          <h2>Golf app identity</h2>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span className="account-pill">{userEmail}</span>
+          {!editing && (
+            <button className="btn btn-outline locker-mini-btn" onClick={() => setEditing(true)}>Edit</button>
+          )}
         </div>
       </div>
-      <MetricCard label="Profile" value="Locked" detail="Included with Premium" />
-      <MetricCard label="Shot history" value="Locked" detail="Included with Premium" />
-      <MetricCard label="Club bag" value="Locked" detail="Included with Premium" />
-    </section>
+
+      {editing ? (
+        <div className="locker-form">
+          <label>
+            Display name
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} maxLength={40} placeholder="Your name" />
+          </label>
+          <label>
+            Handedness
+            <select value={handedness} onChange={(e) => setHandedness(e.target.value)}>
+              <option value="">Not set</option>
+              <option value="right">Right</option>
+              <option value="left">Left</option>
+            </select>
+          </label>
+          <label>
+            Home course
+            <input value={homeCourse} onChange={(e) => setHomeCourse(e.target.value)} maxLength={80} placeholder="e.g. Pebble Beach" />
+          </label>
+          {err && <p className="error-msg">{err}</p>}
+          <div className="locker-form-actions">
+            <button className="btn btn-gold locker-mini-btn" onClick={save} disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </button>
+            <button className="btn btn-muted locker-mini-btn" onClick={() => setEditing(false)} disabled={saving}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="profile-grid">
+          <ProfileFact label="Display name" value={profile?.display_name || "Not set"} />
+          <ProfileFact label="Handedness" value={profile?.handedness || "Not set"} />
+          <ProfileFact label="Distance" value={profile?.distance_unit || "Yards"} />
+          <ProfileFact label="Speed" value={profile?.speed_unit || "mph"} />
+          <ProfileFact label="Home course" value={profile?.home_course_name || "Not set"} />
+          <ProfileFact label="Profile image" value={profile?.profile_image_path ? "Uploaded" : "Not uploaded"} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CLUB_TYPES = ["driver", "wood", "hybrid", "iron", "wedge", "putter"];
+
+function BagPanel({ clubs, userId, onChanged }: { clubs: AccountClub[]; userId: string; onChanged: () => void }) {
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function remove(clubId: string) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await deactivateAccountClub(userId, clubId);
+      onChanged();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Could not remove club");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card account-panel account-panel-wide">
+      <div className="panel-head">
+        <div>
+          <span className="badge">Club bag</span>
+          <h2>Carry map</h2>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span className="account-pill">{clubs.length} active clubs</span>
+          {!adding && editingId === null && (
+            <button className="btn btn-outline locker-mini-btn" onClick={() => setAdding(true)}>Add club</button>
+          )}
+        </div>
+      </div>
+
+      {err && <p className="error-msg">{err}</p>}
+
+      {adding && (
+        <ClubForm
+          userId={userId}
+          onDone={() => { setAdding(false); onChanged(); }}
+          onCancel={() => setAdding(false)}
+        />
+      )}
+
+      {clubs.length ? (
+        <div className="club-table">
+          {clubs.slice(0, 16).map((club) =>
+            editingId === club.id ? (
+              <ClubForm
+                key={club.id}
+                userId={userId}
+                club={club}
+                onDone={() => { setEditingId(null); onChanged(); }}
+                onCancel={() => setEditingId(null)}
+              />
+            ) : (
+              <div className="club-row" key={club.id}>
+                <span>{club.name}</span>
+                <span>{club.type}</span>
+                <strong>{club.expected_carry_yards} yd carry</strong>
+                <span>{club.expected_total_yards} yd total</span>
+                <span className="club-row-actions">
+                  <button className="locker-link-btn" onClick={() => setEditingId(club.id)} disabled={busy}>Edit</button>
+                  <button className="locker-link-btn danger" onClick={() => remove(club.id)} disabled={busy}>Remove</button>
+                </span>
+              </div>
+            )
+          )}
+        </div>
+      ) : (
+        !adding && <EmptyState title="No clubs yet" body="Add your clubs here or build your bag in the iOS app — they stay in sync." />
+      )}
+    </div>
+  );
+}
+
+function ClubForm({
+  userId,
+  club,
+  onDone,
+  onCancel,
+}: {
+  userId: string;
+  club?: AccountClub;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(club?.name ?? "");
+  const [type, setType] = useState(club?.type ?? "iron");
+  const [carry, setCarry] = useState(club ? String(club.expected_carry_yards) : "");
+  const [total, setTotal] = useState(club ? String(club.expected_total_yards) : "");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    const carryN = Number(carry);
+    const totalN = Number(total || carry);
+    if (!name.trim() || !Number.isFinite(carryN) || carryN <= 0) {
+      setErr("Enter a club name and a carry distance.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      await saveAccountClub(userId, {
+        id: club?.id,
+        name: name.trim(),
+        type,
+        expected_carry_yards: Math.round(carryN),
+        expected_total_yards: Math.round(Math.max(totalN, carryN)),
+        sort_order: club?.sort_order,
+      });
+      onDone();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Could not save club");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="locker-form locker-club-form">
+      <label>
+        Club
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={30} placeholder="7 Iron" />
+      </label>
+      <label>
+        Type
+        <select value={type} onChange={(e) => setType(e.target.value)}>
+          {CLUB_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </label>
+      <label>
+        Carry (yd)
+        <input value={carry} onChange={(e) => setCarry(e.target.value)} inputMode="numeric" placeholder="152" />
+      </label>
+      <label>
+        Total (yd)
+        <input value={total} onChange={(e) => setTotal(e.target.value)} inputMode="numeric" placeholder="160" />
+      </label>
+      {err && <p className="error-msg">{err}</p>}
+      <div className="locker-form-actions">
+        <button className="btn btn-gold locker-mini-btn" onClick={save} disabled={saving}>
+          {saving ? "Saving..." : club ? "Save" : "Add"}
+        </button>
+        <button className="btn btn-muted locker-mini-btn" onClick={onCancel} disabled={saving}>Cancel</button>
+      </div>
+    </div>
   );
 }
 

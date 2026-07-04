@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { useSession } from "@/lib/useSession";
 
 /**
- * Sticky brand navigation, visually + tab-for-tab identical to the homepage
- * header so every page shares one consistent bar, with the current section
- * highlighted. Pass `actions` to override the default right-side links.
+ * The one sticky brand navigation bar, shared by every page (including the
+ * homepage), with the current section highlighted and session-aware actions.
+ * Pass `actions` to fully override the right side, or `onGetApp` to make the
+ * primary button open a flow (e.g. embedded checkout) instead of linking.
  */
-export default function SiteNav({ actions }: { actions?: ReactNode }) {
+export default function SiteNav({ actions, onGetApp }: { actions?: ReactNode; onGetApp?: () => void }) {
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname() || "/";
+  const router = useRouter();
+  const { user, loading, signOut } = useSession();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -41,8 +45,28 @@ export default function SiteNav({ actions }: { actions?: ReactNode }) {
               <Link className={link(onStore)} href="/store" aria-current={onStore ? "page" : undefined}>Store</Link>
               <Link className="l" href="/#h07">Pricing</Link>
               <Link className={link(onSupport, true)} href="/support" aria-current={onSupport ? "page" : undefined}>Support</Link>
-              <Link className="l btn" href="/login">Sign in</Link>
-              <Link className="l btn primary" href="/#h07">Get the app</Link>
+              {user ? (
+                <>
+                  <Link className="l btn primary" href="/account">Account</Link>
+                  <button
+                    className="l btn nav-signout"
+                    onClick={async () => { await signOut(); router.push("/"); }}
+                  >
+                    Sign out
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link className="l btn" href="/login" style={{ visibility: loading ? "hidden" : undefined }}>Sign in</Link>
+                  {onGetApp ? (
+                    <a className="l btn primary" href="/#h07" onClick={(e) => { e.preventDefault(); onGetApp(); }}>
+                      Get the app
+                    </a>
+                  ) : (
+                    <Link className="l btn primary" href="/#h07">Get the app</Link>
+                  )}
+                </>
+              )}
             </>
           )}
         </div>

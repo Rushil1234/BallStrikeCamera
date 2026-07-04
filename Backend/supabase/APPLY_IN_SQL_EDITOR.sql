@@ -1,5 +1,5 @@
 -- ============================================================================
--- True Carry — apply migrations 026–030 in one shot.
+-- True Carry — apply migrations 026–032 in one shot.
 -- Paste this whole file into Supabase Dashboard → SQL Editor → Run.
 -- Idempotent & transactional-safe; re-runnable. Generated from migrations/.
 -- ============================================================================
@@ -521,3 +521,19 @@ $$;
 revoke execute on function public.export_my_data() from public, anon;
 grant  execute on function public.export_my_data() to authenticated;
 
+
+
+-- ####################################################################
+-- ## 031_live_sim_ack.sql
+-- ####################################################################
+-- Live-sim delivery guarantees: the sim records the highest shot sequence it
+-- has received; the phone polls this to prune/resend unacknowledged shots.
+alter table public.live_sim_state
+  add column if not exists last_ack_seq bigint;
+
+
+-- ####################################################################
+-- ## 032_live_sim_round_summary.sql  (already applied via MCP 2026-07-04)
+-- ####################################################################
+alter table public.live_sim_state
+  add column if not exists round_summary jsonb;

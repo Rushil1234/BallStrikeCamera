@@ -3,29 +3,64 @@ import SiteFooter from "@/components/SiteFooter";
 
 export const metadata = { title: "Privacy Policy" };
 
+const UPDATED = "July 3, 2026";
+
 export default function PrivacyPage() {
   return (
     <>
       <SiteNav />
       <main className="narrow" style={{ paddingTop: 70, paddingBottom: 90 }}>
         <span className="eyebrow">Legal</span>
-        <h1 style={{ fontSize: "clamp(32px,5vw,46px)", margin: "14px 0 28px" }}>Privacy Policy</h1>
+        <h1 style={{ fontSize: "clamp(32px,5vw,46px)", margin: "14px 0 10px" }}>Privacy Policy</h1>
+        <p style={{ opacity: 0.6, marginBottom: 28 }}>Last updated {UPDATED}</p>
         <div className="prose">
+          <h2>What we collect</h2>
           <p>
-            True Carry collects only the data necessary to operate the app and website:
-            your email address, shot data you create, and subscription status. We do not
-            sell your data to third parties.
+            <strong>Account data.</strong> Your email address and, if you use Google or Apple
+            sign-in, the basic profile those providers share (name, email). Managed by our
+            authentication provider, Supabase.
           </p>
           <p>
-            Shot data (ball speed, carry distance, launch angle, video frames) is stored
-            securely in Supabase and is only accessible to your account.
+            <strong>Golf data you create.</strong> Shot metrics (ball speed, launch angles,
+            spin, carry), practice sessions, simulator sessions, course rounds, your club bag,
+            and profile details you enter. Free-tier shot data stays on your device; cloud sync
+            applies to paid tiers or where you enable it.
           </p>
           <p>
-            Payment processing is handled by Stripe. We do not store credit card information.
+            <strong>Camera frames.</strong> The camera captures used to measure your shots are
+            processed on your iPhone. Replay frame bursts are stored on your device. A single
+            composite image per shot may sync to your account so replays work across devices —
+            it is visible only to you and, if you share a shot, to the people you share it with.
           </p>
           <p>
-            For questions, visit our <a href="/support">support page</a> or email{" "}
-            <a href="mailto:Rushil@truecarrygolf.com">Rushil@truecarrygolf.com</a>.
+            <strong>Billing.</strong> Payments are processed by Stripe. We never see or store
+            your card number; we store your subscription tier and status.
+          </p>
+          <p>
+            <strong>Location.</strong> Course mode uses your location on-device to map your
+            round. Location is not tracked outside an active round.
+          </p>
+          <h2>What we do not do</h2>
+          <p>
+            We do not sell your data, run third-party advertising, or use your camera captures
+            for anything other than measuring your shots and building your replays.
+          </p>
+          <h2>Where data lives</h2>
+          <p>
+            Cloud data is stored with Supabase (Postgres, row-level security scoped to your
+            account). Media uploads live in Supabase Storage. Referral rewards are tracked by
+            invite code. You can request deletion of your account and all associated data at
+            any time via <a href="mailto:support@truecarry.app">support@truecarry.app</a>.
+          </p>
+          <h2>Sharing</h2>
+          <p>
+            Shots you explicitly share (feed posts, shot cards, live sim sessions) are visible
+            to the audience you choose. Live sim pairing codes are short-lived and scoped to a
+            single session.
+          </p>
+          <h2>Contact</h2>
+          <p>
+            Questions about this policy: <a href="mailto:support@truecarry.app">support@truecarry.app</a>.
           </p>
         </div>
       </main>

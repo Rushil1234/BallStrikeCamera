@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=augusta-3">
+<link rel="stylesheet" href="styles.css?v=gspro-2">
 <script type="importmap">
 {
   "imports": {
@@ -77,16 +77,23 @@
     <div id="shot-card" class="panel">
       <div id="pin-dist"><span id="pin-num">363</span><span class="pin-unit">y</span></div>
       <div id="pin-label">TO PIN</div>
+      <div id="pin-plays" class="hidden"></div>
       <div id="lie-chip">TEE</div>
     </div>
 
     <div id="shot-data" class="panel hidden">
-      <div class="sd-row"><span class="sd-label">BALL SPEED</span><span class="sd-val" id="sd-speed">—</span></div>
-      <div class="sd-row"><span class="sd-label">LAUNCH</span><span class="sd-val" id="sd-launch">—</span></div>
-      <div class="sd-row"><span class="sd-label">SPIN</span><span class="sd-val" id="sd-spin">—</span></div>
-      <div class="sd-row"><span class="sd-label">APEX</span><span class="sd-val" id="sd-apex">—</span></div>
-      <div class="sd-row"><span class="sd-label">CARRY</span><span class="sd-val" id="sd-carry">—</span></div>
-      <div class="sd-row"><span class="sd-label">TOTAL</span><span class="sd-val" id="sd-total">—</span></div>
+      <div class="sd-grid">
+        <div class="sd-row"><span class="sd-label">BALL</span><span class="sd-val" id="sd-speed">—</span></div>
+        <div class="sd-row"><span class="sd-label">CLUB</span><span class="sd-val" id="sd-club">—</span></div>
+        <div class="sd-row"><span class="sd-label">LAUNCH</span><span class="sd-val" id="sd-launch">—</span></div>
+        <div class="sd-row"><span class="sd-label">SIDE</span><span class="sd-val" id="sd-side">—</span></div>
+        <div class="sd-row"><span class="sd-label">SPIN</span><span class="sd-val" id="sd-spin">—</span></div>
+        <div class="sd-row"><span class="sd-label">APEX</span><span class="sd-val" id="sd-apex">—</span></div>
+        <div class="sd-row"><span class="sd-label">DESC</span><span class="sd-val" id="sd-desc">—</span></div>
+        <div class="sd-row"><span class="sd-label">OFFLINE</span><span class="sd-val" id="sd-offline">—</span></div>
+        <div class="sd-row sd-hero"><span class="sd-label">CARRY</span><span class="sd-val" id="sd-carry">—</span></div>
+        <div class="sd-row sd-hero"><span class="sd-label">TOTAL</span><span class="sd-val" id="sd-total">—</span></div>
+      </div>
     </div>
 
     <div id="meter" class="hidden">
@@ -208,6 +215,6 @@
 window.onerror = (m, s, l) => { document.title = 'ERR: ' + m + ' @' + String(s || '').split('/').pop() + ':' + l; };
 window.addEventListener('unhandledrejection', (e) => { document.title = 'REJ: ' + (e.reason && e.reason.message || e.reason); });
 </script>
-<script type="module" src="js/main.js?v=augusta-3"></script>
+<script type="module" src="js/main.js?v=gspro-2"></script>
 </body>
 </html>

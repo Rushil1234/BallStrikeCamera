@@ -30,6 +30,11 @@ struct LiveSimCodeView: View {
             .disabled(!liveSimService.isConnectedToSim)
             .opacity(liveSimService.isConnectedToSim ? 1.0 : 0.4)
         }
+        // QR deep link (truecarry://livesim?code=…): autofill and connect.
+        .task { await liveSimService.consumeDeepLinkCode() }
+        .onReceive(NotificationCenter.default.publisher(for: .tcOpenLiveSim)) { _ in
+            Task { await liveSimService.consumeDeepLinkCode() }
+        }
     }
 
     // MARK: - Connected (the "really cool" live link)

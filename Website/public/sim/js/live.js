@@ -23,7 +23,20 @@ export function getLiveCode() {
  * @param {() => void} [onPing]         – called when app taps "Connect"
  * @param {(name: string) => void} [onClubChanged] – called when app changes club
  */
-export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged, onSessionEnd) {
+const _seenSeqs = new Set();
+let _ackSupported = true;
+
+async function _ackShot(code, seq) {
+  if (!_ackSupported || !_client) return;
+  try {
+    const { error } = await _client
+      .from('live_sim_state')
+      .upsert({ code, last_ack_seq: seq, updated_at: new Date().toISOString() }, { onConflict: 'code' });
+    if (error) _ackSupported = false;   // column not migrated yet
+  } catch (_) { /* never block on ack */ }
+}
+
+export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged, onSessionEnd, onSwingImage) {
   if (_channel) {
     _channel.unsubscribe();
     _channel = null;
@@ -38,6 +51,16 @@ export function connectLive(code, onShotReceived, onStatusChange, onPing, onClub
   _channel = _client
     .channel(`tc-sim-${code}`)
     .on('broadcast', { event: 'shot' }, ({ payload }) => {
+      // Delivery guarantees: dedupe resent shots by seq and ack receipt via
+      // the state row the phone already polls. Ack is feature-detected so the
+      // sim keeps working before the last_ack_seq migration is applied.
+      const seq = payload?.seq;
+      if (seq != null) {
+        if (_seenSeqs.has(seq)) return;
+        _seenSeqs.add(seq);
+        if (_seenSeqs.size > 300) _seenSeqs.clear();
+        _ackShot(code, seq);
+      }
       onShotReceived(payload);
     })
     .on('broadcast', { event: 'ping' }, () => {
@@ -45,6 +68,9 @@ export function connectLive(code, onShotReceived, onStatusChange, onPing, onClub
     })
     .on('broadcast', { event: 'club' }, ({ payload }) => {
       if (onClubChanged && payload?.clubName) onClubChanged(payload.clubName);
+    })
+    .on('broadcast', { event: 'swing' }, ({ payload }) => {
+      if (onSwingImage && payload?.jpegB64) onSwingImage(payload.jpegB64);
     })
     .on('broadcast', { event: 'end' }, () => {
       if (onSessionEnd) onSessionEnd();

@@ -1,0 +1,89 @@
+name: Quality
+
+# Build + regression gates for the iOS app and the browser sim.
+# Catches the failure classes that have actually bitten this repo:
+# files missing from the Xcode target, physics regressions, logic breaks.
+
+on:
+  push:
+    branches: [main, rushil]
+    paths:
+      - "BallStrikeCamera/**"
+      - "BallStrikeCamera.xcodeproj/**"
+      - "BallStrikeCameraWatch/**"
+      - "BallStrikeCameraWidget/**"
+      - "TrueCarry_Sim/**"
+      - "tools/**"
+      - ".github/workflows/quality.yml"
+  pull_request:
+    paths:
+      - "BallStrikeCamera/**"
+      - "BallStrikeCamera.xcodeproj/**"
+      - "TrueCarry_Sim/**"
+      - "tools/**"
+  workflow_dispatch: {}
+
+jobs:
+  ios:
+    name: iOS build + logic tests
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select newest Xcode on the runner
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+          xcodebuild -version
+          xcrun simctl list runtimes | head -5
+      - name: Generate placeholder Secrets.plist (real one is gitignored)
+        # Placeholder values make the app fall back to LocalBackendService by
+        # design (SupabaseConfig checks for YOUR_..._HERE); build-only anyway.
+        run: |
+          cat > BallStrikeCamera/Resources/Secrets.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>GolfCourseAPIKey</key>
+            <string>YOUR_GOLF_COURSE_API_KEY_HERE</string>
+            <key>PricingURL</key>
+            <string>https://truecarry.app/pricing</string>
+            <key>SupabaseAnonKey</key>
+            <string>YOUR_SUPABASE_ANON_KEY_HERE</string>
+            <key>SupabaseURL</key>
+            <string>YOUR_SUPABASE_URL_HERE</string>
+            <key>TrueCarryWebsiteURL</key>
+            <string>https://truecarry.app</string>
+          </dict>
+          </plist>
+          PLIST
+      - name: Build (iphonesimulator, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project BallStrikeCamera.xcodeproj \
+            -scheme BallStrikeCamera \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build.log | tail -20
+      - name: Surface compile errors on failure
+        if: failure()
+        # ::error:: turns each line into a check annotation, readable via the
+        # API without repo-admin log access.
+        run: |
+          (grep -E 'error:|xcodebuild: error' build.log || tail -25 build.log) | head -25 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
+      - name: Logic golden tests
+        run: tools/ios-logic-tests.sh
+
+  sim:
+    name: Sim physics/course regression
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bot plays all courses (JavaScriptCore)
+        run: |
+          set -o pipefail
+          TrueCarry_Sim/tools/test.sh | tail -12

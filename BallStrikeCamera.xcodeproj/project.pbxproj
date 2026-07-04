@@ -29,6 +29,7 @@
 		BF000001000000000000000A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011B /* LaunchScreen.storyboard */; };
 		BF0000010000000000000012 /* RangeCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000112 /* RangeCameraScreen.swift */; };
 		BF0000010000000000000013 /* LaunchMonitorScaffoldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000113 /* LaunchMonitorScaffoldView.swift */; };
+		CAFE0000000000000000FD11 /* SetupAssistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FD10 /* SetupAssistView.swift */; };
 		BF0000010000000000000014 /* LaunchMonitorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000114 /* LaunchMonitorTheme.swift */; };
 		BF0000010000000000000015 /* CircularIconButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000115 /* CircularIconButton.swift */; };
 		BF0000010000000000000016 /* TopOverlayBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000116 /* TopOverlayBarView.swift */; };
@@ -268,6 +269,7 @@
 		BF0000010000000000000111 /* BallStrikeCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BallStrikeCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF0000010000000000000112 /* RangeCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RangeCameraScreen.swift; sourceTree = "<group>"; };
 		BF0000010000000000000113 /* LaunchMonitorScaffoldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchMonitorScaffoldView.swift; sourceTree = "<group>"; };
+		CAFE0000000000000000FD10 /* SetupAssistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupAssistView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000114 /* LaunchMonitorTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchMonitorTheme.swift; sourceTree = "<group>"; };
 		BF0000010000000000000115 /* CircularIconButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CircularIconButton.swift; sourceTree = "<group>"; };
 		BF0000010000000000000116 /* TopOverlayBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopOverlayBarView.swift; sourceTree = "<group>"; };
@@ -587,6 +589,7 @@
 				BF0000010000000000000108 /* CameraPreview.swift */,
 				BF0000010000000000000112 /* RangeCameraScreen.swift */,
 				BF0000010000000000000113 /* LaunchMonitorScaffoldView.swift */,
+				CAFE0000000000000000FD10 /* SetupAssistView.swift */,
 				BF0000010000000000000114 /* LaunchMonitorTheme.swift */,
 				BF0000010000000000000115 /* CircularIconButton.swift */,
 				BF0000010000000000000116 /* TopOverlayBarView.swift */,
@@ -1136,6 +1139,7 @@
 				BF0000010000000000000008 /* CameraPreview.swift in Sources */,
 				BF0000010000000000000012 /* RangeCameraScreen.swift in Sources */,
 				BF0000010000000000000013 /* LaunchMonitorScaffoldView.swift in Sources */,
+				CAFE0000000000000000FD11 /* SetupAssistView.swift in Sources */,
 				BF0000010000000000000014 /* LaunchMonitorTheme.swift in Sources */,
 				BF0000010000000000000015 /* CircularIconButton.swift in Sources */,
 				BF0000010000000000000016 /* TopOverlayBarView.swift in Sources */,

@@ -289,3 +289,49 @@ function valueFromPath(source: unknown, path: string[]): unknown {
 function avg(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
+
+// ---------- Locker writes (profile + club bag) ----------
+
+export async function updateAccountProfile(
+  userId: string,
+  fields: Partial<Pick<AccountProfile, "display_name" | "handedness" | "home_course_name" | "distance_unit" | "speed_unit">>,
+) {
+  const { error } = await supabase
+    .from("profiles")
+    .upsert({ user_id: userId, ...fields }, { onConflict: "user_id" });
+  if (error) throw new Error(`Could not save profile: ${error.message}`);
+}
+
+export interface ClubDraft {
+  id?: string;
+  name: string;
+  type: string;
+  expected_carry_yards: number;
+  expected_total_yards: number;
+  sort_order?: number;
+}
+
+export async function saveAccountClub(userId: string, club: ClubDraft) {
+  const row = {
+    id: club.id ?? crypto.randomUUID(),
+    user_id: userId,
+    name: club.name,
+    type: club.type,
+    expected_carry_yards: club.expected_carry_yards,
+    expected_total_yards: club.expected_total_yards,
+    sort_order: club.sort_order ?? 999,
+    is_active: true,
+  };
+  const { error } = await supabase.from("clubs").upsert(row, { onConflict: "id" });
+  if (error) throw new Error(`Could not save club: ${error.message}`);
+}
+
+export async function deactivateAccountClub(userId: string, clubId: string) {
+  // Soft delete, matching the iOS app's is_active convention.
+  const { error } = await supabase
+    .from("clubs")
+    .update({ is_active: false })
+    .eq("id", clubId)
+    .eq("user_id", userId);
+  if (error) throw new Error(`Could not remove club: ${error.message}`);
+}

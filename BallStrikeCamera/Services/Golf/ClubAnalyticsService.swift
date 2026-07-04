@@ -30,8 +30,10 @@ enum ClubAnalyticsService {
     /// Lower bound on samples needed before a club is considered statistically meaningful.
     private static let minSamples = 4
 
-    /// Outlier rejection threshold in standard deviations.
-    private static let outlierZScore = 2.5
+    /// Outlier rejection threshold in robust (MAD-scaled) deviations. Mean/σ
+    /// rejection masks single big outliers in small samples — a 400yd mishit
+    /// inflates σ enough to save itself — so we use median ± k·MAD instead.
+    private static let madCutoff = 3.0
 
     /// Compute per-club analytics from a flat list of tracked shots.
     /// Filters:
@@ -54,11 +56,12 @@ enum ClubAnalyticsService {
 
     private static func analytics(for cat: ShotClub.ClubCategory,
                                    shots: [TrackedShot]) -> ClubAnalytics? {
-        // First pass: mean carry; reject outliers on a second pass.
+        // Robust outlier rejection: median ± madCutoff · (1.4826 · MAD).
         let firstDistances = shots.map { $0.distanceYards }
-        let firstMean = firstDistances.reduce(0, +) / Double(firstDistances.count)
-        let firstStd  = stdDev(firstDistances, mean: firstMean)
-        let kept = shots.filter { abs($0.distanceYards - firstMean) <= outlierZScore * max(firstStd, 1) }
+        let med = median(firstDistances)
+        let mad = median(firstDistances.map { abs($0 - med) })
+        let spread = max(1.4826 * mad, 2)   // floor so identical distances don't reject everything
+        let kept = shots.filter { abs($0.distanceYards - med) <= madCutoff * spread }
         guard kept.count >= minSamples else { return nil }
 
         let carryVals = kept.compactMap { $0.carryYards ?? $0.distanceYards }
@@ -91,6 +94,13 @@ enum ClubAnalyticsService {
         guard xs.count > 1 else { return 0 }
         let sq = xs.map { ($0 - mean) * ($0 - mean) }.reduce(0, +)
         return sqrt(sq / Double(xs.count - 1))
+    }
+
+    private static func median(_ xs: [Double]) -> Double {
+        guard !xs.isEmpty else { return 0 }
+        let sorted = xs.sorted()
+        let mid = sorted.count / 2
+        return sorted.count.isMultiple(of: 2) ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
     }
 
 }

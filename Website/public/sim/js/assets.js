@@ -3,7 +3,7 @@
 // All CC0 from Poly Haven, water normals from three.js examples (MIT).
 
 import * as THREE from 'three';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js?v=augusta-3';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js?v=gspro-2';
 
 function loadTex(loader, url, { srgb = false, aniso = 8 } = {}) {
   return new Promise((resolve, reject) => {
@@ -101,7 +101,7 @@ function sunFromEquirect(tex) {
 
 export async function loadAssets(renderer) {
   const maxAniso = renderer.capabilities.getMaxAnisotropy();
-  const aniso = Math.min(8, maxAniso);
+  const aniso = Math.min(16, maxAniso);
   const tl = new THREE.TextureLoader();
   const t = (url, opts = {}) => loadTex(tl, url, { aniso, ...opts });
 
@@ -109,17 +109,20 @@ export async function loadAssets(renderer) {
   const hdrPromise = new Promise((res, rej) => rgbe.load('assets/sky/sky_1k.hdr', res, undefined, rej));
 
   const [
-    grassD, grassN, roughD, roughN, sandD, sandN,
+    grassD, grassN, grassR, roughD, roughN, roughR, sandD, sandN, sandR,
     skyBg, skyEnv,
     twigD, twigA, pineBark, leafD, leafA, leafBark,
     waterN,
   ] = await Promise.all([
     t('assets/ground/grass_diff.jpg', { srgb: true }),
     t('assets/ground/grass_nor.jpg'),
+    t('assets/ground/grass_rough.jpg'),
     t('assets/ground/rough_diff.jpg', { srgb: true }),
     t('assets/ground/rough_nor.jpg'),
+    t('assets/ground/rough_rough.jpg'),
     t('assets/ground/sand_diff.jpg', { srgb: true }),
     t('assets/ground/sand_nor.jpg'),
+    t('assets/ground/sand_rough.jpg'),
     t('assets/sky/sky_bg.jpg', { srgb: true, aniso: maxAniso }),
     hdrPromise,
     t('assets/trees/pine_twig_diff.jpg', { srgb: true }),
@@ -136,7 +139,7 @@ export async function loadAssets(renderer) {
 
   return {
     ground: {
-      grassD, grassN, roughD, roughN, sandD, sandN,
+      grassD, grassN, grassR, roughD, roughN, roughR, sandD, sandN, sandR,
       grassMean: meanColor(grassD),
       roughMean: meanColor(roughD),
       sandMean: meanColor(sandD),

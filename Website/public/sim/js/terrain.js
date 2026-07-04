@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=augusta-3';
-import { Water } from 'three/addons/objects/Water.js?v=augusta-3';
-import { makeFbm, makeRng } from './noise.js?v=augusta-3';
-import { SURF } from './physics.js?v=augusta-3';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-2';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-2';
+import { makeFbm, makeRng } from './noise.js?v=gspro-2';
+import { SURF } from './physics.js?v=gspro-2';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -101,9 +101,9 @@ function splatMaterial(assets) {
   mat.envMapIntensity = 0.3;   // tame grazing-angle sky reflection washout
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, {
-      uGrassD: { value: g.grassD }, uGrassN: { value: g.grassN },
-      uRoughD: { value: g.roughD }, uRoughN: { value: g.roughN },
-      uSandD: { value: g.sandD }, uSandN: { value: g.sandN },
+      uGrassD: { value: g.grassD }, uGrassN: { value: g.grassN }, uGrassR: { value: g.grassR },
+      uRoughD: { value: g.roughD }, uRoughN: { value: g.roughN }, uRoughR: { value: g.roughR },
+      uSandD: { value: g.sandD }, uSandN: { value: g.sandN }, uSandR: { value: g.sandR },
       uGrassMean: { value: g.grassMean },
       uRoughMean: { value: g.roughMean },
       uSandMean: { value: g.sandMean },
@@ -123,7 +123,7 @@ function splatMaterial(assets) {
       .replace('#include <common>', `#include <common>
         varying vec4 vSplat;
         varying vec3 vWPos;
-        uniform sampler2D uGrassD, uGrassN, uRoughD, uRoughN, uSandD, uSandN;
+        uniform sampler2D uGrassD, uGrassN, uGrassR, uRoughD, uRoughN, uRoughR, uSandD, uSandN, uSandR;
         uniform vec3 uGrassMean, uRoughMean, uSandMean;
         uniform float uTime;
         uniform vec2 uWindVec;
@@ -147,6 +147,19 @@ function splatMaterial(assets) {
           float cn = texture2D(uRoughD, cuv).g * 0.62
                    + texture2D(uRoughD, cuv * 2.7 + 0.41).g * 0.38;
           diffuseColor.rgb *= 1.0 - 0.24 * smoothstep(0.48, 0.78, cn);
+        }`)
+      .replace('#include <roughnessmap_fragment>', `
+        float roughnessFactor = roughness;
+        {
+          // Real micro-roughness per surface: tight-mown grass sheens in low
+          // sun, sand and deep rough stay matte.
+          float rG = texture2D(uGrassR, uvFair()).g;
+          float rR = texture2D(uRoughR, uvRough()).g;
+          float rS = texture2D(uSandR, uvSand()).g;
+          float w = clamp(vSplat.x + vSplat.y + vSplat.z, 0.0, 1.0);
+          float blended = rG * vSplat.x + rR * vSplat.y + rS * vSplat.z;
+          blended = mix(blended, blended * 0.72, vSplat.w * vSplat.x);
+          roughnessFactor = mix(1.0, clamp(blended, 0.35, 1.0), w);
         }`)
       .replace('#include <normal_fragment_maps>', `
         {
@@ -1673,6 +1686,7 @@ export function buildCourse(hole, assets) {
 
   return {
     group, heightAt, surfaceAt, normalAt, waterLevel,
+    conditions: hole.island?.conditions || null,
     pinPos, teePos: { x: tee.x, y: teeH, z: tee.z },
     pointAtAlong, pathInfo, isOB, updateFlag, updateWater, dispose,
     greenGrid: group ? group.userData.greenGrid : null,

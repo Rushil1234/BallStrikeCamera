@@ -46,6 +46,13 @@ struct LiveSimCameraScreen: View {
             // Broadcast to browser sim first so the ball flies immediately.
             Task { await liveSimService.broadcast(metrics: savedMetrics) }
 
+            // Then the real-swing composite for the sim's picture-in-picture.
+            Task {
+                if let composite = ShotCompositeRenderer().render(analysis: analysis) {
+                    await liveSimService.broadcastSwingImage(composite)
+                }
+            }
+
             // Auto-save to session history.
             Task { await autoSave(analysis: analysis, metrics: savedMetrics) }
         }
@@ -93,7 +100,17 @@ struct LiveSimCameraScreen: View {
                 ),
                 onSave: { name, desc in
                     Task {
-                        await simVM.endSessionWithDetails(name: name, description: desc, usedOGS: false)
+                        // Attach the web sim's real round result (course, score,
+                        // holes) to the saved session automatically.
+                        let summary = liveSimService.liveState?.roundSummary?.display
+                        let fullDesc = [desc, summary]
+                            .compactMap { $0?.isEmpty == false ? $0 : nil }
+                            .joined(separator: "\n")
+                        await simVM.endSessionWithDetails(
+                            name: name,
+                            description: fullDesc.isEmpty ? nil : fullDesc,
+                            usedOGS: false
+                        )
                         dismiss()
                     }
                 },

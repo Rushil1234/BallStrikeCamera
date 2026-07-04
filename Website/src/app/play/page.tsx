@@ -5,60 +5,18 @@ import { useState, useEffect, useRef } from "react";
 function makeCode() {
   // Cryptographically-random pairing code — Math.random() is predictable and
   // must not be used for a value that gates access to a live session channel.
-  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
-  return String(n).padStart(6, "0");
+  // 9 digits (~30 bits): stage 2 of the pairing hardening; the iOS app has
+  // accepted 6-10 digit codes since the 2026-07-01 build (stage 1).
+  // Three digits per uint32 keeps every position uniform without BigInt.
+  const buf = crypto.getRandomValues(new Uint32Array(3));
+  return Array.from(buf, (v) => String(v % 1000).padStart(3, "0")).join("");
 }
 
-type CourseOption = {
-  id: string;
-  name: string;
-  sub: string;
-  detail: string;
-  meta: string;
-  mark: string;
-  hrefMode: "range" | "course";
-  disabled?: boolean;
-};
+import QRCode from "qrcode";
+import { SIM_COURSES, type SimCourse } from "@/lib/courses";
 
-const COURSES: CourseOption[] = [
-  {
-    id: "range",
-    name: "Range",
-    sub: "Free practice · no scoring",
-    detail: "Target greens, dispersion feedback, carry windows, and club gapping without starting a round.",
-    meta: "Practice",
-    mark: "R",
-    hrefMode: "range",
-  },
-  {
-    id: "pine-hollow",
-    name: "Pine Hollow National",
-    sub: "18 holes · par 72 · 6,900 yd",
-    detail: "The built-in parkland course with the current scoring, map, hole picker, and full round flow.",
-    meta: "Classic",
-    mark: "18",
-    hrefMode: "course",
-  },
-  {
-    id: "pebble-private",
-    name: "Cypress Coast Links",
-    sub: "18 holes · coastal links · par 72",
-    detail: "A rugged Pacific-style routing with ocean edges, cliffside holes, cypress belts, and coastal wind visuals.",
-    meta: "New course",
-    mark: "CC",
-    hrefMode: "course",
-  },
-  {
-    id: "augusta",
-    name: "Augusta National",
-    sub: "Coming soon",
-    detail: "Reserved for a future private course build.",
-    meta: "Preview",
-    mark: "A",
-    hrefMode: "course",
-    disabled: true,
-  },
-];
+type CourseOption = SimCourse;
+const COURSES: CourseOption[] = SIM_COURSES;
 
 type Stage = "select" | "launching" | "playing";
 
@@ -137,7 +95,7 @@ export default function PlayPage() {
   useEffect(() => {
     if (stage !== "launching" || !activeCourse || !simReady || !connected) return;
     const msgType = activeCourse.id === "range" ? "START_RANGE" : "START_SIM";
-    iframeRef.current?.contentWindow?.postMessage({ type: msgType, courseId: activeCourse.id }, "*");
+    iframeRef.current?.contentWindow?.postMessage({ type: msgType, courseId: activeCourse.id }, window.location.origin);
   }, [activeCourse, simReady, stage, connected]);
 
   // Safety net: never sit on the launch screen without a paired phone — the
@@ -166,6 +124,16 @@ export default function PlayPage() {
     writeLaunchUrl(course);
   }
 
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!code || code === "000000") return;
+    // Scanning with the iPhone camera opens the app and pairs instantly.
+    QRCode.toDataURL(`truecarry://livesim?code=${code}`, {
+      width: 220, margin: 1,
+      color: { dark: "#16201a", light: "#ece4d2" },
+    }).then(setQrUrl).catch(() => setQrUrl(null));
+  }, [code]);
+
   async function copyCode() {
     try {
       await navigator.clipboard.writeText(code);
@@ -192,7 +160,7 @@ export default function PlayPage() {
   }
 
   function endSession() {
-    iframeRef.current?.contentWindow?.postMessage({ type: "END_SESSION" }, "*");
+    iframeRef.current?.contentWindow?.postMessage({ type: "END_SESSION" }, window.location.origin);
     setConnected(false);
     setShowEndConfirm(false);
     returnToSelect();
@@ -324,12 +292,22 @@ export default function PlayPage() {
                   ? "Pick a mode on the left and start hitting — your shots show up here live."
                   : "Open the TrueCarry app → Sim → Live Sim, then enter this code to unlock play."}
               </p>
+              {!connected && qrUrl && (
+                <div className="sim-pairing-qr">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qrUrl} alt="Scan with your iPhone camera to pair" />
+                  <span>Scan with your iPhone camera</span>
+                </div>
+              )}
               <div className="sim-pairing-code-wrap">
                 <div className="sim-pairing-code">{code}</div>
                 <button type="button" className="sim-pairing-copy" onClick={copyCode}>
                   {copied ? "Copied ✓" : "Copy"}
                 </button>
               </div>
+              {!connected && (
+                <p className="sim-pairing-or">or type the code in Sim → Live Sim</p>
+              )}
               {connected ? (
                 <p className="sim-pairing-hint">Shots will feed the selected mode in real time.</p>
               ) : (

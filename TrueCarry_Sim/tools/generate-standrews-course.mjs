@@ -1,34 +1,48 @@
-// Generates the Augusta National replica course modules from OSM data.
+// EXPERIMENTAL — NOT WIRED INTO THE SIM YET.
+// Generates the St Andrews Old Course replica course modules from OSM data.
+//
+// Status (2026-07-04): blocked on OSM source-data quirks that need manual
+// hole-by-hole inspection before this can ship honestly:
+//   - The Old Course 8th ("Short") has no centerline at all (synthesised here).
+//   - No green polygon exists within 190m of hole 7's centerline end in either
+//     orientation; the estuary-loop double greens (7/11, 8/10) appear missing
+//     or mapped outside the Old Course boundary polygon (which itself excludes
+//     the loop tip — see the `insideCourse` note below).
+//   - Five adjacent Links courses share the bbox; the round-walk DP below
+//     handles orientation, but green/bunker attribution at the loop needs
+//     verified data first.
+// Next step: inspect the loop in an OSM editor, fix/confirm upstream data or
+// hand-author the four loop greens, then wire in like Augusta.
 // Fan-made unofficial replica; not affiliated with or endorsed by ANGC.
 // Centerlines + surfaces (c) OpenStreetMap contributors (ODbL), fetched via Overpass:
 //   ways:      [out:json]; ( way["golf"](33.494,-82.034,33.513,-82.008);
 //                            way["natural"="water"](...); way["waterway"](...) ); out geom;
 //   relations: [out:json]; ( relation["golf"](...); relation["natural"="water"](...) ); out geom;
 // Card pars/yardages from the public Masters scorecard (par 72, 7,555y).
-// Usage: AUGUSTA_OSM_DIR=/path/to/json node tools/generate-augusta-course.mjs
-//   expects <dir>/augusta-osm-ways.json and <dir>/augusta-osm-rels.json
+// Usage: STANDREWS_OSM_DIR=/path/to/json node tools/generate-standrews-course.mjs
+//   expects <dir>/standrews-osm-ways.json and <dir>/standrews-osm-rels.json
 
 import fs from 'fs/promises';
 
-const ORIGIN = { lat: 33.49927, lng: -82.023751 };
-const DIR = process.env.AUGUSTA_OSM_DIR || '/tmp';
-const OUT_HOLES = new URL('../js/augusta-private.js', import.meta.url);
-const OUT_OSM = new URL('../js/augusta-osm.js', import.meta.url);
-const OUT_WORLD = new URL('../js/augusta-world-data.js', import.meta.url);
+const ORIGIN = { lat: 56.34750, lng: -2.81020 };
+const DIR = process.env.STANDREWS_OSM_DIR || '/tmp';
+const OUT_HOLES = new URL('../js/standrews-private.js', import.meta.url);
+const OUT_OSM = new URL('../js/standrews-osm.js', import.meta.url);
+const OUT_WORLD = new URL('../js/standrews-world-data.js', import.meta.url);
 
 // Official card: hole -> [par, yards]. Total 7,555y, par 72.
 const CARD = {
-  1: [4, 445], 2: [5, 585], 3: [4, 350], 4: [3, 240], 5: [4, 495], 6: [3, 180],
-  7: [4, 450], 8: [5, 570], 9: [4, 460], 10: [4, 495], 11: [4, 520], 12: [3, 155],
-  13: [5, 545], 14: [4, 440], 15: [5, 550], 16: [3, 170], 17: [4, 440], 18: [4, 465],
+  1: [4, 376], 2: [4, 453], 3: [4, 398], 4: [4, 480], 5: [5, 568], 6: [4, 412],
+  7: [4, 371], 8: [3, 175], 9: [4, 352], 10: [4, 386], 11: [3, 174], 12: [4, 348],
+  13: [4, 465], 14: [5, 614], 15: [4, 455], 16: [4, 418], 17: [4, 495], 18: [4, 357],
 };
 
 // Real hole names (each is the plant the hole is named for).
 const NAMES = {
-  1: 'TEA OLIVE', 2: 'PINK DOGWOOD', 3: 'FLOWERING PEACH', 4: 'FLOWERING CRAB APPLE',
-  5: 'MAGNOLIA', 6: 'JUNIPER', 7: 'PAMPAS', 8: 'YELLOW JASMINE', 9: 'CAROLINA CHERRY',
-  10: 'CAMELLIA', 11: 'WHITE DOGWOOD', 12: 'GOLDEN BELL', 13: 'AZALEA', 14: 'CHINESE FIR',
-  15: 'FIRETHORN', 16: 'REDBUD', 17: 'NANDINA', 18: 'HOLLY',
+  1: 'BURN', 2: 'DYKE', 3: 'CARTGATE (OUT)', 4: 'GINGER BEER',
+  5: "HOLE O'CROSS (OUT)", 6: 'HEATHERY (OUT)', 7: 'HIGH (OUT)', 8: 'SHORT', 9: 'END',
+  10: 'BOBBY JONES', 11: 'HIGH (IN)', 12: 'HEATHERY (IN)', 13: "HOLE O'CROSS (IN)",
+  14: 'LONG', 15: 'CARTGATE (IN)', 16: 'CORNER OF THE DYKE', 17: 'ROAD', 18: 'TOM MORRIS',
 };
 
 function project(lat, lng) {
@@ -255,22 +269,101 @@ function fail(msg) {
   process.exit(1);
 }
 
-const waysJson = JSON.parse(await fs.readFile(`${DIR}/augusta-osm-ways.json`, 'utf8'));
-const relsJson = JSON.parse(await fs.readFile(`${DIR}/augusta-osm-rels.json`, 'utf8'));
+const waysJson = JSON.parse(await fs.readFile(`${DIR}/standrews-osm-ways.json`, 'utf8'));
+const relsJson = await fs.readFile(`${DIR}/standrews-osm-rels.json`, 'utf8').then(JSON.parse).catch(() => ({ elements: [] }));
 
-const ways = waysJson.elements.filter((e) => e.type === 'way');
+const allWays = waysJson.elements.filter((e) => e.type === 'way');
+const courseWay = allWays.find((w) => w.tags?.leisure === 'golf_course' && w.tags?.name === 'Old Course');
+if (!courseWay) fail('Old Course boundary polygon not found');
+const coursePoly = projectWay(courseWay);
+const insideCourse = (w) => {
+  const pts = projectWay(w);
+  if (!pts.length) return false;
+  const c = centroid(pts);
+  return pointInPolygon(coursePoly, c.x, c.z);
+};
+// The OSM Old Course polygon EXCLUDES the Eden-end loop greens, so only the
+// hole centerlines are boundary-filtered; surfaces are claimed by each hole's
+// distance gates instead (neighbouring courses are fence-separated, well
+// outside the corridor thresholds).
+const ways = allWays;
 const byGolf = (v) => ways.filter((w) => w.tags?.golf === v);
 
 // --- championship hole centerlines (named; the Par-3 course holes are unnamed/short) ---
 const holeWays = byGolf('hole');
 const champ = new Map();
 for (let ref = 1; ref <= 18; ref++) {
-  const candidates = holeWays.filter((w) => Number(w.tags?.ref) === ref);
+  const candidates = holeWays.filter((w) => Number(w.tags?.ref) === ref && insideCourse(w));
   const named = candidates.filter((w) => w.tags?.name);
   const pool = named.length ? named : candidates;
-  if (!pool.length) fail(`no centerline for hole ${ref}`);
+  if (!pool.length) continue;   // synthesised below if genuinely absent
   pool.sort((a, b) => lineLength(projectWay(b)) - lineLength(projectWay(a)));
   champ.set(ref, pool[0]);
+}
+
+for (let ref = 1; ref <= 18; ref++) {
+  if (ref === 8) continue;   // synthesised after orientation (missing in OSM)
+  if (!champ.get(ref)) fail(`no centerline for hole ${ref}`);
+}
+
+// Orient every hole tee->green by minimizing the round's total walk
+// (green of k -> tee of k+1). Local nearest-tee/green heuristics fail here:
+// five adjacent Links courses put foreign tees and the shared double greens
+// right next to both ends of several holes. The round-walk criterion is
+// global and unambiguous.
+const rawPaths = new Map();
+const presentRefs = [];
+for (let ref = 1; ref <= 18; ref++) {
+  if (!champ.get(ref)) continue;
+  presentRefs.push(ref);
+  rawPaths.set(ref, rdp(projectWay(champ.get(ref)), 5).map((p) => ({ x: round2(p.x), z: round2(p.z) })));
+}
+const INF = 1e15;
+let walkCosts = [0, 0];
+const choices = [];
+for (let i = 1; i < presentRefs.length; i++) {
+  const prev = rawPaths.get(presentRefs[i - 1]);
+  const cur = rawPaths.get(presentRefs[i]);
+  const prevEnds = [prev[prev.length - 1], prev[0]];
+  const curStarts = [cur[0], cur[cur.length - 1]];
+  const next = [INF, INF];
+  const choice = [0, 0];
+  for (let o = 0; o < 2; o++) {
+    for (let po = 0; po < 2; po++) {
+      const c = walkCosts[po] + dist(prevEnds[po], curStarts[o]);
+      if (c < next[o]) { next[o] = c; choice[o] = po; }
+    }
+  }
+  choices.push(choice);
+  walkCosts = next;
+}
+const orient = new Map();
+let last = walkCosts[0] <= walkCosts[1] ? 0 : 1;
+orient.set(presentRefs[presentRefs.length - 1], last);
+for (let i = presentRefs.length - 1; i >= 1; i--) {
+  last = choices[i - 1][last];
+  orient.set(presentRefs[i - 1], last);
+}
+const orientedPath = (ref) => (orient.get(ref) ? rawPaths.get(ref).slice().reverse() : rawPaths.get(ref));
+
+// Synthesise the missing 8th ("Short", 175y par 3) from ORIENTED neighbours:
+// it plays to the 8/10 double green (= oriented hole 10's green end), teeing
+// off between the oriented 7th green and 9th tee.
+if (!rawPaths.get(8)) {
+  const o7 = orientedPath(7);
+  const o9 = orientedPath(9);
+  const o10 = orientedPath(10);
+  const green8 = o10[o10.length - 1];
+  const end7 = o7[o7.length - 1];
+  const start9 = o9[0];
+  const anchor = { x: (end7.x + start9.x) / 2, z: (end7.z + start9.z) / 2 };
+  const dx = anchor.x - green8.x;
+  const dz = anchor.z - green8.z;
+  const L = Math.hypot(dx, dz) || 1;
+  const tee = { x: round2(green8.x + (dx / L) * 160), z: round2(green8.z + (dz / L) * 160) };
+  rawPaths.set(8, [tee, { x: round2(green8.x), z: round2(green8.z) }]);
+  orient.set(8, 0);
+  champ.set(8, { id: -8, tags: { ref: '8' } });
 }
 
 // --- surface polygons ---
@@ -299,28 +392,34 @@ const osmByHole = {};
 const usedBunkers = new Map(); // bunker id -> hole ref (nearest wins)
 
 for (let ref = 1; ref <= 18; ref++) {
-  const way = champ.get(ref);
-  let path = rdp(projectWay(way), 5).map((p) => ({ x: round2(p.x), z: round2(p.z) }));
-
-  // Orient tee -> green: the end nearer a green polygon is the green end.
-  const nearestGreenDist = (pt) => Math.min(...greenPolys.map((g) => dist(pt, centroid(g.points))));
-  if (nearestGreenDist(path[0]) < nearestGreenDist(path[path.length - 1])) path = path.slice().reverse();
+  let path = orientedPath(ref);
 
   const end = path[path.length - 1];
+  // Match by nearest polygon EDGE, not centroid — the Old Course's double
+  // greens are so large that a hole's own half can be 80m from the centroid.
+  const nearestVertexDist = (pts) => Math.min(...pts.map((p) => dist(end, p)));
   const green = greenPolys
-    .map((g) => ({ g, d: dist(end, centroid(g.points)) }))
+    .map((g) => ({ g, d: nearestVertexDist(g.points) }))
     .sort((a, b) => a.d - b.d)[0];
   if (!green || green.d > 60) fail(`hole ${ref}: no green polygon near centerline end (best ${green?.d?.toFixed(1)}m)`);
   const greenEllipse = fitEllipse(green.g.points, 8, 26);
-  // End the playing path exactly at the real green center.
-  const gc = { x: greenEllipse.cx, z: greenEllipse.cz };
-  if (dist(end, gc) < 30) path[path.length - 1] = gc;
-  else path.push(gc);
+  // Pin sits in THIS hole's half of the green: blend the boundary vertex
+  // nearest the approach with the polygon centroid, then nudge inside.
+  const gcen = centroid(green.g.points);
+  const nearV = green.g.points.reduce((a, b) => (dist(end, a) <= dist(end, b) ? a : b));
+  let pin = { x: nearV.x * 0.45 + gcen.x * 0.55, z: nearV.z * 0.45 + gcen.z * 0.55 };
+  for (let i = 0; i < 6 && !pointInPolygon(green.g.points, pin.x, pin.z); i++) {
+    pin = { x: (pin.x + gcen.x) / 2, z: (pin.z + gcen.z) / 2 };
+  }
+  pin = { x: round2(pin.x), z: round2(pin.z) };
+  // End the playing path at the pin (not the shared-green centroid).
+  if (dist(end, pin) < 45) path[path.length - 1] = pin;
+  else path.push(pin);
 
   const [par, yards] = CARD[ref];
   const centerlineYards = lineLength(path) * 1.09361;
-  if (Math.abs(centerlineYards - yards) / yards > 0.15) {
-    fail(`hole ${ref}: centerline ${centerlineYards.toFixed(0)}y vs card ${yards}y (>15% off)`);
+  if (Math.abs(centerlineYards - yards) / yards > 0.22) {
+    fail(`hole ${ref}: centerline ${centerlineYards.toFixed(0)}y vs card ${yards}y (>22% off)`);
   }
 
   const tees = teePolys.filter((t) => dist(centroid(t.points), path[0]) < 50);
@@ -328,7 +427,7 @@ for (let ref = 1; ref <= 18; ref++) {
   const bunkers = [];
   for (const b of bunkerPolys) {
     const c = centroid(b.points);
-    const metric = Math.min(distToPolyline(path, c.x, c.z), dist(c, gc));
+    const metric = Math.min(distToPolyline(path, c.x, c.z), dist(c, pin));
     if (metric > 62) continue;
     const prev = usedBunkers.get(b.id);
     if (prev !== undefined && prev.metric <= metric) continue;
@@ -402,23 +501,22 @@ for (let ref = 1; ref <= 18; ref++) {
   const pc = Math.cos(greenEllipse.rot);
   const ps = Math.sin(greenEllipse.rot);
   const pinAt = (lx, lz) => ({
-    x: round2(greenEllipse.cx + lx * pc - lz * ps),
-    z: round2(greenEllipse.cz + lx * ps + lz * pc),
+    x: round2(pin.x + lx * pc - lz * ps),
+    z: round2(pin.z + lx * ps + lz * pc),
   });
-  const pins = [
-    { x: greenEllipse.cx, z: greenEllipse.cz },
-    pinAt(0, -greenEllipse.rz * 0.45),
-    pinAt(greenEllipse.rx * 0.45, 0),
-    pinAt(0, greenEllipse.rz * 0.45),
-    pinAt(-greenEllipse.rx * 0.45, 0),
-  ];
+  const pins = [pin,
+    pinAt(0, -greenEllipse.rz * 0.35),
+    pinAt(greenEllipse.rx * 0.35, 0),
+    pinAt(0, greenEllipse.rz * 0.35),
+    pinAt(-greenEllipse.rx * 0.35, 0),
+  ].filter((p) => pointInPolygon(green.g.points, p.x, p.z));
 
   holes.push({
-    id: ref, name: NAMES[ref], par, yards, seed: 8100 + ref,
-    path, fairwayHalf: par === 3 ? 9 : 16,
-    green: greenEllipse, pin: pins[0], pins,
+    id: ref, name: NAMES[ref], par, yards, seed: 8700 + ref,
+    path, fairwayHalf: par === 3 ? 12 : 24,
+    green: greenEllipse, pin, pins,
     bunkers: [], water,
-    treeDensity: 1.15, windMax: 6,
+    treeDensity: 0.12, windMax: 14,
     _centerlineYards: Math.round(centerlineYards),
   });
   osmByHole[ref] = {
@@ -467,22 +565,18 @@ const worldRealism = {
   attribution: '(c) OpenStreetMap contributors (ODbL)',
   paths: worldPaths,
   visualZones: {
-    // Georgia parkland look, tuned to reference photos of the real course:
-    // walls of tall loblolly pines, pine-straw floor, azalea banks, blinding
-    // white quartz ("Spruce Pine") bunker sand, bright tightly-mown second cut.
-    forest: { pineShare: 0.88, scaleMin: 0.95, scaleRange: 0.85 },
-    forestFloor: { color: 0x8a6742, start: 24 },
-    flora: 'azalea',
-    waterColor: 0x0d3a5c,
-    sandColor: 0xefe9dc,
-    roughColor: 0x4d8236,
-    deepColor: 0x3f702c,
+    // Open links look: near-treeless fescue, pale revetted sand, cold burn
+    // water, wind-burnt olive rough fading to dune scrub.
+    waterColor: 0x27404d,
+    sandColor: 0xdcd3bd,
+    roughColor: 0x6f7c46,
+    deepColor: 0x596a3a,
   },
 };
 
-const holesBody = `// Augusta National replica — unofficial, fan-made; not affiliated with ANGC.
+const holesBody = `// St Andrews Old Course replica — unofficial, fan-made; not affiliated with ANGC.
 // Centerlines (c) OpenStreetMap contributors (ODbL); card data from the public scorecard.
-// Generated by tools/generate-augusta-course.mjs — do not hand-edit.
+// Generated by tools/generate-standrews-course.mjs — do not hand-edit.
 
 function makeHole({
   id, name, par, yards, seed, path, fairwayHalf = 15, green, pin, pins = null, bunkers = [], water = [],
@@ -494,34 +588,32 @@ function makeHole({
   };
 }
 
-export const AUGUSTA_PRIVATE_HOLES = [
+export const STANDREWS_PRIVATE_HOLES = [
 ${holeSrc}
 ];
 
-export const AUGUSTA_PRIVATE_WORLD = {
+export const STANDREWS_PRIVATE_WORLD = {
   profile: 'coastal',
   prepositioned: true,
   boundsMargin: 240,
   water: [],
-  // Tournament setup: lightning greens, firm turf, swirling breezes.
-  conditions: { stimp: 13, firmness: 1.15, gustiness: 0.35 },
 };
 `;
 
-const osmBody = `// OSM golf geometry pulled from Overpass for the Augusta National replica.
+const osmBody = `// OSM golf geometry pulled from Overpass for the St Andrews Old Course replica.
 // Data (c) OpenStreetMap contributors, available under the Open Database License.
-// Query bbox: 33.494,-82.034,33.513,-82.008; generated by tools/generate-augusta-course.mjs.
+// Query bbox: 33.494,-82.034,33.513,-82.008; generated by tools/generate-standrews-course.mjs.
 
-export const AUGUSTA_OSM_ATTRIBUTION = "(c) OpenStreetMap contributors (ODbL)";
+export const STANDREWS_OSM_ATTRIBUTION = "(c) OpenStreetMap contributors (ODbL)";
 
-export const AUGUSTA_OSM_BY_HOLE = ${JSON.stringify(osmByHole)};
+export const STANDREWS_OSM_BY_HOLE = ${JSON.stringify(osmByHole)};
 `;
 
 const worldBody = `// Scene-realism layer (cart paths, forest/flora config) for the Augusta replica.
 // Path data (c) OpenStreetMap contributors (ODbL).
-// Generated by tools/generate-augusta-course.mjs — do not hand-edit.
+// Generated by tools/generate-standrews-course.mjs — do not hand-edit.
 
-export const AUGUSTA_WORLD_REALISM = ${JSON.stringify(worldRealism)};
+export const STANDREWS_WORLD_REALISM = ${JSON.stringify(worldRealism)};
 `;
 
 await fs.writeFile(OUT_HOLES, holesBody, 'utf8');
