@@ -156,29 +156,77 @@ scene.add(blob);
 
 // shot tracer — broadcast style: bright at the ball, fading down the tail
 const TRACER_MAX = 2400;
-const tracerPos = new Float32Array(TRACER_MAX * 3);
-const tracerCol = new Float32Array(TRACER_MAX * 3);
+const tracerPts = new Float32Array(TRACER_MAX * 3);   // raw flight points
+// Broadcast-style tracer RIBBON: a camera-facing tapered strip (GL lines are
+// stuck at 1px). Two vertices per point, billboarded in JS each repaint;
+// additive blending gives the comet glow through the bloom pass.
+const tracerPos = new Float32Array(TRACER_MAX * 6);
+const tracerCol = new Float32Array(TRACER_MAX * 6);
+const tracerIdx = new Uint32Array((TRACER_MAX - 1) * 6);
+for (let i = 0; i < TRACER_MAX - 1; i++) {
+  const a = i * 2;
+  tracerIdx[i * 6] = a; tracerIdx[i * 6 + 1] = a + 1; tracerIdx[i * 6 + 2] = a + 2;
+  tracerIdx[i * 6 + 3] = a + 1; tracerIdx[i * 6 + 4] = a + 3; tracerIdx[i * 6 + 5] = a + 2;
+}
 const tracerGeo = new THREE.BufferGeometry();
 tracerGeo.setAttribute('position', new THREE.BufferAttribute(tracerPos, 3));
 tracerGeo.setAttribute('color', new THREE.BufferAttribute(tracerCol, 3));
+tracerGeo.setIndex(new THREE.BufferAttribute(tracerIdx, 1));
 tracerGeo.setDrawRange(0, 0);
-const tracer = new THREE.Line(
+const tracer = new THREE.Mesh(
   tracerGeo,
-  new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9 }),
+  new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.85,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+  }),
 );
 tracer.frustumCulled = false;
+tracer.renderOrder = 5;
 scene.add(tracer);
 let tracerCount = 0;
 
+const _tv = {
+  tan: new THREE.Vector3(), view: new THREE.Vector3(),
+  right: new THREE.Vector3(), pt: new THREE.Vector3(),
+};
 function tracerRepaint() {
-  // gradient: dim gold at the start of the trail → near-white at the ball
   for (let i = 0; i < tracerCount; i++) {
     const t = tracerCount > 1 ? i / (tracerCount - 1) : 1;
-    const k = 0.25 + 0.75 * t * t;
-    tracerCol[i * 3] = 0.93 * k + 0.07;
-    tracerCol[i * 3 + 1] = 0.85 * k + 0.06;
-    tracerCol[i * 3 + 2] = 0.62 * k + 0.05;
+    _tv.pt.set(tracerPts[i * 3], tracerPts[i * 3 + 1], tracerPts[i * 3 + 2]);
+    const j = Math.min(i + 1, tracerCount - 1);
+    const k0 = Math.max(i - 1, 0);
+    _tv.tan.set(
+      tracerPts[j * 3] - tracerPts[k0 * 3],
+      tracerPts[j * 3 + 1] - tracerPts[k0 * 3 + 1],
+      tracerPts[j * 3 + 2] - tracerPts[k0 * 3 + 2],
+    );
+    if (_tv.tan.lengthSq() < 1e-8) _tv.tan.set(0, 0, 1);
+    _tv.view.subVectors(_tv.pt, camera.position);
+    const dist = Math.max(_tv.view.length(), 2);
+    _tv.right.crossVectors(_tv.view, _tv.tan);
+    if (_tv.right.lengthSq() < 1e-6) {
+      // Camera looking straight down the flight line: fall back to a stable
+      // horizontal-ish perpendicular instead of a degenerate cross product.
+      _tv.right.set(-_tv.tan.z, 0, _tv.tan.x);
+      if (_tv.right.lengthSq() < 1e-6) _tv.right.set(1, 0, 0);
+    }
+    _tv.right.normalize();
+    // Screen-proportional width (like a TV tracer): slim tail, comet head.
+    const w = Math.min(2.2, Math.max(0.04, dist * (0.0022 + 0.0055 * t * t)));
+    const gk = 0.22 + 0.78 * t * t;   // dim gold tail -> near-white head
+    for (let sdx = 0; sdx < 2; sdx++) {
+      const v = i * 2 + sdx;
+      const sign = sdx === 0 ? 1 : -1;
+      tracerPos[v * 3] = _tv.pt.x + _tv.right.x * w * sign;
+      tracerPos[v * 3 + 1] = _tv.pt.y + _tv.right.y * w * sign;
+      tracerPos[v * 3 + 2] = _tv.pt.z + _tv.right.z * w * sign;
+      tracerCol[v * 3] = 0.93 * gk + 0.07;
+      tracerCol[v * 3 + 1] = 0.85 * gk + 0.06;
+      tracerCol[v * 3 + 2] = 0.62 * gk + 0.05;
+    }
   }
+  tracerGeo.setDrawRange(0, Math.max(0, (tracerCount - 1) * 6));
+  tracerGeo.attributes.position.needsUpdate = true;
   tracerGeo.attributes.color.needsUpdate = true;
 }
 
@@ -1253,12 +1301,10 @@ const clock = new THREE.Clock();
 
 function pushTracer(p) {
   if (tracerCount >= TRACER_MAX) return;
-  tracerPos[tracerCount * 3] = p.x;
-  tracerPos[tracerCount * 3 + 1] = p.y;
-  tracerPos[tracerCount * 3 + 2] = p.z;
+  tracerPts[tracerCount * 3] = p.x;
+  tracerPts[tracerCount * 3 + 1] = p.y;
+  tracerPts[tracerCount * 3 + 2] = p.z;
   tracerCount++;
-  tracerGeo.setDrawRange(0, tracerCount);
-  tracerGeo.attributes.position.needsUpdate = true;
   tracerRepaint();
 }
 
