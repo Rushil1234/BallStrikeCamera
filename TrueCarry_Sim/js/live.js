@@ -36,7 +36,7 @@ async function _ackShot(code, seq) {
   } catch (_) { /* never block on ack */ }
 }
 
-export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged, onSessionEnd) {
+export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged, onSessionEnd, onSwingImage) {
   if (_channel) {
     _channel.unsubscribe();
     _channel = null;
@@ -68,6 +68,9 @@ export function connectLive(code, onShotReceived, onStatusChange, onPing, onClub
     })
     .on('broadcast', { event: 'club' }, ({ payload }) => {
       if (onClubChanged && payload?.clubName) onClubChanged(payload.clubName);
+    })
+    .on('broadcast', { event: 'swing' }, ({ payload }) => {
+      if (onSwingImage && payload?.jpegB64) onSwingImage(payload.jpegB64);
     })
     .on('broadcast', { event: 'end' }, () => {
       if (onSessionEnd) onSessionEnd();

@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// The web sim's live state, polled from `live_sim_state` so the phone mirrors it.
 struct LiveSimState: Equatable {
@@ -228,6 +229,21 @@ final class LiveSimService: ObservableObject {
     }
 
     /// Tells the website which club is currently selected.
+    /// Sends a small JPEG of the swing composite so the sim shows a
+    /// picture-in-picture of the REAL swing beside the virtual ball flight.
+    func broadcastSwingImage(_ image: UIImage) async {
+        guard isConnectedToSim else { return }
+        let targetWidth: CGFloat = 420
+        let scale = targetWidth / max(image.size.width, 1)
+        let size = CGSize(width: targetWidth, height: image.size.height * scale)
+        UIGraphicsBeginImageContextWithOptions(size, false, 1)
+        image.draw(in: CGRect(origin: .zero, size: size))
+        let small = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        guard let jpeg = small?.jpegData(compressionQuality: 0.5), jpeg.count < 180_000 else { return }
+        await broadcastRaw(event: "swing", payload: ["jpegB64": jpeg.base64EncodedString()])
+    }
+
     func broadcastClub(_ clubName: String) async {
         guard isConnectedToSim else { return }
         await broadcastRaw(event: "club", payload: ["clubName": clubName])

@@ -1519,6 +1519,23 @@ if (liveCode) {
     liveClub.classList.remove('hidden');
   }
 
+
+// Swing replay PiP: the phone sends a small composite of the real swing
+// after each live shot; show it beside the flight for a few seconds.
+function showSwingPip(b64) {
+  let pip = document.getElementById('swing-pip');
+  if (!pip) {
+    pip = document.createElement('div');
+    pip.id = 'swing-pip';
+    pip.innerHTML = '<span class="swing-pip-label">YOUR SWING</span><img alt="Your swing replay">';
+    document.body.appendChild(pip);
+  }
+  pip.querySelector('img').src = 'data:image/jpeg;base64,' + b64;
+  pip.classList.add('show');
+  clearTimeout(showSwingPip._t);
+  showSwingPip._t = setTimeout(() => pip.classList.remove('show'), 9000);
+}
+
   connectLive(liveCode,
     // onShotReceived
     function (metrics) {
@@ -1557,7 +1574,9 @@ if (liveCode) {
       updateLiveBadge();
       updateLiveStatus('Phone disconnected — re-enter the code on your phone', '');
       window.parent?.postMessage({ type: 'APP_DISCONNECTED' }, '*');
-    }
+    },
+    // onSwingImage — picture-in-picture of the player's real swing
+    showSwingPip
   );
 }
 

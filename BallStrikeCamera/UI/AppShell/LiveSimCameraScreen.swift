@@ -46,6 +46,13 @@ struct LiveSimCameraScreen: View {
             // Broadcast to browser sim first so the ball flies immediately.
             Task { await liveSimService.broadcast(metrics: savedMetrics) }
 
+            // Then the real-swing composite for the sim's picture-in-picture.
+            Task {
+                if let composite = ShotCompositeRenderer().render(analysis: analysis) {
+                    await liveSimService.broadcastSwingImage(composite)
+                }
+            }
+
             // Auto-save to session history.
             Task { await autoSave(analysis: analysis, metrics: savedMetrics) }
         }
