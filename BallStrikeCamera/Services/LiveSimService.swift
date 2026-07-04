@@ -11,6 +11,7 @@ struct LiveSimState: Equatable {
     var distanceToPinYards: Int?
     var simState: String?
     var lastShot: LiveShot?
+    var lastAckSeq: Int?
 
     struct LiveShot: Codable, Equatable {
         var carryYards: Double?
@@ -28,6 +29,7 @@ extension LiveSimState: Codable {
         case distanceToPinYards = "distance_to_pin_yards"
         case simState = "sim_state"
         case lastShot = "last_shot"
+        case lastAckSeq = "last_ack_seq"
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -43,6 +45,7 @@ extension LiveSimState: Codable {
         else if let s = try? c.decode(String.self, forKey: .distanceToPinYards), let d = Double(s) { distanceToPinYards = Int(d) }
         else { distanceToPinYards = nil }
         simState = try? c.decode(String.self, forKey: .simState)
+        lastAckSeq = try? c.decode(Int.self, forKey: .lastAckSeq)
         lastShot = try? c.decode(LiveShot.self, forKey: .lastShot)
     }
 }
@@ -59,6 +62,19 @@ extension Notification.Name {
 
 @MainActor
 final class LiveSimService: ObservableObject {
+
+    // Delivery guarantees: every shot carries a sequence number; the sim acks
+    // receipt via live_sim_state.last_ack_seq (already polled). Unacked shots
+    // are resent a few times; the sim dedupes by seq. When the ack column
+    // isn't migrated yet, lastAckSeq stays nil and resend is simply inactive.
+    private struct PendingShot {
+        let seq: Int
+        var payload: [String: Any]
+        var sentAt: Date
+        var attempts: Int
+    }
+    private var shotSeq = 0
+    private var pendingShots: [PendingShot] = []
 
     /// Pairing code delivered via deep link, consumed by LiveSimCodeView.
     static var pendingDeepLinkCode: String?
@@ -188,9 +204,26 @@ final class LiveSimService: ObservableObject {
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return }
             let rows = try JSONDecoder().decode([LiveSimState].self, from: data)
-            if let s = rows.first { liveState = s }
+            if let s = rows.first {
+                liveState = s
+                await reconcilePendingShots(ackedThrough: s.lastAckSeq)
+            }
         } catch {
             // best effort — keep the last known state on a transient failure
+        }
+    }
+
+    /// Prunes acknowledged shots and resends any still unacked after 4s
+    /// (max 3 attempts). No-op until the sim reports last_ack_seq.
+    private func reconcilePendingShots(ackedThrough: Int?) async {
+        guard let acked = ackedThrough else { return }
+        pendingShots.removeAll { $0.seq <= acked }
+        for i in pendingShots.indices {
+            guard pendingShots[i].attempts < 3,
+                  Date().timeIntervalSince(pendingShots[i].sentAt) > 4 else { continue }
+            pendingShots[i].attempts += 1
+            pendingShots[i].sentAt = Date()
+            _ = await broadcastRaw(event: "shot", payload: pendingShots[i].payload)
         }
     }
 
@@ -209,7 +242,9 @@ final class LiveSimService: ObservableObject {
         isBroadcasting = true
         defer { isBroadcasting = false }
 
+        shotSeq += 1
         let payload: [String: Any] = [
+            "seq":          shotSeq,
             "ballSpeedMph": metrics.ballSpeedMph,
             "carryYards":   metrics.carryYards,
             "totalYards":   metrics.totalYards,
@@ -222,6 +257,8 @@ final class LiveSimService: ObservableObject {
         ]
 
         let ok = await broadcastRaw(event: "shot", payload: payload)
+        pendingShots.append(PendingShot(seq: shotSeq, payload: payload, sentAt: Date(), attempts: 1))
+        if pendingShots.count > 20 { pendingShots.removeFirst(pendingShots.count - 20) }
         if ok {
             lastBroadcastError = nil
             shotsSent += 1
