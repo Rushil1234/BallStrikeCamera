@@ -89,13 +89,37 @@ export function createShot(opts) {
 
   const windV = v3(wind.x, 0, wind.z);
   const SUB = 1 / 240;
+
+  // Per-course playing conditions (optional): green speed (stimp), turf
+  // firmness, and gustiness. Neutral defaults preserve legacy behaviour.
+  const cond = course.conditions || {};
+  const greenDecel = 0.72 * (10 / Math.min(15, Math.max(7, cond.stimp || 10)));
+  const firmness = Math.min(1.4, Math.max(0.6, cond.firmness || 1));
+  function surfProps(surf) {
+    const base = SURF_PROPS[surf] || SURF_PROPS.rough;
+    if (surf === 'green') return { ...base, decel: greenDecel, restitution: base.restitution * firmness };
+    if (surf === 'fairway' || surf === 'tee' || surf === 'fringe') {
+      return { ...base, restitution: Math.min(0.55, base.restitution * firmness) };
+    }
+    return base;
+  }
+
+  // Gusts: an Ornstein-Uhlenbeck walk around the base wind (zero wind stays
+  // exactly zero, keeping the headless regression deterministic).
+  let gust = 0;
+  const gustiness = Math.min(1, Math.max(0, cond.gustiness || 0));
+  function stepGust(dt) {
+    if (!gustiness) return;
+    gust += (-gust * dt) / 2.5 + gustiness * 0.5 * Math.sqrt(dt) * (Math.random() * 2 - 1);
+    gust = Math.min(0.6, Math.max(-0.45, gust));
+  }
   // boundary-layer wind profile: reported speed is the ~2m reading; the ball
   // sees more wind at apex, less right off the ground (power-law profile)
   const ground0 = course.heightAt(sim.pos.x, sim.pos.z);
   function windAt(y) {
     const alt = Math.max(y - ground0, 0.4);
     const f = Math.min(1.35, Math.max(0.70, Math.pow(alt / 2.0, 0.14)));
-    return scl(windV, f);
+    return scl(windV, f * (1 + gust));
   }
 
   function groundNormal(x, z) {
@@ -130,6 +154,7 @@ export function createShot(opts) {
   }
 
   function stepFly(dt) {
+    stepGust(dt);
     const vrel = sub(sim.vel, windAt(sim.pos.y));
     const vmag = len(vrel);
     let acc = v3(0, -G, 0);
@@ -240,7 +265,7 @@ export function createShot(opts) {
       }
       if (surf === SURF.WATER) { enterWater(); return; }
 
-      const props = SURF_PROPS[surf] || SURF_PROPS.rough;
+      const props = surfProps(surf);
       const n = groundNormal(sim.pos.x, sim.pos.z);
       const vn = dot(sim.vel, n);
       if (vn < 0) {
@@ -295,7 +320,7 @@ export function createShot(opts) {
     const { x, z } = sim.pos;
     const surf = course.surfaceAt(x, z);
     if (surf === SURF.WATER) { enterWater(); return; }
-    const props = SURF_PROPS[surf] || SURF_PROPS.rough;
+    const props = surfProps(surf);
 
     // slope acceleration from the height gradient
     const e = 0.35;

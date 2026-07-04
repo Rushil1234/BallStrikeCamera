@@ -146,6 +146,7 @@ export function layoutIslandCourse(rawHoles, options = {}) {
   const visualZones = options.visualZones || {};
   const osmCoastline = options.osmCoastline || [];
   const prepositioned = !!options.prepositioned;
+  const conditions = options.conditions || null;
   if (!holes.length) {
     const b = emptyBounds();
     addBounds(b, 0, 0, 1);
@@ -178,6 +179,7 @@ export function layoutIslandCourse(rawHoles, options = {}) {
     hole.island = {
       bounds,
       connectors,
+      conditions,
       water: worldWater,
       holeCount: placed.length,
       profile,

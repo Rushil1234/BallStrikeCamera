@@ -1673,6 +1673,7 @@ export function buildCourse(hole, assets) {
 
   return {
     group, heightAt, surfaceAt, normalAt, waterLevel,
+    conditions: hole.island?.conditions || null,
     pinPos, teePos: { x: tee.x, y: teeH, z: tee.z },
     pointAtAlong, pathInfo, isOB, updateFlag, updateWater, dispose,
     greenGrid: group ? group.userData.greenGrid : null,

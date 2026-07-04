@@ -38,4 +38,6 @@ export const AUGUSTA_PRIVATE_WORLD = {
   prepositioned: true,
   boundsMargin: 240,
   water: [],
+  // Tournament setup: lightning greens, firm turf, swirling breezes.
+  conditions: { stimp: 13, firmness: 1.15, gustiness: 0.35 },
 };

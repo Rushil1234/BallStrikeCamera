@@ -145,7 +145,10 @@ function playCourse(courseName, holes) {
 
       if ((lie === 'green' || lie === 'fringe') && rem < 30) {
         c = CLUBS[CLUBS.length - 1]; mode = 'roll';
-        const v = Math.min(Math.sqrt(2 * 0.72 * rem) * 1.12 + 0.25, c.speed);
+        // Pace putts for the course's actual green speed (conditions-aware).
+        const stimp = course.conditions && course.conditions.stimp ? course.conditions.stimp : 10;
+        const gDecel = 0.72 * (10 / Math.min(15, Math.max(7, stimp)));
+        const v = Math.min(Math.sqrt(2 * gDecel * rem) * 1.12 + 0.25, c.speed);
         power = v / c.speed;
       } else {
         // smallest club that reaches, swung at partial power to fit the number
