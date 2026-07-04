@@ -2357,3 +2357,9 @@ code {
 
 /* Pricing page: plan CTA as a real button */
 button.plan-cta { font: inherit; cursor: pointer; width: 100%; border: none; }
+
+/* QR pairing on /play */
+.sim-pairing-qr { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 6px 0 14px; }
+.sim-pairing-qr img { width: 168px; height: 168px; border-radius: 10px; border: 1px solid color-mix(in oklab, var(--cream) 22%, transparent); }
+.sim-pairing-qr span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.6; }
+.sim-pairing-or { font-size: 11px; opacity: 0.5; margin-top: 8px; }

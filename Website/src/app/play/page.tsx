@@ -12,6 +12,7 @@ function makeCode() {
   return Array.from(buf, (v) => String(v % 1000).padStart(3, "0")).join("");
 }
 
+import QRCode from "qrcode";
 import { SIM_COURSES, type SimCourse } from "@/lib/courses";
 
 type CourseOption = SimCourse;
@@ -122,6 +123,16 @@ export default function PlayPage() {
     setStage("launching");
     writeLaunchUrl(course);
   }
+
+  const [qrUrl, setQrUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!code || code === "000000") return;
+    // Scanning with the iPhone camera opens the app and pairs instantly.
+    QRCode.toDataURL(`truecarry://livesim?code=${code}`, {
+      width: 220, margin: 1,
+      color: { dark: "#16201a", light: "#ece4d2" },
+    }).then(setQrUrl).catch(() => setQrUrl(null));
+  }, [code]);
 
   async function copyCode() {
     try {
@@ -281,12 +292,22 @@ export default function PlayPage() {
                   ? "Pick a mode on the left and start hitting — your shots show up here live."
                   : "Open the TrueCarry app → Sim → Live Sim, then enter this code to unlock play."}
               </p>
+              {!connected && qrUrl && (
+                <div className="sim-pairing-qr">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={qrUrl} alt="Scan with your iPhone camera to pair" />
+                  <span>Scan with your iPhone camera</span>
+                </div>
+              )}
               <div className="sim-pairing-code-wrap">
                 <div className="sim-pairing-code">{code}</div>
                 <button type="button" className="sim-pairing-copy" onClick={copyCode}>
                   {copied ? "Copied ✓" : "Copy"}
                 </button>
               </div>
+              {!connected && (
+                <p className="sim-pairing-or">or type the code in Sim → Live Sim</p>
+              )}
               {connected ? (
                 <p className="sim-pairing-hint">Shots will feed the selected mode in real time.</p>
               ) : (

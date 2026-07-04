@@ -136,6 +136,14 @@ struct TrueCarryPlayView: View {
             guard let loc = prewarmLocation.currentLocation else { return }
             prewarmer.warm(near: loc)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tcOpenLiveSim)) { _ in
+            selectedMode = .sim
+            if session.entitlementVM.canPerform(.simMode).allowed {
+                showSim = true
+            } else {
+                showUpgradeAlert = true
+            }
+        }
         .onDisappear { prewarmer.cancel() }
     }
 
