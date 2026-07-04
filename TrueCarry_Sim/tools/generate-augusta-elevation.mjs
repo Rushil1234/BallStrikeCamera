@@ -1,11 +1,16 @@
+// Augusta DEM v2: samples the USGS 3DEP elevation raster (1m/10m source data)
+// through the ImageServer getSamples API — ~12m grid spacing versus the 45m
+// point-query grid of v1. Output shape is unchanged (terrain.js interpolates).
 import fs from 'fs/promises';
 
 const ORIGIN = { lat: 33.49927, lng: -82.023751 };
 const BBOX = { south: 33.4915, west: -82.0316, north: 33.5072, east: -82.016 };
-const WIDTH = 35;
-const HEIGHT = 41;
-const CACHE_PATH = '/tmp/augusta-elevation-epqs-cache.json';
+const WIDTH = 120;
+const HEIGHT = 150;
+const BATCH = 400;
+const CACHE_PATH = '/tmp/augusta-3dep-cache.json';
 const OUT_PATH = new URL('../js/augusta-elevation.js', import.meta.url);
+const SERVICE = 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/getSamples';
 
 function project(lat, lng) {
   return {
@@ -19,119 +24,104 @@ function percentile(values, p) {
   return sorted[Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * p)))];
 }
 
-async function loadCache() {
-  try {
-    return JSON.parse(await fs.readFile(CACHE_PATH, 'utf8'));
-  } catch {
-    return {};
-  }
-}
-
-async function saveCache(cache) {
-  await fs.writeFile(CACHE_PATH, JSON.stringify(cache), 'utf8');
-}
-
-function parseElevation(data) {
-  const candidates = [
-    data?.value,
-    data?.elevation,
-    data?.Elevation,
-    data?.USGS_Elevation_Point_Query_Service?.Elevation_Query?.Elevation,
-  ];
-  for (const candidate of candidates) {
-    const value = Number(candidate);
-    if (Number.isFinite(value) && value > -500) return value;
-  }
-  return null;
-}
-
-async function fetchElevation(lat, lng, cache) {
-  const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
-  if (Object.hasOwn(cache, key)) return cache[key];
-  const url = `https://epqs.nationalmap.gov/v1/json?x=${lng}&y=${lat}&units=Meters&wkid=4326&includeDate=false`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`EPQS ${response.status} for ${key}`);
-  const data = await response.json();
-  const value = parseElevation(data);
-  cache[key] = value;
-  return value;
-}
-
-async function mapLimit(items, limit, fn) {
-  const out = new Array(items.length);
-  let index = 0;
-  async function worker() {
-    while (index < items.length) {
-      const i = index++;
-      out[i] = await fn(items[i], i);
-    }
-  }
-  await Promise.all(Array.from({ length: limit }, worker));
-  return out;
-}
-
-function fillMissing(values, width, height) {
-  const filled = values.slice();
-  for (let pass = 0; pass < 5; pass++) {
-    let changed = false;
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const i = y * width + x;
-        if (Number.isFinite(filled[i])) continue;
-        let sum = 0;
-        let count = 0;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const nx = x + dx;
-          const ny = y + dy;
-          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
-          const v = filled[ny * width + nx];
-          if (Number.isFinite(v)) {
-            sum += v;
-            count++;
-          }
-        }
-        if (count) {
-          filled[i] = sum / count;
-          changed = true;
-        }
-      }
-    }
-    if (!changed) break;
-  }
-  const fallback = percentile(filled.filter(Number.isFinite), 0.25) || 0;
-  return filled.map((v) => Number.isFinite(v) ? v : fallback);
-}
-
 const samples = [];
 for (let y = 0; y < HEIGHT; y++) {
   const lat = BBOX.south + (BBOX.north - BBOX.south) * (y / (HEIGHT - 1));
   for (let x = 0; x < WIDTH; x++) {
     const lng = BBOX.west + (BBOX.east - BBOX.west) * (x / (WIDTH - 1));
-    samples.push({ lat, lng });
+    samples.push([lng, lat]);
   }
 }
 
-const cache = await loadCache();
-const rawValues = await mapLimit(samples, 8, async ({ lat, lng }, i) => {
-  try {
-    const v = await fetchElevation(lat, lng, cache);
-    if (i % 50 === 0) process.stdout.write('.');
-    return v;
-  } catch (err) {
-    console.warn(`\n${err.message}`);
-    return null;
+let cache = {};
+try { cache = JSON.parse(await fs.readFile(CACHE_PATH, 'utf8')); } catch {}
+
+async function fetchBatch(points) {
+  const geometry = JSON.stringify({ points, spatialReference: { wkid: 4326 } });
+  const params = new URLSearchParams({
+    geometry,
+    geometryType: 'esriGeometryMultipoint',
+    returnFirstValueOnly: 'true',
+    f: 'json',
+  });
+  const res = await fetch(SERVICE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  if (!res.ok) throw new Error(`3DEP ${res.status}`);
+  const data = await res.json();
+  if (!data.samples) throw new Error(`3DEP: ${JSON.stringify(data).slice(0, 200)}`);
+  // Samples come back keyed by location; index by "lng,lat" rounded.
+  const out = new Map();
+  for (const s of data.samples) {
+    const key = `${s.location.x.toFixed(6)},${s.location.y.toFixed(6)}`;
+    const v = Number(s.value);
+    out.set(key, Number.isFinite(v) && v > -500 ? v : null);
   }
-});
-await saveCache(cache);
+  return out;
+}
+
+const values = new Array(samples.length).fill(null);
+const missing = [];
+for (let i = 0; i < samples.length; i++) {
+  const key = `${samples[i][0].toFixed(6)},${samples[i][1].toFixed(6)}`;
+  if (Object.hasOwn(cache, key)) values[i] = cache[key];
+  else missing.push(i);
+}
+console.log(`grid ${WIDTH}x${HEIGHT} = ${samples.length} pts, ${missing.length} to fetch`);
+
+for (let b = 0; b < missing.length; b += BATCH) {
+  const idxs = missing.slice(b, b + BATCH);
+  const pts = idxs.map((i) => samples[i]);
+  let got = null;
+  for (let attempt = 1; attempt <= 3 && !got; attempt++) {
+    try { got = await fetchBatch(pts); } catch (e) {
+      console.warn(`batch ${b / BATCH} attempt ${attempt}: ${e.message}`);
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+  }
+  if (!got) throw new Error('3DEP batch failed after retries');
+  for (const i of idxs) {
+    const key = `${samples[i][0].toFixed(6)},${samples[i][1].toFixed(6)}`;
+    const v = got.get(key) ?? null;
+    values[i] = v;
+    cache[key] = v;
+  }
+  process.stdout.write('.');
+  await new Promise((r) => setTimeout(r, 300));
+}
+await fs.writeFile(CACHE_PATH, JSON.stringify(cache), 'utf8');
 process.stdout.write('\n');
 
-const values = fillMissing(rawValues, WIDTH, HEIGHT).map((v) => Number(v.toFixed(2)));
+// Fill any gaps from neighbours, then round.
+for (let pass = 0; pass < 5; pass++) {
+  let changed = false;
+  for (let y = 0; y < HEIGHT; y++) {
+    for (let x = 0; x < WIDTH; x++) {
+      const i = y * WIDTH + x;
+      if (Number.isFinite(values[i])) continue;
+      let sum = 0, count = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= WIDTH || ny < 0 || ny >= HEIGHT) continue;
+        const v = values[ny * WIDTH + nx];
+        if (Number.isFinite(v)) { sum += v; count++; }
+      }
+      if (count) { values[i] = sum / count; changed = true; }
+    }
+  }
+  if (!changed) break;
+}
 const finite = values.filter(Number.isFinite);
+const fallback = percentile(finite, 0.25) || 0;
+const rounded = values.map((v) => Number((Number.isFinite(v) ? v : fallback).toFixed(2)));
+
 const sw = project(BBOX.south, BBOX.west);
 const ne = project(BBOX.north, BBOX.east);
 const data = {
-  attribution: 'USGS 3DEP / Elevation Point Query Service',
-  source: 'https://epqs.nationalmap.gov/v1/docs',
+  attribution: 'USGS 3DEP (ImageServer getSamples)',
+  source: 'https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer',
   origin: ORIGIN,
   bbox: BBOX,
   width: WIDTH,
@@ -146,11 +136,11 @@ const data = {
   max: Number(Math.max(...finite).toFixed(2)),
   base: Number(percentile(finite, 0.04).toFixed(2)),
   scale: 0.42,
-  values,
+  values: rounded,
 };
 
-const body = `// Generated by tools/generate-augusta-elevation.mjs.\n`
-  + `// Elevation source: USGS 3DEP / EPQS. Compact local DEM for the private Augusta prototype.\n\n`
+const body = `// Generated by tools/generate-augusta-elevation.mjs (3DEP raster v2, ~12m grid).\n`
+  + `// Elevation source: USGS 3DEP. Compact local DEM for the Augusta replica.\n\n`
   + `export const AUGUSTA_ELEVATION = ${JSON.stringify(data)};\n`;
 await fs.writeFile(OUT_PATH, body, 'utf8');
 console.log(`wrote ${OUT_PATH.pathname} (${WIDTH}x${HEIGHT}, ${data.min}m..${data.max}m)`);
