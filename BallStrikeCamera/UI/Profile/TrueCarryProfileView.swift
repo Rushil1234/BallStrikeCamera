@@ -19,6 +19,12 @@ struct TrueCarryProfileView: View {
     @AppStorage(AppearanceStore.key) private var appearanceRaw = AppAppearance.dark.rawValue
     @AppStorage("tc_feed_autoshare_enabled") private var autoShareFeed = true
     @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
+    @AppStorage(FrameArchiveService.enabledKey) private var saveAllFrames = false
+
+    // Frame-archive export (developer testing tool)
+    @State private var frameExportURL: URL?
+    @State private var frameArchiveError: String?
+    @State private var archiveRefresh = 0   // bump to re-read the on-disk count
 
     private var profile: UserProfile? { session.userProfile }
     private var user: AppUser?        { session.currentUser }
@@ -378,9 +384,106 @@ struct TrueCarryProfileView: View {
 
                 settingRow(icon: "person.badge.key.fill", title: "Account",
                            value: "dev@truecarry.app", showChevron: false)
+
+                rowDivider
+
+                // Save-all-frames testing toggle: persists every shot's raw 41-frame burst to disk.
+                HStack(spacing: 14) {
+                    Image(systemName: "square.stack.3d.down.right.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                        .frame(width: 24, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Save All Frames")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text("Archive every shot's raw 41 frames for Garmin comparison")
+                            .font(.system(size: 11))
+                            .foregroundColor(TCTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $saveAllFrames)
+                        .tint(Color(red: 1, green: 0.6, blue: 0))
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+
+                rowDivider
+
+                let _ = archiveRefresh   // recompute count/size when bumped
+                settingRow(icon: "internaldrive.fill", title: "Archived Shots",
+                           value: "\(FrameArchiveService.shared.shotCount()) · \(archiveSizeString)",
+                           showChevron: false)
+
+                rowDivider
+
+                Button { exportAllFrames() } label: {
+                    settingRow(icon: "square.and.arrow.up.fill", title: "Export All Frames (ZIP)")
+                }
+                .buttonStyle(.plain)
+                .disabled(FrameArchiveService.shared.shotCount() == 0)
+
+                rowDivider
+
+                Button { clearFrameArchive() } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(TCTheme.danger)
+                            .frame(width: 24, alignment: .leading)
+                        Text("Clear Frame Archive")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(TCTheme.danger)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 13)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(FrameArchiveService.shared.shotCount() == 0)
             }
             .tcCard()
         }
+        .onAppear { archiveRefresh &+= 1 }
+        .sheet(isPresented: Binding(
+            get: { frameExportURL != nil },
+            set: { if !$0 { frameExportURL = nil } }
+        )) {
+            if let url = frameExportURL { ShareSheet(items: [url]) }
+        }
+        .alert("Export failed", isPresented: Binding(
+            get: { frameArchiveError != nil },
+            set: { if !$0 { frameArchiveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(frameArchiveError ?? "") }
+    }
+
+    private var archiveSizeString: String {
+        let bytes = FrameArchiveService.shared.totalBytes()
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        return f.string(fromByteCount: bytes)
+    }
+
+    private func exportAllFrames() {
+        do {
+            guard let url = try FrameArchiveService.shared.exportZip() else {
+                frameArchiveError = "No archived frames to export yet."
+                return
+            }
+            frameExportURL = url
+        } catch {
+            frameArchiveError = error.localizedDescription
+        }
+    }
+
+    private func clearFrameArchive() {
+        FrameArchiveService.shared.clear()
+        archiveRefresh &+= 1
     }
 
     // MARK: - Sign Out

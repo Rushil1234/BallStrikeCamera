@@ -1,5 +1,22 @@
 import SwiftUI
 
+// MARK: - Website
+
+/// Canonical marketing-site domain and the setup pages the app points users to.
+/// Kept in one place so links stay correct as the site evolves.
+enum TCWebsite {
+    static let domain  = "truecarrygolf.com"
+    static let play    = "https://truecarrygolf.com/play"     // TCSim browser receiver
+    static let connect = "https://truecarrygolf.com/connect"  // sim connection guide
+    static let bridge  = "https://truecarrygolf.com/bridge"   // BLE bridge download / setup
+
+    /// Human-readable form (no scheme) for inline display.
+    static func label(_ url: String) -> String {
+        url.replacingOccurrences(of: "https://", with: "")
+    }
+    static func url(_ s: String) -> URL { URL(string: s)! }
+}
+
 // MARK: - Provider option model
 
 private struct SimProviderOption: Identifiable {
@@ -7,6 +24,15 @@ private struct SimProviderOption: Identifiable {
     let name: String
     let subtitle: String
     let icon: String
+}
+
+/// How the phone talks to a given simulator: over Wi-Fi (same network / hotspot) or over the
+/// Bluetooth bridge (no Wi-Fi needed). Chosen inside each sim's page rather than as a top-level mode.
+private enum SimConnMode: String, CaseIterable, Identifiable {
+    case wifi, bluetooth
+    var id: String { rawValue }
+    var title: String { self == .wifi ? "Wi-Fi" : "Bluetooth" }
+    var icon: String  { self == .wifi ? "wifi" : "dot.radiowaves.right" }
 }
 
 // MARK: - Main view
@@ -20,6 +46,7 @@ struct SimModeView: View {
     @StateObject private var liveSimService = LiveSimService()
 
     @State private var selectedProvider = "OGS"
+    @State private var connMode: SimConnMode = .wifi   // Wi-Fi vs Bluetooth, within OGS/GSPro
     @State private var showCamera = false
     @State private var showLiveCamera = false
     @State private var showEndConfirmation = false
@@ -31,10 +58,9 @@ struct SimModeView: View {
     private let backend: AppBackend
 
     private let providers: [SimProviderOption] = [
-        SimProviderOption(name: "OGS",       subtitle: "OpenGolfSim — same network",    icon: "antenna.radiowaves.left.and.right"),
-        SimProviderOption(name: "GSPro",      subtitle: "GSPro — same network",          icon: "display"),
-        SimProviderOption(name: "Bluetooth",  subtitle: "No Wi-Fi needed — BLE bridge",  icon: "dot.radiowaves.right"),
-        SimProviderOption(name: "Live Sim",   subtitle: "Stream to browser — free, no PC needed", icon: "globe"),
+        SimProviderOption(name: "OGS",       subtitle: "OpenGolfSim — Wi-Fi or Bluetooth", icon: "antenna.radiowaves.left.and.right"),
+        SimProviderOption(name: "GSPro",      subtitle: "GSPro — Wi-Fi or Bluetooth",       icon: "display"),
+        SimProviderOption(name: "TCSim",      subtitle: "Stream to browser — free, no PC needed", icon: "globe"),
         SimProviderOption(name: "Local JSON", subtitle: "Export shot data to JSON file", icon: "doc.text"),
     ]
 
@@ -80,10 +106,14 @@ struct SimModeView: View {
                     VStack(spacing: BSTheme.sectionGap) {
                         subheader
                         providerSection
-                        if selectedProvider == "OGS"        { ogsConnectionSection }
-                        if selectedProvider == "GSPro"       { gsproConnectionSection }
-                        if selectedProvider == "Bluetooth"   { bleConnectionSection }
-                        if selectedProvider == "Live Sim"    { liveSimSection }
+                        // OGS and GSPro each offer a Wi-Fi or Bluetooth connection, chosen here.
+                        if selectedProvider == "OGS" || selectedProvider == "GSPro" {
+                            connModePicker
+                            if connMode == .bluetooth              { bleConnectionSection }
+                            else if selectedProvider == "OGS"      { ogsConnectionSection }
+                            else                                   { gsproConnectionSection }
+                        }
+                        if selectedProvider == "TCSim"            { liveSimSection }
                         sessionSection
                         if simVM.sessionActive { activeSessionSection }
                         Spacer(minLength: 32)
@@ -132,17 +162,13 @@ struct SimModeView: View {
                 .statusBarHidden(true)
         }
         .onChange(of: selectedProvider) { provider in
-            // Start BLE peripheral only when Bluetooth mode is selected; stop otherwise.
-            if provider == "Bluetooth" {
-                bleVM.start()
-            } else {
-                bleVM.stop()
-            }
-            // Clear any previously entered code when switching away from Live Sim.
-            if provider != "Live Sim" {
+            updateBLEBridge()
+            // Clear any previously entered code when switching away from TCSim.
+            if provider != "TCSim" {
                 liveSimService.enteredCode = ""
             }
         }
+        .onChange(of: connMode) { _ in updateBLEBridge() }
         .onDisappear { bleVM.stop() }
         // Phase 1: Save / Delete / Continue
         .alert("Save Failed", isPresented: Binding(
@@ -302,11 +328,11 @@ struct SimModeView: View {
                         HStack(spacing: 14) {
                             ZStack {
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(isSel ? (p.name == "Live Sim" ? BSTheme.fairwayGreen.opacity(0.16) : BSTheme.gold.opacity(0.16)) : BSTheme.panel)
+                                    .fill(isSel ? (p.name == "TCSim" ? BSTheme.fairwayGreen.opacity(0.16) : BSTheme.gold.opacity(0.16)) : BSTheme.panel)
                                     .frame(width: 46, height: 46)
                                 Image(systemName: p.icon)
                                     .font(.system(size: 18, weight: .semibold))
-                                    .foregroundColor(p.name == "Live Sim" ? BSTheme.fairwayGreen : (isSel ? BSTheme.gold : BSTheme.textMuted))
+                                    .foregroundColor(p.name == "TCSim" ? BSTheme.fairwayGreen : (isSel ? BSTheme.gold : BSTheme.textMuted))
                             }
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(p.name)
@@ -351,7 +377,51 @@ struct SimModeView: View {
         }
     }
 
-    // MARK: - Live Sim section
+    // MARK: - Connection mode (Wi-Fi / Bluetooth) picker for OGS + GSPro
+
+    private func updateBLEBridge() {
+        // The Bluetooth bridge peripheral runs only while a sim page has Bluetooth selected.
+        let wantsBLE = (selectedProvider == "OGS" || selectedProvider == "GSPro") && connMode == .bluetooth
+        if wantsBLE { bleVM.start() } else { bleVM.stop() }
+    }
+
+    private var connModePicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            BSectionHeader(title: "Connection")
+            HStack(spacing: 10) {
+                ForEach(SimConnMode.allCases) { mode in
+                    let sel = connMode == mode
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { connMode = mode }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: mode.icon).font(.system(size: 14, weight: .semibold))
+                            Text(mode.title).font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundColor(sel ? BSTheme.panel : BSTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(sel ? BSTheme.gold : BSTheme.panel)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(sel ? Color.clear : BSTheme.border, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Text(connMode == .wifi
+                 ? "Connect over the same Wi-Fi network or this iPhone's hotspot."
+                 : "No Wi-Fi needed — pairs to the True Carry bridge over Bluetooth.")
+                .font(.system(size: 11.5))
+                .foregroundColor(BSTheme.textMuted)
+        }
+    }
+
+    // MARK: - TCSim section
 
     private var liveSimSection: some View {
         LiveSimCodeView(liveSimService: liveSimService) {
@@ -643,7 +713,7 @@ struct SimModeView: View {
                 icon: "camera.fill",
                 style: .gradient(BSTheme.rangeGradient),
                 action: {
-                    if selectedProvider == "Live Sim" {
+                    if selectedProvider == "TCSim" {
                         showLiveCamera = true
                     } else {
                         showCamera = true
@@ -773,7 +843,7 @@ struct SimModeView: View {
                 }
                 .premiumCard(padding: 14)
 
-                // Connection checklist — mirrors truecarry.app/connect so you can
+                // Connection checklist — mirrors truecarrygolf.com/connect so you can
                 // confirm everything's linked from your phone (handy once GSPro is
                 // full-screen on the computer).
                 VStack(spacing: 0) {
@@ -810,10 +880,13 @@ struct SimModeView: View {
                         .foregroundColor(BSTheme.textMuted)
                     VStack(alignment: .leading, spacing: 5) {
                         bleStep("1", "On your Mac, download TrueCarry Bridge from:")
-                        Text("truecarry.app/bridge")
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                            .foregroundColor(BSTheme.electricCyan)
-                            .padding(.leading, 20)
+                        Link(destination: TCWebsite.url(TCWebsite.bridge)) {
+                            Text(TCWebsite.label(TCWebsite.bridge))
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundColor(BSTheme.electricCyan)
+                                .underline()
+                        }
+                        .padding(.leading, 20)
                         bleStep("2", "Open the download and drag TrueCarry Bridge into Applications, then launch it.")
                         bleStep("3", "It runs in the menu bar (⛳︎). Keep this screen open until it connects.")
                     }

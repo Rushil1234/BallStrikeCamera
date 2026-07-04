@@ -27,10 +27,20 @@ enum ShutterPreset: CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .oneThousand: return "moon.fill"
-        case .twoThousand: return "cloud.fill"
-        case .fourThousand: return "sun.max.fill"
-        case .eightThousand: return "sun.max.circle.fill"
+        case .oneThousand:   return "moon.fill"        // night
+        case .twoThousand:   return "sun.min.fill"     // sun, small rays
+        case .fourThousand:  return "sun.max.fill"     // sun, medium rays
+        case .eightThousand: return "sun.max.fill"     // sun, large rays (rendered bigger)
+        }
+    }
+
+    /// Icon point size — ramps across the sun presets so the rays read small → medium → large.
+    var iconSize: CGFloat {
+        switch self {
+        case .oneThousand:   return 16
+        case .twoThousand:   return 15
+        case .fourThousand:  return 18
+        case .eightThousand: return 22
         }
     }
 

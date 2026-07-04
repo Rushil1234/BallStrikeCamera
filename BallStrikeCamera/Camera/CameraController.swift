@@ -337,6 +337,10 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 capturedFrames = Array(eventFrames.prefix(preHitFrames + postHitFrames + 1))
                 let expectedTotal = preHitFrames + postHitFrames + 1
                 print("Shot capture complete: totalFrames=\(capturedFrames.count) expected=\(expectedTotal)")
+                // Testing mode: persist every raw burst (even ones analysis will later discard) so
+                // they can be batch-exported and compared against a reference monitor. No-op unless
+                // the developer "Save all frames" toggle is on.
+                FrameArchiveService.shared.archive(frames: capturedFrames, impactIndex: preHitFrames)
                 print("Resetting shot pipeline")
                 let savedLockedBallRect  = lockedBallRect   // capture before reset clears them
                 let savedLockedImpactROI = lockedImpactROI
@@ -553,13 +557,54 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         analysisStatusText = "Analyzing shot..."
         print("Shot analysis started with \(frames.count) frames")
 
+        let preHit = preHitFrames
+
+        // The heavy work (2× image normalization per frame + ball tracking + metrics) used to run
+        // synchronously on the main actor, freezing the UI for the whole duration before the shot
+        // screen could appear. Run it off-main and only touch @Published state back on the main actor.
+        Task.detached(priority: .userInitiated) {
+            let outcome = Self.computeAnalysis(frames: frames,
+                                               lockedBallRect: lockedBallRect,
+                                               lockedImpactROI: lockedImpactROI,
+                                               preHitFrames: preHit)
+            await MainActor.run {
+                switch outcome {
+                case .discard:
+                    // No trustworthy metrics → almost certainly a false trigger (glare, a hand, a
+                    // bad lock). Don't flash a blank shot screen — go straight back to searching.
+                    print("[ShotValidation] No valid metrics — discarding false trigger, resuming search")
+                    self.isAnalyzingShot = false
+                    self.resetShotPipeline(to: .searching, status: "Looking for ball")
+                case .result(let result):
+                    self.latestShotAnalysis = result
+                    self.isAnalyzingShot = false
+                    self.analysisStatusText = "Analysis complete"
+                    print("Shot analysis complete: \(result.frames.count) frames, impact at index \(result.impactFrameIndex)")
+                    print("Showing ShotResultView")
+                    self.showShotResult = true
+                    self.phase = .reviewingShot
+                    self.reviewTriggerLogCount = 0
+                }
+            }
+        }
+    }
+
+    private enum AnalysisOutcome {
+        case discard
+        case result(ShotAnalysisResult)
+    }
+
+    /// Pure compute: normalization → tracking → metrics validation. Touches no actor-isolated
+    /// state, so it is safe to run off the main actor.
+    nonisolated private static func computeAnalysis(frames: [CapturedFrame],
+                                                    lockedBallRect: CGRect?,
+                                                    lockedImpactROI: CGRect?,
+                                                    preHitFrames: Int) -> AnalysisOutcome {
         let impactIndex     = min(preHitFrames, frames.count - 1)
         let originTimestamp = frames[impactIndex].timestamp
         let normalizer      = FrameNormalizer()
 
         // Step 1 — Normalize
-        print("Using frame normalization mode: darkenedHighContrast")
-        print("FrameNormalizer presets — brightened: \(FrameNormalizer.Preset.brightened.description) | darkenedHighContrast: \(FrameNormalizer.Preset.darkenedHighContrast.description)")
         let normStart = Date()
         let prelimFrames: [AnalyzedShotFrame] = frames.enumerated().map { idx, frame in
             AnalyzedShotFrame(
@@ -575,8 +620,6 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
         let normMs = Date().timeIntervalSince(normStart) * 1000
         print(String(format: "Frame normalization took %.1f ms", normMs))
-        print("Frame normalization complete for modes: original, brightened, darkenedHighContrast")
-        print("Default analysis mode: DarkenedHighContrast")
 
         // Step 2 — Track
         var observationMap: [Int: ShotBallObservation] = [:]
@@ -600,9 +643,6 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             movementThresholdNorm = trackingResult.movementThresholdNorm
             for obs  in trackingResult.observations { observationMap[obs.frameIndex]  = obs }
             for info in trackingResult.debugInfos   { debugInfoMap[info.frameIndex]   = info }
-
-        } else {
-            print("PostImpactBallTracker: no lockedBallRect — skipping tracking")
         }
 
         // Step 3 — Merge into final frames
@@ -620,7 +660,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
 
         let analysisCreatedAt = Date()
-        var result = ShotAnalysisResult(
+        let baseResult = ShotAnalysisResult(
             frames: finalFrames,
             impactFrameIndex: effectiveImpactIndex,
             lockedBallRect: lockedBallRect,
@@ -633,43 +673,39 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             movementThresholdNorm: movementThresholdNorm
         )
 
-        if let metrics = ShotMetricsCalculator().calculate(for: result) {
+        var validMetrics: ShotMetricsResult? = nil
+        if let metrics = ShotMetricsCalculator().calculate(for: baseResult) {
             // SANITY CHECK — reject physically impossible readings caused by
             // tracking noise, glare, or a second ball placement.
             let speedOK = metrics.ballLaunch.ballSpeedMph.map  { $0 >= 0.5 && $0 <= 200 } ?? true
             let hlaOK   = metrics.ballLaunch.hlaDegrees.map    { abs($0) <= 75          } ?? true
             let carryOK = metrics.distance.carryYards.map      { $0 >= 0   && $0 <= 375 } ?? true
             if speedOK && hlaOK && carryOK {
-                result = ShotAnalysisResult(
-                    frames: finalFrames,
-                    impactFrameIndex: effectiveImpactIndex,
-                    lockedBallRect: lockedBallRect,
-                    lockedImpactROI: lockedImpactROI,
-                    createdAt: analysisCreatedAt,
-                    fallbackImpactFrameIndex: fallbackImpactIndex,
-                    detectedImpactFrameIndex: effectiveImpactIndex,
-                    impactDetectionReason: impactDetectionReason,
-                    initialBallCenter: initialBallCenter,
-                    movementThresholdNorm: movementThresholdNorm,
-                    metrics: metrics
-                )
+                validMetrics = metrics
             } else {
                 print(String(format: "[ShotValidation] Implausible metrics suppressed — speed=%.1f hla=%.1f carry=%.1f",
                              metrics.ballLaunch.ballSpeedMph ?? 0,
                              metrics.ballLaunch.hlaDegrees ?? 0,
                              metrics.distance.carryYards ?? 0))
-                // Keep result.metrics = nil; result view shows "--" for all stats
             }
         }
 
-        latestShotAnalysis = result
-        isAnalyzingShot = false
-        analysisStatusText = "Analysis complete"
-        print("Shot analysis complete: \(result.frames.count) frames, impact at index \(result.impactFrameIndex)")
-        print("Showing ShotResultView")
-        showShotResult = true
-        phase = .reviewingShot
-        reviewTriggerLogCount = 0
+        guard let metrics = validMetrics else { return .discard }
+
+        let result = ShotAnalysisResult(
+            frames: finalFrames,
+            impactFrameIndex: effectiveImpactIndex,
+            lockedBallRect: lockedBallRect,
+            lockedImpactROI: lockedImpactROI,
+            createdAt: analysisCreatedAt,
+            fallbackImpactFrameIndex: fallbackImpactIndex,
+            detectedImpactFrameIndex: effectiveImpactIndex,
+            impactDetectionReason: impactDetectionReason,
+            initialBallCenter: initialBallCenter,
+            movementThresholdNorm: movementThresholdNorm,
+            metrics: metrics
+        )
+        return .result(result)
     }
 
     @MainActor

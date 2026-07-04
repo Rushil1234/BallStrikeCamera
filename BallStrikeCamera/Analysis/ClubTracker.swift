@@ -24,7 +24,9 @@ struct ClubObservation {
 struct ClubTracker {
     struct Configuration {
         var searchBehindBallEnabled: Bool = true
-        var approachDirectionX: CGFloat = -1
+        // Club approaches from the side the ball travels FROM: left→right hit = from left (-1),
+        // right→left hit = from right (+1). Flips with HitDirection.
+        var approachDirectionX: CGFloat = HitDirection.reversed ? 1 : -1
         var approachDirectionY: CGFloat = 0
         var ballExclusionRadiusScale: CGFloat = 1.8
         // Wider ROI (was 10.5) catches clubs that appear farther from the ball center.

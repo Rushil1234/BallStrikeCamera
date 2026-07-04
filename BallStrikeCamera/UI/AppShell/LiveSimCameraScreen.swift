@@ -17,12 +17,12 @@ struct LiveSimCameraScreen: View {
     @State private var clubs: [UserClub] = []
     @State private var showClubPicker = false
     @State private var showSaveSheet = false
-    @State private var saveSheetDefaultName = "Live Sim Session"
+    @State private var saveSheetDefaultName = "TCSim Session"
 
     var body: some View {
         LaunchMonitorScaffoldView(
             camera: camera,
-            modeTitle: "Live Sim",
+            modeTitle: "TCSim",
             selectedClub: $selectedClub,
             selectedClubId: selectedClubId,
             shotCount: simVM.shots.count,

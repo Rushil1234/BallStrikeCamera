@@ -12,7 +12,7 @@ struct LiveSimCodeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            BSectionHeader(title: "Live Sim")
+            BSectionHeader(title: "TCSim")
 
             if liveSimService.isConnectedToSim {
                 connectedCard
@@ -282,9 +282,12 @@ struct LiveSimCodeView: View {
                     Text("Open on your screen")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(BSTheme.textPrimary)
-                    Text("truecarry.vercel.app/play")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(BSTheme.gold)
+                    Link(destination: TCWebsite.url(TCWebsite.play)) {
+                        Text(TCWebsite.label(TCWebsite.play))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(BSTheme.gold)
+                            .underline()
+                    }
                 }
                 Spacer()
             }
@@ -511,7 +514,7 @@ struct LiveSimConnectedScreen: View {
 
     private var endedBanner: some View {
         VStack(spacing: 14) {
-            Text("The sim on your screen ended this session. Reconnect to keep streaming, or exit Live Sim.")
+            Text("The sim on your screen ended this session. Reconnect to keep streaming, or exit TCSim.")
                 .font(.system(size: 14))
                 .foregroundColor(BSTheme.textMuted)
                 .multilineTextAlignment(.center)

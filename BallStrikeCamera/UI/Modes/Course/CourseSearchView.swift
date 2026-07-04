@@ -252,8 +252,32 @@ struct CourseSearchView: View {
 
     private var mapCourses: [MapCourse] {
         let list = query.isEmpty ? nearbyCourses : searchResults
-        return list.compactMap { c in
+        let raw = list.compactMap { c in
             c.coordinate.map { MapCourse(id: c.id, course: c, coord: $0) }
+        }
+        return Self.spreadColocated(raw)
+    }
+
+    /// Fan out pins that share (nearly) the same coordinate — e.g. multiple courses at one
+    /// facility (Flanders Valley Blue/White + Red/Gold) — so they don't stack exactly on top of
+    /// each other. Each colocated pin is nudged onto a small circle around the shared point.
+    private static func spreadColocated(_ items: [MapCourse]) -> [MapCourse] {
+        func key(_ c: CLLocationCoordinate2D) -> String {
+            String(format: "%.4f,%.4f", c.latitude, c.longitude)   // ~11 m bucket
+        }
+        var groups: [String: [MapCourse]] = [:]
+        for it in items { groups[key(it.coord), default: []].append(it) }
+
+        return items.map { it in
+            let group = groups[key(it.coord)] ?? [it]
+            guard group.count > 1, let idx = group.firstIndex(where: { $0.id == it.id }) else { return it }
+            let radiusM = 65.0
+            let angle = (2 * Double.pi / Double(group.count)) * Double(idx)
+            let dLat = (radiusM * cos(angle)) / 111_111.0
+            let dLon = (radiusM * sin(angle)) / (111_111.0 * cos(it.coord.latitude * .pi / 180))
+            let nudged = CLLocationCoordinate2D(latitude: it.coord.latitude + dLat,
+                                                longitude: it.coord.longitude + dLon)
+            return MapCourse(id: it.id, course: it.course, coord: nudged)
         }
     }
 
@@ -464,7 +488,9 @@ struct CourseSearchView: View {
         defer { isLoadingNearby = false }
         // Use Supabase catalog so only real golf courses appear (MKLocalSearch lets
         // venues like Topgolf / Xgolf slip through as "golf courses").
-        let catalog = await CourseCatalog.search(query: "", near: userLoc, limit: 20)
+        // Pull the RPC max (50): multi-course facilities (e.g. Flanders Valley's Blue/White AND
+        // Red/Gold) sit adjacent in distance ranking, so a small limit clips the second course.
+        let catalog = await CourseCatalog.search(query: "", near: userLoc, limit: 50)
         if !catalog.isEmpty {
             nearbyCourses = catalog.sorted {
                 (distanceMiles(course: $0, user: userLoc) ?? .infinity)
