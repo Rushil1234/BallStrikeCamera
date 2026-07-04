@@ -2,6 +2,11 @@
 // cameras, shot lifecycle, scoring.
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-1';
 import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-1';
 import { RANGE, holeLength } from './holes.js?v=gspro-1';
@@ -35,6 +40,32 @@ document.getElementById('app').prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.1, 6000);
+
+// ---------- post-processing (broadcast look: subtle AO + bloom) ----------
+// Multisampled target keeps MSAA through the composer (WebGL2). If anything
+// in the chain fails on an exotic GPU, fall back to the direct render path.
+let composer = null;
+try {
+  const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+  const target = new THREE.WebGLRenderTarget(size.x, size.y, {
+    samples: 4,
+    type: THREE.HalfFloatType,
+  });
+  composer = new EffectComposer(renderer, target);
+  composer.addPass(new RenderPass(scene, camera));
+  const sao = new SAOPass(scene, camera);
+  sao.params.saoIntensity = 0.012;
+  sao.params.saoScale = 64;
+  sao.params.saoKernelRadius = 18;
+  sao.params.saoBlur = true;
+  composer.addPass(sao);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.22, 0.5, 0.88);
+  composer.addPass(bloom);
+  composer.addPass(new OutputPass());
+} catch (err) {
+  console.warn('post-processing unavailable, falling back to direct render', err);
+  composer = null;
+}
 
 let activeCourse = LOCAL_COURSES[0];
 let selectableCourses = [...LOCAL_COURSES];
@@ -79,6 +110,10 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  if (composer) {
+    const size = renderer.getDrawingBufferSize(new THREE.Vector2());
+    composer.setSize(size.x, size.y);
+  }
 });
 
 // precompute realistic carry numbers for the bag
@@ -1375,7 +1410,8 @@ function frame() {
   }
 
   if (sky) sky.update(game.time, camera.position);
-  renderer.render(scene, camera);
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
 }
 
 frame();
