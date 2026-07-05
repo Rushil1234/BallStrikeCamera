@@ -40,12 +40,19 @@ struct DistanceEstimator {
                 method: "unavailable", warnings: warnings)
         }
         guard let vlaDegrees, vlaDegrees.isFinite else {
-            warnings.append("Distance estimate skipped: missing VLA.")
+            // No VLA, but the ball measurably moved — a moving ball always travels SOMEWHERE.
+            // Report the kinetic ground-roll distance (d = v²/2μg) as a minimum total rather
+            // than nothing at all.
+            let speedMps = ballSpeedMph / 2.23694
+            let rollYards = ((speedMps * speedMps) / (2.0 * rollingResistance * 9.80665)) * 1.09361
+            warnings.append(String(format: "VLA unavailable — total is a minimum ground-roll estimate (%.0f yd from %.1f mph).",
+                                   rollYards, ballSpeedMph))
             return DistanceEstimate(
                 idealCarryYards: nil, carryCorrectionFactor: carryCorrectionFactor,
-                carryYards: nil, rolloutYards: nil, totalYards: nil,
-                rolloutFraction: nil, vlaBucket: "unknown",
-                method: "unavailable", warnings: warnings)
+                carryYards: nil, rolloutYards: rollYards > 0 ? rollYards : nil,
+                totalYards: rollYards > 0 ? rollYards : nil,
+                rolloutFraction: 1.0, vlaBucket: "no_vla_roll",
+                method: "roll_minimum_no_vla", warnings: warnings)
         }
 
         if hlaDegrees == nil {
@@ -160,7 +167,19 @@ struct DistanceEstimator {
         else                        { speedAdjust = 1.00 }
 
         let rolloutFraction = clamp(baseRollout * speedAdjust, 0.02, 0.90)
-        let rolloutYards    = carry * rolloutFraction
+        var rolloutYards    = carry * rolloutFraction
+        // Topped/thin runner: near-zero carry with real ball speed means the ball ran along the
+        // ground — percentage-of-carry rollout collapses to 0 even though the ball plainly went
+        // somewhere. Floor the rollout with the same kinetic roll model the putt path uses
+        // (d = v²/2μg), so a 20+ mph shot never reports "total: 0".
+        if carry < 10 {
+            let kineticRollYards = ((speedMps * speedMps) / (2.0 * rollingResistance * 9.80665)) * 1.09361
+            if kineticRollYards > rolloutYards {
+                rolloutYards = kineticRollYards
+                warnings.append(String(format: "Low-carry runner: rollout floored by kinetic roll model (%.0f yd from %.1f mph).",
+                                       kineticRollYards, ballSpeedMph))
+            }
+        }
         let total           = min(carry + rolloutYards, 400, physicalMaxYards)
 
         if total > 350 {

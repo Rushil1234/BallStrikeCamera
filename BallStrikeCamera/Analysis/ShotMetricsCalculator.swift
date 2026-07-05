@@ -95,12 +95,12 @@ struct ShotMetricsCalculator {
     func calculate(
         for analysis: ShotAnalysisResult,
         zeroDegreeReferenceAngleDegrees: Double = 0.0,
-        carryCorrectionFactor: Double = 0.75
+        carryCorrectionFactor: Double = 0.75,
+        isPutterMode: Bool = false
     ) -> ShotMetricsResult? {
         print("Shot metrics calculation started")
         ModelResourceLoader.logBundleCheck()
         let flightModel   = FlightModelPredictor.autoLoad()
-        let groundCalibration = GroundCalibration.autoLoad()
 
         guard let calibration = makeCalibration(from: analysis) else {
             print("Shot metrics skipped: no frame image dimensions")
@@ -121,14 +121,13 @@ struct ShotMetricsCalculator {
             ball3DObservations: ball3DObservations,
             impactFrameIndex: analysis.detectedImpactFrameIndex,
             zeroDegreeAngleDegrees: zeroDegreeReferenceAngleDegrees,
-            calibration: calibration
+            calibration: calibration,
+            isPutterMode: isPutterMode
         )
 
-        // VLA model: use all post-impact observations for feature extraction (matches Python)
-        let allPostImpactObs = ball3DObservations
-            .filter { $0.frameIndex > analysis.detectedImpactFrameIndex }
-            .sorted { $0.frameIndex < $1.frameIndex }
-        let isPuttShot = (ballLaunch.ballSpeedMph ?? 0) < configuration.puttBallSpeedThresholdMph
+        // Putter selection forces putt handling deterministically; otherwise fall back to the
+        // speed-inferred heuristic (e.g. a chip that dies fast without a putter selected).
+        let isPuttShot = isPutterMode || (ballLaunch.ballSpeedMph ?? 0) < configuration.puttBallSpeedThresholdMph
         if isPuttShot {
             // Putt/roll: VLA is already 0 from calculateBallLaunch — never run the model, which
             // would otherwise predict a spurious launch angle for a ball that just rolls.
@@ -142,42 +141,53 @@ struct ShotMetricsCalculator {
                 ballLaunch.ballSpeedMph ?? 0, configuration.puttBallSpeedThresholdMph)]
             print(String(format: "[VLA] putt/roll: ball speed %.1f mph < %.0f → VLA 0° (model skipped)",
                          ballLaunch.ballSpeedMph ?? 0, configuration.puttBallSpeedThresholdMph))
-        } else if let model = VLAModelPredictor.autoLoad() {
-            let feats = VLAModelPredictor.extractFeatures(
-                from: allPostImpactObs,
-                hlaDegrees: ballLaunch.hlaDegrees,
-                ballSpeedMph: ballLaunch.ballSpeedMph,
-                impactFrameIndex: analysis.detectedImpactFrameIndex,
-                totalFrames: analysis.frames.count,
-                groundCalibration: groundCalibration
-            )
-            let (rawPred, clampedPred, featVals, mdlWarns) = VLAModelPredictor.predict(
-                features: feats, model: model
-            )
-            ballLaunch.vlaLegacyDegrees      = ballLaunch.vlaDegrees
-            ballLaunch.vlaTrainedModelDegrees = clampedPred
-            ballLaunch.vlaFinalDegrees        = clampedPred
-            ballLaunch.vlaDegrees             = clampedPred
-            ballLaunch.vlaModelUsed           = "trainedModel"
-            ballLaunch.vlaModelFile           = model.filePath
-            ballLaunch.vlaModelFeaturesUsed   = model.featureSearchTopSubset.isEmpty
-                ? model.features : model.featureSearchTopSubset
-            ballLaunch.vlaModelFeatureValues  = featVals
-            ballLaunch.vlaModelWarnings       = mdlWarns
-            ballLaunch.vlaWasClamped          = abs(rawPred - clampedPred) > 0.01
-            print(String(format: "[VLA] trained model: %.1f° (raw=%.1f°) file=%@",
-                         clampedPred, rawPred, model.filePath))
+        } else if let growthVLA = diameterGrowthVLA(analysis: analysis) {
+            // Physics beats the trained model here: the model was fit on footage from a
+            // different tripod height/lighting and reads 45-50° on near-flat shots. The ball's
+            // apparent diameter directly encodes height (it grows as the ball rises toward the
+            // camera; constant size = flat flight), which needs no training data at all.
+            ballLaunch.vlaLegacyDegrees       = ballLaunch.vlaDegrees
+            ballLaunch.vlaTrainedModelDegrees = nil
+            ballLaunch.vlaFinalDegrees        = growthVLA
+            ballLaunch.vlaDegrees             = growthVLA
+            ballLaunch.vlaModelUsed           = "diameter_growth_physics"
+            ballLaunch.vlaModelWarnings       = ["VLA measured from apparent ball-diameter growth (camera-height geometry); trained model bypassed."]
+            print(String(format: "[VLA] diameter-growth physics: %.1f°", growthVLA))
         } else {
-            ballLaunch.vlaLegacyDegrees  = ballLaunch.vlaDegrees
-            ballLaunch.vlaFinalDegrees   = ballLaunch.vlaDegrees
-            ballLaunch.vlaModelUsed      = "physics_3d"
-            ballLaunch.vlaModelWarnings  = ["vla_model.json not found — using physics 3D VLA."]
+            // No usable diameter-growth measurement. Do NOT fall back to the trained model —
+            // it was fit on a different rig and reads 45-55° on near-flat shots, and the
+            // physics-3D estimate relies on the default FOV calibration (equally untrusted).
+            // Reporting no VLA is more honest than reporting a wild one; distance falls back
+            // to its low-information paths.
+            ballLaunch.vlaLegacyDegrees       = ballLaunch.vlaDegrees
+            ballLaunch.vlaTrainedModelDegrees = nil
+            ballLaunch.vlaFinalDegrees        = nil
+            ballLaunch.vlaDegrees             = nil
+            ballLaunch.vlaModelUsed           = "unavailable"
+            ballLaunch.vlaModelWarnings       = ["VLA unavailable: too few ball-size samples for diameter-growth measurement (trained model intentionally not used)."]
+            print("[VLA] unavailable — insufficient diameter samples; trained model bypassed")
         }
 
         let ballDepthM = nearestBallDepth(ball3DObservations, impactFrameIndex: analysis.detectedImpactFrameIndex)
-        let clubObservations = clubTracker.track(analysis: analysis,
-                                                  ballSpeedMph: ballLaunch.ballSpeedMph,
-                                                  ballDepthM: ballDepthM)
+        // Club data is only physically meaningful BEFORE impact. At the impact frame itself the
+        // clubhead blob merges with/overtakes the ball ("jumped in front of the ball"), and
+        // afterward it sweeps through the flight path — both polluted club speed/path fits and
+        // drew misleading overlays in the replay. Drop everything from impact onward.
+        // Putt/roll shots skip club tracking entirely: the ensemble BFS sweep is the most
+        // expensive stage of analysis and putts never produced usable club metrics anyway.
+        let clubObservations: [ClubObservation]
+        if isPuttShot {
+            clubObservations = []
+        } else {
+            clubObservations = enforceClubMonotonicity(
+                clubTracker.track(analysis: analysis,
+                                  ballSpeedMph: ballLaunch.ballSpeedMph,
+                                  ballDepthM: ballDepthM)
+                    .filter { $0.frameIndex < analysis.detectedImpactFrameIndex },
+                impactFrameIndex: analysis.detectedImpactFrameIndex,
+                ballCenterX: analysis.initialBallCenter?.x ?? analysis.lockedBallRect?.midX
+            )
+        }
         let clubMetrics = calculateClubMetrics(
             clubObservations: clubObservations,
             ball3DObservations: ball3DObservations,
@@ -301,7 +311,8 @@ struct ShotMetricsCalculator {
         ball3DObservations: [Ball3DObservation],
         impactFrameIndex: Int,
         zeroDegreeAngleDegrees: Double,
-        calibration: CameraCalibration
+        calibration: CameraCalibration,
+        isPutterMode: Bool = false
     ) -> BallLaunchMetrics {
         var warnings: [String] = []
         let postImpact = ball3DObservations
@@ -354,7 +365,7 @@ struct ShotMetricsCalculator {
         // Putt/roll: as soon as we know the ball speed is in the putt range, do NOT compute a VLA
         // — a slow roll has no vertical launch, and atan2 is dominated by tracking noise at low
         // horizontal speed (reads spuriously high). Force it to 0 at the source.
-        let isPutt = ballSpeedMph < configuration.puttBallSpeedThresholdMph
+        let isPutt = isPutterMode || ballSpeedMph < configuration.puttBallSpeedThresholdMph
         let vlaDegrees = isPutt ? 0.0 : atan2(velocity.y, horizontalSpeed) * 180 / .pi
 
         let imageHLA = computeImageSpaceHLA(
@@ -391,6 +402,22 @@ struct ShotMetricsCalculator {
             method: method,
             warnings: warnings
         )
+    }
+
+    // VLA from apparent-diameter growth: d ∝ 1/(cameraHeight − ballHeight), so per-frame height
+    // is h·(1 − d₀/d) against the pre-impact on-ground diameter. Uses the measured 41" camera
+    // height via GroundPlaneMetricsCalculator. Returns nil when there aren't enough diameter
+    // samples, letting the caller fall through to the older paths.
+    private func diameterGrowthVLA(analysis: ShotAnalysisResult) -> Double? {
+        let result = GroundPlaneMetricsCalculator().calculate(
+            observations: analysis.frames.compactMap { $0.ballObservation },
+            impactFrameIndex: analysis.detectedImpactFrameIndex,
+            groundCalibration: GroundCalibration.shared
+        )
+        guard let vla = result.vlaDegrees, result.usedDiameterVLA else { return nil }
+        // Floor at 0 (negative fitted vz on an airborne shot is size noise); cap at 65 —
+        // the physical ceiling for an extreme flop shot.
+        return min(max(vla, 0), 65)
     }
 
     // MARK: - Image-space HLA
@@ -432,10 +459,12 @@ struct ShotMetricsCalculator {
 
         let W = Double(calibration.imageWidthPixels)
         let H = Double(calibration.imageHeightPixels)
-        // Negate image-x so "forward" points along the ball's travel direction (reversed mount);
-        // lateral (L/R) comes from dyPx and is left untouched.
+        // The reversed mount is a 180° physical rotation, which flips BOTH image axes.
+        // Flipping only x (the previous code) is a mirror, and mirrors invert handedness —
+        // that's why HLA read "7° R" for a shot that went left. Apply the sign to y as well
+        // so the transform is a rotation and L/R semantics survive.
         let dxPx = HitDirection.sign * dxdt * W
-        let dyPx = dydt * H
+        let dyPx = HitDirection.sign * dydt * H
 
         let movLen = sqrt(dxPx * dxPx + dyPx * dyPx)
         if movLen < 1e-6 {
@@ -460,6 +489,40 @@ struct ShotMetricsCalculator {
         let hla = atan2(lateral, forward) * 180.0 / .pi
         return ImageSpaceHLAResult(hla: hla, dx: dxdt, dy: dydt,
                                    forward: forward, lateral: lateral, warnings: warnings)
+    }
+
+    // Same physics the ball tracker enforces, applied to the club: during the downswing the
+    // clubhead only advances toward impact (monotonic progress along the travel direction),
+    // and it can never be AHEAD of the ball before contact. Detections violating either rule
+    // are glare/shaft misreads that made the overlay "bounce around" pre-impact.
+    private func enforceClubMonotonicity(
+        _ observations: [ClubObservation],
+        impactFrameIndex: Int,
+        ballCenterX: CGFloat?
+    ) -> [ClubObservation] {
+        let s = CGFloat(HitDirection.sign)   // s·x increases toward impact
+        let allowance: CGFloat = 0.015
+        var lastProgress: CGFloat = -.greatestFiniteMagnitude
+        var kept: [ClubObservation] = []
+        var dropped = 0
+        for obs in observations.sorted(by: { $0.frameIndex < $1.frameIndex }) {
+            guard let cx = obs.centerX else { kept.append(obs); continue }
+            let progress = s * cx
+            if obs.frameIndex < impactFrameIndex, let bx = ballCenterX, progress > s * bx + allowance {
+                dropped += 1
+                continue   // clubhead "ahead of the ball" before impact — impossible
+            }
+            if progress < lastProgress - allowance {
+                dropped += 1
+                continue   // clubhead moving backward mid-downswing — misdetection
+            }
+            lastProgress = max(lastProgress, progress)
+            kept.append(obs)
+        }
+        if dropped > 0 {
+            print("[ClubTrack] monotonicity dropped \(dropped)/\(observations.count) club observations")
+        }
+        return kept
     }
 
     // MARK: - Club metrics

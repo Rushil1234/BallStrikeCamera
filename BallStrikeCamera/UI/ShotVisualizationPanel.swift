@@ -18,8 +18,14 @@ struct ShotVisualizationPanel: View {
 
                 // Static aim fan sits at the placement circle only before a ball is found; once
                 // found, the fan emanates from the ball itself (in BallCircleOverlayView).
+                // Putter selected: a distance grid reads better than an angle fan for a stroke
+                // that barely turns — 0° still needs to be unmistakable, so it's kept, just bolder.
                 if camera.currentBallRect == nil {
-                    AimLineOverlayView()
+                    if camera.isPutterMode {
+                        PuttingGridOverlayView()
+                    } else {
+                        AimLineOverlayView()
+                    }
                 }
 
                 BallCircleOverlayView(rect: camera.currentBallRect, crop: crop, phase: camera.phase)
@@ -98,9 +104,9 @@ private struct PreviewCrop {
 }
 
 private enum PreviewTargetLayout {
-    static let centerXRatio: CGFloat = 0.28
+    static let centerXRatio: CGFloat = 0.45
     static let centerYRatio: CGFloat = 0.50
-    static let radiusRatio: CGFloat  = 0.48
+    static let radiusRatio: CGFloat  = 0.43
     static let sourceAspect: CGFloat = 16.0 / 9.0
 }
 
@@ -113,14 +119,67 @@ private func aspectFillVideoFrame(for size: CGSize) -> CGRect {
     return CGRect(x: (W - vW) / 2, y: (H - vH) / 2, width: vW, height: vH)
 }
 
+/// Putter selected: a true grid (not an angle fan) — a putting stroke barely turns, so lateral
+/// aim is read in inches, not degrees. Lanes parallel to the 0° line show where the ball is
+/// starting relative to the target line; cross-lines mark forward distance from the ball.
+private struct PuttingGridOverlayView: View {
+    // The camera buffer now rotates with the hand lock (landscapeLeft for lefty), so on-screen
+    // ball travel is right→left for BOTH hands — no hand-specific flips needed. (The old flips
+    // compensated for a buffer/UI orientation mismatch that also broke lefty detection.)
+    private var dirSign: CGFloat { HitDirection.signCG }
+    private var vSign: CGFloat { -1 }
+
+    private let lateralLanes: [CGFloat] = [-0.24, -0.12, 0, 0.12, 0.24]
+    private let forwardMarks: [CGFloat] = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90]
+
+    var body: some View {
+        GeometryReader { geo in
+            let origin = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
+            let unit   = min(geo.size.width, geo.size.height)
+            let length = max(geo.size.width, geo.size.height) * 1.45
+
+            ZStack {
+                ForEach(lateralLanes, id: \.self) { lane in
+                    let isZero = lane == 0
+                    Path { path in
+                        let y = origin.y + vSign * lane * unit
+                        path.move(to: CGPoint(x: origin.x - dirSign * unit * 0.15, y: y))
+                        path.addLine(to: CGPoint(x: origin.x + dirSign * length, y: y))
+                    }
+                    .stroke(
+                        isZero ? Color.white.opacity(0.75) : Color.white.opacity(0.18),
+                        style: StrokeStyle(lineWidth: isZero ? 2.0 : 0.9, dash: isZero ? [] : [4, 5])
+                    )
+                }
+
+                ForEach(forwardMarks, id: \.self) { mark in
+                    Path { path in
+                        let x = origin.x + dirSign * mark * length
+                        path.move(to: CGPoint(x: x, y: origin.y - unit * 0.30))
+                        path.addLine(to: CGPoint(x: x, y: origin.y + unit * 0.30))
+                    }
+                    .stroke(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: 0.8, dash: [3, 6]))
+                }
+
+                Text("0°")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.85))
+                    .padding(.horizontal, 7).padding(.vertical, 3)
+                    .background(Color.black.opacity(0.28))
+                    .cornerRadius(5)
+                    .position(x: origin.x + dirSign * unit * 0.34, y: origin.y - 16)
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 private struct AimLineOverlayView: View {
     private let fanAngles: [CGFloat] = [-20, -10, 0, 10, 20]
-    @AppStorage("tc_hitting_hand") private var hand = "R"
-    // Fan points along the ball's travel direction; lefty aims it the opposite way.
-    private var dirSign: CGFloat { HitDirection.signCG * (hand == "L" ? -1 : 1) }
-    // Lefty renders through a 180° orientation lock, which inverts the vertical axis. Flip the
-    // sign so +° stays above the 0-line and −° below it from the user's view — same as righty.
-    private var vSign: CGFloat { hand == "L" ? 1 : -1 }
+    // Buffer rotates with the hand lock now, so on-screen travel is right→left for both hands;
+    // no hand-specific flips (the old ones compensated for the buffer/UI mismatch).
+    private var dirSign: CGFloat { HitDirection.signCG }
+    private var vSign: CGFloat { -1 }
 
     var body: some View {
         GeometryReader { geo in
@@ -270,11 +329,11 @@ private struct AnimatedAimFan: View {
     let maxLen: CGFloat
 
     private let angles: [CGFloat] = [-20, -10, 0, 10, 20]
-    @AppStorage("tc_hitting_hand") private var hand = "R"
 
     var body: some View {
-        let dir = HitDirection.signCG * (hand == "L" ? -1 : 1)   // lefty aims the fan the other way
-        let vSign: CGFloat = hand == "L" ? 1 : -1                 // lefty's 180° lock inverts vertical
+        // Buffer rotates with the hand lock — on-screen travel is right→left for both hands.
+        let dir = HitDirection.signCG
+        let vSign: CGFloat = -1
         let opacity = progress < 0.6 ? 1.0 : Double(max(0, 1 - (progress - 0.6) / 0.4))
 
         return ZStack {

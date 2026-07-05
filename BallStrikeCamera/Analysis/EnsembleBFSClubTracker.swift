@@ -630,7 +630,7 @@ struct EnsembleBFSClubTracker {
 
         let thrScale = method == "newDiff" ? 0.65 : 1.0
         // Leading club edge is on the travel-forward side; reversed hit flips which column that is.
-        let leadingIsLeft = HitDirection.reversed ? !post : post
+        let leadingIsLeft = HitDirection.sign < 0 ? !post : post   // hand-aware (righty unchanged)
         let comp = rightmostBlobFromDiff(dmDet, rows: rows, cols: cols, leftmost: leadingIsLeft, thrScale: thrScale)
         guard !comp.isEmpty else { return [] }
         guard let blob = componentToBlob(comp, x0: x0, y0: y0, W: W, H: H, refBx: bxF, refBy: byF) else { return [] }

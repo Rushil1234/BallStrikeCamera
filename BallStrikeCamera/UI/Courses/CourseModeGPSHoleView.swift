@@ -758,10 +758,20 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         let t = teeCoord.map { "\($0.latitude),\($0.longitude)" } ?? "-"
         let aimKey = aimPoints.map { "\(Int($0.latitude * 10000)),\(Int($0.longitude * 10000))" }.joined(separator: "|")
         let aimTgtKey = customAimTarget.map { "\(Int($0.latitude * 10000)),\(Int($0.longitude * 10000))" } ?? ""
-        // Include the dispersion set so toggling/selecting a club rebuilds the
-        // overlays immediately (not only after a hole switch changes another key).
-        let dispKey = dispersionDots.isEmpty ? "0"
-            : "\(dispersionDots.count)@\(Int((dispersionDots[0].coord.latitude) * 100000))"
+        // Include the dispersion set so toggling/selecting a club rebuilds the overlays
+        // immediately. Must reflect EVERY dot's full position: the old key (count + first
+        // dot's latitude at ~1.1m) missed carry/total, slope, and wind toggles entirely —
+        // those keep the count constant and shift dots along the aim line, which on an
+        // east-west hole changes longitude while latitude stays put, so the map never redrew.
+        let dispKey: String = {
+            guard !dispersionDots.isEmpty else { return "0" }
+            var acc: Int64 = 0
+            for d in dispersionDots {
+                acc &+= Int64((d.coord.latitude * 1_000_000).rounded())
+                acc &+= Int64((d.coord.longitude * 1_000_000).rounded()) &* 31
+            }
+            return "\(dispersionDots.count)@\(acc)"
+        }()
         let renderKey = "\(focusId)|\(g)|\(t)|\(trackedShots.count)|\(aimKey)|\(recenterToken)|\(gpsKey)|\(aimTgtKey)|\(dispKey)"
         let flightPending = flightRequest != nil && flightRequest!.id != context.coordinator.lastFlightId
         if renderKey == context.coordinator.lastRenderKey && !flightPending {

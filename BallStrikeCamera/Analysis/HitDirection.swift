@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 
 /// Global hit-direction convention for the whole capture + tracking + metrics pipeline.
 ///
@@ -15,6 +16,13 @@ import CoreGraphics
 enum HitDirection {
     static let reversed = true
 
-    static var sign: Double { reversed ? -1 : 1 }
+    /// A lefty hits toward the same physical target, but the lefty UI lock rotates the camera
+    /// buffer 180° — so the ball crosses the buffer in the OPPOSITE direction vs righty.
+    /// Righty keeps the exact historical value (−1, right→left); lefty flips to +1. Every
+    /// direction consumer (aim fan, launch ROI, monotonicity, club approach side, HLA) reads
+    /// this, so the two hands share one validated pipeline with a single switch point.
+    static var isLefty: Bool { UserDefaults.standard.string(forKey: "tc_hitting_hand") == "L" }
+
+    static var sign: Double { (reversed ? -1 : 1) * (isLefty ? -1 : 1) }
     static var signCG: CGFloat { CGFloat(sign) }
 }
