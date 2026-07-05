@@ -1,12 +1,16 @@
-import { HOLES } from './holes.js?v=gspro-2';
-import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=gspro-2';
-import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=gspro-2';
-import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=gspro-2';
-import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=gspro-2';
-import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=gspro-2';
-import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=gspro-2';
-import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=gspro-2';
-import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=gspro-2';
+import { HOLES } from './holes.js?v=gspro-3';
+import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=gspro-3';
+import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=gspro-3';
+import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=gspro-3';
+import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=gspro-3';
+import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=gspro-3';
+import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=gspro-3';
+import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=gspro-3';
+import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=gspro-3';
+import { STANDREWS_PRIVATE_HOLES, STANDREWS_PRIVATE_WORLD } from './standrews-private.js?v=gspro-3';
+import { STANDREWS_OSM_BY_HOLE } from './standrews-osm.js?v=gspro-3';
+import { STANDREWS_ELEVATION } from './standrews-elevation.js?v=gspro-3';
+import { STANDREWS_WORLD_REALISM } from './standrews-world-data.js?v=gspro-3';
 
 const PEBBLE_HOLES_WITH_OSM = PEBBLE_PRIVATE_HOLES.map((hole) => ({
   ...hole,
@@ -16,6 +20,11 @@ const PEBBLE_HOLES_WITH_OSM = PEBBLE_PRIVATE_HOLES.map((hole) => ({
 const AUGUSTA_HOLES_WITH_OSM = AUGUSTA_PRIVATE_HOLES.map((hole) => ({
   ...hole,
   osm: AUGUSTA_OSM_BY_HOLE[hole.id] || null,
+}));
+
+const STANDREWS_HOLES_WITH_OSM = STANDREWS_PRIVATE_HOLES.map((hole) => ({
+  ...hole,
+  osm: STANDREWS_OSM_BY_HOLE[hole.id] || null,
 }));
 
 export const LOCAL_COURSES = [
@@ -50,6 +59,18 @@ export const LOCAL_COURSES = [
       ...AUGUSTA_PRIVATE_WORLD,
       ...AUGUSTA_WORLD_REALISM,
       elevation: AUGUSTA_ELEVATION,
+    },
+    local: true,
+  },
+  {
+    courseId: 'standrews-old',
+    courseName: 'St Andrews Old Course',
+    sub: 'The Home of Golf · links · OSM + EU-DEM terrain',
+    holes: STANDREWS_HOLES_WITH_OSM,
+    world: {
+      ...STANDREWS_PRIVATE_WORLD,
+      ...STANDREWS_WORLD_REALISM,
+      elevation: STANDREWS_ELEVATION,
     },
     local: true,
   },

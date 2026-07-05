@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-2';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-2';
-import { RANGE, holeLength } from './holes.js?v=gspro-2';
-import { buildCourse } from './terrain.js?v=gspro-2';
-import { makeSky } from './sky.js?v=gspro-2';
-import { loadAssets } from './assets.js?v=gspro-2';
-import { HUD, toParStr } from './ui.js?v=gspro-2';
-import { SFX } from './audio.js?v=gspro-2';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-2';
-import { fetchSimCourses } from './courses.js?v=gspro-2';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-2';
-import { layoutIslandCourse } from './world.js?v=gspro-2';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-3';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-3';
+import { RANGE, holeLength } from './holes.js?v=gspro-3';
+import { buildCourse } from './terrain.js?v=gspro-3';
+import { makeSky } from './sky.js?v=gspro-3';
+import { loadAssets } from './assets.js?v=gspro-3';
+import { HUD, toParStr } from './ui.js?v=gspro-3';
+import { SFX } from './audio.js?v=gspro-3';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-3';
+import { fetchSimCourses } from './courses.js?v=gspro-3';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-3';
+import { layoutIslandCourse } from './world.js?v=gspro-3';
 
 // ---------- boot ----------
 
@@ -133,7 +133,34 @@ const ball = new THREE.Mesh(
   }),
 );
 ball.castShadow = true;
+
+// Instant replay: ghost ball that re-flies the recorded flight path while a
+// side-on broadcast camera tracks it. Toggled with R after any shot.
+const replayBall = new THREE.Mesh(
+  new THREE.SphereGeometry(0.05, 20, 14),
+  new THREE.MeshStandardMaterial({ color: 0xfdfdf6, roughness: 0.3, emissive: 0x776633, emissiveIntensity: 0.35 }),
+);
+replayBall.castShadow = true;
+replayBall.visible = false;
+
+// Pitch marks: greens remember where approach shots landed this hole.
+const pitchMarks = new THREE.Group();
+const pitchMarkMat = new THREE.MeshBasicMaterial({
+  color: 0x3c5a2e, transparent: true, opacity: 0.55, depthWrite: false,
+});
+const pitchMarkGeo = new THREE.CircleGeometry(0.055, 10);
+function addPitchMark(x, z) {
+  if (pitchMarks.children.length > 40) pitchMarks.remove(pitchMarks.children[0]);
+  const m = new THREE.Mesh(pitchMarkGeo, pitchMarkMat);
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.z = Math.random() * Math.PI;
+  m.scale.set(1 + Math.random() * 0.5, 1.6 + Math.random() * 0.6, 1);
+  m.position.set(x, game.course.heightAt(x, z) + 0.012, z);
+  pitchMarks.add(m);
+}
 scene.add(ball);
+scene.add(replayBall);
+scene.add(pitchMarks);
 
 // soft blob shadow (cheaper + steadier than real shadow for a tiny ball)
 const blobTex = (() => {
@@ -581,6 +608,7 @@ function switchActivePlayer(idx, name) {
 }
 
 function startHole(idx) {
+  pitchMarks.clear();
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = false;
   rangePanel?.classList.add('hidden');
@@ -894,6 +922,14 @@ function resolveShot() {
     return;
   }
 
+  if (sim.state !== 'fly' && sim.state !== 'roll' && tracerCount > 8 && !game.lastFlight?.fresh) {
+    // Keep the finished flight for instant replay (R).
+    game.lastFlight = { pts: tracerPts.slice(0, tracerCount * 3), n: tracerCount, fresh: true };
+    // A real carry onto the putting surface leaves a pitch mark.
+    const cp = sim.carryPos;
+    if (cp && game.course.surfaceAt(cp.x, cp.z) === SURF.GREEN) addPitchMark(cp.x, cp.z);
+  }
+
   if (sim.state === 'holed') {
     const def = courseHoles[game.holeIdx];
     const active = game.players[game.activePlayerIdx];
@@ -933,7 +969,7 @@ function resolveShot() {
     // drop at the last dry point along the flight
     let drop = game.shotStart;
     for (let i = tracerCount - 1; i >= 0; i--) {
-      const x = tracerPos[i * 3], z = tracerPos[i * 3 + 2];
+      const x = tracerPts[i * 3], z = tracerPts[i * 3 + 2];
       if (game.course.surfaceAt(x, z) !== SURF.WATER) {
         // nudge back toward the shot origin, out of the hazard line
         const bx = game.shotStart.x - x, bz = game.shotStart.z - z;
@@ -1480,6 +1516,9 @@ window.addEventListener('keydown', (e) => {
     case 'KeyM':
       SFX.setMuted(!SFX.isMuted());
       break;
+    case 'KeyR':
+      if (game.state === 'AIM' || game.state === 'HOLE_DONE') startReplay();
+      break;
     default: break;
   }
 });
@@ -1567,6 +1606,75 @@ function updateMeter() {
   }
 }
 
+
+function startReplay() {
+  const f = game.lastFlight;
+  if (!f || f.n < 8 || game.state === 'REPLAY') return;
+  f.fresh = false;
+  game.replay = { t: 0, prevState: game.state };
+  game.state = 'REPLAY';
+  replayBall.visible = true;
+  hud.toast('<span class="t-gold">REPLAY</span>', 1200);
+  SFX.tick();
+}
+
+function updateReplay() {
+  const f = game.lastFlight;
+  const r = game.replay;
+  if (!f || !r) { game.state = 'AIM'; return; }
+  r.t += frameDt;
+  const idx = Math.min(r.t * 60, f.n - 1);       // points were pushed per frame
+  const i0 = Math.floor(idx);
+  const i1 = Math.min(i0 + 1, f.n - 1);
+  const u = idx - i0;
+  const bx = f.pts[i0 * 3] + (f.pts[i1 * 3] - f.pts[i0 * 3]) * u;
+  const by = f.pts[i0 * 3 + 1] + (f.pts[i1 * 3 + 1] - f.pts[i0 * 3 + 1]) * u;
+  const bz = f.pts[i0 * 3 + 2] + (f.pts[i1 * 3 + 2] - f.pts[i0 * 3 + 2]) * u;
+  replayBall.position.set(bx, by, bz);
+
+  // Side-on broadcast frame: perpendicular to the flight line, wide enough
+  // to hold the whole arc, lifted above the apex.
+  const sx = f.pts[0], sz = f.pts[2];
+  const ex = f.pts[(f.n - 1) * 3], ez = f.pts[(f.n - 1) * 3 + 2];
+  const mx = (sx + ex) / 2, mz = (sz + ez) / 2;
+  const dx = ex - sx, dz = ez - sz;
+  const L = Math.hypot(dx, dz) || 1;
+  let apex = 0;
+  for (let i = 0; i < f.n; i++) apex = Math.max(apex, f.pts[i * 3 + 1]);
+  // Tower-cam framing: tree-lined corridors are only ~35m wide, so a wide
+  // perpendicular camera lands inside the pines. Instead sit INSIDE the
+  // corridor — behind the flight midpoint, nudged to the clearer side, and
+  // above the apex looking down the line (Augusta tower-camera style).
+  const side = Math.min(15, Math.max(9, L * 0.12));
+  const back = Math.min(60, Math.max(18, L * 0.3));
+  const clearance = (cx2, cz2) => {
+    let d = 1e9;
+    for (const t of game.course.trees || []) {
+      d = Math.min(d, Math.hypot(t.x - cx2, t.z - cz2));
+      if (d < 2) break;
+    }
+    return d;
+  };
+  const baseX = mx - (dx / L) * back;
+  const baseZ = mz - (dz / L) * back;
+  const aX = baseX - (dz / L) * side, aZ = baseZ + (dx / L) * side;
+  const bX = baseX + (dz / L) * side, bZ = baseZ - (dx / L) * side;
+  const useA = clearance(aX, aZ) >= clearance(bX, bZ);
+  const px = useA ? aX : bX;
+  const pz = useA ? aZ : bZ;
+  const py = Math.max(apex * 0.85 + 8, game.course.heightAt(px, pz) + 6);
+  camSet(px, clearSightline(px, py, pz, bx, by, bz), pz, bx, by, bz, false, 3.5, 5);
+
+  if (idx >= f.n - 1) {
+    r.hold = (r.hold || 0) + frameDt;
+    if (r.hold > 0.8) {
+      replayBall.visible = false;
+      game.state = r.prevState === 'REPLAY' ? 'AIM' : r.prevState;
+      game.replay = null;
+    }
+  }
+}
+
 function updateFlight() {
   const sim = game.sim;
   sim.step(frameDt);
@@ -1648,6 +1756,9 @@ function frame() {
       case 'HOLE_DONE':
         game.doneTimer += frameDt;
         if (game.doneTimer > 3.0) nextHole();
+        break;
+      case 'REPLAY':
+        updateReplay();
         break;
       default:
         break;

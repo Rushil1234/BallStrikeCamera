@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-2';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-2';
-import { RANGE, holeLength } from './holes.js?v=gspro-2';
-import { buildCourse } from './terrain.js?v=gspro-2';
-import { makeSky } from './sky.js?v=gspro-2';
-import { loadAssets } from './assets.js?v=gspro-2';
-import { HUD, toParStr } from './ui.js?v=gspro-2';
-import { SFX } from './audio.js?v=gspro-2';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-2';
-import { fetchSimCourses } from './courses.js?v=gspro-2';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-2';
-import { layoutIslandCourse } from './world.js?v=gspro-2';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-3';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-3';
+import { RANGE, holeLength } from './holes.js?v=gspro-3';
+import { buildCourse } from './terrain.js?v=gspro-3';
+import { makeSky } from './sky.js?v=gspro-3';
+import { loadAssets } from './assets.js?v=gspro-3';
+import { HUD, toParStr } from './ui.js?v=gspro-3';
+import { SFX } from './audio.js?v=gspro-3';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-3';
+import { fetchSimCourses } from './courses.js?v=gspro-3';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-3';
+import { layoutIslandCourse } from './world.js?v=gspro-3';
 
 // ---------- boot ----------
 
@@ -133,7 +133,34 @@ const ball = new THREE.Mesh(
   }),
 );
 ball.castShadow = true;
+
+// Instant replay: ghost ball that re-flies the recorded flight path while a
+// side-on broadcast camera tracks it. Toggled with R after any shot.
+const replayBall = new THREE.Mesh(
+  new THREE.SphereGeometry(0.05, 20, 14),
+  new THREE.MeshStandardMaterial({ color: 0xfdfdf6, roughness: 0.3, emissive: 0x776633, emissiveIntensity: 0.35 }),
+);
+replayBall.castShadow = true;
+replayBall.visible = false;
+
+// Pitch marks: greens remember where approach shots landed this hole.
+const pitchMarks = new THREE.Group();
+const pitchMarkMat = new THREE.MeshBasicMaterial({
+  color: 0x3c5a2e, transparent: true, opacity: 0.55, depthWrite: false,
+});
+const pitchMarkGeo = new THREE.CircleGeometry(0.055, 10);
+function addPitchMark(x, z) {
+  if (pitchMarks.children.length > 40) pitchMarks.remove(pitchMarks.children[0]);
+  const m = new THREE.Mesh(pitchMarkGeo, pitchMarkMat);
+  m.rotation.x = -Math.PI / 2;
+  m.rotation.z = Math.random() * Math.PI;
+  m.scale.set(1 + Math.random() * 0.5, 1.6 + Math.random() * 0.6, 1);
+  m.position.set(x, game.course.heightAt(x, z) + 0.012, z);
+  pitchMarks.add(m);
+}
 scene.add(ball);
+scene.add(replayBall);
+scene.add(pitchMarks);
 
 // soft blob shadow (cheaper + steadier than real shadow for a tiny ball)
 const blobTex = (() => {
@@ -153,6 +180,73 @@ const blob = new THREE.Mesh(
 );
 blob.rotation.x = -Math.PI / 2;
 scene.add(blob);
+
+// ---------- multi-player ghost balls ----------
+// Other players' resting ball positions, rendered simultaneously with the active player's
+// `ball` above. Index 0 (the account holder) never gets a ghost — they're always `ball` when
+// active, and never need a ghost of themselves since only one player is "active" at a time.
+const GHOST_COLORS = [0x5ac8fa, 0xff9f0a, 0xbf5af2, 0x30d158, 0xff375f];
+function makeGhostLabel(text) {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  const c = cv.getContext('2d');
+  c.fillStyle = 'rgba(10,14,10,0.72)';
+  c.roundRect ? c.roundRect(0, 8, 256, 48, 14) : c.fillRect(0, 8, 256, 48);
+  c.fill();
+  c.font = '600 30px -apple-system, system-ui, sans-serif';
+  c.fillStyle = '#fff';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(text, 128, 34);
+  const tex = new THREE.CanvasTexture(cv);
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.9, 0.22, 1);
+  return sprite;
+}
+function makeGhostBall(colorHex) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.034, 16, 12),
+    new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4, emissive: colorHex, emissiveIntensity: 0.25 }),
+  );
+  mesh.visible = false;
+  scene.add(mesh);
+  const label = makeGhostLabel('');
+  label.visible = false;
+  scene.add(label);
+  return { mesh, label };
+}
+// Lazily grown pool — one ghost per non-active player, created the first time we learn a
+// player's name (via the 'players' roster broadcast).
+const ghostPool = [];
+function ghostFor(playerIdx) {
+  // playerIdx 1 → ghostPool[0], playerIdx 2 → ghostPool[1], etc. (index 0 has no ghost).
+  const poolIdx = playerIdx - 1;
+  while (ghostPool.length <= poolIdx) {
+    ghostPool.push(makeGhostBall(GHOST_COLORS[ghostPool.length % GHOST_COLORS.length]));
+  }
+  return ghostPool[poolIdx];
+}
+function updateGhost(playerIdx, pos, visible) {
+  if (playerIdx <= 0) return; // index 0 is the active `ball` mesh, never a ghost
+  const g = ghostFor(playerIdx);
+  g.mesh.visible = visible;
+  g.label.visible = visible;
+  if (pos) {
+    g.mesh.position.set(pos.x, pos.y, pos.z);
+    g.label.position.set(pos.x, pos.y + 0.16, pos.z);
+  }
+}
+function refreshGhostLabel(playerIdx, name) {
+  if (playerIdx <= 0) return;
+  const g = ghostFor(playerIdx);
+  const newLabel = makeGhostLabel(name.toUpperCase());
+  newLabel.position.copy(g.label.position);
+  newLabel.visible = g.label.visible;
+  scene.remove(g.label);
+  scene.add(newLabel);
+  ghostPool[playerIdx - 1].label = newLabel;
+}
 
 // shot tracer — broadcast style: bright at the ball, fading down the tail
 const TRACER_MAX = 2400;
@@ -268,6 +362,13 @@ const game = {
   camLook: new THREE.Vector3(0, 0, 50),
   time: 0,
   isRange: false,
+
+  // Multi-player: `players[0]` is always the account holder ("You" — mirrors the live
+  // ball/strokes/lie fields above while active). Other entries are populated lazily as their
+  // names arrive via the 'players' roster broadcast. Single-player sessions never populate this,
+  // so `players.length <= 1` throughout — every multi-player branch below is a no-op then.
+  players: [],
+  activePlayerIdx: 0,
 };
 
 let rangeMarkers = null;
@@ -434,7 +535,80 @@ function jumpToHole(idx) {
 
 // ---------- hole / shot setup ----------
 
+function teeBallPos() {
+  const t = game.course.teePos;
+  return { x: t.x, y: t.y + 0.0214, z: t.z };
+}
+
+// ---------- multi-player roster / turn switching ----------
+
+/** Called once when the phone starts a multi-player session (never for single-player). */
+function ensurePlayers(names) {
+  if (!Array.isArray(names) || names.length < 2) return;
+  names.forEach((name, i) => {
+    if (!game.players[i]) {
+      const isActive = i === game.activePlayerIdx;
+      game.players[i] = {
+        name,
+        ballPos: isActive && game.ballPos ? { ...game.ballPos } : (game.course ? teeBallPos() : null),
+        lie: isActive ? game.lie : SURF.TEE,
+        strokes: isActive ? game.strokes : 0,
+        shotStart: isActive && game.shotStart ? { ...game.shotStart } : null,
+        scores: courseHoles.map(() => null),
+        holedOut: false,
+      };
+    } else {
+      game.players[i].name = name;
+    }
+    if (i > 0) refreshGhostLabel(i, name);
+  });
+  if (game.players[game.activePlayerIdx]) hud.setPlayer(game.players[game.activePlayerIdx].name);
+}
+
+/** Swaps the live ball/lie/strokes/shotStart fields to the given player's own progress,
+ *  saving the outgoing player's progress first. No-op for single-player sessions. */
+function switchActivePlayer(idx, name) {
+  if (idx == null || game.players.length < 2 || idx === game.activePlayerIdx) return;
+
+  const outgoing = game.players[game.activePlayerIdx];
+  if (outgoing) {
+    outgoing.ballPos = { ...game.ballPos };
+    outgoing.lie = game.lie;
+    outgoing.strokes = game.strokes;
+    outgoing.shotStart = game.shotStart ? { ...game.shotStart } : null;
+    if (game.activePlayerIdx > 0) updateGhost(game.activePlayerIdx, outgoing.ballPos, !outgoing.holedOut);
+  }
+
+  let incoming = game.players[idx];
+  if (!incoming) {
+    incoming = game.players[idx] = {
+      name: name || `Player ${idx + 1}`,
+      ballPos: teeBallPos(),
+      lie: SURF.TEE,
+      strokes: 0,
+      shotStart: null,
+      scores: courseHoles.map(() => null),
+      holedOut: false,
+    };
+  } else if (name && incoming.name !== name) {
+    incoming.name = name;
+  }
+  if (idx > 0) refreshGhostLabel(idx, incoming.name);
+
+  game.activePlayerIdx = idx;
+  game.ballPos = { ...incoming.ballPos };
+  game.lie = incoming.lie;
+  game.strokes = incoming.strokes;
+  game.shotStart = incoming.shotStart ? { ...incoming.shotStart } : null;
+
+  if (idx > 0) updateGhost(idx, incoming.ballPos, false);
+  ball.visible = true;
+  ball.position.set(game.ballPos.x, game.ballPos.y, game.ballPos.z);
+  hud.setPlayer(incoming.name);
+}
+
 function startHole(idx) {
+  pitchMarks.clear();
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = false;
   rangePanel?.classList.add('hidden');
@@ -453,9 +627,22 @@ function startHole(idx) {
 
   game.strokes = 0;
   hud.shotDataHide();
-  const t = game.course.teePos;
-  game.ballPos = { x: t.x, y: t.y + 0.0214, z: t.z };
+  game.ballPos = teeBallPos();
   game.lie = SURF.TEE;
+
+  // Multi-player: every player starts the new hole fresh at the tee, and none has holed out
+  // yet. Ghosts from the previous hole are hidden until each player is swapped away again.
+  game.players.forEach((p, i) => {
+    if (!p) return;
+    p.ballPos = { ...game.ballPos };
+    p.lie = SURF.TEE;
+    p.strokes = 0;
+    p.shotStart = null;
+    p.holedOut = false;
+    if (i > 0) updateGhost(i, p.ballPos, false);
+  });
+  game.activePlayerIdx = 0;
+  if (game.players.length > 0) hud.setPlayer(game.players[0]?.name ?? 'You');
 
   // wind
   const ang = Math.random() * Math.PI * 2;
@@ -735,9 +922,39 @@ function resolveShot() {
     return;
   }
 
+  if (sim.state !== 'fly' && sim.state !== 'roll' && tracerCount > 8 && !game.lastFlight?.fresh) {
+    // Keep the finished flight for instant replay (R).
+    game.lastFlight = { pts: tracerPts.slice(0, tracerCount * 3), n: tracerCount, fresh: true };
+    // A real carry onto the putting surface leaves a pitch mark.
+    const cp = sim.carryPos;
+    if (cp && game.course.surfaceAt(cp.x, cp.z) === SURF.GREEN) addPitchMark(cp.x, cp.z);
+  }
+
   if (sim.state === 'holed') {
     const def = courseHoles[game.holeIdx];
-    game.scores[game.holeIdx] = game.strokes;
+    const active = game.players[game.activePlayerIdx];
+    if (active) {
+      active.scores[game.holeIdx] = game.strokes;
+      active.holedOut = true;
+      active.ballPos = { ...game.ballPos };
+      active.strokes = game.strokes;
+    } else {
+      game.scores[game.holeIdx] = game.strokes;
+    }
+
+    // Multi-player: wait for every player to hole out before advancing the group to the next
+    // tee. Treats a missing slot as "still playing" too, since a configured player who hasn't
+    // taken a shot yet this hole would otherwise be silently skipped.
+    const stillWaiting = game.players.length > 1 && game.players.some(p => !p || !p.holedOut);
+    if (stillWaiting) {
+      hud.toast(
+        `<span class="t-gold">${scoreName(game.strokes, def.par)}</span>` +
+        `<span class="t-sub">${(active?.name ?? 'YOU').toUpperCase()} · ${game.strokes} STROKES · WAITING FOR OTHERS</span>`, 0);
+      game.state = 'WAITING_OTHERS';
+      pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
+      return;
+    }
+
     hud.toast(
       `<span class="t-gold">${scoreName(game.strokes, def.par)}</span>` +
       `<span class="t-sub">HOLE ${def.id} · ${game.strokes} STROKES</span>`, 0);
@@ -752,7 +969,7 @@ function resolveShot() {
     // drop at the last dry point along the flight
     let drop = game.shotStart;
     for (let i = tracerCount - 1; i >= 0; i--) {
-      const x = tracerPos[i * 3], z = tracerPos[i * 3 + 2];
+      const x = tracerPts[i * 3], z = tracerPts[i * 3 + 2];
       if (game.course.surfaceAt(x, z) !== SURF.WATER) {
         // nudge back toward the shot origin, out of the hazard line
         const bx = game.shotStart.x - x, bz = game.shotStart.z - z;
@@ -1299,6 +1516,9 @@ window.addEventListener('keydown', (e) => {
     case 'KeyM':
       SFX.setMuted(!SFX.isMuted());
       break;
+    case 'KeyR':
+      if (game.state === 'AIM' || game.state === 'HOLE_DONE') startReplay();
+      break;
     default: break;
   }
 });
@@ -1386,6 +1606,75 @@ function updateMeter() {
   }
 }
 
+
+function startReplay() {
+  const f = game.lastFlight;
+  if (!f || f.n < 8 || game.state === 'REPLAY') return;
+  f.fresh = false;
+  game.replay = { t: 0, prevState: game.state };
+  game.state = 'REPLAY';
+  replayBall.visible = true;
+  hud.toast('<span class="t-gold">REPLAY</span>', 1200);
+  SFX.tick();
+}
+
+function updateReplay() {
+  const f = game.lastFlight;
+  const r = game.replay;
+  if (!f || !r) { game.state = 'AIM'; return; }
+  r.t += frameDt;
+  const idx = Math.min(r.t * 60, f.n - 1);       // points were pushed per frame
+  const i0 = Math.floor(idx);
+  const i1 = Math.min(i0 + 1, f.n - 1);
+  const u = idx - i0;
+  const bx = f.pts[i0 * 3] + (f.pts[i1 * 3] - f.pts[i0 * 3]) * u;
+  const by = f.pts[i0 * 3 + 1] + (f.pts[i1 * 3 + 1] - f.pts[i0 * 3 + 1]) * u;
+  const bz = f.pts[i0 * 3 + 2] + (f.pts[i1 * 3 + 2] - f.pts[i0 * 3 + 2]) * u;
+  replayBall.position.set(bx, by, bz);
+
+  // Side-on broadcast frame: perpendicular to the flight line, wide enough
+  // to hold the whole arc, lifted above the apex.
+  const sx = f.pts[0], sz = f.pts[2];
+  const ex = f.pts[(f.n - 1) * 3], ez = f.pts[(f.n - 1) * 3 + 2];
+  const mx = (sx + ex) / 2, mz = (sz + ez) / 2;
+  const dx = ex - sx, dz = ez - sz;
+  const L = Math.hypot(dx, dz) || 1;
+  let apex = 0;
+  for (let i = 0; i < f.n; i++) apex = Math.max(apex, f.pts[i * 3 + 1]);
+  // Tower-cam framing: tree-lined corridors are only ~35m wide, so a wide
+  // perpendicular camera lands inside the pines. Instead sit INSIDE the
+  // corridor — behind the flight midpoint, nudged to the clearer side, and
+  // above the apex looking down the line (Augusta tower-camera style).
+  const side = Math.min(15, Math.max(9, L * 0.12));
+  const back = Math.min(60, Math.max(18, L * 0.3));
+  const clearance = (cx2, cz2) => {
+    let d = 1e9;
+    for (const t of game.course.trees || []) {
+      d = Math.min(d, Math.hypot(t.x - cx2, t.z - cz2));
+      if (d < 2) break;
+    }
+    return d;
+  };
+  const baseX = mx - (dx / L) * back;
+  const baseZ = mz - (dz / L) * back;
+  const aX = baseX - (dz / L) * side, aZ = baseZ + (dx / L) * side;
+  const bX = baseX + (dz / L) * side, bZ = baseZ - (dx / L) * side;
+  const useA = clearance(aX, aZ) >= clearance(bX, bZ);
+  const px = useA ? aX : bX;
+  const pz = useA ? aZ : bZ;
+  const py = Math.max(apex * 0.85 + 8, game.course.heightAt(px, pz) + 6);
+  camSet(px, clearSightline(px, py, pz, bx, by, bz), pz, bx, by, bz, false, 3.5, 5);
+
+  if (idx >= f.n - 1) {
+    r.hold = (r.hold || 0) + frameDt;
+    if (r.hold > 0.8) {
+      replayBall.visible = false;
+      game.state = r.prevState === 'REPLAY' ? 'AIM' : r.prevState;
+      game.replay = null;
+    }
+  }
+}
+
 function updateFlight() {
   const sim = game.sim;
   sim.step(frameDt);
@@ -1467,6 +1756,9 @@ function frame() {
       case 'HOLE_DONE':
         game.doneTimer += frameDt;
         if (game.doneTimer > 3.0) nextHole();
+        break;
+      case 'REPLAY':
+        updateReplay();
         break;
       default:
         break;
@@ -1672,7 +1964,9 @@ function showSwingPip(b64) {
     function (metrics) {
       livePhoneConnected = true; updateLiveBadge();
       if (liveWaiting) liveWaiting.classList.add('hidden');
-      if (game.state === 'AIM' || game.state === 'METER_POWER' || game.state === 'METER_ACCURACY') {
+      const ready = game.state === 'AIM' || game.state === 'METER_POWER'
+        || game.state === 'METER_ACCURACY' || game.state === 'WAITING_OTHERS';
+      if (ready) {
         fireLiveShot(metrics);
         updateLiveShotNum(game.strokes);
       }
@@ -1707,7 +2001,10 @@ function showSwingPip(b64) {
       window.parent?.postMessage({ type: 'APP_DISCONNECTED' }, '*');
     },
     // onSwingImage — picture-in-picture of the player's real swing
-    showSwingPip
+    showSwingPip,
+    // onPlayersReceived — multi-player roster, sent once at the start of a multi-player
+    // session (single-player sessions never send this event).
+    ensurePlayers
   );
 }
 
@@ -1715,8 +2012,13 @@ function showSwingPip(b64) {
  * Fires a shot using metrics from the phone (live sim mode).
  * Bypasses the 3-click swing meter entirely.
  */
-function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaDegrees, hlaDirection }) {
+function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaDegrees, hlaDirection, playerIndex, playerName }) {
   if (!game.course) return;
+
+  // Multi-player: swap in this shot's player's own ball/lie/strokes before firing, so it
+  // continues from wherever THEIR ball actually rests (not whoever hit last). No-op for
+  // single-player sessions or repeat shots by the same already-active player.
+  switchActivePlayer(playerIndex, playerName);
 
   const speed = (ballSpeedMph || 100) * 0.44704; // mph → m/s
 
