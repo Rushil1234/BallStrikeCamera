@@ -182,6 +182,8 @@ export const PEBBLE_PRIVATE_WORLD = {
   profile: 'coastal',
   prepositioned: true,
   boundsMargin: 380,
+  // Pacific coast: quick poa greens, firm seaside turf, squally gusts.
+  conditions: { stimp: 11, firmness: 1.1, gustiness: 0.45 },
   coastline: {
     minX: -1300, maxX: 1250, minZ: -1120, maxZ: 900,
     land: [
