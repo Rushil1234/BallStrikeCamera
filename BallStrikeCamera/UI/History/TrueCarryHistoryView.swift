@@ -230,7 +230,7 @@ struct HandicapView: View {
             VStack(spacing: 8) {
                 ForEach(result.differentials) { d in
                     NavigationLink {
-                        ScorecardView(round: d.round, course: nil, backButtonTitle: "Back to Scores")
+                        ScorecardView(round: d.round, backButtonTitle: "Back to Scores")
                     } label: {
                         roundRow(d)
                     }

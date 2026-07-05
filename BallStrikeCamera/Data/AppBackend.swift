@@ -96,6 +96,10 @@ protocol AppBackend {
     func loadSentAttestations(userId: UUID) async throws -> [SentAttestation]
     func respondToAttestation(id: UUID, accept: Bool) async throws
 
+    /// Creates an attester-less attestation row and returns its share token, so the caller can
+    /// build a public link (truecarrygolf.com/attest/<token>) for someone without an account.
+    func requestRoundAttestationLink(round: CourseRound, requesterId: UUID, requesterName: String) async throws -> String
+
     // Entitlements & usage
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement
     func loadUsageCounter(userId: UUID, date: String) async throws -> UsageCounter?
@@ -139,6 +143,7 @@ extension AppBackend {
     func loadIncomingAttestations(userId: UUID) async throws -> [IncomingAttestation] { [] }
     func loadSentAttestations(userId: UUID) async throws -> [SentAttestation] { [] }
     func respondToAttestation(id: UUID, accept: Bool) async throws {}
+    func requestRoundAttestationLink(round: CourseRound, requesterId: UUID, requesterName: String) async throws -> String { "" }
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)

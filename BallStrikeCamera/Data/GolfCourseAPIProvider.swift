@@ -194,8 +194,9 @@ final class GolfCourseAPIProvider: CourseProvider {
         guard !rawTees.isEmpty else {
             return [TeeBox(id: "\(courseId)-default", name: "Standard", color: "White", totalYards: 0)]
         }
-        let all = rawTees.enumerated().map { idx, t in
-            TeeBox(
+        let all = rawTees.enumerated().map { idx, entry -> (tee: TeeBox, isFemale: Bool) in
+            let t = entry.tee
+            let tee = TeeBox(
                 id: t.id ?? "\(courseId)-tee-\(idx)",
                 name: t.tee_name ?? t.name ?? "Tee \(idx+1)",
                 color: inferredTeeColor(explicit: t.tee_color,
@@ -204,19 +205,9 @@ final class GolfCourseAPIProvider: CourseProvider {
                 rating: t.course_rating,
                 slope: t.slope_rating
             )
+            return (tee, entry.isFemale)
         }
-        // Deduplicate by name (male + female arrays can produce same name twice).
-        // Keep the longer one (back/male tees), then sort longest → shortest.
-        var seen: [String: TeeBox] = [:]
-        for tee in all {
-            let key = tee.name.lowercased()
-            if let existing = seen[key] {
-                if tee.totalYards > existing.totalYards { seen[key] = tee }
-            } else {
-                seen[key] = tee
-            }
-        }
-        return seen.values.sorted { $0.totalYards > $1.totalYards }
+        return TeeBox.mergingGenderedDuplicates(all)
     }
 
     private func inferredTeeColor(explicit: String?, name: String?) -> String {
@@ -238,7 +229,24 @@ final class GolfCourseAPIProvider: CourseProvider {
         // GolfCourseAPI holes are ordered arrays and usually do not include a hole_number.
         // Treat the array index as the canonical hole number.
         var holesMap: [Int: GolfHole] = [:]
-        for (tee, teeBox) in zip(allRawTees(raw), teeBoxes) {
+        let rawEntries = allRawTees(raw)
+        let maleColors = Set(rawEntries.filter { !$0.isFemale }.map {
+            inferredTeeColor(explicit: $0.tee.tee_color, name: $0.tee.tee_name ?? $0.tee.name)
+        })
+
+        for (tee, isFemale) in rawEntries {
+            let rawName = tee.tee_name ?? tee.name ?? ""
+            let rawColor = inferredTeeColor(explicit: tee.tee_color, name: rawName)
+            // A women's tee whose color matches a men's tee was merged into that men's TeeBox for
+            // display (TeeBox.mergingGenderedDuplicates) — the merged tee plays the men's yardage
+            // entirely (only rating/slope carried over), so its own per-hole yardage doesn't apply.
+            if isFemale && maleColors.contains(rawColor) { continue }
+            // Match by name (not position) since teeBoxes is the post-merge/dedup array and can be
+            // shorter than the raw male+female list; fall back to color for a standalone tee whose
+            // exact name text doesn't match (e.g. GolfCourseAPI text variations).
+            guard let teeBox = teeBoxes.first(where: { $0.name.caseInsensitiveCompare(rawName) == .orderedSame })
+                ?? teeBoxes.first(where: { $0.color.caseInsensitiveCompare(rawColor) == .orderedSame })
+            else { continue }
             for (idx, rawHole) in (tee.holes ?? []).enumerated() {
                 let num = rawHole.hole_number ?? rawHole.number ?? idx + 1
                 guard num > 0 else { continue }
@@ -279,8 +287,8 @@ final class GolfCourseAPIProvider: CourseProvider {
         return holesMap.values.sorted { $0.number < $1.number }
     }
 
-    private func allRawTees(_ raw: RawCourse) -> [RawTeeBox] {
-        (raw.tees?.male ?? []) + (raw.tees?.female ?? [])
+    private func allRawTees(_ raw: RawCourse) -> [(tee: RawTeeBox, isFemale: Bool)] {
+        (raw.tees?.male ?? []).map { ($0, false) } + (raw.tees?.female ?? []).map { ($0, true) }
     }
 
     // MARK: - Cache

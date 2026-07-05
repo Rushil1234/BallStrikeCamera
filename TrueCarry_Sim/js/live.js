@@ -36,7 +36,7 @@ async function _ackShot(code, seq) {
   } catch (_) { /* never block on ack */ }
 }
 
-export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged, onSessionEnd, onSwingImage) {
+export function connectLive(code, onShotReceived, onStatusChange, onPing, onClubChanged, onSessionEnd, onSwingImage, onPlayersReceived) {
   if (_channel) {
     _channel.unsubscribe();
     _channel = null;
@@ -74,6 +74,12 @@ export function connectLive(code, onShotReceived, onStatusChange, onPing, onClub
     })
     .on('broadcast', { event: 'end' }, () => {
       if (onSessionEnd) onSessionEnd();
+    })
+    // Multi-player roster: sent once when the phone starts a multi-player session so the
+    // sim can track every player's own ball position independently (single-player sessions
+    // never send this, so `names` is only ever populated for multi-player rounds).
+    .on('broadcast', { event: 'players' }, ({ payload }) => {
+      if (onPlayersReceived && Array.isArray(payload?.names)) onPlayersReceived(payload.names);
     })
     .subscribe((status) => {
       if (status === 'SUBSCRIBED') {

@@ -250,6 +250,14 @@ final class AuthSessionStore: ObservableObject {
         await saveProfile(p)
     }
 
+    /// Drives which tee rating/slope a round captures for handicap purposes — see
+    /// `TeeBox.resolvedRating(for:)`/`resolvedSlope(for:)`.
+    func updateGender(_ g: Gender) async {
+        guard var p = userProfile else { return }
+        p.gender = g
+        await saveProfile(p)
+    }
+
     /// True once the profile is loaded and the user hasn't finished the tutorial.
     var needsOnboarding: Bool {
         isLoggedIn && userProfile != nil && (userProfile?.onboardingCompleted != true)

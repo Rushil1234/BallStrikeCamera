@@ -5,7 +5,6 @@ struct ScorecardView: View {
     @State private var showRoundSummary = false
 
     let round: CourseRound
-    let course: GolfCourse?
     var backButtonTitle: String = "Back to Hole"
 
     // MARK: - Computed
@@ -14,10 +13,6 @@ struct ScorecardView: View {
     private var backNine:  [RoundHole] { round.holes.filter { $0.holeNumber > 9  } }
 
     private var scoreDiff: Int { round.scoreSummary.totalScore - round.scoreSummary.totalPar }
-
-    private var matchedTeeBox: TeeBox? {
-        course?.teeBoxes.first(where: { $0.name == round.teeBoxName })
-    }
 
     private func frontTotal(_ holes: [RoundHole]) -> Int {
         holes.reduce(0) { $0 + ($1.score ?? $1.par) }
@@ -137,7 +132,10 @@ struct ScorecardView: View {
                 Text("\(round.teeBoxName) Tees  ·  \(formattedDate(round.startedAt))")
                     .font(.system(size: 12))
                     .foregroundColor(TCTheme.textMuted)
-                if let r = matchedTeeBox?.rating, let s = matchedTeeBox?.slope {
+                // Show whatever rating/slope the round actually captured at start (already
+                // gender-resolved — see CourseRoundViewModel.startRound) rather than re-deriving
+                // from the tee, so this never disagrees with the handicap differential.
+                if let r = round.courseRating, let s = round.slopeRating {
                     Text(String(format: "Rating %.1f  /  Slope %d", r, s))
                         .font(.system(size: 11))
                         .foregroundColor(TCTheme.textMuted)

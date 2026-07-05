@@ -1,11 +1,18 @@
 import SwiftUI
 
+/// Which distance figure a shot's dispersion dot plots at: where it first landed, or where it
+/// finally came to rest (including roll).
+private enum DispersionMetric: String, CaseIterable {
+    case carry = "Carry", total = "Total"
+}
+
 struct TrueCarryInsightsView: View {
     @EnvironmentObject var session: AuthSessionStore
     @State private var shots: [SavedShot] = []
     @State private var clubs: [UserClub]  = []
     @State private var selectedClub: String? = nil
     @State private var showProfile = false
+    @State private var dispersionMetric: DispersionMetric = .carry
 
     // MARK: - Club list
 
@@ -368,6 +375,30 @@ struct TrueCarryInsightsView: View {
         Rectangle().fill(TCTheme.border).frame(height: 1)
     }
 
+    /// Toggles whether dispersion dots plot at carry (first landing) or total (after roll).
+    private var dispersionMetricPicker: some View {
+        HStack(spacing: 2) {
+            ForEach(DispersionMetric.allCases, id: \.self) { metric in
+                Button {
+                    dispersionMetric = metric
+                } label: {
+                    Text(metric.rawValue)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(dispersionMetric == metric ? TCTheme.background : TCTheme.textMuted)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule().fill(dispersionMetric == metric ? TCTheme.gold : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(2)
+        .background(Capsule().fill(TCTheme.panelRaised))
+        .fixedSize()
+    }
+
     /// Card header with the small Marker Gold tick (the brand title treatment).
     private func cardHeader(_ title: String, _ subtitle: String? = nil) -> some View {
         HStack(alignment: .top, spacing: 8) {
@@ -422,7 +453,8 @@ struct TrueCarryInsightsView: View {
             let lateral = tan(hlaRad) * total * carryFrac
                         + curveSign * curveMagnitude * pow(carryFrac, 1.6)
 
-            return TCRangeFinderDispersion.ShotPoint(carry: carry, lateral: lateral)
+            let plotted = dispersionMetric == .carry ? carry : total
+            return TCRangeFinderDispersion.ShotPoint(carry: plotted, lateral: lateral)
         }
         let dispersion = TCRangeFinderDispersion(shots: rangePoints)
 
@@ -441,12 +473,9 @@ struct TrueCarryInsightsView: View {
         return VStack(alignment: .leading, spacing: 0) {
             // Header — padded
             HStack(alignment: .top) {
-                cardHeader("Shot Dispersion", "Carry distance & lateral spread")
-                Text(shots.isEmpty ? "" : "\(shots.count) Shots")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(TCTheme.textMuted)
-                    .fixedSize()
-                    .padding(.top, 2)
+                cardHeader("Shot Dispersion", "\(dispersionMetric.rawValue) distance & lateral spread")
+                Spacer(minLength: 8)
+                dispersionMetricPicker
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)

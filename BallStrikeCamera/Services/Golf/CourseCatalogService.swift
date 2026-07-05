@@ -196,7 +196,7 @@ enum CourseCatalog {
             }
 
             var course = GolfCourse(id: catalogId, name: self.name ?? "", holes: golfHoles,
-                                    teeBoxes: teeBoxes)
+                                    teeBoxes: TeeBox.collapsingSameColorDuplicates(teeBoxes))
             course.source = .merged
             return course
         }

@@ -43,6 +43,7 @@ struct SupabaseProfileRow: Codable {
     var displayName: String
     var username: String?
     var handedness: String
+    var gender: String?
     var distanceUnit: String
     var speedUnit: String
     var homeCourseName: String
@@ -57,6 +58,7 @@ struct SupabaseProfileRow: Codable {
             displayName: displayName,
             username: username,
             handedness: Handedness(rawValue: handedness) ?? .right,
+            gender: gender.flatMap { Gender(rawValue: $0) } ?? .male,
             distanceUnit: DistanceUnit(rawValue: distanceUnit) ?? .yards,
             speedUnit: SpeedUnit(rawValue: speedUnit) ?? .mph,
             homeCourseName: homeCourseName,

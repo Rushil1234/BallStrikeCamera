@@ -150,7 +150,7 @@ final class CourseRoundViewModel: ObservableObject {
 
     /// Enriches the course with real OSM geometry first, then starts the round.
     /// Falls back to the unenriched course on any OSM error so a round can still be played.
-    func startRoundEnriching(course: GolfCourse, teeBox: TeeBox) async {
+    func startRoundEnriching(course: GolfCourse, teeBox: TeeBox, gender: Gender = .male) async {
         guard activeRound == nil else { return }
         // Start GPS acquisition immediately so the blue dot + distances are ready by the
         // time geometry finishes loading. Do NOT gate this behind the (slow) OSM enrich.
@@ -197,7 +197,7 @@ final class CourseRoundViewModel: ObservableObject {
         // Show a non-blocking note for degraded tiers; nil for full GPS.
         degradedTierNote = readiness.tier == .fullGPS ? nil : readiness.report?.message
         isLoading = false
-        await startRound(course: playCourse, teeBox: resolvedTee)
+        await startRound(course: playCourse, teeBox: resolvedTee, gender: gender)
     }
 
     /// Resumes a previously-saved round (`endedAt == nil`). Rehydrates the course from the OSM
@@ -238,7 +238,7 @@ final class CourseRoundViewModel: ObservableObject {
         location.startUpdating()
     }
 
-    func startRound(course: GolfCourse, teeBox: TeeBox) async {
+    func startRound(course: GolfCourse, teeBox: TeeBox, gender: Gender = .male) async {
         guard activeRound == nil else { return }
         var courseHoles = course.holes.sorted { $0.number < $1.number }
         if courseHoles.isEmpty {
@@ -255,8 +255,11 @@ final class CourseRoundViewModel: ObservableObject {
             teeBoxName: teeBox.name,
             holes: holes
         )
-        round.courseRating = teeBox.rating
-        round.slopeRating  = teeBox.slope
+        // Gender-aware: a tee's rating/slope can differ for men's/women's play on the SAME physical
+        // markers (see TeeBox.resolvedRating/resolvedSlope) — pick the pair matching the golfer's
+        // profile so the handicap differential (TrueCarryHistoryView.differential) is correct.
+        round.courseRating = teeBox.resolvedRating(for: gender)
+        round.slopeRating  = teeBox.resolvedSlope(for: gender)
         activeRound = round
         selectedCourse = course.holes.isEmpty
             ? GolfCourse(id: course.id, name: course.name, city: course.city,

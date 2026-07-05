@@ -26,6 +26,12 @@ struct TrueCarryProfileView: View {
     @State private var frameArchiveError: String?
     @State private var archiveRefresh = 0   // bump to re-read the on-disk count
 
+    // Real-time Google Drive dev-mode uploader (developer testing tool)
+    @AppStorage(GoogleDriveUploadService.enabledKey) private var driveDevMode = false
+    @StateObject private var driveAuth = GoogleDriveAuthService.shared
+    @State private var isConnectingDrive = false
+    @State private var driveConnectError: String?
+
     private var profile: UserProfile? { session.userProfile }
     private var user: AppUser?        { session.currentUser }
 
@@ -76,6 +82,7 @@ struct TrueCarryProfileView: View {
                         communityCard
                         accountCard
                         appCard
+                        developerCard
                         signOutButton
                         Spacer(minLength: 140)
                     }
@@ -210,10 +217,42 @@ struct TrueCarryProfileView: View {
             VStack(spacing: 0) {
                 handednessRow
                 rowDivider
+                genderRow
+                rowDivider
                 defaultVisibilityRow
             }
             .tcCard()
         }
+    }
+
+    private var genderRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "person")
+                .font(.system(size: 14))
+                .foregroundColor(TCTheme.textMuted)
+                .frame(width: 24, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Gender")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(TCTheme.textPrimary)
+                Text("Used for tee rating/slope in handicap calc")
+                    .font(.system(size: 11))
+                    .foregroundColor(TCTheme.textMuted)
+            }
+            Spacer()
+            Picker("", selection: Binding(
+                get: { session.userProfile?.gender ?? .male },
+                set: { newVal in Task { await session.updateGender(newVal) } }
+            )) {
+                ForEach(Gender.allCases, id: \.self) { g in
+                    Text(g.rawValue).tag(g)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 130)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private var defaultVisibilityRow: some View {
@@ -444,6 +483,58 @@ struct TrueCarryProfileView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(FrameArchiveService.shared.shotCount() == 0)
+
+                rowDivider
+
+                // Real-time uploader: every accepted shot auto-sends straight to Drive, no
+                // manual export tap. Complements the local archive above.
+                HStack(spacing: 14) {
+                    Image(systemName: "icloud.and.arrow.up.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                        .frame(width: 24, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Dev Mode: Auto-Upload to Drive")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text(driveAuth.isSignedIn
+                             ? "Every accepted shot uploads live to \(driveAuth.accountEmail ?? "Drive")"
+                             : "Connect Google Drive below to enable")
+                            .font(.system(size: 11))
+                            .foregroundColor(TCTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $driveDevMode)
+                        .tint(Color(red: 1, green: 0.6, blue: 0))
+                        .labelsHidden()
+                        .disabled(!driveAuth.isSignedIn)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+
+                rowDivider
+
+                Button { toggleGoogleDriveConnection() } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: driveAuth.isSignedIn ? "checkmark.icloud.fill" : "link")
+                            .font(.system(size: 14))
+                            .foregroundColor(driveAuth.isSignedIn ? TCTheme.sage : TCTheme.textPrimary)
+                            .frame(width: 24, alignment: .leading)
+                        Text(driveAuth.isSignedIn
+                             ? "Disconnect Google Drive (\(driveAuth.accountEmail ?? "connected"))"
+                             : "Connect Google Drive")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Spacer()
+                        if isConnectingDrive { ProgressView().tint(TCTheme.textMuted) }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 13)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isConnectingDrive)
             }
             .tcCard()
         }
@@ -460,6 +551,29 @@ struct TrueCarryProfileView: View {
         )) {
             Button("OK", role: .cancel) {}
         } message: { Text(frameArchiveError ?? "") }
+        .alert("Google Drive", isPresented: Binding(
+            get: { driveConnectError != nil },
+            set: { if !$0 { driveConnectError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(driveConnectError ?? "") }
+    }
+
+    private func toggleGoogleDriveConnection() {
+        if driveAuth.isSignedIn {
+            GoogleDriveAuthService.shared.signOut()
+            driveDevMode = false
+            return
+        }
+        isConnectingDrive = true
+        Task {
+            do {
+                try await GoogleDriveAuthService.shared.signIn()
+            } catch {
+                driveConnectError = "Could not connect Google Drive: \(error.localizedDescription)"
+            }
+            isConnectingDrive = false
+        }
     }
 
     private var archiveSizeString: String {
