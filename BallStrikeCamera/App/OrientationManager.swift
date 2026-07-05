@@ -24,10 +24,16 @@ final class OrientationManager {
         rotate(to: .portrait)
     }
 
+    /// Locks landscape. Lefty golfers mount the phone upside-down relative to righty, so we lock
+    /// the OPPOSITE landscape orientation (.landscapeLeft) — iOS then renders the whole UI rotated
+    /// 180°, which reads upright once the phone is physically flipped. Hand is read from the
+    /// persisted "tc_hitting_hand" preference so every caller stays in sync.
     func lockLandscape() {
-        print("OrientationManager: locking landscape")
-        currentLock = .landscapeRight
-        rotate(to: .landscapeRight)
+        let lefty = UserDefaults.standard.string(forKey: "tc_hitting_hand") == "L"
+        let orientation: UIInterfaceOrientation = lefty ? .landscapeLeft : .landscapeRight
+        print("OrientationManager: locking landscape (\(lefty ? "lefty/landscapeLeft" : "righty/landscapeRight"))")
+        currentLock = lefty ? .landscapeLeft : .landscapeRight
+        rotate(to: orientation)
     }
 
     func unlockAllButUpsideDown() {
@@ -45,16 +51,27 @@ final class OrientationManager {
     private func rotate(to orientation: UIInterfaceOrientation) {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
         if #available(iOS 16.0, *) {
-            let mask: UIInterfaceOrientationMask = (orientation == .portrait || orientation == .portraitUpsideDown)
-                ? .portrait
-                : .landscapeRight
+            let mask: UIInterfaceOrientationMask
+            switch orientation {
+            case .portrait, .portraitUpsideDown: mask = .portrait
+            case .landscapeLeft:                 mask = .landscapeLeft
+            default:                             mask = .landscapeRight
+            }
             // Refresh the controller's supported orientations FIRST (it reads currentLock, already
-            // updated above) so the geometry request is validated against the new set. Doing it the
-            // other way round makes the system reject the request against the stale (portrait) set:
-            // "None of the requested orientations are supported … Requested: landscapeRight; Supported: portrait".
-            scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-            scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
-                print("OrientationManager geometry update error: \(error.localizedDescription)")
+            // updated above). setNeedsUpdate marks the VC dirty but the system re-queries it on the
+            // NEXT runloop tick — so issue the geometry request async, otherwise it validates against
+            // the stale (portrait) set and logs "None of the requested orientations are supported".
+            let rootVC = scene.keyWindow?.rootViewController
+            rootVC?.setNeedsUpdateOfSupportedInterfaceOrientations()
+            DispatchQueue.main.async {
+                rootVC?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in
+                    // Benign at cold start before the root VC adopts the mask; rotation still
+                    // applies on the next layout pass.
+                    #if DEBUG
+                    print("OrientationManager: geometry update pending — \(error.localizedDescription)")
+                    #endif
+                }
             }
         } else {
             UIDevice.current.setValue(orientation.rawValue, forKey: "orientation")

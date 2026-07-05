@@ -31,7 +31,10 @@ final class PreviewView: UIView {
         super.layoutSubviews()
         videoPreviewLayer.frame = bounds
         if let connection = videoPreviewLayer.connection, connection.isVideoOrientationSupported {
-            connection.videoOrientation = .landscapeRight
+            // Match the locked interface orientation so the preview reads naturally (motion in the
+            // correct directions). Lefty locks .landscapeLeft, which is 180° from righty.
+            let lefty = UserDefaults.standard.string(forKey: "tc_hitting_hand") == "L"
+            connection.videoOrientation = lefty ? .landscapeLeft : .landscapeRight
         }
     }
 }

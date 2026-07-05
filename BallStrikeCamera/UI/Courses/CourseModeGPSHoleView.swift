@@ -704,6 +704,14 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         // Crop ~12% from each side horizontally and stretch to fill, making the fairway
         // appear wider without changing the vertical zoom level.
         map.transform = CGAffineTransform(scaleX: Self.kHorizStretch, y: 1.0)
+        // Seed an initial region so the map never renders blank/white before framing runs. Courses
+        // with no hole geometry (scorecard-only) otherwise had nothing to frame → white screen.
+        if let seed = teeCoord ?? greenCoord ?? courseCoord ?? userCoord {
+            map.setRegion(MKCoordinateRegion(center: seed,
+                                             latitudinalMeters: 1400,
+                                             longitudinalMeters: 1400),
+                          animated: false)
+        }
         return map
     }
 
@@ -869,7 +877,9 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 context.coordinator.completeRecenter(focusId: focusId, recenterToken: recenterToken, gpsKey: gpsKey)
             }
         } else {
-            let center = courseCoord ?? CLLocationCoordinate2D(latitude: 37.785834, longitude: -122.406417)
+            // No hole geometry: center on the course, else the player's live location, else a
+            // neutral default. (Previously fell straight to San Francisco, ignoring the player.)
+            let center = courseCoord ?? userCoord ?? CLLocationCoordinate2D(latitude: 37.785834, longitude: -122.406417)
             if shouldRecenter {
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setRegion(
@@ -1394,6 +1404,14 @@ struct CourseModeGPSHoleView: View {
     @StateObject private var vm: CourseRoundViewModel
     @ObservedObject private var nfcManager = NFCManager.shared
     @StateObject private var elevation = ElevationService()
+    @StateObject private var wind = WindService()
+    @State private var windEnabled = false     // show live wind + plays-like adjustment
+
+    // Club suggestion (Pro/Unlimited)
+    @State private var showCaddie = false
+    @State private var caddieLoading = false
+    @State private var caddieResult: CaddieEngine.Suggestion?
+    @State private var caddieMessage: String?
 
     @State private var clubs: [UserClub] = []
     @State private var showCamera      = false
@@ -1580,6 +1598,122 @@ struct CourseModeGPSHoleView: View {
         )
     }
 
+    // MARK: - Wind (#2, WeatherKit)
+
+    /// Player reference position for wind/aim (live GPS on the hole, else tee, else green).
+    private var windReference: CLLocationCoordinate2D? {
+        let gh = currentMapHole ?? currentCourseHole
+        return (userIsNearCurrentHole ? vm.location.currentLocation : nil)
+            ?? gh?.teeCoordinate?.clCoordinate
+            ?? gh?.greenCenterCoordinate?.clCoordinate
+    }
+
+    /// (speed, from-degrees) applied to dispersion dots / arrows when wind mode is on.
+    private var windDotEffect: (speedMph: Double, fromDegrees: Double)? {
+        guard windEnabled, let r = wind.reading, r.speedMph > 0 else { return nil }
+        return (r.speedMph, r.fromDegrees)
+    }
+
+    /// Compass heading the map is rotated to (tee→green runs bottom-to-top), so screen-up = this
+    /// bearing. Used to orient the wind arrows to what the player actually sees, not true north.
+    private var mapHeading: Double {
+        let gh = currentMapHole ?? currentCourseHole
+        let path = currentHolePathCoordinates
+        let start = gh?.teeCoordinate?.clCoordinate ?? path.first
+        let end   = path.last ?? gh?.greenCenterCoordinate?.clCoordinate
+        guard let start, let end else { return 0 }
+        return start.bearing(to: end)
+    }
+
+    private func refreshWind(force: Bool = false) {
+        guard let ref = windReference else { return }
+        Task { await wind.fetch(at: ref, force: force) }
+    }
+
+    // MARK: - Club suggestion (#3, Pro/Unlimited)
+
+    private func openCaddie() {
+        caddieResult = nil
+        caddieMessage = nil
+        caddieLoading = true
+        showCaddie = true
+        Task { await computeCaddie() }
+    }
+
+    @MainActor
+    private func computeCaddie() async {
+        defer { caddieLoading = false }
+        guard let uid = session.currentUser?.id,
+              let gh = currentMapHole ?? currentCourseHole,
+              let green = gh.greenCenterCoordinate?.clCoordinate,
+              let ref = windReference,
+              let baseYards = mapDistances.center else {
+            caddieMessage = "No green distance yet — get a GPS fix on the hole first."
+            return
+        }
+
+        // Best-effort live wind so the suggestion factors it in (no-op if WeatherKit isn't provisioned).
+        await wind.fetch(at: ref)
+        let bearing = ref.bearing(to: green)
+
+        // Slope: slopeDistances.center already folds in the plays-like elevation change.
+        let slopeDelta = slopeDistances.center.map { $0 - baseYards } ?? 0
+
+        var windDelta = 0
+        var aimAdvice = ""
+        var windSummary = ""
+        if let r = wind.reading {
+            let eff = WindModel.effect(distanceYards: Double(baseYards),
+                                       shotBearingDegrees: bearing,
+                                       windSpeedMph: r.speedMph,
+                                       windFromDegrees: r.fromDegrees,
+                                       profile: .mid)
+            windDelta = eff.playsLikeYards - baseYards
+            aimAdvice = eff.aimAdvice
+            let rel = WindModel.relativeLabel(headwindMph: eff.headwindMph, crosswindMph: eff.crosswindMph)
+            windSummary = "\(Int(r.speedMph.rounded())) mph \(rel)"
+        }
+
+        let playing = Double(baseYards + slopeDelta + windDelta)
+
+        // Green depth from the front↔back coords; width uses a sensible default.
+        let greenDepth: Double = {
+            if let f = gh.greenFrontCoordinate?.clCoordinate, let b = gh.greenBackCoordinate?.clCoordinate {
+                return Self.metersBetween(f, b) * ElevationService.yardsPerMeter
+            }
+            return 16
+        }()
+
+        let stats = await loadClubStats(uid: uid)
+        guard !stats.isEmpty else {
+            caddieMessage = "Not enough tracked shots yet — log a few with each club to unlock suggestions."
+            return
+        }
+
+        if let s = CaddieEngine.suggest(playingYards: playing, baseYards: baseYards,
+                                        slopeDelta: slopeDelta, windDelta: windDelta,
+                                        greenDepthYards: greenDepth, greenWidthYards: 18,
+                                        aimAdvice: aimAdvice, windSummary: windSummary,
+                                        clubs: stats) {
+            caddieResult = s
+        } else {
+            caddieMessage = "Not a green-light shot — no club in your bag holds the green from \(Int(playing.rounded())) yds. Play for position."
+        }
+    }
+
+    /// Reduces the golfer's shot history to per-club (carry, lateral) dispersion stats.
+    private func loadClubStats(uid: UUID) async -> [CaddieEngine.ClubStat] {
+        let svc = ShotPersistenceService(userId: uid, backend: session.backend)
+        let all = (try? await svc.loadShots(limit: 600)) ?? []
+        var byClub: [String: [(carry: Double, lateral: Double)]] = [:]
+        for shot in all where !shot.isBadShot {
+            guard let p = ShotDispersion.point(for: shot) else { continue }
+            let key = shot.clubName ?? shot.clubId?.uuidString ?? "Unknown"
+            byClub[key, default: []].append(p)
+        }
+        return byClub.compactMap { CaddieEngine.stat(name: $0.key, samples: $0.value) }
+    }
+
     // MARK: - Dispersion overlay (#7)
 
     /// Projected landing dots for the chosen dispersion club. The "zero line" runs
@@ -1626,6 +1760,7 @@ struct CourseModeGPSHoleView: View {
             for shot in dispersionShotsByClub[clubId] ?? [] {
                 guard let p = ShotDispersion.point(for: shot) else { continue }
                 var carry = p.carry
+                var lateral = p.lateral
                 if let originElev {
                     let flat = origin.projected(yardsForward: p.carry, yardsRight: p.lateral, bearingDeg: bearing)
                     if let landElev = elevation.elevation(at: flat) {
@@ -1633,14 +1768,25 @@ struct CourseModeGPSHoleView: View {
                         carry = max(1, p.carry - vertYds)   // uphill (+vert) → shorter; downhill (−) → longer
                     }
                 }
-                let coord = origin.projected(yardsForward: carry, yardsRight: p.lateral, bearingDeg: bearing)
+                // Wind mode: blow each shot as it would actually fly — headwind pulls the carry in,
+                // tailwind pushes it out, crosswind drifts it sideways.
+                if let we = windDotEffect {
+                    let eff = WindModel.effect(distanceYards: carry,
+                                               shotBearingDegrees: bearing,
+                                               windSpeedMph: we.speedMph,
+                                               windFromDegrees: we.fromDegrees,
+                                               profile: .mid)
+                    carry = max(1, carry + Double(eff.carryDeltaYards))
+                    lateral += Double(eff.lateralDriftYards)
+                }
+                let coord = origin.projected(yardsForward: carry, yardsRight: lateral, bearingDeg: bearing)
                 let fill: UIColor
                 if multiClub {
                     fill = clubColor
                 } else if useProximity, let greenCenter {
                     fill = UIColor(TCDispersionColor.byGreenProximity(coord.yards(to: greenCenter)))
                 } else {
-                    fill = UIColor(TCDispersionColor.byLateral(abs(p.lateral)))
+                    fill = UIColor(TCDispersionColor.byLateral(abs(lateral)))
                 }
                 dots.append(DispersionDot(coord: coord, fill: fill))
             }
@@ -2021,7 +2167,7 @@ struct CourseModeGPSHoleView: View {
                 },
                 trackedShots:   vm.currentHoleTrackedShots,
                 dispersionDots: dispersionDots,
-                topUIInset:    topSafeArea + 82, // safe area + topBar(44) + gap(2) + infoStrip(30) + margin(6)
+                topUIInset:    topSafeArea + 184, // safe area + topBar(44) + gap(2) + infoStrip(30) + margin(6) + lowered(102)
                 bottomUIInset: bottomSafeArea + 76, // bottom bar content + home indicator
                 gpsKey:        coarseGpsKey,
                 customAimTarget: aimTarget,
@@ -2093,6 +2239,15 @@ struct CourseModeGPSHoleView: View {
                 }
             }
 
+            // Wind flow arrows — ambient direction cue over the map. Only while the dispersion
+            // overlay is OFF; in overlay mode the wind is shown by shifting the shot dots instead.
+            if windEnabled, dispersionClubIds.isEmpty, let we = windDotEffect {
+                // Offset by the map heading so arrows read correctly on the rotated (heading-up) map.
+                WindFlowOverlay(toBearingDegrees: we.fromDegrees + 180 - mapHeading)
+                    .allowsHitTesting(false)
+                    .zIndex(1)
+            }
+
             // Top dark gradient
             VStack(spacing: 0) {
                 LinearGradient(
@@ -2113,9 +2268,9 @@ struct CourseModeGPSHoleView: View {
             // ── Layout layers ──────────────────────────────────────────────
             VStack(spacing: 0) {
 
-                // Top bar — sit as close to the notch/island as possible
+                // Top bar — lowered well off the notch/island for breathing room
                 topBar
-                    .padding(.top, 4)
+                    .padding(.top, 106)
 
                 // Hole info strip
                 holeInfoStrip
@@ -2131,15 +2286,15 @@ struct CourseModeGPSHoleView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .padding(.leading, 6)
                 .padding(.top, topSafeArea + 120)
-                .padding(.bottom, 130)
+                .padding(.bottom, 190)
                 .ignoresSafeArea(edges: .bottom)
 
             // Right sidebar
             rightSidebar
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
-                .padding(.top, topSafeArea + 132)
-                .padding(.bottom, 210)
+                .padding(.top, topSafeArea + 126)
+                .padding(.bottom, 232)
                 .ignoresSafeArea(edges: .bottom)
 
             // Slope ("plays-like") pill — bottom-right, same height as the left F/C/B pill
@@ -2147,17 +2302,29 @@ struct CourseModeGPSHoleView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
                 .padding(.top, topSafeArea + 120)
-                .padding(.bottom, 130)
+                .padding(.bottom, 190)
                 .ignoresSafeArea(edges: .bottom)
 
-            // Hazard count badges — top-left, below top bar
+            // Wind readout — top-center banner while wind mode is on. Sits BELOW the (lowered) top
+            // bar so it isn't hidden behind it.
+            if windEnabled {
+                VStack {
+                    windPill
+                        .padding(.top, topSafeArea + 174)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .ignoresSafeArea(edges: .bottom)
+            }
+
+            // Hazard count badges — top-left, below the (lowered) top bar
             if !hazardCounts.filter({ $0.value > 0 }).isEmpty {
                 VStack {
                     HStack(spacing: 5) {
                         hazardCountBadge
                         Spacer()
                     }
-                    .padding(.top, topSafeArea + 88)
+                    .padding(.top, topSafeArea + 174)
                     .padding(.leading, 10)
                     Spacer()
                 }
@@ -2171,7 +2338,7 @@ struct CourseModeGPSHoleView: View {
                     Spacer()
                     gpsStatusBadge
                         .padding(.trailing, 10)
-                        .padding(.bottom, 104)
+                        .padding(.bottom, 164)
                 }
             }
             .ignoresSafeArea(edges: .bottom)
@@ -2182,7 +2349,7 @@ struct CourseModeGPSHoleView: View {
                 HStack {
                     OSMAttributionBadge()
                         .padding(.leading, 10)
-                        .padding(.bottom, 96)   // above the bottom bar
+                        .padding(.bottom, 156)   // above the bottom bar
                     Spacer()
                 }
             }
@@ -2286,6 +2453,11 @@ struct CourseModeGPSHoleView: View {
         .sheet(isPresented: $showDispersionPicker) {
             dispersionPickerSheet
                 .presentationDetents([.medium, .large])
+                .tcAppearance()
+        }
+        .sheet(isPresented: $showCaddie) {
+            caddieSheet
+                .presentationDetents([.height(380), .medium])
                 .tcAppearance()
         }
         .confirmationDialog(
@@ -2717,15 +2889,25 @@ struct CourseModeGPSHoleView: View {
                 railButton("scope", isActive: !dispersionClubIds.isEmpty) {
                     showDispersionPicker = true
                 }
-                // Slope toggle — only while the dispersion overlay is active. Pulls each dot in
-                // (uphill) or out (downhill) by the plays-like elevation change.
-                if !dispersionClubIds.isEmpty {
-                    railButton("mountain.2.fill", isActive: slopeAdjustDots) {
-                        slopeAdjustDots.toggle()
-                        if slopeAdjustDots {
-                            loadElevationForHole()   // ensure the grid is loaded for the shift
-                        }
+                // Slope toggle — pulls each dispersion dot in (uphill) or out (downhill) by the
+                // plays-like elevation change. Kept in the rail ALWAYS (dimmed until a dispersion
+                // overlay is active) so the rail never resizes/shifts when you turn the overlay on.
+                railButton("mountain.2.fill", isActive: slopeAdjustDots && !dispersionClubIds.isEmpty) {
+                    slopeAdjustDots.toggle()
+                    if slopeAdjustDots {
+                        loadElevationForHole()   // ensure the grid is loaded for the shift
                     }
+                }
+                .disabled(dispersionClubIds.isEmpty)
+                .opacity(dispersionClubIds.isEmpty ? 0.3 : 1)
+                // Wind toggle — pulls live wind (WeatherKit) and shows the plays-like adjustment.
+                railButton("wind", isActive: windEnabled) {
+                    windEnabled.toggle()
+                    if windEnabled { refreshWind(force: true) }
+                }
+                // Club suggestion (Pro/Unlimited) — best club to hold the green from your history.
+                if session.entitlementVM.canAccessAdvancedInsights {
+                    railButton("figure.golf", isActive: showCaddie) { openCaddie() }
                 }
                 railButton("camera.fill", isActive: false) { openCamera() }
                 railButton("list.number", isActive: false) { showScorecard = true }
@@ -2833,6 +3015,155 @@ struct CourseModeGPSHoleView: View {
             .frame(minWidth: 70, alignment: .trailing)
             .animation(.spring(response: 0.4, dampingFraction: 0.85), value: s.center)
         }
+    }
+
+    /// Compact wind stat chip — live speed + the compass direction it's blowing FROM (e.g. "3 mph NW").
+    /// Shown whenever wind mode is on; the flowing arrows / dot shift convey the effect visually.
+    @ViewBuilder private var windPill: some View {
+        if wind.isLoading && wind.reading == nil {
+            HStack(spacing: 7) {
+                ProgressView().scaleEffect(0.7).tint(.white)
+                Text("Reading wind…")
+                    .font(.system(size: 11, weight: .semibold)).foregroundColor(.white.opacity(0.85))
+            }
+            .padding(.horizontal, 12).padding(.vertical, 7).hudGlass(14)
+        } else if let r = wind.reading {
+            HStack(spacing: 7) {
+                Image(systemName: "wind")
+                    .font(.system(size: 12, weight: .bold)).foregroundColor(.white.opacity(0.9))
+                Text("\(Int(r.speedMph.rounded())) mph \(WindModel.cardinal(r.fromDegrees))")
+                    .font(.system(size: 13, weight: .heavy, design: .rounded)).foregroundColor(.white)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 7).hudGlass(14)
+        } else if wind.errorText != nil {
+            Button { refreshWind(force: true) } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "wind").font(.system(size: 11, weight: .bold))
+                    Text("Wind unavailable — tap to retry")
+                        .font(.system(size: 10.5, weight: .semibold))
+                }
+                .foregroundColor(.white.opacity(0.75))
+                .padding(.horizontal, 12).padding(.vertical, 7).hudGlass(14)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Club suggestion sheet (#3)
+
+    private var caddieSheet: some View {
+        NavigationStack {
+            ZStack {
+                TrueCarryBackground().ignoresSafeArea()
+                VStack(spacing: 16) {
+                    if caddieLoading {
+                        Spacer()
+                        ProgressView("Reading your bag…")
+                            .tint(TCTheme.sage)
+                            .foregroundColor(TCTheme.textMuted)
+                        Spacer()
+                    } else if let s = caddieResult {
+                        caddieResultCard(s)
+                        Spacer()
+                    } else {
+                        Spacer()
+                        VStack(spacing: 12) {
+                            Image(systemName: "flag.slash")
+                                .font(.system(size: 30))
+                                .foregroundColor(TCTheme.textMuted)
+                            Text(caddieMessage ?? "No suggestion available.")
+                                .font(.system(size: 14))
+                                .foregroundColor(TCTheme.textMuted)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.horizontal, 28)
+                        Spacer()
+                    }
+                }
+                .padding(.top, 20)
+            }
+            .navigationTitle("Club Suggestion")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { showCaddie = false }.foregroundColor(TCTheme.sage)
+                }
+            }
+        }
+    }
+
+    private func caddieResultCard(_ s: CaddieEngine.Suggestion) -> some View {
+        VStack(spacing: 16) {
+            VStack(spacing: 3) {
+                Text(s.clubName)
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .foregroundColor(TCTheme.textPrimary)
+                Text("plays \(s.playingYards) yds")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(TCTheme.sage)
+            }
+
+            HStack(spacing: 12) {
+                caddieStat("YOUR CARRY", "\(s.typicalYards)y")
+                caddieStat("ON GREEN", "\(s.onGreenPercent)%")
+                caddieStat("ACTUAL", "\(s.baseYards)y")
+            }
+
+            // Adjustment chips
+            if s.slopeDelta != 0 || s.windDelta != 0 {
+                HStack(spacing: 8) {
+                    if s.slopeDelta != 0 {
+                        caddieChip("mountain.2.fill", "slope \(s.slopeDelta > 0 ? "+" : "")\(s.slopeDelta)")
+                    }
+                    if s.windDelta != 0 {
+                        caddieChip("wind", "wind \(s.windDelta > 0 ? "+" : "")\(s.windDelta)")
+                    }
+                }
+            }
+
+            if !s.aimAdvice.isEmpty {
+                Label("\(s.aimAdvice)\(s.windSummary.isEmpty ? "" : "  ·  \(s.windSummary)")",
+                      systemImage: "scope")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(TCTheme.gold)
+            }
+
+            Text("Best chance to hold the green from your tracked shots.")
+                .font(.system(size: 11))
+                .foregroundColor(TCTheme.textUltraMuted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(20)
+        .tcCard()
+        .padding(.horizontal, TCTheme.hPad)
+    }
+
+    private func caddieStat(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 20, weight: .heavy, design: .rounded))
+                .foregroundColor(TCTheme.textPrimary)
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(TCTheme.textMuted)
+                .tracking(0.6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func caddieChip(_ icon: String, _ text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 10, weight: .bold))
+            Text(text).font(.system(size: 12, weight: .semibold))
+        }
+        .foregroundColor(TCTheme.textSecondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(TCTheme.panel)
+        .clipShape(Capsule())
     }
 
     private func slopeRow(label: String, yards: Int, isHero: Bool) -> some View {
@@ -2955,8 +3286,8 @@ struct CourseModeGPSHoleView: View {
             .buttonStyle(HUDPressStyle())
         }
         .padding(.horizontal, 18)
-        .padding(.top, 16)
-        .padding(.bottom, 22)
+        .padding(.top, 12)
+        .padding(.bottom, 78)
         .frame(maxWidth: .infinity)
         .background(
             ZStack {
@@ -3213,6 +3544,61 @@ extension View {
             .clipShape(Circle())
             .overlay(Circle().strokeBorder(Color.white.opacity(0.18), lineWidth: 1))
             .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
+    }
+}
+
+/// Ambient wind arrows drifting across the map in the direction the wind blows. A handful of
+/// chevrons per lane fade in/out as they cross, so it reads clearly without cluttering the view.
+private struct WindFlowOverlay: View {
+    let toBearingDegrees: Double   // compass bearing the wind travels TOWARD (0 = N = screen up)
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { context, size in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let rad = toBearingDegrees * .pi / 180
+                let ux = sin(rad), uy = -cos(rad)      // travel unit vector (screen coords, y down)
+                let px = -uy, py = ux                   // perpendicular, for lane spacing
+                let lanes = 6
+                let diag = Double(hypot(size.width, size.height)) + 80
+                let cx = Double(size.width) / 2, cy = Double(size.height) / 2
+                let speed = 70.0                        // pts per second
+                let laneGap = Double(size.width) / Double(max(1, lanes - 1)) * 0.92
+
+                for lane in 0..<lanes {
+                    let perpOff = (Double(lane) - Double(lanes - 1) / 2) * laneGap
+                    for k in 0..<2 {   // two arrows per lane, half a cycle apart, for a continuous stream
+                        let phase = (t * speed + Double(lane) * 55 + Double(k) * diag / 2)
+                            .truncatingRemainder(dividingBy: diag)
+                        let along = phase - diag / 2
+                        let x = cx + ux * along + px * perpOff
+                        let y = cy + uy * along + py * perpOff
+                        let edge = 1 - abs(along) / (diag / 2)          // fade near the extremes
+                        let alpha = max(0, min(1, edge * 1.6)) * 0.5
+                        drawArrow(context, at: CGPoint(x: x, y: y), rad: rad, alpha: alpha)
+                    }
+                }
+            }
+        }
+        .ignoresSafeArea()
+    }
+
+    private func drawArrow(_ ctx: GraphicsContext, at p: CGPoint, rad: Double, alpha: Double) {
+        guard alpha > 0.02 else { return }
+        var sub = ctx
+        sub.translateBy(x: p.x, y: p.y)
+        sub.rotate(by: .radians(rad))   // chevron drawn pointing up (−y) → aligns to travel dir
+        var head = Path()
+        head.move(to: CGPoint(x: -7, y: 5))
+        head.addLine(to: CGPoint(x: 0, y: -7))
+        head.addLine(to: CGPoint(x: 7, y: 5))
+        sub.stroke(head, with: .color(.white.opacity(alpha)),
+                   style: StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+        var tail = Path()
+        tail.move(to: CGPoint(x: 0, y: -6))
+        tail.addLine(to: CGPoint(x: 0, y: 9))
+        sub.stroke(tail, with: .color(.white.opacity(alpha * 0.65)),
+                   style: StrokeStyle(lineWidth: 2.0, lineCap: .round))
     }
 }
 

@@ -69,7 +69,8 @@ struct ClubPathFaceEstimator {
 
         let dxdt = zip(times, xs).map { ($0 - meanT) * $1 }.reduce(0, +) / denom
         let dydt = zip(times, ys).map { ($0 - meanT) * $1 }.reduce(0, +) / denom
-        let dxPx = dxdt * W
+        // Negate image-x so club-path "forward" follows the reversed travel direction (lateral = dyPx untouched).
+        let dxPx = HitDirection.sign * dxdt * W
         let dyPx = dydt * H
 
         let movLen = sqrt(dxPx * dxPx + dyPx * dyPx)

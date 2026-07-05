@@ -1,0 +1,106 @@
+import Foundation
+import UIKit
+
+/// Dev/testing tool. When enabled, persists every shot's raw 41-frame burst to disk so the frames
+/// can be batch-exported (ZIP → share sheet → AirDrop/Files) and compared offline against a
+/// reference launch monitor (e.g. Garmin). Frames are saved at CAPTURE time — before analysis and
+/// the plausibility check — so even shots the app would discard as false triggers are preserved.
+final class FrameArchiveService {
+
+    static let shared = FrameArchiveService()
+    private init() {}
+
+    /// Persisted toggle key. Read via UserDefaults so non-UI code (CameraController) can check it.
+    static let enabledKey = "tc_save_all_frames"
+
+    var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
+
+    private let queue = DispatchQueue(label: "com.truecarry.framearchive", qos: .utility)
+    private let fm = FileManager.default
+
+    private var archiveDir: URL? {
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        return docs.appendingPathComponent("AllFramesArchive", isDirectory: true)
+    }
+
+    // MARK: - Save
+
+    /// Persist a shot's raw frames as PNGs + a timestamps.json in a per-shot folder. Non-blocking:
+    /// the encode/write happens on a utility queue so the capture path is never stalled.
+    func archive(frames: [CapturedFrame], impactIndex: Int?) {
+        guard isEnabled, !frames.isEmpty, let root = archiveDir else { return }
+        // Snapshot (image, timestamp) off the capture path — UIImage is safe to read across threads.
+        let snapshot: [(Int, UIImage, TimeInterval)] = frames.enumerated().map { ($0.offset, $0.element.image, $0.element.timestamp) }
+        let capturedAt = Date()
+        queue.async { [fm] in
+            let shotDir = root.appendingPathComponent("shot_\(Self.folderStamp(capturedAt))", isDirectory: true)
+            do {
+                try fm.createDirectory(at: shotDir, withIntermediateDirectories: true)
+            } catch {
+                print("[FrameArchive] could not create folder: \(error)")
+                return
+            }
+            var timestamps: [[String: Any]] = []
+            for (idx, image, t) in snapshot {
+                let name = String(format: "frame_%03d.png", idx)
+                if let data = image.pngData() {
+                    try? data.write(to: shotDir.appendingPathComponent(name))
+                }
+                timestamps.append(["frame_index": idx, "timestamp": t])
+            }
+            let meta: [String: Any] = [
+                "captured_at": ISO8601DateFormatter().string(from: capturedAt),
+                "frame_count": snapshot.count,
+                "impact_frame_index": impactIndex as Any,
+                "timestamps": timestamps
+            ]
+            if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted]) {
+                try? d.write(to: shotDir.appendingPathComponent("timestamps.json"))
+            }
+            print("[FrameArchive] saved \(snapshot.count) frames → \(shotDir.lastPathComponent)")
+        }
+    }
+
+    // MARK: - Inspect
+
+    /// Number of archived shots currently on disk.
+    func shotCount() -> Int {
+        guard let root = archiveDir,
+              let items = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return 0 }
+        return items.filter { $0.hasDirectoryPath && $0.lastPathComponent.hasPrefix("shot_") }.count
+    }
+
+    /// Total bytes used by the archive (for a human-readable size in the UI).
+    func totalBytes() -> Int64 {
+        guard let root = archiveDir,
+              let en = fm.enumerator(at: root, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in en {
+            total += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+        return total
+    }
+
+    // MARK: - Export / clear
+
+    /// Zip the whole archive into a temp file for the share sheet. Returns nil if nothing is stored.
+    func exportZip() throws -> URL? {
+        guard let root = archiveDir, shotCount() > 0 else { return nil }
+        let out = fm.temporaryDirectory.appendingPathComponent("TrueCarryFrames_\(Self.folderStamp(Date())).zip")
+        try StoredZip.zip(directory: root, to: out)
+        return out
+    }
+
+    func clear() {
+        guard let root = archiveDir else { return }
+        try? fm.removeItem(at: root)
+    }
+
+    // MARK: - Helpers
+
+    private static func folderStamp(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd_HHmmss_SSS"
+        return f.string(from: date)
+    }
+}

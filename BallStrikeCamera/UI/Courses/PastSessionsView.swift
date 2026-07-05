@@ -56,7 +56,7 @@ struct PastSessionsView: View {
                     if showSearch { searchField }
                     filterBar
                     summaryStrip
-                    if !rounds.isEmpty { handicapCard }
+                    handicapCard   // always visible so Scores & Handicap is discoverable pre-rounds
                     content
                     Spacer(minLength: 140)
                 }
@@ -183,7 +183,8 @@ struct PastSessionsView: View {
                     Text("Handicap & Scores")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(TCTheme.textPrimary)
-                    Text("Index from your last 20 rounds")
+                    Text(rounds.isEmpty ? "Play a scored round to start tracking"
+                                        : "Index from your last 20 rounds")
                         .font(.system(size: 12))
                         .foregroundColor(TCTheme.textMuted)
                 }

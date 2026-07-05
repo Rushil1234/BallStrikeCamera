@@ -1,6 +1,13 @@
 import UIKit
 import CoreGraphics
 
+// Gated debug logging — off in normal runs (the per-frame trace was flooding the console and
+// blocking the analysis thread). Flip to true only when debugging the tracker.
+private let kPostImpactDebugLog = false
+@inline(__always) private func dbg(_ message: @autoclosure () -> String) {
+    if kPostImpactDebugLog { Swift.print(message()) }
+}
+
 final class PostImpactBallTracker {
 
     // MARK: - Configuration
@@ -63,7 +70,7 @@ final class PostImpactBallTracker {
 
         var diameterRefinement: DiameterRefinementConfig = DiameterRefinementConfig()
         var impactDetection: ImpactDetectionConfiguration = ImpactDetectionConfiguration()
-        var isPostImpactDebugLoggingEnabled: Bool = true
+        var isPostImpactDebugLoggingEnabled: Bool = false   // per-frame PARITY spam — off in normal runs
         var enableStrictImpactDiameterGate: Bool = true
         var impactFrameMaxDiameterGrowthRatio: CGFloat = 1.25
     }
@@ -155,7 +162,7 @@ final class PostImpactBallTracker {
         lockedBallRect: CGRect,
         impactFrameIndex fallbackImpactFrameIndex: Int
     ) -> TrackingResult {
-        logConfiguration()
+        if cfg.isPostImpactDebugLoggingEnabled { logConfiguration() }
 
         let pixelData: [(bytes: [UInt8], width: Int, height: Int)?] = frames.map {
             pixelBytes(from: $0.darkenedHighContrastImage ?? $0.originalFrame.image)
@@ -180,7 +187,7 @@ final class PostImpactBallTracker {
 
         let finalPass: TrackingPassResult
         if impactResult.detectedImpactFrameIndex != fallbackImpactFrameIndex {
-            print("PostImpactBallTracker: re-tracking with detected impact frame \(impactResult.detectedImpactFrameIndex)")
+            dbg("PostImpactBallTracker: re-tracking with detected impact frame \(impactResult.detectedImpactFrameIndex)")
             finalPass = runTrackingPass(
                 frames: frames,
                 pixelData: pixelData,
@@ -207,10 +214,10 @@ final class PostImpactBallTracker {
     }
 
     static func printSummary(_ result: TrackingResult) {
-        print("Live post-impact tracking complete")
-        print("Fallback impact frame: \(result.fallbackImpactFrameIndex)")
-        print("Detected impact frame: \(result.detectedImpactFrameIndex)")
-        print("Impact detection reason: \(result.impactDetectionReason)")
+        dbg("Live post-impact tracking complete")
+        dbg("Fallback impact frame: \(result.fallbackImpactFrameIndex)")
+        dbg("Detected impact frame: \(result.detectedImpactFrameIndex)")
+        dbg("Impact detection reason: \(result.impactDetectionReason)")
 
         let impact = result.detectedImpactFrameIndex
         let observations = result.observations
@@ -220,34 +227,34 @@ final class PostImpactBallTracker {
         let preTracked = preObs.filter { $0.centerX != nil }.count
         let postTracked = postObs.filter { $0.centerX != nil }.count
 
-        print("Pre-impact tracked: \(preTracked)/\(preObs.count)")
-        print("Post-impact tracked: \(postTracked)/\(postObs.count)")
-        print("Total tracked: \(tracked.count)/\(observations.count)")
+        dbg("Pre-impact tracked: \(preTracked)/\(preObs.count)")
+        dbg("Post-impact tracked: \(postTracked)/\(postObs.count)")
+        dbg("Total tracked: \(tracked.count)/\(observations.count)")
 
         let candidateDiameters = tracked.compactMap { $0.candidateDiameter }
         let refinedDiameters = tracked.compactMap { $0.refinedDiameter }
         let finalDiameters = tracked.compactMap { $0.finalDiameter ?? $0.diameter }
         let maskFailed = tracked.count - refinedDiameters.count
 
-        print("Diameter refinement summary")
-        print("Frames refined: \(refinedDiameters.count)")
-        print("Mask failed: \(maskFailed)")
-        print(String(format: "Average candidate diameter: %.4f", average(candidateDiameters)))
-        print(String(format: "Average refined diameter: %.4f", average(refinedDiameters)))
-        print(String(format: "Average final diameter: %.4f", average(finalDiameters)))
+        dbg("Diameter refinement summary")
+        dbg("Frames refined: \(refinedDiameters.count)")
+        dbg("Mask failed: \(maskFailed)")
+        dbg(String(format: "Average candidate diameter: %.4f", average(candidateDiameters)))
+        dbg(String(format: "Average refined diameter: %.4f", average(refinedDiameters)))
+        dbg(String(format: "Average final diameter: %.4f", average(finalDiameters)))
 
-        print("--- Live per-frame tracking table ---")
+        dbg("--- Live per-frame tracking table ---")
         for obs in observations {
             let marker = obs.frameIndex == impact ? " <- impact" : ""
             if let cx = obs.centerX, let cy = obs.centerY, let d = obs.finalDiameter ?? obs.diameter {
                 let cand = obs.candidateDiameter.map { String(format: "%.4f", $0) } ?? "n/a"
                 let refined = obs.refinedDiameter.map { String(format: "%.4f", $0) } ?? "n/a"
-                print(String(format: "frame=%02d t=%+.4f x=%.4f y=%.4f finalD=%.4f candD=%@ refinedD=%@ maskPx=%d reason=%@ conf=%.2f%@",
+                dbg(String(format: "frame=%02d t=%+.4f x=%.4f y=%.4f finalD=%.4f candD=%@ refinedD=%@ maskPx=%d reason=%@ conf=%.2f%@",
                              obs.frameIndex, obs.relativeTime, cx, cy, d, cand, refined,
                              obs.maskWhitePixelCount, obs.diameterDebugReason ?? "n/a",
                              obs.confidence, marker))
             } else {
-                print(String(format: "frame=%02d t=%+.4f miss reason=%@%@",
+                dbg(String(format: "frame=%02d t=%+.4f miss reason=%@%@",
                              obs.frameIndex, obs.relativeTime, obs.debugReason ?? "unknown", marker))
             }
         }
@@ -332,7 +339,7 @@ final class PostImpactBallTracker {
                 // Part G: parity diagnostic — detailed logging near impact
                 if cfg.isPostImpactDebugLoggingEnabled && idx >= impactFrameIndex - 4 {
                     let topCand = candidates.max(by: { $0.brightPixelCount < $1.brightPixelCount })
-                    print(String(format: "PARITY frame=%02ld phase=pre minBrightPx=%ld stride=%ld roiW=%.3f topCandPx=%ld topCandW=%.4f topCandH=%.4f reason=%@",
+                    dbg(String(format: "PARITY frame=%02ld phase=pre minBrightPx=%ld stride=%ld roiW=%.3f topCandPx=%ld topCandW=%.4f topCandH=%.4f reason=%@",
                                  idx, preConfig.minimumBrightSamples, cfg.sampleStride,
                                  Double(roi.width),
                                  topCand?.brightPixelCount ?? 0,
@@ -365,7 +372,7 @@ final class PostImpactBallTracker {
                         let median = sorted[sorted.count / 2]
                         let ratio = c.diameter / median
                         if median > 1e-6 && ratio > cfg.impactFrameMaxDiameterGrowthRatio {
-                            print("[PostImpactBallTracker] Strict impact gate: frame=\(idx) ratio=\(String(format:"%.2f",ratio)) > \(cfg.impactFrameMaxDiameterGrowthRatio), rejecting merged candidate")
+                            dbg("[PostImpactBallTracker] Strict impact gate: frame=\(idx) ratio=\(String(format:"%.2f",ratio)) > \(cfg.impactFrameMaxDiameterGrowthRatio), rejecting merged candidate")
                             chosen = nil
                         }
                     }
@@ -453,11 +460,11 @@ final class PostImpactBallTracker {
                                        roi.minX, roi.minY, roi.width, roi.height)
                     let predStr = predictedPos.map { String(format: "pred=(%.4f,%.4f)", $0.x, $0.y) } ?? "pred=nil"
                     if let c = chosen {
-                        print(String(format: "frame=%02d postROI=%@ %@ selected=(x=%.4f y=%.4f d=%.4f conf=%.2f)",
+                        dbg(String(format: "frame=%02d postROI=%@ %@ selected=(x=%.4f y=%.4f d=%.4f conf=%.2f)",
                                      idx, roiStr, predStr, c.center.x, c.center.y, c.diameter, c.confidence))
                     } else {
                         let bright = allCandidates.reduce(0) { $0 + $1.brightPixelCount }
-                        print(String(format: "frame=%02d postROI=%@ %@ selected=nil reason=%@ bright=%d",
+                        dbg(String(format: "frame=%02d postROI=%@ %@ selected=nil reason=%@ bright=%d",
                                      idx, roiStr, predStr, firstRejectionReason(allCandidates), bright))
                     }
                     // Part G: extended per-candidate diagnostics for early frames
@@ -467,7 +474,7 @@ final class PostImpactBallTracker {
                             let passesPython = cand.brightPixelCount >= 4
                                 && cand.rect.width >= 0.018
                                 && cand.rect.height >= 0.005
-                            print(String(format: "  PARITY frame=%02d phase=post%d minPx=%d stride=%d cand=(x=%.4f y=%.4f nw=%.4f nh=%.4f px=%d) reason=%@ wouldPassPython=%@",
+                            dbg(String(format: "  PARITY frame=%02d phase=post%d minPx=%d stride=%d cand=(x=%.4f y=%.4f nw=%.4f nh=%.4f px=%d) reason=%@ wouldPassPython=%@",
                                          idx, postOffset, postConfig.minimumBrightSamples, cfg.sampleStride,
                                          cand.center.x, cand.center.y,
                                          cand.rect.width, cand.rect.height,
@@ -476,7 +483,7 @@ final class PostImpactBallTracker {
                                          passesPython ? "yes" : "no"))
                         }
                         if allCandidates.isEmpty {
-                            print(String(format: "  PARITY frame=%02d phase=post%d minPx=%d stride=%d NO_BLOBS_FOUND",
+                            dbg(String(format: "  PARITY frame=%02d phase=post%d minPx=%d stride=%d NO_BLOBS_FOUND",
                                          idx, postOffset, postConfig.minimumBrightSamples, cfg.sampleStride))
                         }
                     }
@@ -501,7 +508,7 @@ final class PostImpactBallTracker {
                         if dist >= 0.02 {
                             launchDir = (dx: ddx / dist, dy: ddy / dist)
                             ballLaunched = true
-                            print(String(format: "Ball launched at frame %d dir=(%.3f,%.3f)", idx, ddx / dist, ddy / dist))
+                            dbg(String(format: "Ball launched at frame %d dir=(%.3f,%.3f)", idx, ddx / dist, ddy / dist))
                         }
                     }
                 } else {
@@ -514,7 +521,7 @@ final class PostImpactBallTracker {
                         } ?? 0
                         if consecutiveMissesAfterLaunch >= 3 && maxProgress >= 0.05 {
                             ballTerminated = true
-                            print(String(format: "Ball track terminated at frame %d after %d misses maxProgress=%.4f",
+                            dbg(String(format: "Ball track terminated at frame %d after %d misses maxProgress=%.4f",
                                          idx, consecutiveMissesAfterLaunch, maxProgress))
                         }
                     }
@@ -653,7 +660,7 @@ final class PostImpactBallTracker {
         }
 
         if let best = bestCandidate {
-            print(String(format: "frame=%02d pred_cross_rescue: (%.4f,%.4f) score=%.2f count=%d",
+            dbg(String(format: "frame=%02d pred_cross_rescue: (%.4f,%.4f) score=%.2f count=%d",
                          frameIndex, best.center.x, best.center.y, bestScore, best.brightPixelCount))
         }
         return bestCandidate
@@ -1069,8 +1076,8 @@ final class PostImpactBallTracker {
         observations: [ShotBallObservation],
         fallbackImpactIndex: Int
     ) -> ImpactDetectionResult {
-        print("PostImpactBallTracker dynamic impact detection")
-        print("  Fallback impact frame: \(fallbackImpactIndex)")
+        dbg("PostImpactBallTracker dynamic impact detection")
+        dbg("  Fallback impact frame: \(fallbackImpactIndex)")
 
         let windowSize = max(3, cfg.impactDetection.stableWindowCount)
         let cutoff = min(windowSize, fallbackImpactIndex)
@@ -1078,10 +1085,10 @@ final class PostImpactBallTracker {
             .filter { $0.frameIndex < cutoff && $0.centerX != nil }
             .sorted { $0.frameIndex < $1.frameIndex }
 
-        print("  Stable window: frames 0..<\(cutoff), found \(stableObs.count) tracked")
+        dbg("  Stable window: frames 0..<\(cutoff), found \(stableObs.count) tracked")
 
         guard stableObs.count >= 3 else {
-            print("  Insufficient stable frames (\(stableObs.count)) - fallback")
+            dbg("  Insufficient stable frames (\(stableObs.count)) - fallback")
             return fallbackImpact(
                 fallbackImpactIndex,
                 center: nil,
@@ -1107,10 +1114,10 @@ final class PostImpactBallTracker {
         let jitter = jitters.isEmpty ? 0 : jitters[jitters.count / 2]
         let threshold = max(cfg.impactDetection.movementThresholdNorm, medianDiameter * 0.20)
 
-        print(String(format: "  Initial center: x=%.4f y=%.4f", medianX, medianY))
-        print(String(format: "  Initial jitter: %.4f", jitter))
-        print(String(format: "  Median diameter: %.4f", medianDiameter))
-        print(String(format: "  Movement threshold: %.4f (config=%.4f)",
+        dbg(String(format: "  Initial center: x=%.4f y=%.4f", medianX, medianY))
+        dbg(String(format: "  Initial jitter: %.4f", jitter))
+        dbg(String(format: "  Median diameter: %.4f", medianDiameter))
+        dbg(String(format: "  Movement threshold: %.4f (config=%.4f)",
                      threshold, cfg.impactDetection.movementThresholdNorm))
 
         let scanStartFrame = stableObs.last.map { $0.frameIndex + 1 } ?? cutoff
@@ -1129,7 +1136,7 @@ final class PostImpactBallTracker {
                 // Python detect_impact_frame lines 304-309:
                 // if not chosen: event_frame = idx; event_reason = "bad_detection_minus_one"; break
                 let detectedFrame = max(0, observation.frameIndex - 1)
-                print(String(format: "  Detected impact: bad_detection at frame %d -> minus_one -> frame %d",
+                dbg(String(format: "  Detected impact: bad_detection at frame %d -> minus_one -> frame %d",
                              observation.frameIndex, detectedFrame))
                 return ImpactDetectionResult(
                     detectedImpactFrameIndex: detectedFrame,
@@ -1158,7 +1165,7 @@ final class PostImpactBallTracker {
                 if consecutiveCount >= cfg.impactDetection.confirmFrames,
                    let firstMovingFrame {
                     let detectedFrame = max(0, firstMovingFrame - 1)
-                    print(String(format: "  Detected impact: first_movement at frame %d -> minus_one -> frame %d (disp=%.4f, confirmed over %d frames)",
+                    dbg(String(format: "  Detected impact: first_movement at frame %d -> minus_one -> frame %d (disp=%.4f, confirmed over %d frames)",
                                  firstMovingFrame, detectedFrame, displacement, consecutiveCount))
                     return ImpactDetectionResult(
                         detectedImpactFrameIndex: detectedFrame,
@@ -1188,7 +1195,7 @@ final class PostImpactBallTracker {
             )
         }
 
-        print("  No confirmed movement - fallback to \(fallbackImpactIndex)")
+        dbg("  No confirmed movement - fallback to \(fallbackImpactIndex)")
         return ImpactDetectionResult(
             detectedImpactFrameIndex: fallbackImpactIndex,
             fallbackImpactFrameIndex: fallbackImpactIndex,
@@ -1272,14 +1279,14 @@ final class PostImpactBallTracker {
         // Expected Python result on SampleShot_001 / ShotExport_20260504_141936:
         //   tracked=23/41  impact=18  fallback=20  reason=first_movement_minus_one
         //   ball_speed=99.2 mph  HLA=7.9° R  VLA=22.2° (if model loaded)  carry=141 yd  total=147 yd
-        print("SWIFT/PYTHON PARITY CHECK")
-        print("  sample = SampleShot_001 / ShotExport_20260504_141936")
-        print("  expected_python_tracked = 23/41")
-        print("  expected_python_impact = 18 (first_movement_minus_one)")
-        print("  expected_python_launch_frames = 19/21")
-        print("  expected_python_termination = 25 (3 misses after launch)")
+        dbg("SWIFT/PYTHON PARITY CHECK")
+        dbg("  sample = SampleShot_001 / ShotExport_20260504_141936")
+        dbg("  expected_python_tracked = 23/41")
+        dbg("  expected_python_impact = 18 (first_movement_minus_one)")
+        dbg("  expected_python_launch_frames = 19/21")
+        dbg("  expected_python_termination = 25 (3 misses after launch)")
 
-        print(String(format: "PostImpactBallTracker live config: sampleStride=%d preBrightnessThreshold=%d preMinBrightSamples=%d postBrightnessThreshold=%d postMinBrightSamples=%d preImpactSearchScale=%.2f impactSearchScale=%.2f",
+        dbg(String(format: "PostImpactBallTracker live config: sampleStride=%d preBrightnessThreshold=%d preMinBrightSamples=%d postBrightnessThreshold=%d postMinBrightSamples=%d preImpactSearchScale=%.2f impactSearchScale=%.2f",
                      cfg.sampleStride,
                      cfg.preBrightnessThreshold,
                      cfg.preMinBrightSamples,
@@ -1287,18 +1294,18 @@ final class PostImpactBallTracker {
                      cfg.postMinBrightSamples,
                      cfg.preImpactSearchScale,
                      cfg.impactSearchScale))
-        print(String(format: "PostImpactBallTracker ROI config (Python-parity): postFwdScale=%.1f postBwdScale=%.1f postVertUntracked=%.1f postVertTracked=%.1f launchAngle=%.1f°",
+        dbg(String(format: "PostImpactBallTracker ROI config (Python-parity): postFwdScale=%.1f postBwdScale=%.1f postVertUntracked=%.1f postVertTracked=%.1f launchAngle=%.1f°",
                      cfg.postFwdScale, cfg.postBwdScale,
                      cfg.postVertScaleUntracked, cfg.postVertScaleTracked,
                      cfg.launchAngleDegrees))
-        print(String(format: "PostImpactBallTracker mask config: postMinNormWidth=%.4f maskPercentile=%d maskPercentileMinBright=%d maskBgDelta=%d localMaskWindowScale=%.2f smoothingWindow=%d",
+        dbg(String(format: "PostImpactBallTracker mask config: postMinNormWidth=%.4f maskPercentile=%d maskPercentileMinBright=%d maskBgDelta=%d localMaskWindowScale=%.2f smoothingWindow=%d",
                      cfg.postMinNormWidth,
                      cfg.diameterRefinement.maskPercentile,
                      cfg.diameterRefinement.maskPercentileMinBright,
                      cfg.diameterRefinement.maskBgDelta,
                      cfg.diameterRefinement.localMaskWindowScale,
                      cfg.diameterRefinement.smoothingWindowSize))
-        print("PostImpactBallTracker analysis mode: DarkenedHighContrast (gamma=0.909 matches Python)")
+        dbg("PostImpactBallTracker analysis mode: DarkenedHighContrast (gamma=0.909 matches Python)")
     }
 
     private func pixelBytes(from image: UIImage) -> (bytes: [UInt8], width: Int, height: Int)? {

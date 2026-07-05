@@ -19,6 +19,7 @@ struct TrueCarryPlayView: View {
         let id = UUID(); let course: GolfCourse; let tee: TeeBox
     }
     @State private var pendingRound: PendingRound?
+    @State private var stagedRound: PendingRound?   // chosen in the sheet; promoted after it dismisses
     @State private var unfinishedRound: CourseRound?
     @State private var resumeRound: CourseRound?
     @State private var didApplyDefaultMode = false
@@ -87,12 +88,18 @@ struct TrueCarryPlayView: View {
                 SimModeView(userId: uid, backend: session.backend)
             }
         }
-        .sheet(isPresented: $showCourseSearch) {
+        .sheet(isPresented: $showCourseSearch, onDismiss: {
+            // Present the round ONLY after the search sheet has fully dismissed. Triggering the
+            // fullScreenCover while the sheet is still on screen makes SwiftUI present a blank/white
+            // cover whose body never renders (presentation race) — the cause of the white screen.
+            if let staged = stagedRound {
+                stagedRound = nil
+                pendingRound = staged
+            }
+        }) {
             NavigationStack {
                 CourseSearchView(userId: session.currentUser?.id ?? UUID()) { course, tee in
-                    // Set atomically — fullScreenCover(item:) presents only when non-nil,
-                    // and SwiftUI automatically queues it until the sheet is fully gone.
-                    pendingRound = PendingRound(course: course, tee: tee)
+                    stagedRound = PendingRound(course: course, tee: tee)
                     showCourseSearch = false
                 }
             }

@@ -16,6 +16,14 @@ struct LaunchMonitorScaffoldView: View {
     @State private var exportedURL: URL?
     @State private var showShareSheet = false
     @State private var exportError: String?
+    @State private var lastComposite: PlatformImage?   // last shot's composite for the side panel
+    @State private var showHandPicker = false
+
+    // Player's hitting hand (persisted default). Lefty = the whole hitting view is mirrored
+    // vertically so a golfer set up the opposite way sees everything oriented for them — a pure
+    // view flip that never touches the tracking algo.
+    @AppStorage("tc_hitting_hand") private var hitHandRaw = "R"
+    private var isLefty: Bool { hitHandRaw == "L" }
 
     var body: some View {
         GeometryReader { geo in
@@ -85,25 +93,6 @@ struct LaunchMonitorScaffoldView: View {
                                         }
                                     }
 
-                                    if let onSaveSession {
-                                        Button(action: onSaveSession) {
-                                            RangeOverlayPill {
-                                                HStack(spacing: 6) {
-                                                    Image(systemName: "tray.and.arrow.down")
-                                                        .font(.system(size: 11, weight: .bold))
-
-                                                    Text("Save Session")
-                                                        .font(.system(size: 12, weight: .bold))
-                                                        .lineLimit(1)
-                                                }
-                                                .foregroundColor(.white.opacity(canSaveSession ? 0.94 : 0.42))
-                                            }
-                                        }
-                                        .buttonStyle(.plain)
-                                        .disabled(!canSaveSession)
-                                        .accessibilityLabel("Save Session")
-                                    }
-
                                     Spacer()
 
                                     Button(action: { camera.simulateShot() }) {
@@ -122,6 +111,20 @@ struct LaunchMonitorScaffoldView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .disabled(camera.isAnalyzingShot || camera.showShotResult)
+
+                                    Button { showHandPicker = true } label: {
+                                        RangeOverlayPill {
+                                            HStack(spacing: 5) {
+                                                Image(systemName: "figure.golf")
+                                                    .font(.system(size: 11, weight: .bold))
+                                                Text(isLefty ? "Lefty" : "Righty")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                    .lineLimit(1)
+                                            }
+                                            .foregroundColor(.white.opacity(0.94))
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
 
                                     Button(action: exportFrames) {
                                         RangeOverlayPill {
@@ -146,10 +149,16 @@ struct LaunchMonitorScaffoldView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .layoutPriority(1)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .environment(\.layoutDirection, .leftToRight)   // keep column internals LTR
 
-                        ShotSummaryPanelView(metrics: camera.latestShotAnalysis?.metrics)
+                        ShotSummaryPanelView(metrics: camera.latestShotAnalysis?.metrics,
+                                             composite: lastComposite)
                             .frame(width: summaryWidth)
+                            .environment(\.layoutDirection, .leftToRight)
                     }
+                    // Lefty swaps the two columns (summary → left, camera → right). RTL only
+                    // reorders these two children; each keeps its own LTR internals above.
+                    .environment(\.layoutDirection, isLefty ? .rightToLeft : .leftToRight)
                     .frame(width: geo.size.width, height: mainHeight, alignment: .leading)
 
                     CompactMetricsBarView(metrics: camera.latestShotAnalysis?.metrics)
@@ -158,12 +167,22 @@ struct LaunchMonitorScaffoldView: View {
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                 .padding(0)
                 .ignoresSafeArea()
+                // Lefty orientation is handled by the device orientation lock (.landscapeLeft), not a
+                // view transform — see OrientationManager. Re-lock when the hand toggles.
+                .onChange(of: hitHandRaw) { _ in OrientationManager.shared.lockLandscape() }
             }
         }
         .ignoresSafeArea()
         .navigationBarHidden(true)
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
+        // Cache the last shot's composite for the side panel when a shot completes.
+        .onChange(of: camera.showShotResult) { showing in
+            guard showing, let analysis = camera.latestShotAnalysis else { return }
+            if let image = ShotCompositeRenderer().render(analysis: analysis) {
+                lastComposite = image
+            }
+        }
         .fullScreenCover(isPresented: $camera.showShotResult) {
             if let analysis = camera.latestShotAnalysis {
                 ShotResultView(
@@ -190,6 +209,18 @@ struct LaunchMonitorScaffoldView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(exportError ?? "")
+        }
+        // Lightweight SwiftUI picker instead of .confirmationDialog: the UIKit action sheet throws
+        // an _UIAlertControllerPhoneTVMacView height-constraint conflict and presents slowly in
+        // landscape. This overlay is instant and warning-free.
+        .overlay {
+            if showHandPicker {
+                HandPickerOverlay(
+                    current: hitHandRaw,
+                    onSelect: { hand in hitHandRaw = hand; showHandPicker = false },
+                    onCancel: { showHandPicker = false }
+                )
+            }
         }
     }
 
@@ -260,5 +291,70 @@ struct RangeOverlayPill<Content: View>: View {
             .padding(.vertical, 6)
             .background(Color.black.opacity(0.6))
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+}
+
+/// Pure-SwiftUI hitting-hand chooser. Replaces `.confirmationDialog` (UIKit action sheet) which
+/// misbehaves in the app's locked landscape orientation. Renders inside the orientation-locked
+/// hierarchy, so it stays upright for both hands.
+private struct HandPickerOverlay: View {
+    let current: String
+    let onSelect: (String) -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onCancel)
+
+            VStack(spacing: 14) {
+                Text("Hitting Hand")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white.opacity(0.75))
+
+                HStack(spacing: 12) {
+                    handButton("Righty", value: "R")
+                    handButton("Lefty",  value: "L")
+                }
+
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 26)
+            .padding(.vertical, 20)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(white: 0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .transition(.opacity)
+    }
+
+    private func handButton(_ title: String, value: String) -> some View {
+        let selected = current == value
+        return Button { onSelect(value) } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "figure.golf")
+                    .font(.system(size: 13, weight: .bold))
+                Text(title)
+                    .font(.system(size: 14, weight: .bold))
+            }
+            .foregroundColor(selected ? .black : .white.opacity(0.92))
+            .frame(width: 108, height: 42)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(selected ? Color.white : Color.white.opacity(0.12))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -348,7 +348,8 @@ struct ShotMetricsCalculator {
 
         let speedMetersPerSecond = vectorLength(velocity)
         let ballSpeedMph = speedMetersPerSecond * 2.23694
-        let hla3D = atan2(velocity.x, velocity.z) * 180 / .pi
+        // Reversed mount flips world-x; keep downrange (z) forward so HLA sign stays golf-correct.
+        let hla3D = atan2(HitDirection.sign * velocity.x, velocity.z) * 180 / .pi
         let horizontalSpeed = sqrt(velocity.x * velocity.x + velocity.z * velocity.z)
         // Putt/roll: as soon as we know the ball speed is in the putt range, do NOT compute a VLA
         // — a slow roll has no vertical launch, and atan2 is dominated by tracking noise at low
@@ -431,7 +432,9 @@ struct ShotMetricsCalculator {
 
         let W = Double(calibration.imageWidthPixels)
         let H = Double(calibration.imageHeightPixels)
-        let dxPx = dxdt * W
+        // Negate image-x so "forward" points along the ball's travel direction (reversed mount);
+        // lateral (L/R) comes from dyPx and is left untouched.
+        let dxPx = HitDirection.sign * dxdt * W
         let dyPx = dydt * H
 
         let movLen = sqrt(dxPx * dxPx + dyPx * dyPx)

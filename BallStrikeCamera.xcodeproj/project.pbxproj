@@ -44,6 +44,8 @@
 		BF0000010000000000000020 /* ShotCompositeRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000120 /* ShotCompositeRenderer.swift */; };
 		BF0000010000000000000021 /* ShotCompositeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000121 /* ShotCompositeView.swift */; };
 		BF0000010000000000000022 /* ShotExportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000122 /* ShotExportService.swift */; };
+		BF0000010000000000000701 /* StoredZip.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000801 /* StoredZip.swift */; };
+		BF0000010000000000000702 /* FrameArchiveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000802 /* FrameArchiveService.swift */; };
 		BF0000010000000000000023 /* BallTrackingTestModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000123 /* BallTrackingTestModels.swift */; };
 		BF0000010000000000000024 /* TestFrameLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000124 /* TestFrameLoader.swift */; };
 		BF0000010000000000000025 /* ExperimentalBallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000125 /* ExperimentalBallTracker.swift */; };
@@ -62,6 +64,7 @@
 		BF0000010000000000000031 /* ExperimentalShotMetricsCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000131 /* ExperimentalShotMetricsCalculator.swift */; };
 		BF0000010000000000000032 /* ExperimentalMetricsExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000132 /* ExperimentalMetricsExporter.swift */; };
 		BF0000010000000000000033 /* DirectionalFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000133 /* DirectionalFormat.swift */; };
+		BF000001000000000000HD02 /* HitDirection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000HD01 /* HitDirection.swift */; };
 		BF0000010000000000000034 /* SpinEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000134 /* SpinEstimator.swift */; };
 		BF0000010000000000000035 /* ClubPathFaceEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000135 /* ClubPathFaceEstimator.swift */; };
 		BF0000010000000000000036 /* ExperimentalSpinEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000136 /* ExperimentalSpinEstimator.swift */; };
@@ -156,6 +159,9 @@
 		BF000008000000000000000E /* TrackedShotModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000008000000000000000D /* TrackedShotModels.swift */; };
 		BF000008000000000000000F /* ClubAnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000007000000000000000F /* ClubAnalyticsService.swift */; };
 		BF0000080000000000000010 /* StrokesGained.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000010 /* StrokesGained.swift */; };
+		BF0000010000000000000703 /* WindModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000803 /* WindModel.swift */; };
+		BF0000010000000000000704 /* WindService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000804 /* WindService.swift */; };
+		BF0000010000000000000705 /* CaddieEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000805 /* CaddieEngine.swift */; };
 		BF0000080000000000000012 /* SyncQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000011 /* SyncQueue.swift */; };
 		BF0000080000000000000013 /* GeometrySimplifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000012 /* GeometrySimplifier.swift */; };
 		BF0000080000000000000014 /* PlatformSeams.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000070000000000000013 /* PlatformSeams.swift */; };
@@ -279,6 +285,8 @@
 		BF0000010000000000000120 /* ShotCompositeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotCompositeRenderer.swift; sourceTree = "<group>"; };
 		BF0000010000000000000121 /* ShotCompositeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotCompositeView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000122 /* ShotExportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotExportService.swift; sourceTree = "<group>"; };
+		BF0000010000000000000801 /* StoredZip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredZip.swift; sourceTree = "<group>"; };
+		BF0000010000000000000802 /* FrameArchiveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameArchiveService.swift; sourceTree = "<group>"; };
 		BF0000010000000000000123 /* BallTrackingTestModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTrackingTestModels.swift; sourceTree = "<group>"; };
 		BF0000010000000000000124 /* TestFrameLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestFrameLoader.swift; sourceTree = "<group>"; };
 		BF0000010000000000000125 /* ExperimentalBallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalBallTracker.swift; sourceTree = "<group>"; };
@@ -297,6 +305,7 @@
 		BF0000010000000000000131 /* ExperimentalShotMetricsCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalShotMetricsCalculator.swift; sourceTree = "<group>"; };
 		BF0000010000000000000132 /* ExperimentalMetricsExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalMetricsExporter.swift; sourceTree = "<group>"; };
 		BF0000010000000000000133 /* DirectionalFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DirectionalFormat.swift; sourceTree = "<group>"; };
+		BF000001000000000000HD01 /* HitDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitDirection.swift; sourceTree = "<group>"; };
 		BF0000010000000000000134 /* SpinEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpinEstimator.swift; sourceTree = "<group>"; };
 		BF0000010000000000000135 /* ClubPathFaceEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubPathFaceEstimator.swift; sourceTree = "<group>"; };
 		BF0000010000000000000136 /* ExperimentalSpinEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalSpinEstimator.swift; sourceTree = "<group>"; };
@@ -390,6 +399,9 @@
 		BF000007000000000000000E /* NearbyCoursePrewarmer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NearbyCoursePrewarmer.swift; sourceTree = "<group>"; };
 		BF000007000000000000000F /* ClubAnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubAnalyticsService.swift; sourceTree = "<group>"; };
 		BF0000070000000000000010 /* StrokesGained.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrokesGained.swift; sourceTree = "<group>"; };
+		BF0000010000000000000803 /* WindModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindModel.swift; sourceTree = "<group>"; };
+		BF0000010000000000000804 /* WindService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindService.swift; sourceTree = "<group>"; };
+		BF0000010000000000000805 /* CaddieEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaddieEngine.swift; sourceTree = "<group>"; };
 		BF0000070000000000000011 /* SyncQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncQueue.swift; sourceTree = "<group>"; };
 		BF0000070000000000000012 /* GeometrySimplifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeometrySimplifier.swift; sourceTree = "<group>"; };
 		BF0000070000000000000013 /* PlatformSeams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformSeams.swift; sourceTree = "<group>"; };
@@ -650,6 +662,7 @@
 				BF000001000000000000012C /* DistanceEstimator.swift */,
 				BF0000010000000000000120 /* ShotCompositeRenderer.swift */,
 				BF0000010000000000000133 /* DirectionalFormat.swift */,
+				BF000001000000000000HD01 /* HitDirection.swift */,
 				BF0000010000000000000134 /* SpinEstimator.swift */,
 				BF0000010000000000000135 /* ClubPathFaceEstimator.swift */,
 				BF0000010000000000000139 /* VLAModelPredictor.swift */,
@@ -663,6 +676,8 @@
 			isa = PBXGroup;
 			children = (
 				BF0000010000000000000122 /* ShotExportService.swift */,
+				BF0000010000000000000801 /* StoredZip.swift */,
+				BF0000010000000000000802 /* FrameArchiveService.swift */,
 			);
 			path = Export;
 			sourceTree = "<group>";
@@ -922,6 +937,9 @@
 				BF000007000000000000000E /* NearbyCoursePrewarmer.swift */,
 				BF000007000000000000000F /* ClubAnalyticsService.swift */,
 				BF0000070000000000000010 /* StrokesGained.swift */,
+				BF0000010000000000000803 /* WindModel.swift */,
+				BF0000010000000000000804 /* WindService.swift */,
+				BF0000010000000000000805 /* CaddieEngine.swift */,
 				BF0000070000000000000011 /* SyncQueue.swift */,
 				BF0000070000000000000012 /* GeometrySimplifier.swift */,
 				BF0000070000000000000013 /* PlatformSeams.swift */,
@@ -1132,6 +1150,8 @@
 				BF000001000000000000001F /* ShotTrackingReviewView.swift in Sources */,
 				BF0000010000000000000021 /* ShotCompositeView.swift in Sources */,
 				BF0000010000000000000022 /* ShotExportService.swift in Sources */,
+				BF0000010000000000000701 /* StoredZip.swift in Sources */,
+				BF0000010000000000000702 /* FrameArchiveService.swift in Sources */,
 				BF0000010000000000000023 /* BallTrackingTestModels.swift in Sources */,
 				BF0000010000000000000024 /* TestFrameLoader.swift in Sources */,
 				BF0000010000000000000025 /* ExperimentalBallTracker.swift in Sources */,
@@ -1145,6 +1165,7 @@
 				BF0000010000000000000031 /* ExperimentalShotMetricsCalculator.swift in Sources */,
 				BF0000010000000000000032 /* ExperimentalMetricsExporter.swift in Sources */,
 				BF0000010000000000000033 /* DirectionalFormat.swift in Sources */,
+				BF000001000000000000HD02 /* HitDirection.swift in Sources */,
 				BF0000010000000000000034 /* SpinEstimator.swift in Sources */,
 				BF0000010000000000000035 /* ClubPathFaceEstimator.swift in Sources */,
 				BF0000010000000000000036 /* ExperimentalSpinEstimator.swift in Sources */,
@@ -1258,6 +1279,9 @@
 				CAFE0000000000000000010D /* SimBLEViewModel.swift in Sources */,
 				BF000008000000000000000F /* ClubAnalyticsService.swift in Sources */,
 				BF0000080000000000000010 /* StrokesGained.swift in Sources */,
+				BF0000010000000000000703 /* WindModel.swift in Sources */,
+				BF0000010000000000000704 /* WindService.swift in Sources */,
+				BF0000010000000000000705 /* CaddieEngine.swift in Sources */,
 				BF0000080000000000000012 /* SyncQueue.swift in Sources */,
 				BF0000080000000000000013 /* GeometrySimplifier.swift in Sources */,
 				BF0000080000000000000014 /* PlatformSeams.swift in Sources */,

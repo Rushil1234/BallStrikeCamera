@@ -17,7 +17,7 @@ struct ShotTrackingReviewView: View {
     @State private var showShareSheet:   Bool = false
     @State private var exportedURL:      URL? = nil
     @State private var exportError:      String? = nil
-    @State private var showMarkBadAlert: Bool = false
+    @State private var showBadShotConfirm: Bool = false
     @State private var isSavingShot:     Bool = false
     @State private var savedShot:        SavedShot? = nil
     @State private var saveError:        String? = nil
@@ -60,8 +60,11 @@ struct ShotTrackingReviewView: View {
                 ActivityViewController(activityItems: [url])
             }
         }
-        .alert("Marked as bad shot", isPresented: $showMarkBadAlert) {
-            Button("OK") { }
+        .confirmationDialog("Mark as bad shot?", isPresented: $showBadShotConfirm, titleVisibility: .visible) {
+            Button("Bad Shot", role: .destructive) { confirmBadShot() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This shot won't be saved or counted.")
         }
         .alert("Save failed", isPresented: Binding(
             get: { saveError != nil },
@@ -100,7 +103,7 @@ struct ShotTrackingReviewView: View {
             .background(Color.white.opacity(0.15))
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
-            Button(action: { Task { await saveShot(markBad: true) } }) {
+            Button(action: { showBadShotConfirm = true }) {
                 Text("Bad Shot")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.orange.opacity(0.90))
@@ -137,7 +140,7 @@ struct ShotTrackingReviewView: View {
             }
             .disabled(saveButtonDisabled)
 
-            Button(action: { Task { await saveShot(markBad: true) } }) {
+            Button(action: { showBadShotConfirm = true }) {
                 Label("Bad Shot", systemImage: "xmark.circle")
                     .font(.system(size: 11, weight: .semibold))
                     .frame(maxWidth: .infinity, minHeight: 32)
@@ -162,49 +165,55 @@ struct ShotTrackingReviewView: View {
         isSavingShot || savedShot != nil || analysis.metrics == nil || session.currentUser?.id == nil
     }
 
+    /// Bad-shot confirmed: return to the hitting screen INSTANTLY, then discard in the background
+    /// (the previous flow blocked on several network round-trips before the UI moved).
+    private func confirmBadShot() {
+        let uid = session.currentUser?.id
+        let backend = session.backend
+        let target = savedShot
+        let sessionRef = session
+        onDismiss()   // back to the hitting screen immediately
+        guard let uid else { return }
+        Task.detached(priority: .utility) {
+            await Self.discardShot(uid: uid, backend: backend, knownTarget: target)
+            await sessionRef.refreshCache()
+        }
+    }
+
+    /// Removes the (possibly auto-saved) shot and strips it from its owning session/round.
+    private static func discardShot(uid: UUID, backend: AppBackend, knownTarget: SavedShot?) async {
+        let service = ShotPersistenceService(userId: uid, backend: backend)
+        let mine = (try? await service.loadShots()) ?? []
+        guard let target = knownTarget ?? mine.max(by: { $0.timestamp < $1.timestamp }) else { return }
+        try? await service.deleteShot(id: target.id)
+        if let sid = target.sessionId {
+            if var rs = (try? await backend.loadRangeSessions(userId: uid))?.first(where: { $0.id == sid }) {
+                rs.shotIds.removeAll { $0 == target.id }
+                try? await backend.saveRangeSession(rs)
+            } else if var ss = (try? await backend.loadSimSessions(userId: uid))?.first(where: { $0.id == sid }) {
+                ss.shotIds.removeAll { $0 == target.id }
+                try? await backend.saveSimSession(ss)
+            }
+        }
+        if let rid = target.roundId,
+           var r = (try? await backend.loadCourseRounds(userId: uid))?.first(where: { $0.id == rid }) {
+            r.shotIds.removeAll { $0 == target.id }
+            for i in r.holes.indices { r.holes[i].shotIds.removeAll { $0 == target.id } }
+            try? await backend.saveRound(r)
+        }
+        await MainActor.run {
+            NotificationCenter.default.post(name: .tcShotDiscarded, object: nil, userInfo: ["id": target.id])
+        }
+    }
+
     @MainActor
-    private func saveShot(markBad: Bool) async {
+    private func saveShot(markBad: Bool = false) async {
         guard !saveButtonDisabled,
               let uid = session.currentUser?.id,
               let metrics = analysis.metrics else { return }
 
         isSavingShot = true
         defer { isSavingShot = false }
-
-        // Bad shots are discarded entirely. The live pipeline may have already auto-saved this
-        // shot (range/sim save on capture), so delete the just-saved shot here too.
-        if markBad {
-            let backend = session.backend
-            let service = ShotPersistenceService(userId: uid, backend: backend)
-            let mine = (try? await service.loadShots()) ?? []
-            // The shot we saved from this review if present, else the most recent (just auto-saved).
-            if let target = savedShot ?? mine.max(by: { $0.timestamp < $1.timestamp }) {
-                try? await service.deleteShot(id: target.id)
-                // Strip the id from its owning session/round so counts (shotIds.count) stay correct.
-                if let sid = target.sessionId {
-                    if var rs = (try? await backend.loadRangeSessions(userId: uid))?.first(where: { $0.id == sid }) {
-                        rs.shotIds.removeAll { $0 == target.id }
-                        try? await backend.saveRangeSession(rs)
-                    } else if var ss = (try? await backend.loadSimSessions(userId: uid))?.first(where: { $0.id == sid }) {
-                        ss.shotIds.removeAll { $0 == target.id }
-                        try? await backend.saveSimSession(ss)
-                    }
-                }
-                if let rid = target.roundId,
-                   var r = (try? await backend.loadCourseRounds(userId: uid))?.first(where: { $0.id == rid }) {
-                    r.shotIds.removeAll { $0 == target.id }
-                    for i in r.holes.indices { r.holes[i].shotIds.removeAll { $0 == target.id } }
-                    try? await backend.saveRound(r)
-                }
-                // Tell any active session VM to drop it too (it may still be the live session).
-                NotificationCenter.default.post(name: .tcShotDiscarded, object: nil,
-                                                userInfo: ["id": target.id])
-            }
-            savedShot = nil
-            await session.refreshCache()
-            showMarkBadAlert = true
-            return
-        }
 
         do {
             let service = ShotPersistenceService(userId: uid, backend: session.backend)
@@ -218,14 +227,13 @@ struct ShotTrackingReviewView: View {
                 mode: context?.shotMode ?? .range,
                 roundId: context?.courseRoundId,
                 holeNumber: context?.holeNumber,
-                isBadShot: markBad,
-                badShotReason: markBad ? "Marked from review" : nil,
+                isBadShot: false,
+                badShotReason: nil,
                 shotLatitude: context?.playerCoordinate?.latitude,
                 shotLongitude: context?.playerCoordinate?.longitude
             )
             savedShot = shot
             onShotSaved?(shot)
-            if markBad { showMarkBadAlert = true }
         } catch {
             saveError = error.localizedDescription
         }

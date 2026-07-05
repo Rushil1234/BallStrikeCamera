@@ -2,43 +2,44 @@ import SwiftUI
 
 struct ShotSummaryPanelView: View {
     let metrics: ShotMetricsResult?
+    let composite: PlatformImage?
 
-    init(metrics: ShotMetricsResult? = nil) {
+    // In lefty this panel sits on the left; nudge its content inward so Carry/Total clear the corner.
+    @AppStorage("tc_hitting_hand") private var hand = "R"
+    private var isLefty: Bool { hand == "L" }
+
+    init(metrics: ShotMetricsResult? = nil, composite: PlatformImage? = nil) {
         self.metrics = metrics
+        self.composite = composite
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Total")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.green.opacity(0.8))
-                Spacer()
+        VStack(alignment: .leading, spacing: 8) {
+            // Carry (primary) and Total, same size and parallel — labels aligned on one row,
+            // numbers aligned on the next.
+            HStack(alignment: .top, spacing: 12) {
+                metricColumn(label: "Carry", value: carryText, valueColor: .green,
+                             labelColor: .green.opacity(0.85))
+                metricColumn(label: "Total", value: totalText, valueColor: .white,
+                             labelColor: .white.opacity(0.55))
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(totalText)
-                    .font(.system(size: 56, weight: .heavy))
-                    .foregroundColor(Color.green)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-
-                Text("yd")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white.opacity(0.6))
+            // Lower area: composite of the last shot, fit to size (empty until the first shot).
+            Group {
+                if let composite {
+                    Image(uiImage: composite)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    Color.clear
+                }
             }
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 0) {
-                summaryMetric(label: "Carry", value: carryText, unit: "yd")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                summaryMetric(label: "VLA", value: vlaText, unit: "°")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(12)
+        .padding(8)
+        .padding(.leading, isLefty ? 18 : 0)   // clear the screen corner in lefty
         .background(Color(white: 0.12))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
@@ -53,28 +54,21 @@ struct ShotSummaryPanelView: View {
         return "--"
     }
 
-    private var vlaText: String {
-        if let v = metrics?.ballLaunch.vlaDegrees { return String(format: "%.1f", v) }
-        return "--"
-    }
-
-    private func summaryMetric(label: String, value: String, unit: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    private func metricColumn(label: String, value: String, valueColor: Color, labelColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
             Text(label)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.5))
-
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(labelColor)
+            HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.system(size: 32, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-
-                Text(unit)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.4))
+                    .font(.system(size: 40, weight: .heavy))
+                    .foregroundColor(valueColor)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                Text("yd")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white.opacity(0.55))
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

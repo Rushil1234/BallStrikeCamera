@@ -5,6 +5,12 @@
 import UIKit
 import CoreGraphics
 
+// Gated debug logging — off in normal runs (per-frame trace flooded the console + analysis thread).
+private let kEBFSDebugLog = false
+@inline(__always) private func dbg(_ message: @autoclosure () -> String) {
+    if kEBFSDebugLog { Swift.print(message()) }
+}
+
 struct EnsembleBFSClubTracker {
 
     // MARK: - Internal types
@@ -135,19 +141,19 @@ struct EnsembleBFSClubTracker {
         let ballImp = ballForFrame(ctx, impact)
 
         // ── DEBUG: input summary ───────────────────────────────────────────────
-        print("[EBFS-DEBUG] ═══════════════════════════════════════════════════")
-        print("[EBFS-DEBUG] impact=\(impact)  window=\(start)…\(end)  W=\(W) H=\(H)  fps=\(String(format:"%.2f",fps))")
-        print("[EBFS-DEBUG] ballSpeedMph=\(String(format:"%.4f",ballSpeedMph)) (passed=\(knownBallSpeedMph.map{String(format:"%.4f",$0)} ?? "nil"))")
-        print("[EBFS-DEBUG] ballDepthM=\(knownBallDepthM.map{String(format:"%.4f",$0)} ?? "nil")")
+        dbg("[EBFS-DEBUG] ═══════════════════════════════════════════════════")
+        dbg("[EBFS-DEBUG] impact=\(impact)  window=\(start)…\(end)  W=\(W) H=\(H)  fps=\(String(format:"%.2f",fps))")
+        dbg("[EBFS-DEBUG] ballSpeedMph=\(String(format:"%.4f",ballSpeedMph)) (passed=\(knownBallSpeedMph.map{String(format:"%.4f",$0)} ?? "nil"))")
+        dbg("[EBFS-DEBUG] ballDepthM=\(knownBallDepthM.map{String(format:"%.4f",$0)} ?? "nil")")
         if let bi = ballImp {
-            print("[EBFS-DEBUG] ball@impact: cx=\(String(format:"%.5f",bi.cx)) cy=\(String(format:"%.5f",bi.cy)) dia=\(String(format:"%.5f",bi.dia))")
+            dbg("[EBFS-DEBUG] ball@impact: cx=\(String(format:"%.5f",bi.cx)) cy=\(String(format:"%.5f",bi.cy)) dia=\(String(format:"%.5f",bi.dia))")
         } else {
-            print("[EBFS-DEBUG] ball@impact: NONE")
+            dbg("[EBFS-DEBUG] ball@impact: NONE")
         }
-        print("[EBFS-DEBUG] ballObs frames: \(ballObs.keys.sorted())")
+        dbg("[EBFS-DEBUG] ballObs frames: \(ballObs.keys.sorted())")
         for fi in ballObs.keys.sorted() {
             let b = ballObs[fi]!
-            print("[EBFS-DEBUG]   fi=\(fi): cx=\(String(format:"%.5f",b.cx)) cy=\(String(format:"%.5f",b.cy)) dia=\(String(format:"%.5f",b.dia))")
+            dbg("[EBFS-DEBUG]   fi=\(fi): cx=\(String(format:"%.5f",b.cx)) cy=\(String(format:"%.5f",b.cy)) dia=\(String(format:"%.5f",b.dia))")
         }
         // ──────────────────────────────────────────────────────────────────────
 
@@ -157,14 +163,14 @@ struct EnsembleBFSClubTracker {
                                 impact: impact, start: start, end: end, ballImp: ballImp, p: p)
 
         // ── DEBUG: raw sweep results ───────────────────────────────────────────
-        print("[EBFS-DEBUG] rawNd (\(rawNd.count)): \(rawNd.keys.sorted().map { fi -> String in let d=rawNd[fi]!; return "fi\(fi):(\(String(format:"%.4f",d.cx)),\(String(format:"%.4f",d.cy))) cnt=\(d.count)" }.joined(separator: "  "))")
-        print("[EBFS-DEBUG] rawBf (\(rawBf.count)): \(rawBf.keys.sorted().map { fi -> String in let d=rawBf[fi]!; return "fi\(fi):(\(String(format:"%.4f",d.cx)),\(String(format:"%.4f",d.cy))) cnt=\(d.count)" }.joined(separator: "  "))")
+        dbg("[EBFS-DEBUG] rawNd (\(rawNd.count)): \(rawNd.keys.sorted().map { fi -> String in let d=rawNd[fi]!; return "fi\(fi):(\(String(format:"%.4f",d.cx)),\(String(format:"%.4f",d.cy))) cnt=\(d.count)" }.joined(separator: "  "))")
+        dbg("[EBFS-DEBUG] rawBf (\(rawBf.count)): \(rawBf.keys.sorted().map { fi -> String in let d=rawBf[fi]!; return "fi\(fi):(\(String(format:"%.4f",d.cx)),\(String(format:"%.4f",d.cy))) cnt=\(d.count)" }.joined(separator: "  "))")
         // ──────────────────────────────────────────────────────────────────────
 
         let ensemble = ensemblePoolAndFit(rawNd, rawBf, ctx: ctx,
                                           impact: impact, start: start, end: end, p: p)
 
-        print("[EnsembleBFSClubTracker] nd=\(rawNd.count) bf=\(rawBf.count) kept=\(ensemble.count)")
+        dbg("[EnsembleBFSClubTracker] nd=\(rawNd.count) bf=\(rawBf.count) kept=\(ensemble.count)")
 
         let frameByIndex = Dictionary(uniqueKeysWithValues: analysis.frames.map { ($0.frameIndex, $0) })
         return ensemble.keys.sorted().compactMap { fi -> ClubObservation? in
@@ -337,7 +343,8 @@ struct EnsembleBFSClubTracker {
     private func roiRect(ballCx: Double, ballCy: Double, ballDia: Double, p: EBFSParams)
                          -> (x0: Double, y0: Double, w: Double, h: Double) {
         let rw = ballDia * p.roiX, rh = ballDia * p.roiY
-        let cx = ballCx - rw * 0.40
+        // Bias the club-search ROI toward the side the club comes from (travel direction).
+        let cx = ballCx - HitDirection.sign * rw * 0.40
         let x0 = max(0.0, cx - rw/2), y0 = max(0.0, ballCy - rh/2)
         let x1 = max(0.0, min(1.0, cx + rw/2)), y1 = max(0.0, min(1.0, ballCy + rh/2))
         return (x0, y0, x1-x0, y1-y0)
@@ -622,7 +629,9 @@ struct EnsembleBFSClubTracker {
         }
 
         let thrScale = method == "newDiff" ? 0.65 : 1.0
-        let comp = rightmostBlobFromDiff(dmDet, rows: rows, cols: cols, leftmost: post, thrScale: thrScale)
+        // Leading club edge is on the travel-forward side; reversed hit flips which column that is.
+        let leadingIsLeft = HitDirection.reversed ? !post : post
+        let comp = rightmostBlobFromDiff(dmDet, rows: rows, cols: cols, leftmost: leadingIsLeft, thrScale: thrScale)
         guard !comp.isEmpty else { return [] }
         guard let blob = componentToBlob(comp, x0: x0, y0: y0, W: W, H: H, refBx: bxF, refBy: byF) else { return [] }
         return [blob]
@@ -645,29 +654,33 @@ struct EnsembleBFSClubTracker {
         guard let ball = ballImp else { return }
         let W = ctx.W, tol = 5.0 / Double(W), impact = ctx.impact
         let ballCx = ball.cx
+        let s = HitDirection.sign   // +1 left→right, −1 right→left; s·cx is "progress toward impact"
 
+        // Pre-impact club must be on the side the ball travels FROM (behind ball along travel).
         for fi in dets.keys where fi < impact {
-            if let d = dets[fi], d.cx >= ballCx { dets.removeValue(forKey: fi) }
+            if let d = dets[fi], s * (d.cx - ballCx) >= 0 { dets.removeValue(forKey: fi) }
         }
 
         var ordered = dets.compactMap { k, v -> (Int, Double)? in k < impact ? (k, v.cx) : nil }
                           .sorted { $0.0 < $1.0 }
         guard !ordered.isEmpty else { return }
 
-        let leftmost = ordered.min(by: { $0.1 < $1.1 })!
-        let leftCx = leftmost.1, leftFi = leftmost.0
-        for (fi, cx) in ordered where fi < leftFi && cx > leftCx + tol {
+        // Furthest-behind (start) detection in travel direction: min of s·cx.
+        let start = ordered.min(by: { s * $0.1 < s * $1.1 })!
+        let startCx = start.1, startFi = start.0
+        for (fi, cx) in ordered where fi < startFi && s * cx > s * startCx + tol {
             dets.removeValue(forKey: fi)
         }
 
         ordered = dets.compactMap { k, v -> (Int, Double)? in k < impact ? (k, v.cx) : nil }
                       .sorted { $0.0 < $1.0 }
         guard ordered.count >= 2 else { return }
-        var frontier = ordered[0].1
+        // Monotonic progress: s·cx must be non-decreasing over time toward impact.
+        var frontier = s * ordered[0].1
         for i in 1..<ordered.count {
             let (fi, cx) = ordered[i]
-            if cx < frontier - tol { dets.removeValue(forKey: fi) }
-            else { frontier = max(frontier, cx) }
+            if s * cx < frontier - tol { dets.removeValue(forKey: fi) }
+            else { frontier = max(frontier, s * cx) }
         }
     }
 
@@ -772,7 +785,7 @@ struct EnsembleBFSClubTracker {
                 result[fi] = ndDiff <= bfDiff ? n : b
             }
         }
-        print("[EBFS-DEBUG] step1 medCount=\(Int(medCount)) after pick-best: \(result.keys.sorted().map{"fi\($0):(\(String(format:"%.4f",result[$0]!.cx)),\(String(format:"%.4f",result[$0]!.cy)))"}.joined(separator:"  "))")
+        dbg("[EBFS-DEBUG] step1 medCount=\(Int(medCount)) after pick-best: \(result.keys.sorted().map{"fi\($0):(\(String(format:"%.4f",result[$0]!.cx)),\(String(format:"%.4f",result[$0]!.cy)))"}.joined(separator:"  "))")
 
         // Step 1.5: reject near-duplicate (< 6px)
         var prevCx: Double? = nil, prevCy: Double? = nil
@@ -797,7 +810,7 @@ struct EnsembleBFSClubTracker {
             if let d = result[fi] { prevCx = d.cx; prevCy = d.cy }
         }
 
-        print("[EBFS-DEBUG] step1.5 after near-dup reject: \(result.keys.sorted().map{"fi\($0):(\(String(format:"%.4f",result[$0]!.cx)),\(String(format:"%.4f",result[$0]!.cy)))"}.joined(separator:"  "))")
+        dbg("[EBFS-DEBUG] step1.5 after near-dup reject: \(result.keys.sorted().map{"fi\($0):(\(String(format:"%.4f",result[$0]!.cx)),\(String(format:"%.4f",result[$0]!.cy)))"}.joined(separator:"  "))")
 
         // Step 2: confirmed set (both methods agree within 15px)
         var confirmed = Set<Int>()
@@ -808,27 +821,28 @@ struct EnsembleBFSClubTracker {
             }
         }
 
-        print("[EBFS-DEBUG] step2 confirmed frames: \(confirmed.sorted())")
+        dbg("[EBFS-DEBUG] step2 confirmed frames: \(confirmed.sorted())")
 
-        // Step 3: hard physics filters
+        // Step 3: hard physics filters. `s·cx` is progress toward impact (see HitDirection).
         let tolX = 5.0 / Double(W), tolY = 0.12
-        var frontierCx: Double? = nil
+        let s = HitDirection.sign
+        var frontierCx: Double? = nil   // stored in s·cx space (monotone non-decreasing)
         for fi in (start...end).sorted() {
             guard let det = result[fi] else { continue }
             if confirmed.contains(fi) {
-                if fi < impact { frontierCx = frontierCx.map { max($0, det.cx) } ?? det.cx }
+                if fi < impact { frontierCx = frontierCx.map { max($0, s * det.cx) } ?? s * det.cx }
                 continue
             }
             let cx = det.cx, cy = det.cy
             if fi < impact {
-                if cx >= ballCx { result.removeValue(forKey: fi); continue }
+                if s * (cx - ballCx) >= 0 { result.removeValue(forKey: fi); continue }
                 if cy < ballCy - tolY { result.removeValue(forKey: fi); continue }
-                if let fc = frontierCx, cx < fc - tolX { result.removeValue(forKey: fi); continue }
-                frontierCx = frontierCx.map { max($0, cx) } ?? cx
+                if let fc = frontierCx, s * cx < fc - tolX { result.removeValue(forKey: fi); continue }
+                frontierCx = frontierCx.map { max($0, s * cx) } ?? s * cx
             }
         }
 
-        print("[EBFS-DEBUG] step3 after physics: \(result.keys.sorted().map{"fi\($0):(\(String(format:"%.4f",result[$0]!.cx)),\(String(format:"%.4f",result[$0]!.cy)))"}.joined(separator:"  "))")
+        dbg("[EBFS-DEBUG] step3 after physics: \(result.keys.sorted().map{"fi\($0):(\(String(format:"%.4f",result[$0]!.cx)),\(String(format:"%.4f",result[$0]!.cy)))"}.joined(separator:"  "))")
 
         // Step 4: LOO polynomial outlier removal (≥5 points, threshold 40px)
         for _ in 0..<10 {
@@ -848,29 +862,30 @@ struct EnsembleBFSClubTracker {
                 if resid > worstResid { worstResid = resid; worstFi = fi }
             }
             guard let wfi = worstFi else { break }
-            print("[EBFS-DEBUG] step4 LOO removed fi=\(wfi) resid=\(String(format:"%.1f",worstResid))px")
+            dbg("[EBFS-DEBUG] step4 LOO removed fi=\(wfi) resid=\(String(format:"%.1f",worstResid))px")
             result.removeValue(forKey: wfi)
         }
-        print("[EBFS-DEBUG] step4 after LOO: \(result.keys.sorted().map{"fi\($0):(\(String(format:"%.4f",result[$0]!.cx)),\(String(format:"%.4f",result[$0]!.cy)))"}.joined(separator:"  "))")
+        dbg("[EBFS-DEBUG] step4 after LOO: \(result.keys.sorted().map{"fi\($0):(\(String(format:"%.4f",result[$0]!.cx)),\(String(format:"%.4f",result[$0]!.cy)))"}.joined(separator:"  "))")
 
         // Step 4b: backwards-pair cleanup
         let prePts = result.filter { $0.key < impact }.sorted { $0.key < $1.key }
         if prePts.count == 2 {
             let fiA = prePts[0].key, dA = prePts[0].value
             let dB  = prePts[1].value
-            if dB.cx < dA.cx { result.removeValue(forKey: fiA) }
+            // Later frame must have advanced in travel direction; else drop the earlier point.
+            if HitDirection.sign * dB.cx < HitDirection.sign * dA.cx { result.removeValue(forKey: fiA) }
         }
 
         // Step 4b log
-        print("[EBFS-DEBUG] step4b after backwards-pair: \(result.keys.sorted().map{"fi\($0)"}.joined(separator:" "))")
+        dbg("[EBFS-DEBUG] step4b after backwards-pair: \(result.keys.sorted().map{"fi\($0)"}.joined(separator:" "))")
 
         // Step 5: smash guard (iteratively remove worst point until smash ≤ 1.55)
         let ballSpd = ctx.ballSpeedMph
         if ballSpd > 0 {
             if let csInit = computeClubSpeed(ctx, dets: result, p: p) {
-                print("[EBFS-DEBUG] step5 smash guard: ballSpd=\(String(format:"%.3f",ballSpd)) clubSpd=\(String(format:"%.3f",csInit)) smash=\(String(format:"%.4f",ballSpd/csInit)) depth=\(ctx.ballDepthM.map{String(format:"%.4f",$0)} ?? "dia-derived")")
+                dbg("[EBFS-DEBUG] step5 smash guard: ballSpd=\(String(format:"%.3f",ballSpd)) clubSpd=\(String(format:"%.3f",csInit)) smash=\(String(format:"%.4f",ballSpd/csInit)) depth=\(ctx.ballDepthM.map{String(format:"%.4f",$0)} ?? "dia-derived")")
             } else {
-                print("[EBFS-DEBUG] step5 smash guard: ballSpd=\(String(format:"%.3f",ballSpd)) clubSpd=nil — guard skipped")
+                dbg("[EBFS-DEBUG] step5 smash guard: ballSpd=\(String(format:"%.3f",ballSpd)) clubSpd=nil — guard skipped")
             }
             for _ in 0...(result.count + 1) {
                 guard result.count >= 2 else { break }
@@ -885,14 +900,14 @@ struct EnsembleBFSClubTracker {
                     if smash < bestSmash { bestSmash = smash; bestFi = fiTry }
                 }
                 guard let bfi = bestFi else { break }
-                print("[EBFS-DEBUG] step5 smash guard removed fi=\(bfi) → new smash would be \(String(format:"%.4f",bestSmash))")
+                dbg("[EBFS-DEBUG] step5 smash guard removed fi=\(bfi) → new smash would be \(String(format:"%.4f",bestSmash))")
                 result.removeValue(forKey: bfi)
             }
         } else {
-            print("[EBFS-DEBUG] step5 smash guard SKIPPED (ballSpd=0)")
+            dbg("[EBFS-DEBUG] step5 smash guard SKIPPED (ballSpd=0)")
         }
-        print("[EBFS-DEBUG] FINAL kept=\(result.count): \(result.keys.sorted().map { fi -> String in let d=result[fi]!; return "fi\(fi):cx=\(String(format:"%.5f",d.cx*Double(W)))px cy=\(String(format:"%.5f",d.cy*Double(H)))px" }.joined(separator:"  "))")
-        print("[EBFS-DEBUG] ═══════════════════════════════════════════════════")
+        dbg("[EBFS-DEBUG] FINAL kept=\(result.count): \(result.keys.sorted().map { fi -> String in let d=result[fi]!; return "fi\(fi):cx=\(String(format:"%.5f",d.cx*Double(W)))px cy=\(String(format:"%.5f",d.cy*Double(H)))px" }.joined(separator:"  "))")
+        dbg("[EBFS-DEBUG] ═══════════════════════════════════════════════════")
 
         return result
     }

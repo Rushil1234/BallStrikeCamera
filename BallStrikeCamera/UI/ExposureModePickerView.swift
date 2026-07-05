@@ -11,7 +11,7 @@ struct ExposureModePickerView: View {
                     onShutterSelected(preset)
                 } label: {
                     Image(systemName: preset.symbol)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: preset.iconSize, weight: .bold))
                         .foregroundColor(selectedShutter == preset ? .white : LaunchMonitorTheme.textSecondary)
                         .frame(width: 42, height: 42)
                         .background(
