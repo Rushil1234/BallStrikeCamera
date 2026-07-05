@@ -130,7 +130,7 @@ function splatMaterial(assets) {
         vec2 uvFair() { return vWPos.xz * 0.27; }
         vec2 uvGreen() { return vWPos.xz * 0.9; }
         vec2 uvRough() { return vWPos.xz * 0.16; }
-        vec2 uvSand() { return vWPos.xz * 0.3; }`)
+        vec2 uvSand() { return vWPos.xz * 0.55; }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
           vec3 gA = texture2D(uGrassD, uvFair()).rgb / uGrassMean;
@@ -168,7 +168,7 @@ function splatMaterial(assets) {
                   + texture2D(uRoughN, uvRough()).xyz * vSplat.y
                   + texture2D(uSandN, uvSand()).xyz * vSplat.z;
           vec3 mapN = nT * 2.0 - 1.0;
-          mapN.xy *= 0.8;
+          mapN.xy *= 1.18;
           mapN = normalize(mapN);
           vec3 eyePos = -vViewPosition;
           vec3 q0 = dFdx(eyePos);
@@ -933,6 +933,7 @@ export function buildCourse(hole, assets) {
       rock: new THREE.Color(0x51463a),
     };
     const strawColor = new THREE.Color(forestFloor?.color ?? 0x8a6742);
+    const _dryBank = new THREE.Color(0x7a7f45);
     const tmp = new THREE.Color();
 
     let vi = 0;
@@ -955,10 +956,17 @@ export function buildCourse(hole, assets) {
         if (hasWater && h < waterLevel + 0.05 && waterMask(x, z).m > 0.45) {
           tmp.copy(C.bed); sr = 1;
         } else if (surf === SURF.SAND) {
-          tmp.copy(C.sand); ss = 1;
-          let depthT = 0;
-          for (const b of hole.bunkers) depthT = Math.max(depthT, 1 - ellipseVal(b, x, z));
-          tmp.multiplyScalar(1 - 0.15 * Math.max(0, depthT));
+          ss = 1;
+          let bv = 9;
+          for (const b of hole.bunkers) bv = Math.min(bv, ellipseVal(b, x, z));
+          if (bv > 1.3) {
+            // polygon sand beyond any fitted ellipse: neutral wash
+            tmp.copy(C.sand).multiplyScalar(0.97);
+          } else {
+            // sculpted dish: bright raked centre, shadowed ring under the lip
+            const rim = sstep(0.5, 1.0, Math.min(bv, 1));
+            tmp.copy(C.sand).multiplyScalar(1.07 - 0.32 * rim);
+          }
         } else if (surf === SURF.GREEN || surf === SURF.TEE) {
           const checker = (Math.floor(x / 2.4) + Math.floor(z / 2.4)) % 2 === 0;
           tmp.copy(surf === SURF.TEE ? C.tee : (checker ? C.greenA : C.greenB));
@@ -981,6 +989,14 @@ export function buildCourse(hole, assets) {
           const t = sstep(fhw + 10, fhw + 45, p.dist);
           tmp.copy(C.rough).lerp(C.deep, t);
           sr = 1;
+          // Hills read as hills: steep banks dry out and crests catch light.
+          const gx = heightAt(x + 1.6, z) - h;
+          const gz2 = heightAt(x, z + 1.6) - h;
+          const slope = Math.min(1, Math.hypot(gx, gz2) * 0.9);
+          if (slope > 0.12) {
+            tmp.lerp(_dryBank, Math.min(0.4, (slope - 0.12) * 0.75));
+            tmp.multiplyScalar(1 + 0.10 * Math.max(0, -gz2) * Math.min(1, slope * 2));
+          }
           if (forestFloor && p.dist > fhw + forestFloorStart) {
             // Pine-straw carpet under the tree lines (parkland courses).
             const ft = sstep(fhw + forestFloorStart, fhw + forestFloorStart + 24, p.dist)
@@ -990,7 +1006,17 @@ export function buildCourse(hole, assets) {
             sr = 1 - ss;
           }
         }
-        const vmod = 1 + fbmDetail(x * 0.11 + 31, z * 0.11) * 0.07;
+        if (surf !== SURF.SAND && ss === 0) {
+          let bv = 9;
+          for (const b of hole.bunkers) bv = Math.min(bv, ellipseVal(b, x, z));
+          if (bv > 1 && bv < 1.5) {
+            // raised grass lip catching light around the bunker edge
+            const lip = 1 - Math.abs(bv - 1.2) / 0.3;
+            if (lip > 0) tmp.multiplyScalar(1 + 0.13 * lip);
+          }
+        }
+        const vmod = 1 + fbmDetail(x * 0.11 + 31, z * 0.11) * 0.10
+          + fbmDetail(x * 0.031 + 7, z * 0.031) * 0.05;
         colors[vi * 3] = tmp.r * vmod;
         colors[vi * 3 + 1] = tmp.g * vmod;
         colors[vi * 3 + 2] = tmp.b * vmod;
