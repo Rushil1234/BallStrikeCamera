@@ -333,6 +333,19 @@ const aimLine = new THREE.Line(
 aimLine.frustumCulled = false;
 scene.add(aimLine);
 
+// Putt preview: a dry-run of the real roll physics from the current aim,
+// drawn as the predicted break line (this is what the ball WILL do at a
+// hole-pace putt, slopes and all).
+const puttPrevGeo = new THREE.BufferGeometry();
+const puttPrevLine = new THREE.Line(
+  puttPrevGeo,
+  new THREE.LineDashedMaterial({ color: 0x8fd8e8, dashSize: 0.35, gapSize: 0.22, transparent: true, opacity: 0.9 }),
+);
+puttPrevLine.frustumCulled = false;
+puttPrevLine.visible = false;
+scene.add(puttPrevLine);
+let puttPrevKey = '';
+
 const ring = new THREE.Mesh(
   new THREE.TorusGeometry(1.5, 0.14, 10, 36),
   new THREE.MeshBasicMaterial({ color: 0xc9a86a, transparent: true, opacity: 0.85 }),
@@ -758,6 +771,43 @@ function updateGuides(powerFrac = 1) {
     new THREE.Vector3(gx, gy + 0.1, gz),
   ]);
   aimLine.computeLineDistances();
+  updatePuttPreview(powerFrac);
+}
+
+function updatePuttPreview(powerFrac = 1) {
+  const putting = !!club().putter && (game.state === 'AIM' || game.state === 'METER_POWER' || game.state === 'METER_ACCURACY');
+  puttPrevLine.visible = putting;
+  aimLine.visible = aimLine.visible && !putting;   // break line replaces the straight guide
+  if (!putting) return;
+
+  // Pace the preview at hole-distance speed (same pacing a player would use).
+  const pin = game.course.pinPos;
+  const rem = Math.hypot(game.ballPos.x - pin.x, game.ballPos.z - pin.z);
+  const stimp = game.course.conditions?.stimp || 10;
+  const gDecel = 0.72 * (10 / Math.min(15, Math.max(7, stimp)));
+  const v = Math.min(Math.sqrt(2 * gDecel * Math.max(rem, 0.5)) * 1.08 + 0.2, club().speed * Math.max(powerFrac, 0.05));
+
+  const key = `${game.ballPos.x.toFixed(2)},${game.ballPos.z.toFixed(2)},${game.aimDir.x.toFixed(3)},${game.aimDir.z.toFixed(3)},${v.toFixed(2)}`;
+  if (key === puttPrevKey) return;
+  puttPrevKey = key;
+
+  const sim = createShot({
+    pos: { x: game.ballPos.x, y: game.ballPos.y, z: game.ballPos.z },
+    dir: { x: game.aimDir.x, z: game.aimDir.z },
+    speed: v, launchDeg: 0, backspinRpm: 0, sidespinRpm: 0,
+    wind: { x: 0, z: 0 }, course: game.course,
+    pin: { x: pin.x, z: pin.z }, mode: 'roll',
+  });
+  const pts = [];
+  for (let i = 0; i < 1600 && (sim.state === 'roll' || sim.state === 'fly'); i++) {
+    sim.step(1 / 120);
+    if (i % 6 === 0) pts.push(new THREE.Vector3(sim.pos.x, game.course.heightAt(sim.pos.x, sim.pos.z) + 0.045, sim.pos.z));
+  }
+  sim.events.length = 0;
+  if (pts.length >= 2) {
+    puttPrevGeo.setFromPoints(pts);
+    puttPrevLine.computeLineDistances();
+  }
 }
 
 // ---------- swing ----------

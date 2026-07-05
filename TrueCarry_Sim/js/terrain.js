@@ -1695,6 +1695,34 @@ export function buildCourse(hole, assets) {
         }
       };
       walk(true); walk(false);
+      // Fall-line chevrons: small downhill arrows every ~3m so the read is
+      // directional, not just a heat map.
+      for (let gx = -R; gx <= R; gx += 3) {
+        for (let gz = -R; gz <= R; gz += 3) {
+          const x = gdef.cx + gx, z = gdef.cz + gz;
+          if (!inside(x, z)) continue;
+          const e2 = 0.6;
+          const sx = heightAt(x + e2, z) - heightAt(x - e2, z);
+          const sz = heightAt(x, z + e2) - heightAt(x, z - e2);
+          const mag = Math.hypot(sx, sz);
+          if (mag < 0.012) continue;                 // dead flat: no arrow
+          const dx = -sx / mag, dz = -sz / mag;      // downhill
+          const len = Math.min(0.9, 0.35 + mag * 9);
+          const hx = x + dx * len, hz = z + dz * len;
+          const hh0 = heightAt(x, z) + 0.05, hh1 = heightAt(hx, hz) + 0.05;
+          cc.copy(lowC).lerp(highC, (heightAt(x, z) - hMin) / span).lerp(new THREE.Color(0xffffff), 0.55);
+          // shaft
+          pos.push(x, hh0, z, hx, hh1, hz);
+          col.push(cc.r, cc.g, cc.b, cc.r, cc.g, cc.b);
+          // head barbs
+          for (const side of [1, -1]) {
+            const bx2 = hx - dx * 0.28 + side * -dz * 0.18;
+            const bz2 = hz - dz * 0.28 + side * dx * 0.18;
+            pos.push(hx, hh1, hz, bx2, heightAt(bx2, bz2) + 0.05, bz2);
+            col.push(cc.r, cc.g, cc.b, cc.r, cc.g, cc.b);
+          }
+        }
+      }
       const ggeo = new THREE.BufferGeometry();
       ggeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
       ggeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
