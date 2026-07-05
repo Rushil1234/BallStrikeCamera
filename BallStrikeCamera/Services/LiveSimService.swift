@@ -275,7 +275,22 @@ final class LiveSimService: ObservableObject {
         await broadcastRaw(event: "club", payload: ["clubName": clubName])
     }
 
-    func broadcast(metrics: SavedShotMetrics) async {
+    /// Sends the full player roster (index 0 = account holder) once, at the start of a
+    /// multi-player session, so the sim can track every player's own ball position from their
+    /// first tee shot — call only when `names.count > 1`; single-player sessions never send this.
+    func broadcastPlayers(names: [String]) async {
+        guard isConnectedToSim, names.count > 1 else { return }
+        await broadcastRaw(event: "players", payload: ["names": names])
+    }
+
+    /// - Parameters:
+    ///   - playerIndex: index into the session's player roster (0 = account holder). Lets the
+    ///     sim track each player's own ball position independently instead of assuming one
+    ///     shared ball — see `broadcastPlayers`.
+    ///   - playerName: only used the first time the sim sees this index; kept here (rather than
+    ///     requiring a separate lookup) so the sim never renders a blank name for a late-joining
+    ///     player relayed before `broadcastPlayers` finishes.
+    func broadcast(metrics: SavedShotMetrics, playerIndex: Int = 0, playerName: String = "You") async {
         guard isReadyToConnect else {
             lastBroadcastError = "Enter the code shown on screen"
             return
@@ -296,6 +311,8 @@ final class LiveSimService: ObservableObject {
             "hlaDegrees":   metrics.hlaDegrees,
             "hlaDirection": metrics.sidespinRpm >= 0 ? "right" : "left",
             "smashFactor":  metrics.smashFactor,
+            "playerIndex":  playerIndex,
+            "playerName":   playerName,
         ]
 
         let ok = await broadcastRaw(event: "shot", payload: payload)

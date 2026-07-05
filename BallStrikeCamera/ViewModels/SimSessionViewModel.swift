@@ -12,6 +12,26 @@ final class SimSessionViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
+    /// Players in the current session — index 0 is always the account holder ("You"). Populated
+    /// from `SimSession.otherPlayerNames` when a multi-player session starts.
+    @Published var players: [String] = ["You"]
+    @Published var currentPlayerIndex: Int = 0
+
+    var isMultiPlayer: Bool { players.count > 1 }
+    var isCurrentPlayerAccountHolder: Bool { currentPlayerIndex == 0 }
+    var currentPlayerName: String { players.indices.contains(currentPlayerIndex) ? players[currentPlayerIndex] : "You" }
+
+    func selectPlayer(_ index: Int) {
+        guard players.indices.contains(index) else { return }
+        currentPlayerIndex = index
+    }
+
+    /// Rotates to the next player after a shot. No-op in single-player sessions.
+    func advanceToNextPlayerIfNeeded() {
+        guard isMultiPlayer else { return }
+        currentPlayerIndex = (currentPlayerIndex + 1) % players.count
+    }
+
     private let backend: AppBackend
     private let simOutput = SimOutputService()
     private(set) var userId: UUID
@@ -75,14 +95,17 @@ final class SimSessionViewModel: ObservableObject {
 
     // MARK: - Session lifecycle
 
-    func startSession(provider: SimProvider = .ogs, usedOGS: Bool = false) async {
+    func startSession(provider: SimProvider = .ogs, usedOGS: Bool = false, otherPlayers: [String] = []) async {
         guard activeSession == nil else { return }
         var session = SimSession(userId: userId, provider: provider)
         session.usedOpenGolfSim = usedOGS
+        session.otherPlayerNames = otherPlayers
         do {
             try await backend.saveSimSession(session)
             activeSession = session
             shots = []
+            players = ["You"] + otherPlayers
+            currentPlayerIndex = 0
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -127,6 +150,8 @@ final class SimSessionViewModel: ObservableObject {
         }
         await FeedAutoPoster.share(sim: session, backend: backend)
         activeSession = nil
+        players = ["You"]
+        currentPlayerIndex = 0
     }
 
     func endSessionWithDetails(name: String, description: String?, usedOGS: Bool = false,
@@ -149,6 +174,8 @@ final class SimSessionViewModel: ObservableObject {
         }
         await FeedAutoPoster.share(sim: session, backend: backend)
         activeSession = nil
+        players = ["You"]
+        currentPlayerIndex = 0
     }
 
     func discardSession() async {
@@ -158,6 +185,8 @@ final class SimSessionViewModel: ObservableObject {
         }
         activeSession = nil
         shots = []
+        players = ["You"]
+        currentPlayerIndex = 0
     }
 
     func computeDefaultName() async -> String {

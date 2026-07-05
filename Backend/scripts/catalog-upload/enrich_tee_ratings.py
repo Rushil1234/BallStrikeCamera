@@ -4,7 +4,9 @@
 For each course id in slope_ratings_by_id.csv, fetch course-geometry/<id>.json.gz, merge the
 CSV tees into the blob's teeBoxes (rating/slope feed the app's handicap differential), and
 re-upload. Existing hole-linked teeBoxes are preserved (and filled with rating/slope where they
-match); the only ones dropped are the empty "Course GPS" fallback. Women's tees are labeled "(W)".
+match); the only ones dropped are the empty "Course GPS" fallback. A women's tee sharing a color
+with a men's tee is merged into it as womensRating/womensSlope rather than shown as a separate
+"(W)" tee; only a genuinely standalone women's-only tee (no color match) gets its own entry.
 
 Usage:
   python3 enrich_tee_ratings.py <csv> [--limit N] [--dry-run] [--workers 24]
@@ -29,6 +31,11 @@ COLORS = {"white", "red", "blue", "gold", "green", "black", "purple", "yellow", 
           "orange", "teal", "gray", "grey", "bronze", "copper", "pink", "tan", "maroon",
           "navy", "brown", "championship", "charcoal", "burgundy"}
 
+# Canonicalizes color synonyms so a men's "Gold" tee and a women's "Yellow" tee (or
+# "Black"/"Championship", "Red"/"Forward", "Silver"/"Fairway") are recognized as the same tee
+# for merging — matches GolfCourseAPIProvider.swift's inferredTeeColor mapping.
+COLOR_ALIASES = {"yellow": "Gold", "championship": "Black", "forward": "Red", "fairway": "Silver"}
+
 def norm(s):
     s = (s or "").lower().strip()
     s = re.sub(r"\(\s*[wmf]\s*\)", " ", s)   # drop our own "(W)" gender label
@@ -47,6 +54,8 @@ def gender_of(*vals):
 
 def color_from(name):
     for tok in re.split(r"[^a-z]+", (name or "").lower()):
+        if tok in COLOR_ALIASES:
+            return COLOR_ALIASES[tok]
         if tok in COLORS:
             return "Gray" if tok in ("gray", "grey") else tok.capitalize()
     return "Gray"
@@ -107,17 +116,41 @@ def build_tees(cid, blob):
             v = h.get(k)
             if isinstance(v, dict): linked.update(v.keys())
 
-    # index CSV rows by (gender, normalized name), first wins
+    # Collapse gender-suffixed duplicates left over from earlier runs of this script
+    # ("Gold" + "Gold (W)") into one tee box per color before merging the CSV, so re-running
+    # stays idempotent instead of growing more "(W)" duplicates each time.
+    primary, leftover_female = [], []
+    for tb in existing:
+        (leftover_female if gender_of(tb.get("id", ""), tb.get("name", "")) == "F" else primary).append(tb)
+    for ftb in leftover_female:
+        color = ftb.get("color") or color_from(ftb.get("name", ""))
+        match = next((p for p in primary if (p.get("color") or color_from(p.get("name", ""))) == color), None)
+        if match:
+            if ftb.get("rating") is not None: match["womensRating"] = ftb["rating"]
+            if ftb.get("slope") is not None: match["womensSlope"] = ftb["slope"]
+        else:
+            primary.append(ftb)   # genuinely standalone women's-only tee, keep it
+    existing = primary
+
+    # Index CSV rows: male/unspecified by (gender, normalized name) as before. Female rows are
+    # matched to a tee box by COLOR further down (merged as womensRating/womensSlope) rather than
+    # by name, since GolfCourseAPI's men's/women's tee names for the same color often differ
+    # (e.g. "Gold"/"Yellow") — only a color match with zero overlap gets its own standalone tee.
     idx = {}
     glist = collections.defaultdict(list)
+    female_rows = []
     for r in by_course[cid]:
         g = "F" if r["gender"] in ("F", "Female") else "M"
-        key = (g, norm(r["tee_name"]))
+        if g == "F":
+            female_rows.append(r)
+            continue
+        key = ("M", norm(r["tee_name"]))
         idx.setdefault(key, r)
-        try: glist[g].append((float(r["length_yards"]), r))
+        try: glist["M"].append((float(r["length_yards"]), r))
         except (ValueError, TypeError): pass
 
     consumed = set()
+    consumed_female_ids = set()
     out = []
     matched = 0
     for tb in existing:
@@ -125,42 +158,57 @@ def build_tees(cid, blob):
         # drop the empty GPS fallback if we have real tees to add
         if (tid == "gps" or norm(tname) == "course gps") and by_course[cid]:
             continue
-        g = gender_of(tid, tname) or "M"
-        r = idx.get((g, norm(tname)))
-        method = "name"
+        color = tb.get("color") or color_from(tname)
+        r = idx.get(("M", norm(tname)))
         if not r:
             y = tb.get("totalYards") or tb.get("total_yards") or 0
-            if 1000 < y < 8500 and glist[g]:
-                r = min(glist[g], key=lambda x: abs(x[0] - y))[1]; method = "yards"
+            if 1000 < y < 8500 and glist["M"]:
+                r = min(glist["M"], key=lambda x: abs(x[0] - y))[1]
         # Rebuild cleanly: a single int totalYards (never emit snake `total_yards`, which would
         # collide with camelCase under convertFromSnakeCase and null out a non-optional Int).
         yards = tb.get("totalYards")
         if not isinstance(yards, int): yards = tb.get("total_yards")
         if not isinstance(yards, int): yards = 0
         nt = {"id": tid or slug(tname), "name": tname or "Tee",
-              "color": tb.get("color") or color_from(tname), "totalYards": yards}
+              "color": color, "totalYards": yards}
         if tb.get("rating") is not None: nt["rating"] = tb["rating"]
         if tb.get("slope") is not None: nt["slope"] = tb["slope"]
+        if tb.get("womensRating") is not None: nt["womensRating"] = tb["womensRating"]
+        if tb.get("womensSlope") is not None: nt["womensSlope"] = tb["womensSlope"]
         if r:
             nt["rating"] = float(r["course_rating"]); nt["slope"] = int(float(r["slope_rating"]))
             if not nt.get("totalYards"):
                 try: nt["totalYards"] = int(float(r["length_yards"]))
                 except (ValueError, TypeError): pass
-            consumed.add((g, norm(r["tee_name"]))); matched += 1
+            consumed.add(("M", norm(r["tee_name"]))); matched += 1
+        fr = next((f for f in female_rows if id(f) not in consumed_female_ids
+                   and color_from(f["tee_name"]) == color), None)
+        if fr:
+            nt["womensRating"] = float(fr["course_rating"]); nt["womensSlope"] = int(float(fr["slope_rating"]))
+            consumed_female_ids.add(id(fr))
         out.append(nt)
 
-    # append CSV tees not already represented
+    # append CSV tees not already represented: unmatched men's tees (as before), plus any
+    # standalone women's tee whose color never matched an existing/men's tee at all.
     added = 0
     for (g, nm), r in idx.items():
         if (g, nm) in consumed: continue
         try: yards = int(float(r["length_yards"]))
         except (ValueError, TypeError): yards = 0
-        nm_label = r["tee_name"] + (" (W)" if g == "F" else "")
         out.append({
-            "id": f"{slug(r['tee_name'])}-{'w' if g == 'F' else 'm'}",
-            "name": nm_label, "color": color_from(r["tee_name"]),
-            "totalYards": yards,
+            "id": f"{slug(r['tee_name'])}-m", "name": r["tee_name"],
+            "color": color_from(r["tee_name"]), "totalYards": yards,
             "rating": float(r["course_rating"]), "slope": int(float(r["slope_rating"])),
+        })
+        added += 1
+    for fr in female_rows:
+        if id(fr) in consumed_female_ids: continue
+        try: yards = int(float(fr["length_yards"]))
+        except (ValueError, TypeError): yards = 0
+        out.append({
+            "id": f"{slug(fr['tee_name'])}-w", "name": fr["tee_name"],
+            "color": color_from(fr["tee_name"]), "totalYards": yards,
+            "womensRating": float(fr["course_rating"]), "womensSlope": int(float(fr["slope_rating"])),
         })
         added += 1
     return out, matched, added

@@ -93,12 +93,16 @@ final class ElevationService: ObservableObject {
 
     private static func fetchElevations(lats: [Double], lons: [Double]) async -> [Double]? {
         // USGS NED 10 m (US) is dramatically more accurate for golf-slope than SRTM 30 m — the
-        // coarse SRTM grid spuriously reports flat holes as 20-25 yds uphill/downhill. Fall back to
-        // SRTM 30 m (near-global) and then Open-Meteo's DEM where NED has no coverage (outside the
-        // US) or the endpoint is unreachable, so slope still works everywhere.
-        if let ned  = await fetchOpenTopo(dataset: "ned10m",  lats: lats, lons: lons) { return ned }
-        if let srtm = await fetchOpenTopo(dataset: "srtm30m", lats: lats, lons: lons) { return srtm }
-        return await fetchOpenMeteo(lats: lats, lons: lons)
+        // coarse SRTM grid spuriously reports flat holes as 20-25 yds uphill/downhill — so it stays
+        // first where it has coverage. Open-Meteo's Elevation API is Copernicus DEM GLO-90 — coarser
+        // posting than SRTM (90 m vs 30 m) but radar-derived SRTM is noisy over vegetation/canopy in
+        // exactly the way that produces those spurious slopes, while Copernicus's vertical accuracy
+        // is meaningfully better; 90 m posting is still plenty fine-grained for hole-scale slope. So
+        // it now goes second (outside the US), with SRTM 30 m demoted to last-resort only for the
+        // rare case Open-Meteo itself is unreachable.
+        if let ned = await fetchOpenTopo(dataset: "ned10m", lats: lats, lons: lons) { return ned }
+        if let cop = await fetchOpenMeteo(lats: lats, lons: lons), cop.count == lats.count { return cop }
+        return await fetchOpenTopo(dataset: "srtm30m", lats: lats, lons: lons)
     }
 
     /// OpenTopoData (free, no key; up to 100 points/request). Returns nil unless every requested

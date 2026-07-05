@@ -584,6 +584,13 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     self.showShotResult = true
                     self.phase = .reviewingShot
                     self.reviewTriggerLogCount = 0
+                    // Dev mode: real-time upload to Google Drive, only for shots that made it past
+                    // the plausibility check above (not a discarded false trigger). No-op unless
+                    // signed in and the toggle is on.
+                    GoogleDriveUploadService.shared.uploadShotIfEnabled(
+                        frames: result.frames.map { $0.originalFrame },
+                        impactIndex: result.impactFrameIndex
+                    )
                 }
             }
         }

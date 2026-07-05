@@ -242,19 +242,12 @@ final class CourseDataAggregator {
             return result
         }
 
-        // Authoritative tee boxes (named, with rating/slope) from GolfCourseAPI.
-        // Deduplicate by name (male+female can produce same name) and sort longest first.
+        // Authoritative tee boxes (named, with rating/slope) from GolfCourseAPI. Usually already
+        // merged by GolfCourseAPIProvider.buildTeeBoxes; this is a defensive second pass in case
+        // this course's scorecard came from elsewhere with duplicate names still present. Uses the
+        // same collapsing logic so a men's/women's pair's rating/slope isn't silently discarded.
         if !sc.teeBoxes.isEmpty {
-            var seen: [String: TeeBox] = [:]
-            for tee in sc.teeBoxes {
-                let key = tee.name.lowercased()
-                if let existing = seen[key] {
-                    if tee.totalYards > existing.totalYards { seen[key] = tee }
-                } else {
-                    seen[key] = tee
-                }
-            }
-            result.teeBoxes = seen.values.sorted { $0.totalYards > $1.totalYards }
+            result.teeBoxes = TeeBox.collapsingSameNameDuplicates(sc.teeBoxes)
         }
 
         // Align by hole number: scorecard is the source of truth for par/handicap/yardage;

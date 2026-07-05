@@ -277,10 +277,18 @@ extension CLLocationCoordinate2D {
     }
 }
 
-/// Per-shot (carry, signed lateral yards) — same model the insights dispersion
-/// chart uses, reused to place the on-course dispersion overlay.
-enum ShotDispersion {
-    static func point(for shot: SavedShot) -> (carry: Double, lateral: Double)? {
+/// Which distance figure a dispersion dot is projected at: where the shot first landed, or where
+/// it finally came to rest (including roll). Mirrors the same toggle on the Insights dispersion chart.
+private enum DispersionMetric: String, CaseIterable {
+    case carry = "Carry", total = "Total"
+}
+
+/// Per-shot (plotted distance, signed lateral yards) — same model the insights dispersion
+/// chart uses, reused to place the on-course dispersion overlay. `metric` selects whether the
+/// returned distance is the carry (first landing) or total (after roll) yardage; the lateral
+/// curve math is unchanged either way since it's derived from the true landing fraction.
+private enum ShotDispersion {
+    static func point(for shot: SavedShot, metric: DispersionMetric = .carry) -> (carry: Double, lateral: Double)? {
         let carry = shot.metrics.carryYards
         guard carry > 0 else { return nil }
         let total = shot.metrics.totalYards > 0 ? shot.metrics.totalYards : carry
@@ -301,7 +309,7 @@ enum ShotDispersion {
         let curveSign: Double = curveStrength >= 0 ? 1.0 : -1.0
         let carryFrac = carry / total
         let lateral = tan(hlaRad) * total * carryFrac + curveSign * curveMagnitude * pow(carryFrac, 1.6)
-        return (carry, lateral)
+        return (metric == .carry ? carry : total, lateral)
     }
 }
 
@@ -592,6 +600,11 @@ private struct SatelliteMapBackground: UIViewRepresentable {
     var greenCoord:  CLLocationCoordinate2D?
     var teeCoord:    CLLocationCoordinate2D?
     var userCoord:   CLLocationCoordinate2D?
+    /// Live GPS fix, ungated by hole proximity — used only as a last-resort centering anchor
+    /// when there's no hole geometry at all (GPS-estimate courses), where "near current hole"
+    /// can't be evaluated in the first place. `userCoord` above stays proximity-gated for the
+    /// aim-line/tee-to-green framing paths, which do assume the player is actually at the hole.
+    var rawUserCoord: CLLocationCoordinate2D?
     var courseCoord: CLLocationCoordinate2D?
     var frontCoord:  CLLocationCoordinate2D?
     var backCoord:   CLLocationCoordinate2D?
@@ -693,7 +706,14 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         map.showsCompass        = false
         map.delegate            = context.coordinator
         context.coordinator.parent = self
-        // Limit zoom: min 50m (green detail) → max 4000m (accommodates long par-5s).
+        // Limit zoom: min 50m (green detail) → max 4000m (accommodates long par-5s). Assigning
+        // cameraZoomRange can synchronously fire `regionDidChangeAnimated` on the delegate (MapKit
+        // re-validates/clamps the region as part of applying the new range). Without marking this
+        // as a programmatic change first, the Coordinator mistakes it for a user pan and calls
+        // `onUserPanned`, which mutates `@State` while this makeUIView call is itself still inside
+        // SwiftUI's view-update pass — undefined behavior that can silently drop the render pass
+        // (blank/white screen) until something else (e.g. backgrounding the app) forces a fresh one.
+        context.coordinator.setProgrammaticRegionChange(true)
         map.cameraZoomRange = MKMapView.CameraZoomRange(
             minCenterCoordinateDistance: 50,
             maxCenterCoordinateDistance: 4000
@@ -706,7 +726,8 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         map.transform = CGAffineTransform(scaleX: Self.kHorizStretch, y: 1.0)
         // Seed an initial region so the map never renders blank/white before framing runs. Courses
         // with no hole geometry (scorecard-only) otherwise had nothing to frame → white screen.
-        if let seed = teeCoord ?? greenCoord ?? courseCoord ?? userCoord {
+        if let seed = teeCoord ?? greenCoord ?? courseCoord ?? userCoord ?? rawUserCoord {
+            context.coordinator.setProgrammaticRegionChange(true)
             map.setRegion(MKCoordinateRegion(center: seed,
                                              latitudinalMeters: 1400,
                                              longitudinalMeters: 1400),
@@ -847,6 +868,11 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                                            bottom: bottomUIInset, right: 8)
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setVisibleMapRect(fittingRect, edgePadding: edgePad, animated: false)
+                // Let the player pan a bit beyond the hole itself (to check a bailout or the next
+                // tee) without being able to scroll away indefinitely — mirrors cameraZoomRange's
+                // "limited but not locked" zoom behavior, just for panning.
+                let panPad = 200.0 * ptsPerMeter
+                map.cameraBoundary = MKMapView.CameraBoundary(mapRect: fittingRect.insetBy(dx: -panPad, dy: -panPad))
                 // Par 5s zoom in slightly less to keep the full hole visible.
                 let altMultiplier = aimPoints.count >= 2 ? 0.93 : 0.92
                 let fittedAlt = max(map.camera.altitude * altMultiplier, 150.0)
@@ -870,8 +896,16 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 let edgePad = UIEdgeInsets(top: topUIInset, left: 8, bottom: bottomUIInset, right: 8)
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setVisibleMapRect(rect, edgePadding: edgePad, animated: false)
+                let panPad = 200.0 * ptsPerMeter
+                map.cameraBoundary = MKMapView.CameraBoundary(mapRect: rect.insetBy(dx: -panPad, dy: -panPad))
+                // Reuse the center setVisibleMapRect already solved for (which correctly biases
+                // upward for topUIInset > bottomUIInset) instead of re-centering dead-on `green` —
+                // MKMapCamera(lookingAtCenter:) always places its point at the screen's true 50%
+                // regardless of edge padding, which was leaving a large gap between the green and
+                // the top bar since topUIInset is roughly double bottomUIInset.
+                let biasedCenter = map.camera.centerCoordinate
                 let alt = max(map.camera.altitude, 50.0)
-                let cam = MKMapCamera(lookingAtCenter: green, fromDistance: alt, pitch: 0, heading: 0)
+                let cam = MKMapCamera(lookingAtCenter: biasedCenter, fromDistance: alt, pitch: 0, heading: 0)
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setCamera(cam, animated: context.coordinator.hasInitializedRegion)
                 context.coordinator.completeRecenter(focusId: focusId, recenterToken: recenterToken, gpsKey: gpsKey)
@@ -879,15 +913,23 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         } else {
             // No hole geometry: center on the course, else the player's live location, else a
             // neutral default. (Previously fell straight to San Francisco, ignoring the player.)
-            let center = courseCoord ?? userCoord ?? CLLocationCoordinate2D(latitude: 37.785834, longitude: -122.406417)
+            let center = courseCoord ?? userCoord ?? rawUserCoord ?? CLLocationCoordinate2D(latitude: 37.785834, longitude: -122.406417)
             if shouldRecenter {
                 context.coordinator.setProgrammaticRegionChange(true)
+                let span = 650 / usableF
                 map.setRegion(
-                    MKCoordinateRegion(center: center,
-                                       latitudinalMeters: 650 / usableF,
-                                       longitudinalMeters: 650 / usableF),
+                    MKCoordinateRegion(center: center, latitudinalMeters: span, longitudinalMeters: span),
                     animated: context.coordinator.hasInitializedRegion
                 )
+                // No hole geometry to bound against — still cap panning to a generous area around
+                // the fallback center rather than leaving it unlimited.
+                let ptsPerMeter = MKMapPointsPerMeterAtLatitude(center.latitude)
+                let panPad = 200.0 * ptsPerMeter
+                let centerPt = MKMapPoint(center)
+                let halfSpan = (span / 2) * ptsPerMeter
+                let baseRect = MKMapRect(x: centerPt.x - halfSpan, y: centerPt.y - halfSpan,
+                                         width: halfSpan * 2, height: halfSpan * 2)
+                map.cameraBoundary = MKMapView.CameraBoundary(mapRect: baseRect.insetBy(dx: -panPad, dy: -panPad))
                 context.coordinator.completeRecenter(focusId: focusId, recenterToken: recenterToken, gpsKey: gpsKey)
             }
         }
@@ -976,6 +1018,15 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         context.coordinator.parent = self
     }
 
+    /// SwiftUI's actual teardown hook for `UIViewRepresentable` — called when the map is removed
+    /// from the hierarchy. Without this, the flight-animation timer could keep firing against a
+    /// map that's going away, and nothing ever cleared the delegate/user-location tracking.
+    static func dismantleUIView(_ uiView: MKMapView, coordinator: Coordinator) {
+        coordinator.tearDown()
+        uiView.delegate = nil
+        uiView.showsUserLocation = false
+    }
+
     // MARK: Coordinator
 
     class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
@@ -996,6 +1047,18 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         private var flightTimer: Timer?
         private weak var flightBall: FlightBallAnnotation?
         private weak var flightTrail: FlightTrailPolyline?
+
+        /// Stops the repeating flight-animation timer so it can't keep firing against a map
+        /// that's being torn down. Called from `dismantleUIView` and as a deinit backstop.
+        func tearDown() {
+            flightTimer?.invalidate()
+            flightTimer = nil
+            parent = nil
+        }
+
+        deinit {
+            flightTimer?.invalidate()
+        }
 
         @objc func handleTap(_ gr: UITapGestureRecognizer) {
             guard let map = gr.view as? MKMapView else { return }
@@ -1424,6 +1487,7 @@ struct CourseModeGPSHoleView: View {
     @State private var dispersionShotsByClub: [UUID: [SavedShot]] = [:]
     @State private var showDispersionPicker = false
     @State private var slopeAdjustDots = false     // shift dispersion dots by slope (plays-like)
+    @State private var dispersionMetric: DispersionMetric = .carry   // plot dots at carry or total
     @State private var infoMessage: String?
     @State private var roundStartTime  = Date()
     @State private var recenterToken   = 0
@@ -1497,17 +1561,15 @@ struct CourseModeGPSHoleView: View {
     }
 
     private var scorecardYardage: Int? {
-        guard let gh = currentCourseHole else { return nil }
-        // Match by selected tee box id, then by name, then fall back to any available yardage
-        if let tee = vm.selectedTeeBox {
-            if let y = gh.teeYardsByTeeBox[tee.id], y > 0 { return y }
-            let nameKey = gh.teeYardsByTeeBox.keys.first(where: {
-                $0.caseInsensitiveCompare(tee.name) == .orderedSame ||
-                $0.caseInsensitiveCompare(tee.color) == .orderedSame
-            })
-            if let k = nameKey, let y = gh.teeYardsByTeeBox[k], y > 0 { return y }
+        guard let gh = currentCourseHole, let course = vm.selectedCourse else { return nil }
+        guard let tee = vm.selectedTeeBox else {
+            return gh.teeYardsByTeeBox.values.first(where: { $0 > 0 })
         }
-        return gh.teeYardsByTeeBox.values.first(where: { $0 > 0 })
+        // Match by selected tee box id/name, else step down to the nearest shorter tee with
+        // trusted data (GPS-estimate tees don't carry reliable per-hole numbers of their own),
+        // else fall back to any available yardage as a last resort.
+        return course.resolvedHoleYardage(gh, for: tee)
+            ?? gh.teeYardsByTeeBox.values.first(where: { $0 > 0 })
     }
 
     private var gpsDistances: GreenDistances {
@@ -1758,7 +1820,7 @@ struct CourseModeGPSHoleView: View {
             // only meaningful when several clubs are overlaid at once.
             let clubColor = UIColor(TCDispersionColor.club(selectionIndex))
             for shot in dispersionShotsByClub[clubId] ?? [] {
-                guard let p = ShotDispersion.point(for: shot) else { continue }
+                guard let p = ShotDispersion.point(for: shot, metric: dispersionMetric) else { continue }
                 var carry = p.carry
                 var lateral = p.lateral
                 if let originElev {
@@ -2122,7 +2184,14 @@ struct CourseModeGPSHoleView: View {
         // Include the tee so the camera re-frames "down the hole" the moment geometry loads.
         let teeLat = currentMapHole?.teeCoordinate?.latitude ?? 0
         let teeLon = currentMapHole?.teeCoordinate?.longitude ?? 0
-        return "\(hole)-\(greenLat)-\(greenLon)-\(teeLat)-\(teeLon)-\(gpsOn)"
+        // Courses with no hole geometry at all (GPS-estimate/failed enrichment) have nothing
+        // above to key off of, so the map falls back to centering on the course or the player's
+        // live GPS. Track whether either has become available yet so that transition — which
+        // otherwise wouldn't change any of the fields above — still forces one recenter, instead
+        // of leaving the view stuck on whatever placeholder region existed at first render.
+        let hasAnchor = (vm.selectedCourse?.coordinate ?? initialCourse?.coordinate) != nil
+                     || vm.location.currentLocation != nil
+        return "\(hole)-\(greenLat)-\(greenLon)-\(teeLat)-\(teeLon)-\(gpsOn)-\(hasAnchor)"
     }
 
     // MARK: - Init
@@ -2147,6 +2216,7 @@ struct CourseModeGPSHoleView: View {
                 greenCoord:  currentMapHole?.greenCenterCoordinate?.clCoordinate,
                 teeCoord:    currentMapHole?.teeCoordinate?.clCoordinate,
                 userCoord:   (gpsOn && userIsNearCurrentHole) ? vm.location.currentLocation : nil,
+                rawUserCoord: gpsOn ? vm.location.currentLocation : nil,
                 courseCoord: vm.selectedCourse?.coordinate ?? initialCourse?.coordinate,
                 frontCoord:  currentMapHole?.greenFrontCoordinate?.clCoordinate,
                 backCoord:   currentMapHole?.greenBackCoordinate?.clCoordinate,
@@ -2167,7 +2237,7 @@ struct CourseModeGPSHoleView: View {
                 },
                 trackedShots:   vm.currentHoleTrackedShots,
                 dispersionDots: dispersionDots,
-                topUIInset:    topSafeArea + 184, // safe area + topBar(44) + gap(2) + infoStrip(30) + margin(6) + lowered(102)
+                topUIInset:    topSafeArea + 115, // clears the info strip with a bit more breathing room than +90 (was +184, then +168 — both too conservative, left a large gap above the flag)
                 bottomUIInset: bottomSafeArea + 76, // bottom bar content + home indicator
                 gpsKey:        coarseGpsKey,
                 customAimTarget: aimTarget,
@@ -2239,9 +2309,10 @@ struct CourseModeGPSHoleView: View {
                 }
             }
 
-            // Wind flow arrows — ambient direction cue over the map. Only while the dispersion
-            // overlay is OFF; in overlay mode the wind is shown by shifting the shot dots instead.
-            if windEnabled, dispersionClubIds.isEmpty, let we = windDotEffect {
+            // Wind flow arrows — ambient direction cue over the map. Stays on even with the
+            // dispersion overlay showing, since the dots being shifted doesn't itself convey
+            // wind direction the way the flowing arrows do.
+            if windEnabled, let we = windDotEffect {
                 // Offset by the map heading so arrows read correctly on the rotated (heading-up) map.
                 WindFlowOverlay(toBearingDegrees: we.fromDegrees + 180 - mapHeading)
                     .allowsHitTesting(false)
@@ -2305,12 +2376,12 @@ struct CourseModeGPSHoleView: View {
                 .padding(.bottom, 190)
                 .ignoresSafeArea(edges: .bottom)
 
-            // Wind readout — top-center banner while wind mode is on. Sits BELOW the (lowered) top
-            // bar so it isn't hidden behind it.
+            // Wind readout — top-center banner while wind mode is on. Raised to sit close to the
+            // hole info strip, in line with the other top-row pills (slope pill, sidebars).
             if windEnabled {
                 VStack {
                     windPill
-                        .padding(.top, topSafeArea + 174)
+                        .padding(.top, topSafeArea + 130)
                     Spacer(minLength: 0)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -2445,7 +2516,7 @@ struct CourseModeGPSHoleView: View {
         .sheet(isPresented: $showScorecard) {
             if let round = vm.activeRound {
                 NavigationStack {
-                    ScorecardView(round: round, course: vm.selectedCourse)
+                    ScorecardView(round: round)
                 }
                 .tcAppearance()
             }
@@ -2487,16 +2558,18 @@ struct CourseModeGPSHoleView: View {
             if let round = initialRound {
                 await vm.resumeRound(round)
             } else if let course = initialCourse, let tee = initialTeeBox {
-                await vm.startRoundEnriching(course: course, teeBox: tee)
+                await vm.startRoundEnriching(course: course, teeBox: tee, gender: session.userProfile?.gender ?? .male)
             }
             pushWidgetData()
         }
         .onAppear {
             registerWatchRoundControls()
             loadElevationForHole()
+            OrientationManager.shared.lockPortrait()
         }
         .onDisappear {
             WatchConnectivityBridge.shared.unregisterRoundCommandHandler()
+            OrientationManager.shared.unlockAllButUpsideDown()
         }
         .onChange(of: vm.activeRound?.id) { _ in
             pushWidgetData()
@@ -2928,6 +3001,14 @@ struct CourseModeGPSHoleView: View {
         return NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 8) {
+                    Picker("Dot distance", selection: $dispersionMetric) {
+                        ForEach(DispersionMetric.allCases, id: \.self) { metric in
+                            Text(metric.rawValue).tag(metric)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.bottom, 6)
+
                     if clubs.isEmpty {
                         Text("Add clubs to your bag to overlay shot dispersion.")
                             .font(.system(size: 14))
@@ -3564,11 +3645,12 @@ private struct WindFlowOverlay: View {
                 let cx = Double(size.width) / 2, cy = Double(size.height) / 2
                 let speed = 70.0                        // pts per second
                 let laneGap = Double(size.width) / Double(max(1, lanes - 1)) * 0.92
+                let arrowsPerLane = 3                   // 3 arrows per lane on screen at once
 
                 for lane in 0..<lanes {
                     let perpOff = (Double(lane) - Double(lanes - 1) / 2) * laneGap
-                    for k in 0..<2 {   // two arrows per lane, half a cycle apart, for a continuous stream
-                        let phase = (t * speed + Double(lane) * 55 + Double(k) * diag / 2)
+                    for k in 0..<arrowsPerLane {
+                        let phase = (t * speed + Double(lane) * 55 + Double(k) * diag / Double(arrowsPerLane))
                             .truncatingRemainder(dividingBy: diag)
                         let along = phase - diag / 2
                         let x = cx + ux * along + px * perpOff

@@ -42,6 +42,9 @@ struct SimCameraScreen: View {
             onShotSaved: nil,   // auto-saved below; review screen is informational only
             onShotComplete: {}  // stay armed for next shot
         )
+        .overlay(alignment: .top) {
+            if simVM.isMultiPlayer { whoseTurnPill.padding(.top, 60) }
+        }
         // Fires the moment analysis completes and the result card appears.
         .onChange(of: camera.showShotResult) { isShowing in
             guard isShowing, let analysis = camera.latestShotAnalysis,
@@ -134,6 +137,13 @@ struct SimCameraScreen: View {
     private func autoSave(analysis: ShotAnalysisResult, metrics: SavedShotMetrics) async {
         guard let uid = session.currentUser?.id else { return }
 
+        // Multi-player: another player's shot already relayed to the sim above (untouched) —
+        // it just doesn't get saved to the account holder's own shot history.
+        guard simVM.isCurrentPlayerAccountHolder else {
+            simVM.advanceToNextPlayerIfNeeded()
+            return
+        }
+
         let composite = ShotCompositeRenderer().render(analysis: analysis)
 
         await simVM.ensureSessionStarted()
@@ -151,6 +161,36 @@ struct SimCameraScreen: View {
         ) else { return }
 
         await simVM.addShot(shot)
+        simVM.advanceToNextPlayerIfNeeded()
+    }
+
+    // MARK: - Whose turn
+
+    private var whoseTurnPill: some View {
+        Menu {
+            ForEach(simVM.players.indices, id: \.self) { i in
+                Button {
+                    simVM.selectPlayer(i)
+                } label: {
+                    if i == simVM.currentPlayerIndex {
+                        Label(simVM.players[i], systemImage: "checkmark")
+                    } else {
+                        Text(simVM.players[i])
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "person.fill")
+                Text("Up: \(simVM.currentPlayerName)")
+                Image(systemName: "chevron.down")
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Color.black.opacity(0.55)))
+        }
     }
 
     // MARK: - Club loading

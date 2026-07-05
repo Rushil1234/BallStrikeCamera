@@ -86,6 +86,13 @@ html, body {
   font-size: 13px; letter-spacing: 0.32em;
   color: var(--gold);
 }
+/* Multi-player only — whose turn it is. Absent element-wise until a session sends a roster. */
+#hc-player {
+  margin-top: 5px;
+  font-family: var(--font-data);
+  font-weight: 600; font-size: 12px; letter-spacing: 0.14em;
+  color: var(--cream);
+}
 
 #hole-picker-card {
   top: 128px; left: 22px;

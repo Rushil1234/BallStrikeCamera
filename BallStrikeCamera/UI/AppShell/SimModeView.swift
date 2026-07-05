@@ -47,6 +47,8 @@ struct SimModeView: View {
 
     @State private var selectedProvider = "OGS"
     @State private var connMode: SimConnMode = .wifi   // Wi-Fi vs Bluetooth, within OGS/GSPro
+    @State private var isMultiPlayer = false
+    @State private var otherPlayerNames: [String] = [""]
     @State private var showCamera = false
     @State private var showLiveCamera = false
     @State private var showEndConfirmation = false
@@ -79,17 +81,24 @@ struct SimModeView: View {
                 liveSimService: liveSimService,
                 onHitShot: {
                     if !simVM.sessionActive {
-                        Task { await simVM.startSession(provider: .liveSim, usedOGS: false) }
+                        Task { await simVM.startSession(provider: .liveSim, usedOGS: false, otherPlayers: trimmedOtherPlayers) }
                     }
                     showLiveCamera = true
                 },
                 onSimulateShot: {
                     Task {
                         if !simVM.sessionActive {
-                            await simVM.startSession(provider: .liveSim, usedOGS: false)
+                            await simVM.startSession(provider: .liveSim, usedOGS: false, otherPlayers: trimmedOtherPlayers)
+                        }
+                        if simVM.isMultiPlayer {
+                            await liveSimService.broadcastPlayers(names: simVM.players)
                         }
                         let shot = await simVM.addSimulatedShot()
-                        await liveSimService.broadcast(metrics: shot.metrics)
+                        await liveSimService.broadcast(
+                            metrics: shot.metrics,
+                            playerIndex: simVM.currentPlayerIndex,
+                            playerName: simVM.currentPlayerName
+                        )
                     }
                 },
                 onEnd: {
@@ -114,6 +123,7 @@ struct SimModeView: View {
                             else                                   { gsproConnectionSection }
                         }
                         if selectedProvider == "TCSim"            { liveSimSection }
+                        if !simVM.sessionActive { playersSection }
                         sessionSection
                         if simVM.sessionActive { activeSessionSection }
                         Spacer(minLength: 32)
@@ -426,7 +436,7 @@ struct SimModeView: View {
     private var liveSimSection: some View {
         LiveSimCodeView(liveSimService: liveSimService) {
             if !simVM.sessionActive {
-                Task { await simVM.startSession(provider: .liveSim, usedOGS: false) }
+                Task { await simVM.startSession(provider: .liveSim, usedOGS: false, otherPlayers: trimmedOtherPlayers) }
             }
             showLiveCamera = true
         }
@@ -672,6 +682,99 @@ struct SimModeView: View {
 
     // MARK: - Session section (start / stats)
 
+    private var trimmedOtherPlayers: [String] {
+        guard isMultiPlayer else { return [] }
+        return otherPlayerNames
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    private var playersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BSectionHeader(title: "Players")
+            VStack(alignment: .leading, spacing: 14) {
+                Picker("", selection: $isMultiPlayer) {
+                    Text("Single Player").tag(false)
+                    Text("Multi-Player").tag(true)
+                }
+                .pickerStyle(.segmented)
+
+                if isMultiPlayer {
+                    Text("Add each other player's name. Only your own shots save to your history — theirs still play in the sim.")
+                        .font(.system(size: 12))
+                        .foregroundColor(BSTheme.textMuted)
+                        .lineSpacing(2)
+
+                    VStack(spacing: 0) {
+                        ForEach(otherPlayerNames.indices, id: \.self) { i in
+                            HStack(spacing: 10) {
+                                Text("Player \(i + 2)")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(BSTheme.textMuted)
+                                    .frame(width: 70, alignment: .leading)
+                                TextField("Name", text: $otherPlayerNames[i])
+                                    .font(.system(size: 15))
+                                    .foregroundColor(BSTheme.textPrimary)
+                                if otherPlayerNames.count > 1 {
+                                    Button {
+                                        otherPlayerNames.remove(at: i)
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundColor(BSTheme.textMuted)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, 10)
+                            if i < otherPlayerNames.count - 1 {
+                                Divider().background(BSTheme.border)
+                            }
+                        }
+                    }
+                    .premiumCard(padding: 14)
+
+                    Button {
+                        otherPlayerNames.append("")
+                    } label: {
+                        Label("Add Player", systemImage: "plus.circle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundColor(BSTheme.electricCyan)
+                }
+            }
+        }
+    }
+
+    /// "Who's up" switcher shown once a multi-player session is active — tap a name before
+    /// hitting so that player's shot still relays to the sim but skips personal-history save.
+    private var playerTurnPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("WHO'S UP")
+                .font(.system(size: 11, weight: .bold))
+                .tracking(1.2)
+                .foregroundColor(BSTheme.textMuted)
+            HStack(spacing: 8) {
+                ForEach(simVM.players.indices, id: \.self) { i in
+                    Button {
+                        simVM.selectPlayer(i)
+                    } label: {
+                        Text(simVM.players[i])
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(i == simVM.currentPlayerIndex ? .black : BSTheme.textPrimary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule().fill(i == simVM.currentPlayerIndex
+                                               ? BSTheme.electricCyan
+                                               : BSTheme.textMuted.opacity(0.15))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
     private var sessionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             BSectionHeader(title: simVM.sessionActive ? "Active Session" : "Session")
@@ -695,7 +798,7 @@ struct SimModeView: View {
                     icon: "play.fill",
                     style: .gradient(BSTheme.simGradient),
                     action: {
-                        Task { await simVM.startSession(provider: providerEnum, usedOGS: usedOGSNow) }
+                        Task { await simVM.startSession(provider: providerEnum, usedOGS: usedOGSNow, otherPlayers: trimmedOtherPlayers) }
                     }
                 )
             }
@@ -707,6 +810,8 @@ struct SimModeView: View {
     @ViewBuilder
     private var activeSessionSection: some View {
         VStack(spacing: 10) {
+            if simVM.isMultiPlayer { playerTurnPicker }
+
             // Hit real shot
             PremiumActionButton(
                 title: "Hit Shot",
@@ -731,7 +836,14 @@ struct SimModeView: View {
                     Task {
                         let shot = await simVM.addSimulatedShot()
                         if liveSimService.isConnectedToSim {
-                            await liveSimService.broadcast(metrics: shot.metrics)
+                            if simVM.isMultiPlayer {
+                                await liveSimService.broadcastPlayers(names: simVM.players)
+                            }
+                            await liveSimService.broadcast(
+                                metrics: shot.metrics,
+                                playerIndex: simVM.currentPlayerIndex,
+                                playerName: simVM.currentPlayerName
+                            )
                             simulateFeedback = "Shot sent to True Carry Sim."
                         } else if ogsVM.connectionState.isConnected {
                             await ogsVM.sendMetrics(shot.metrics)

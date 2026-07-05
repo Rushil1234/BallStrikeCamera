@@ -79,7 +79,9 @@ struct RoundSetupView: View {
                                 TCPill(text: setupYards > 0 ? "\(setupYards) yds" : "GPS estimate", color: TCTheme.gold)
                             }
 
-                            if let rating = teeBox.rating, let slope = teeBox.slope {
+                            let gender = session.userProfile?.gender ?? .male
+                            if let rating = teeBox.resolvedRating(for: gender),
+                               let slope = teeBox.resolvedSlope(for: gender) {
                                 Text(String(format: "Rating %.1f / Slope %d", rating, slope))
                                     .font(.system(size: 11))
                                     .foregroundColor(TCTheme.textMuted)

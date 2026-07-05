@@ -181,6 +181,73 @@ const blob = new THREE.Mesh(
 blob.rotation.x = -Math.PI / 2;
 scene.add(blob);
 
+// ---------- multi-player ghost balls ----------
+// Other players' resting ball positions, rendered simultaneously with the active player's
+// `ball` above. Index 0 (the account holder) never gets a ghost — they're always `ball` when
+// active, and never need a ghost of themselves since only one player is "active" at a time.
+const GHOST_COLORS = [0x5ac8fa, 0xff9f0a, 0xbf5af2, 0x30d158, 0xff375f];
+function makeGhostLabel(text) {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  const c = cv.getContext('2d');
+  c.fillStyle = 'rgba(10,14,10,0.72)';
+  c.roundRect ? c.roundRect(0, 8, 256, 48, 14) : c.fillRect(0, 8, 256, 48);
+  c.fill();
+  c.font = '600 30px -apple-system, system-ui, sans-serif';
+  c.fillStyle = '#fff';
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillText(text, 128, 34);
+  const tex = new THREE.CanvasTexture(cv);
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(0.9, 0.22, 1);
+  return sprite;
+}
+function makeGhostBall(colorHex) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.034, 16, 12),
+    new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4, emissive: colorHex, emissiveIntensity: 0.25 }),
+  );
+  mesh.visible = false;
+  scene.add(mesh);
+  const label = makeGhostLabel('');
+  label.visible = false;
+  scene.add(label);
+  return { mesh, label };
+}
+// Lazily grown pool — one ghost per non-active player, created the first time we learn a
+// player's name (via the 'players' roster broadcast).
+const ghostPool = [];
+function ghostFor(playerIdx) {
+  // playerIdx 1 → ghostPool[0], playerIdx 2 → ghostPool[1], etc. (index 0 has no ghost).
+  const poolIdx = playerIdx - 1;
+  while (ghostPool.length <= poolIdx) {
+    ghostPool.push(makeGhostBall(GHOST_COLORS[ghostPool.length % GHOST_COLORS.length]));
+  }
+  return ghostPool[poolIdx];
+}
+function updateGhost(playerIdx, pos, visible) {
+  if (playerIdx <= 0) return; // index 0 is the active `ball` mesh, never a ghost
+  const g = ghostFor(playerIdx);
+  g.mesh.visible = visible;
+  g.label.visible = visible;
+  if (pos) {
+    g.mesh.position.set(pos.x, pos.y, pos.z);
+    g.label.position.set(pos.x, pos.y + 0.16, pos.z);
+  }
+}
+function refreshGhostLabel(playerIdx, name) {
+  if (playerIdx <= 0) return;
+  const g = ghostFor(playerIdx);
+  const newLabel = makeGhostLabel(name.toUpperCase());
+  newLabel.position.copy(g.label.position);
+  newLabel.visible = g.label.visible;
+  scene.remove(g.label);
+  scene.add(newLabel);
+  ghostPool[playerIdx - 1].label = newLabel;
+}
+
 // shot tracer — broadcast style: bright at the ball, fading down the tail
 const TRACER_MAX = 2400;
 const tracerPts = new Float32Array(TRACER_MAX * 3);   // raw flight points
@@ -295,6 +362,13 @@ const game = {
   camLook: new THREE.Vector3(0, 0, 50),
   time: 0,
   isRange: false,
+
+  // Multi-player: `players[0]` is always the account holder ("You" — mirrors the live
+  // ball/strokes/lie fields above while active). Other entries are populated lazily as their
+  // names arrive via the 'players' roster broadcast. Single-player sessions never populate this,
+  // so `players.length <= 1` throughout — every multi-player branch below is a no-op then.
+  players: [],
+  activePlayerIdx: 0,
 };
 
 let rangeMarkers = null;
@@ -461,6 +535,78 @@ function jumpToHole(idx) {
 
 // ---------- hole / shot setup ----------
 
+function teeBallPos() {
+  const t = game.course.teePos;
+  return { x: t.x, y: t.y + 0.0214, z: t.z };
+}
+
+// ---------- multi-player roster / turn switching ----------
+
+/** Called once when the phone starts a multi-player session (never for single-player). */
+function ensurePlayers(names) {
+  if (!Array.isArray(names) || names.length < 2) return;
+  names.forEach((name, i) => {
+    if (!game.players[i]) {
+      const isActive = i === game.activePlayerIdx;
+      game.players[i] = {
+        name,
+        ballPos: isActive && game.ballPos ? { ...game.ballPos } : (game.course ? teeBallPos() : null),
+        lie: isActive ? game.lie : SURF.TEE,
+        strokes: isActive ? game.strokes : 0,
+        shotStart: isActive && game.shotStart ? { ...game.shotStart } : null,
+        scores: courseHoles.map(() => null),
+        holedOut: false,
+      };
+    } else {
+      game.players[i].name = name;
+    }
+    if (i > 0) refreshGhostLabel(i, name);
+  });
+  if (game.players[game.activePlayerIdx]) hud.setPlayer(game.players[game.activePlayerIdx].name);
+}
+
+/** Swaps the live ball/lie/strokes/shotStart fields to the given player's own progress,
+ *  saving the outgoing player's progress first. No-op for single-player sessions. */
+function switchActivePlayer(idx, name) {
+  if (idx == null || game.players.length < 2 || idx === game.activePlayerIdx) return;
+
+  const outgoing = game.players[game.activePlayerIdx];
+  if (outgoing) {
+    outgoing.ballPos = { ...game.ballPos };
+    outgoing.lie = game.lie;
+    outgoing.strokes = game.strokes;
+    outgoing.shotStart = game.shotStart ? { ...game.shotStart } : null;
+    if (game.activePlayerIdx > 0) updateGhost(game.activePlayerIdx, outgoing.ballPos, !outgoing.holedOut);
+  }
+
+  let incoming = game.players[idx];
+  if (!incoming) {
+    incoming = game.players[idx] = {
+      name: name || `Player ${idx + 1}`,
+      ballPos: teeBallPos(),
+      lie: SURF.TEE,
+      strokes: 0,
+      shotStart: null,
+      scores: courseHoles.map(() => null),
+      holedOut: false,
+    };
+  } else if (name && incoming.name !== name) {
+    incoming.name = name;
+  }
+  if (idx > 0) refreshGhostLabel(idx, incoming.name);
+
+  game.activePlayerIdx = idx;
+  game.ballPos = { ...incoming.ballPos };
+  game.lie = incoming.lie;
+  game.strokes = incoming.strokes;
+  game.shotStart = incoming.shotStart ? { ...incoming.shotStart } : null;
+
+  if (idx > 0) updateGhost(idx, incoming.ballPos, false);
+  ball.visible = true;
+  ball.position.set(game.ballPos.x, game.ballPos.y, game.ballPos.z);
+  hud.setPlayer(incoming.name);
+}
+
 function startHole(idx) {
   pitchMarks.clear();
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
@@ -481,9 +627,22 @@ function startHole(idx) {
 
   game.strokes = 0;
   hud.shotDataHide();
-  const t = game.course.teePos;
-  game.ballPos = { x: t.x, y: t.y + 0.0214, z: t.z };
+  game.ballPos = teeBallPos();
   game.lie = SURF.TEE;
+
+  // Multi-player: every player starts the new hole fresh at the tee, and none has holed out
+  // yet. Ghosts from the previous hole are hidden until each player is swapped away again.
+  game.players.forEach((p, i) => {
+    if (!p) return;
+    p.ballPos = { ...game.ballPos };
+    p.lie = SURF.TEE;
+    p.strokes = 0;
+    p.shotStart = null;
+    p.holedOut = false;
+    if (i > 0) updateGhost(i, p.ballPos, false);
+  });
+  game.activePlayerIdx = 0;
+  if (game.players.length > 0) hud.setPlayer(game.players[0]?.name ?? 'You');
 
   // wind
   const ang = Math.random() * Math.PI * 2;
@@ -773,7 +932,29 @@ function resolveShot() {
 
   if (sim.state === 'holed') {
     const def = courseHoles[game.holeIdx];
-    game.scores[game.holeIdx] = game.strokes;
+    const active = game.players[game.activePlayerIdx];
+    if (active) {
+      active.scores[game.holeIdx] = game.strokes;
+      active.holedOut = true;
+      active.ballPos = { ...game.ballPos };
+      active.strokes = game.strokes;
+    } else {
+      game.scores[game.holeIdx] = game.strokes;
+    }
+
+    // Multi-player: wait for every player to hole out before advancing the group to the next
+    // tee. Treats a missing slot as "still playing" too, since a configured player who hasn't
+    // taken a shot yet this hole would otherwise be silently skipped.
+    const stillWaiting = game.players.length > 1 && game.players.some(p => !p || !p.holedOut);
+    if (stillWaiting) {
+      hud.toast(
+        `<span class="t-gold">${scoreName(game.strokes, def.par)}</span>` +
+        `<span class="t-sub">${(active?.name ?? 'YOU').toUpperCase()} · ${game.strokes} STROKES · WAITING FOR OTHERS</span>`, 0);
+      game.state = 'WAITING_OTHERS';
+      pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
+      return;
+    }
+
     hud.toast(
       `<span class="t-gold">${scoreName(game.strokes, def.par)}</span>` +
       `<span class="t-sub">HOLE ${def.id} · ${game.strokes} STROKES</span>`, 0);
@@ -1783,7 +1964,9 @@ function showSwingPip(b64) {
     function (metrics) {
       livePhoneConnected = true; updateLiveBadge();
       if (liveWaiting) liveWaiting.classList.add('hidden');
-      if (game.state === 'AIM' || game.state === 'METER_POWER' || game.state === 'METER_ACCURACY') {
+      const ready = game.state === 'AIM' || game.state === 'METER_POWER'
+        || game.state === 'METER_ACCURACY' || game.state === 'WAITING_OTHERS';
+      if (ready) {
         fireLiveShot(metrics);
         updateLiveShotNum(game.strokes);
       }
@@ -1818,7 +2001,10 @@ function showSwingPip(b64) {
       window.parent?.postMessage({ type: 'APP_DISCONNECTED' }, '*');
     },
     // onSwingImage — picture-in-picture of the player's real swing
-    showSwingPip
+    showSwingPip,
+    // onPlayersReceived — multi-player roster, sent once at the start of a multi-player
+    // session (single-player sessions never send this event).
+    ensurePlayers
   );
 }
 
@@ -1826,8 +2012,13 @@ function showSwingPip(b64) {
  * Fires a shot using metrics from the phone (live sim mode).
  * Bypasses the 3-click swing meter entirely.
  */
-function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaDegrees, hlaDirection }) {
+function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaDegrees, hlaDirection, playerIndex, playerName }) {
   if (!game.course) return;
+
+  // Multi-player: swap in this shot's player's own ball/lie/strokes before firing, so it
+  // continues from wherever THEIR ball actually rests (not whoever hit last). No-op for
+  // single-player sessions or repeat shots by the same already-active player.
+  switchActivePlayer(playerIndex, playerName);
 
   const speed = (ballSpeedMph || 100) * 0.44704; // mph → m/s
 

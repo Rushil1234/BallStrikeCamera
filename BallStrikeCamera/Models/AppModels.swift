@@ -25,6 +25,7 @@ struct UserProfile: Codable, Identifiable {
     var displayName: String
     var username: String? = nil
     var handedness: Handedness = .right
+    var gender: Gender = .male
     var distanceUnit: DistanceUnit = .yards
     var speedUnit: SpeedUnit = .mph
     var homeCourseName: String = ""
@@ -295,6 +296,10 @@ struct SimSession: Codable, Identifiable {
     var outputLog: [String] = []
     var saveOriginalFrames: Bool = false
     var usedOpenGolfSim: Bool = false
+    /// Names of other players in the session (empty = single player). Their shots are relayed to
+    /// the sim for gameplay but never persisted to shot history — only the account holder's are.
+    var otherPlayerNames: [String] = []
+    var isMultiPlayer: Bool { !otherPlayerNames.isEmpty }
 }
 
 enum SimProvider: String, Codable, CaseIterable {

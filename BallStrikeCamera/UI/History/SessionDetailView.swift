@@ -89,6 +89,8 @@ struct SessionDetailView: View {
     @State private var friends: [FriendProfile] = []
     @State private var attestMessage: String?
     @State private var roundAttestation: SentAttestation?
+    @State private var isGeneratingLink = false
+    @State private var shareLinkURL: URL?
 
     /// Range/sim sessions render the per-shot list; course rounds use the shot map instead.
     private var showsShotsList: Bool {
@@ -162,6 +164,12 @@ struct SessionDetailView: View {
             Text(deleteError ?? "")
         }
         .sheet(isPresented: $showAttestSheet) { attestPickerSheet.tcAppearance() }
+        .sheet(isPresented: Binding(
+            get: { shareLinkURL != nil },
+            set: { if !$0 { shareLinkURL = nil } }
+        )) {
+            if let url = shareLinkURL { ShareSheet(items: [url]) }
+        }
         .alert("Attestation", isPresented: Binding(get: { attestMessage != nil }, set: { if !$0 { attestMessage = nil } })) {
             Button("OK", role: .cancel) { attestMessage = nil }
         } message: {
@@ -258,12 +266,48 @@ struct SessionDetailView: View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 8) {
-                    if friends.isEmpty {
-                        Text("Add friends to request a round attestation.")
-                            .font(.system(size: 14))
+                    Button { Task { await sendAttestationLink() } } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "link")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(TCTheme.gold)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Share a Link")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(TCTheme.textPrimary)
+                                Text("Works for anyone — they don't need the app")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(TCTheme.textMuted)
+                            }
+                            Spacer()
+                            if isGeneratingLink {
+                                ProgressView().tint(TCTheme.textMuted)
+                            } else {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(TCTheme.gold)
+                            }
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 12)
+                        .background(TCTheme.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(TCTheme.gold.opacity(0.4), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isGeneratingLink)
+
+                    if !friends.isEmpty {
+                        Text("OR ASK A FRIEND")
+                            .font(.system(size: 11, weight: .bold))
+                            .tracking(1.0)
+                            .foregroundColor(TCTheme.textUltraMuted)
+                            .padding(.top, 10)
+                    } else {
+                        Text("Add friends in-app for one-tap requests, or share a link above.")
+                            .font(.system(size: 13))
                             .foregroundColor(TCTheme.textMuted)
                             .multilineTextAlignment(.center)
-                            .padding(.top, 50)
+                            .padding(.top, 20)
                     }
                     ForEach(friends) { friend in
                         Button { Task { await sendAttestation(to: friend) } } label: {
@@ -311,6 +355,24 @@ struct SessionDetailView: View {
             await loadAttestationStatus()
         } catch {
             attestMessage = "Couldn't send the request. \(error.localizedDescription)"
+        }
+    }
+
+    /// Generates a public attestation link (no account required) and hands it to the share
+    /// sheet so it can go out over Messages, Mail, or anywhere else.
+    private func sendAttestationLink() async {
+        guard case .course(let round) = item, let me = session.currentUser else { return }
+        let name = session.userProfile?.displayName ?? me.name
+        isGeneratingLink = true
+        defer { isGeneratingLink = false }
+        do {
+            let token = try await session.backend.requestRoundAttestationLink(
+                round: round, requesterId: me.id, requesterName: name)
+            showAttestSheet = false
+            shareLinkURL = URL(string: "https://\(TCWebsite.domain)/attest/\(token)")
+            await loadAttestationStatus()
+        } catch {
+            attestMessage = "Couldn't create the link. \(error.localizedDescription)"
         }
     }
 

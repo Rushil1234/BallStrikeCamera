@@ -120,7 +120,26 @@ struct GolfCourse: Codable, Identifiable {
 
     /// Display yardage for a tee box: the trusted total, or 0 when the data is incomplete /
     /// duplicated / an implausible orphan. Callers treat 0 as "show GPS estimate, not a number".
-    func displayYards(for tee: TeeBox) -> Int { trustedYards(for: tee) ?? 0 }
+    func displayYards(for tee: TeeBox) -> Int { trustedYards(for: trustedTee(near: tee)) ?? 0 }
+
+    /// Nearest tee at or below `tee`'s length that has trusted (real, full-course) yardage data.
+    /// GPS-estimate tees have no reliable per-hole numbers of their own, so total and per-hole
+    /// yardage should both read from the closest shorter tee that does, rather than guessing.
+    /// Returns `tee` unchanged if it's already trusted, or if no shorter tee is trusted either.
+    func trustedTee(near tee: TeeBox) -> TeeBox {
+        if trustedYards(for: tee) != nil { return tee }
+        let byLength = teeBoxes.sorted { $0.totalYards > $1.totalYards }
+        guard let idx = byLength.firstIndex(where: { $0.id == tee.id }) else { return tee }
+        return byLength[idx...].first { trustedYards(for: $0) != nil } ?? tee
+    }
+
+    /// Per-hole yardage for `tee`, falling back to `trustedTee(near:)` when `tee` itself is a
+    /// GPS estimate, so a hole's number always comes from the same tee used for the total.
+    func resolvedHoleYardage(_ hole: GolfHole, for tee: TeeBox) -> Int? {
+        if let y = holeYardage(hole, for: tee) { return y }
+        let fallback = trustedTee(near: tee)
+        return fallback.id == tee.id ? nil : holeYardage(hole, for: fallback)
+    }
 }
 
 enum CourseSource: String, Codable {
@@ -154,6 +173,13 @@ struct CourseGeometryMetadata: Codable, Hashable {
     }
 }
 
+/// Drives which tee rating/slope a round uses for handicap calculation (see
+/// `TeeBox.resolvedRating(for:)`/`resolvedSlope(for:)`) — not a gameplay setting.
+enum Gender: String, Codable, CaseIterable {
+    case male   = "Male"
+    case female = "Female"
+}
+
 // MARK: - Tee Box
 
 struct TeeBox: Codable, Identifiable {
@@ -163,6 +189,120 @@ struct TeeBox: Codable, Identifiable {
     var totalYards: Int
     var rating: Double?
     var slope: Int?
+    /// Women's course rating/slope for this SAME physical tee, when the data source reports one
+    /// distinct from `rating`/`slope` (e.g. GolfCourseAPI's male/female arrays describing the same
+    /// markers). Not a separate playable tee — `resolvedRating(for:)`/`resolvedSlope(for:)` pick
+    /// whichever pair to use for handicap purposes based on the golfer's profile.
+    var womensRating: Double? = nil
+    var womensSlope: Int? = nil
+
+    /// The rating to use for handicap calculation for a golfer of the given gender — falls back to
+    /// the primary rating if no women's-specific figure was captured for this tee.
+    func resolvedRating(for gender: Gender) -> Double? {
+        gender == .female ? (womensRating ?? rating) : rating
+    }
+
+    /// The slope to use for handicap calculation for a golfer of the given gender — falls back to
+    /// the primary slope if no women's-specific figure was captured for this tee.
+    func resolvedSlope(for gender: Gender) -> Int? {
+        gender == .female ? (womensSlope ?? slope) : slope
+    }
+
+    /// Merges duplicate entries that share a name (male + female raw tee lists can produce the
+    /// same name twice) — keeps the longer-yardage entry as the surviving tee, but preserves
+    /// either side's women's rating/slope rather than discarding it when the shorter one is dropped.
+    static func collapsingSameNameDuplicates(_ tees: [TeeBox]) -> [TeeBox] {
+        var seen: [String: TeeBox] = [:]
+        for tee in tees {
+            let key = tee.name.lowercased()
+            guard let existing = seen[key] else { seen[key] = tee; continue }
+            var winner = tee.totalYards >= existing.totalYards ? tee : existing
+            let loser  = tee.totalYards >= existing.totalYards ? existing : tee
+            if winner.womensRating == nil { winner.womensRating = loser.womensRating }
+            if winner.womensSlope  == nil { winner.womensSlope  = loser.womensSlope }
+            seen[key] = winner
+        }
+        return seen.values.sorted { $0.totalYards > $1.totalYards }
+    }
+
+    /// Collapses male/female raw-tee pairs that share the same COLOR (e.g. "White" + "White (W)",
+    /// or any name variant that infers to the same color) into ONE visible TeeBox — yardage is
+    /// NOT required to match, since a men's/women's marker of the "same" tee can legitimately play
+    /// a different length. The male entry's identity (name/color/id/yardage) wins; the female
+    /// entry's rating/slope is attached as `womensRating`/`womensSlope` rather than shown as a
+    /// separate selectable tee. A female tee whose color has no matching male entry (a genuinely
+    /// distinct forward-tee-only set) is kept as its own visible tee.
+    static func mergingGenderedDuplicates(_ entries: [(tee: TeeBox, isFemale: Bool)]) -> [TeeBox] {
+        let maleTees = entries.filter { !$0.isFemale }.map(\.tee)
+        var femaleTees = entries.filter { $0.isFemale }.map(\.tee)
+
+        var merged: [TeeBox] = []
+        for male in maleTees {
+            var tee = male
+            if let idx = femaleTees.firstIndex(where: { $0.color.caseInsensitiveCompare(male.color) == .orderedSame }) {
+                let female = femaleTees.remove(at: idx)
+                tee.womensRating = female.rating
+                tee.womensSlope  = female.slope
+            }
+            merged.append(tee)
+        }
+        // Leftover female-only tees have no matching men's color — real, distinct, visible tees.
+        merged.append(contentsOf: femaleTees)
+
+        return collapsingSameNameDuplicates(merged)
+    }
+
+    /// Collapses tee boxes that share the same (alias-normalized) color into one visible tee.
+    /// Unlike `mergingGenderedDuplicates`, this doesn't know which entries are male/female up
+    /// front — it's for cached catalog blobs (Supabase `course-geometry` Storage) built by a
+    /// backend pipeline that could still emit a men's/women's pair as two separate tees (some
+    /// literally suffixed "<name> (W)") instead of merging them server-side. Masks already-cached
+    /// duplicates on the client so the fix shows up immediately, without waiting on every course's
+    /// blob to be regenerated. The longer-yardage entry wins as the visible tee (women's tees are
+    /// essentially always the shorter of a same-color pair); the other's rating/slope folds into
+    /// womensRating/womensSlope, and any leftover gender-suffix text is stripped from its name.
+    static func collapsingSameColorDuplicates(_ tees: [TeeBox]) -> [TeeBox] {
+        var groups: [String: [TeeBox]] = [:]
+        var order: [String] = []
+        for tee in tees {
+            let key = canonicalColor(tee.color)
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(tee)
+        }
+        var result: [TeeBox] = []
+        for key in order {
+            let group = groups[key]!.sorted { $0.totalYards > $1.totalYards }
+            var primary = group[0]
+            primary.name = strippingGenderSuffix(primary.name)
+            for extra in group.dropFirst() {
+                if primary.womensRating == nil { primary.womensRating = extra.rating }
+                if primary.womensSlope  == nil { primary.womensSlope  = extra.slope }
+            }
+            result.append(primary)
+        }
+        return result.sorted { $0.totalYards > $1.totalYards }
+    }
+
+    private static func canonicalColor(_ raw: String) -> String {
+        let lower = raw.lowercased()
+        if lower.contains("championship") || lower.contains("black") { return "black" }
+        if lower.contains("blue") { return "blue" }
+        if lower.contains("white") { return "white" }
+        if lower.contains("green") { return "green" }
+        if lower.contains("gold") || lower.contains("yellow") { return "gold" }
+        if lower.contains("red") || lower.contains("forward") { return "red" }
+        if lower.contains("silver") || lower.contains("fairway") { return "silver" }
+        return lower
+    }
+
+    private static func strippingGenderSuffix(_ name: String) -> String {
+        var s = name
+        for pattern in ["(W)", "(w)", "(F)", "(f)"] {
+            s = s.replacingOccurrences(of: " \(pattern)", with: "")
+            s = s.replacingOccurrences(of: pattern, with: "")
+        }
+        return s.trimmingCharacters(in: .whitespaces)
+    }
 }
 
 // MARK: - Golf Hole

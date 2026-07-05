@@ -63,10 +63,6 @@ struct LaunchMonitorScaffoldView: View {
                                     .padding(.top, 10)
                             }
 
-                            // Placement wizard: level / ball / framing checks.
-                            SetupAssistOverlay(camera: camera)
-                                .padding(.top, 64)
-
                             VStack {
                                 Spacer()
 

@@ -883,6 +883,29 @@ final class SupabaseBackendService: AppBackend {
         ])
     }
 
+    func requestRoundAttestationLink(round: CourseRound, requesterId: UUID, requesterName: String) async throws -> String {
+        // attester_id is left out entirely (nullable since migration 033) — the recipient isn't
+        // a known user yet. share_token is generated client-side so we can hand back the URL
+        // immediately without a second round-trip to read the inserted row back.
+        let token = UUID()
+        var body: [String: Any] = [
+            "id": UUID().uuidString,
+            "round_id": round.id.uuidString,
+            "requester_id": requesterId.uuidString,
+            "requester_name": requesterName,
+            "share_token": token.uuidString,
+            "course_name": round.courseName,
+            "round_date": ISO8601DateFormatter().string(from: round.startedAt),
+            "status": "pending"
+        ]
+        if round.scoreSummary.totalScore > 0 { body["score"] = round.scoreSummary.totalScore }
+        if round.scoreSummary.totalPar > 0 {
+            body["to_par"] = round.scoreSummary.totalScore - round.scoreSummary.totalPar
+        }
+        try await upsert(table: "round_attestations", body: body)
+        return token.uuidString
+    }
+
     func loadFeedNotifications() async throws -> [FeedNotification] {
         let rows: [SupabaseFeedNotificationRow] = try await rpc("list_feed_notifications", body: [:])
         return rows.compactMap { $0.toNotification() }
@@ -1197,6 +1220,7 @@ final class SupabaseBackendService: AppBackend {
             "user_id": p.userId.uuidString,
             "display_name": p.displayName,
             "handedness": p.handedness.rawValue,
+            "gender": p.gender.rawValue,
             "distance_unit": p.distanceUnit.rawValue,
             "speed_unit": p.speedUnit.rawValue,
             "home_course_name": p.homeCourseName

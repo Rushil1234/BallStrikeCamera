@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import ImageIO
 
 // MARK: - Home wrapper
 // Routed from the bottom dock's Home tab. Waits for the signed-in user before
@@ -44,9 +45,16 @@ struct FeedView: View {
     @State private var commentingPost: FeedPost?
     @State private var showRangeCamera = false
     @State private var showCourseSearch = false
-    @State private var showCourseMode = false
-    @State private var selectedCourse: GolfCourse?
-    @State private var selectedTeeBox: TeeBox?
+
+    /// Holds the course+tee atomically so fullScreenCover(item:) never sees a partial state.
+    /// Mirrors TrueCarryPlayView's fix for the same bug: presenting a boolean-driven
+    /// fullScreenCover whose content closure reads separate @State vars can race the search
+    /// sheet's own dismissal and render blank — see the staged/pendingRound handoff below.
+    private struct PendingRound: Identifiable {
+        let id = UUID(); let course: GolfCourse; let tee: TeeBox
+    }
+    @State private var pendingRound: PendingRound?
+    @State private var stagedRound: PendingRound?
 
     init(userId: UUID, authorName: String, backend: AppBackend) {
         self.userId = userId
@@ -177,28 +185,29 @@ struct FeedView: View {
                 .statusBarHidden(true)
         }
         .sheet(isPresented: $showCourseSearch, onDismiss: {
-            if selectedCourse != nil && selectedTeeBox != nil {
-                showCourseMode = true
+            // Present the round ONLY after the search sheet has fully dismissed. Triggering the
+            // fullScreenCover while the sheet is still on screen makes SwiftUI present a blank/white
+            // cover whose body never renders (presentation race) — the cause of the white screen.
+            if let staged = stagedRound {
+                stagedRound = nil
+                pendingRound = staged
             }
         }) {
             NavigationStack {
                 CourseSearchView(userId: userId) { course, tee in
-                    selectedCourse = course
-                    selectedTeeBox = tee
+                    stagedRound = PendingRound(course: course, tee: tee)
                     showCourseSearch = false
                 }
             }
             .tcAppearance()
         }
-        .fullScreenCover(isPresented: $showCourseMode) {
-            if let course = selectedCourse, let tee = selectedTeeBox {
-                CourseModeGPSHoleView(
-                    userId: userId,
-                    backend: backend,
-                    initialCourse: course,
-                    initialTeeBox: tee
-                )
-            }
+        .fullScreenCover(item: $pendingRound) { pr in
+            CourseModeGPSHoleView(
+                userId: userId,
+                backend: backend,
+                initialCourse: pr.course,
+                initialTeeBox: pr.tee
+            )
         }
         .sheet(isPresented: $showComposer, onDismiss: { Task { await vm.load() } }) {
             NavigationStack {
@@ -251,8 +260,7 @@ struct FeedView: View {
 
             HStack(spacing: 10) {
                 HeroActionButton(title: "Start Round", icon: "flag.fill", accent: TCTheme.gold) {
-                    selectedCourse = nil
-                    selectedTeeBox = nil
+                    stagedRound = nil
                     showCourseSearch = true
                 }
                 HeroActionButton(title: "Start Range", icon: "scope", accent: TCTheme.sage) {
@@ -737,11 +745,26 @@ private struct FeedPostRow: View {
     let onComment: () -> Void
     let onDelete: () -> Void
 
-    private var postPhoto: Image? {
-        guard let path = post.photoPath else { return nil }
-        let url = AppStorageManager.compositeDir(userId: post.userId).appendingPathComponent(path)
-        guard let ui = UIImage(contentsOfFile: url.path) else { return nil }
-        return Image(uiImage: ui)
+    @State private var loadedPhoto: Image?
+
+    /// Decodes the post photo downsampled to roughly its on-screen size (`ImageIO` thumbnailing
+    /// never allocates the full-resolution bitmap). The old computed-property version called
+    /// `UIImage(contentsOfFile:)` synchronously on the main thread on every body re-evaluation,
+    /// at full camera resolution, for every photo post in the feed — displayed at only 200pt tall.
+    /// That much simultaneous full-size GPU-backed image content competes with MapKit's own tile
+    /// surface pool, and was the likely cause of course mode hanging when started from this screen
+    /// (fine from tabs with no photo feed) — see CourseModeGPSHoleView's white-screen investigation.
+    private static func downsampledPhoto(at url: URL, maxPixelSize: CGFloat) -> Image? {
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, sourceOptions) else { return nil }
+        let thumbOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else { return nil }
+        return Image(uiImage: UIImage(cgImage: cgImage))
     }
 
     var body: some View {
@@ -799,7 +822,7 @@ private struct FeedPostRow: View {
                     .foregroundColor(TCTheme.textSecondary)
             }
 
-            if let photo = postPhoto {
+            if let photo = loadedPhoto {
                 photo
                     .resizable()
                     .scaledToFill()
@@ -859,6 +882,14 @@ private struct FeedPostRow: View {
         .padding(.horizontal, TCTheme.hPad)
         .padding(.vertical, 18)
         .background(TCTheme.background)
+        .task(id: post.photoPath) {
+            guard let path = post.photoPath else { loadedPhoto = nil; return }
+            let url = AppStorageManager.compositeDir(userId: post.userId).appendingPathComponent(path)
+            let scale = await MainActor.run { UIScreen.main.scale }
+            loadedPhoto = await Task.detached(priority: .userInitiated) {
+                Self.downsampledPhoto(at: url, maxPixelSize: 400 * scale)
+            }.value
+        }
     }
 
     private var timeText: String { relativeTime(post.timestamp) }
