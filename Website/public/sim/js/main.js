@@ -1091,6 +1091,34 @@ function aimCamera(snap = false) {
     bz + d.z * lookAhead + d.x * swayA, snap);
 }
 
+
+// Broadcast-crew camera hygiene: if a tree canopy sits on the camera->ball
+// sightline, lift the camera until the line clears it instead of shooting
+// through foliage.
+function clearSightline(px, py, pz, tx, ty, tz) {
+  const trees = game.course?.trees;
+  if (!trees || !trees.length) return py;
+  let y = py;
+  for (let iter = 0; iter < 3; iter++) {
+    let blocked = false;
+    const dx = tx - px, dz = tz - pz;
+    const len2 = dx * dx + dz * dz || 1;
+    for (const t of trees) {
+      const u = ((t.x - px) * dx + (t.z - pz) * dz) / len2;
+      if (u <= 0.02 || u >= 0.98) continue;
+      const cx = px + dx * u, cz = pz + dz * u;
+      const d = Math.hypot(t.x - cx, t.z - cz);
+      if (d > 3.2 * t.s + 1.5) continue;
+      const canopyTop = t.h + (t.isPine ? 13.5 : 6.5) * t.s;
+      const lineY = y + (ty - y) * u;
+      if (lineY < canopyTop) { blocked = true; break; }
+    }
+    if (!blocked) break;
+    y += 5;
+  }
+  return y;
+}
+
 function flightCamera() {
   const sim = game.sim;
   const pin = game.course.pinPos;
@@ -1109,7 +1137,8 @@ function flightCamera() {
       const L = Math.hypot(ox, oz) || 1;
       const gx = pin.x + (ox / L) * 26 + (oz / L) * 9;
       const gz = pin.z + (oz / L) * 26 - (ox / L) * 9;
-      game.greenCamPos = new THREE.Vector3(gx, game.course.heightAt(gx, gz) + 7.5, gz);
+      const gy = clearSightline(gx, game.course.heightAt(gx, gz) + 7.5, gz, pin.x, game.course.pinPos.y + 1, pin.z);
+      game.greenCamPos = new THREE.Vector3(gx, gy, gz);
     }
     camSet(game.greenCamPos.x, game.greenCamPos.y, game.greenCamPos.z,
       sim.pos.x, sim.pos.y, sim.pos.z, false, 6, 6);
@@ -1122,7 +1151,8 @@ function flightCamera() {
   const dx = sp > 0.5 ? vx / sp : game.aimDir.x;
   const dz = sp > 0.5 ? vz / sp : game.aimDir.z;
   const px = sim.pos.x - dx * 11, pz = sim.pos.z - dz * 11;
-  const py = Math.max(sim.pos.y + 3.2, game.course.heightAt(px, pz) + 2.2);
+  let py = Math.max(sim.pos.y + 3.2, game.course.heightAt(px, pz) + 2.2);
+  py = clearSightline(px, py, pz, sim.pos.x, sim.pos.y, sim.pos.z);
   camSet(px, py, pz, sim.pos.x, sim.pos.y, sim.pos.z, false, 2.6, 8);
 }
 

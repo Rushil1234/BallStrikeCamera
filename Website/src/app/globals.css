@@ -2075,7 +2075,7 @@ code {
 .sim-connection-dot.connected{ background:#8fd49a; box-shadow:0 0 0 4px rgba(143,212,154,.14); }
 .sim-pairing-title{ font-family:var(--display); font-weight:400; font-size:clamp(27px,3.2vw,38px); line-height:1; color:var(--bone,#f2eee1); margin:0; }
 .sim-pairing-sub{ font-size:14px; color:color-mix(in oklab,var(--bone,#f2eee1) 64%,transparent); margin:14px 0 20px; line-height:1.6; }
-.sim-pairing-code{ width:100%; box-sizing:border-box; font-family:var(--r-mono); font-size:clamp(32px,4.2vw,48px); font-weight:700; letter-spacing:.18em; color:var(--carry-gold,#c9a86a); background:rgba(201,168,106,.07); border:1px solid rgba(201,168,106,.25); border-radius:8px; padding:14px 16px; line-height:1; text-align:center; }
+.sim-pairing-code{ width:100%; box-sizing:border-box; font-family:var(--r-mono); font-size:clamp(20px,2.2vw,30px); font-weight:700; letter-spacing:.14em; overflow-wrap:anywhere; color:var(--carry-gold,#c9a86a); background:rgba(201,168,106,.07); border:1px solid rgba(201,168,106,.25); border-radius:8px; padding:14px 16px; line-height:1; text-align:center; }
 .sim-pairing-hint{ margin:auto 0 0; padding-top:22px; font-family:var(--r-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; line-height:1.55; color:color-mix(in oklab,var(--bone,#f2eee1) 42%,transparent); }
 
 /* ---- connect-first gating ---- */
