@@ -19,6 +19,11 @@ struct ShotBallObservation {
     let debugReason: String?
     let diameterDebugReason: String?
     let maskWhitePixelCount: Int
+    /// Vertical extent of the detection bbox (fraction of frame height). Motion blur smears
+    /// the blob ALONG the (mostly horizontal) travel direction, inflating width-based
+    /// diameters; the vertical extent stays close to the true ball size, making it the right
+    /// input for height-from-apparent-size VLA.
+    let bboxHeightNorm: CGFloat?
 
     init(
         frameIndex: Int,
@@ -35,7 +40,8 @@ struct ShotBallObservation {
         wasInterpolated: Bool,
         debugReason: String? = nil,
         diameterDebugReason: String? = nil,
-        maskWhitePixelCount: Int = 0
+        maskWhitePixelCount: Int = 0,
+        bboxHeightNorm: CGFloat? = nil
     ) {
         self.frameIndex = frameIndex
         self.timestamp = timestamp
@@ -52,6 +58,7 @@ struct ShotBallObservation {
         self.debugReason = debugReason
         self.diameterDebugReason = diameterDebugReason
         self.maskWhitePixelCount = maskWhitePixelCount
+        self.bboxHeightNorm = bboxHeightNorm
     }
 }
 

@@ -27,6 +27,9 @@ struct ShotResultView: View {
     var context: ShotContext? = nil
     var selectedClubId: UUID? = nil
     var selectedClubName: String? = nil
+    /// Putter was the selected club for this shot — swaps the flight-arc + dispersion panels
+    /// (meaningless for a ball that never leaves the ground) for a single putt-path grid.
+    var isPutterShot: Bool = false
     var onShotSaved: ((SavedShot) -> Void)? = nil
     let onDone: () -> Void
 
@@ -51,12 +54,14 @@ struct ShotResultView: View {
          context: ShotContext? = nil,
          selectedClubId: UUID? = nil,
          selectedClubName: String? = nil,
+         isPutterShot: Bool = false,
          onShotSaved: ((SavedShot) -> Void)? = nil,
          onDone: @escaping () -> Void) {
         self.analysis = analysis
         self.context = context
         self.selectedClubId = selectedClubId
         self.selectedClubName = selectedClubName
+        self.isPutterShot = isPutterShot
         self.onShotSaved = onShotSaved
         self.onDone = onDone
     }
@@ -114,50 +119,65 @@ struct ShotResultView: View {
                     let showCarry = fp >= 1.0
                     let showTotal = rp >= 1.0
 
-                    HStack(spacing: 0) {
-                        // Left: side-view + overlays
+                    if isPutterShot && context?.sourceMode != .course {
+                        // One big detailed putt-path grid replaces the flight-arc + dispersion
+                        // panels — neither means anything for a ball that never leaves the ground.
                         ZStack(alignment: .top) {
                             Canvas { ctx, size in
-                                drawSideView(ctx: ctx, size: size, fp: fp, rp: rp,
-                                             showCarry: showCarry, showTotal: showTotal)
+                                drawPuttGrid(ctx: ctx, size: size, rp: rp)
                             }
-                            // Metrics top-right (Part A/J)
-                            HStack {
-                                Spacer()
-                                metricsOverlay
-                                    .padding(.top, 6).padding(.trailing, 6)
-                            }
-                            // Tap prompt bottom-center (Part I)
                             VStack {
                                 Spacer()
                                 tapPromptOverlay.padding(.bottom, 20)
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                        .layoutPriority(1)
-
-                        Rectangle().fill(Color.white.opacity(0.09)).frame(width: 1)
-
-                        // Right: satellite landing map (course) or abstract top-down grid (range)
-                        if context?.sourceMode == .course, let ctx = context {
-                            CourseLandingMapView(
-                                context: ctx,
-                                metrics: m,
-                                flightProgress: fp,
-                                rolloutProgress: rp
-                            )
-                            .frame(width: geo.size.width * 0.44)
-                        } else {
-                            Canvas { ctx, size in
-                                drawTopDown(ctx: ctx, size: size, fp: fp, rp: rp,
-                                            showCarry: showCarry, showTotal: showTotal)
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        HStack(spacing: 0) {
+                            // Left: side-view + overlays
+                            ZStack(alignment: .top) {
+                                Canvas { ctx, size in
+                                    drawSideView(ctx: ctx, size: size, fp: fp, rp: rp,
+                                                 showCarry: showCarry, showTotal: showTotal)
+                                }
+                                // Metrics top-right (Part A/J)
+                                HStack {
+                                    Spacer()
+                                    metricsOverlay
+                                        .padding(.top, 6).padding(.trailing, 6)
+                                }
+                                // Tap prompt bottom-center (Part I)
+                                VStack {
+                                    Spacer()
+                                    tapPromptOverlay.padding(.bottom, 20)
+                                }
                             }
-                            .frame(width: geo.size.width * 0.30)
+                            .frame(maxWidth: .infinity)
+                            .layoutPriority(1)
+
+                            Rectangle().fill(Color.white.opacity(0.09)).frame(width: 1)
+
+                            // Right: satellite landing map (course) or abstract top-down grid (range)
+                            if context?.sourceMode == .course, let ctx = context {
+                                CourseLandingMapView(
+                                    context: ctx,
+                                    metrics: m,
+                                    flightProgress: fp,
+                                    rolloutProgress: rp
+                                )
+                                .frame(width: geo.size.width * 0.44)
+                            } else {
+                                Canvas { ctx, size in
+                                    drawTopDown(ctx: ctx, size: size, fp: fp, rp: rp,
+                                                showCarry: showCarry, showTotal: showTotal)
+                                }
+                                .frame(width: geo.size.width * 0.30)
+                            }
                         }
+                        .frame(maxHeight: .infinity)
                     }
-                    .frame(maxHeight: .infinity)
                 }
-                metricsBar
+                isPutterShot ? AnyView(puttMetricsBar) : AnyView(metricsBar)
             }
         }
         .background(Color(white: 0.06).ignoresSafeArea())
@@ -297,28 +317,40 @@ struct ShotResultView: View {
         }
         isSavingCourseShot = true
         defer { isSavingCourseShot = false }
-        do {
-            let service = ShotPersistenceService(userId: uid, backend: session.backend)
+        // Composite render + replay-frame JPEG encoding are heavy — keep them off the main
+        // actor so the button spinner (and the rest of the screen) stays responsive.
+        let backend = session.backend
+        let analysis = self.analysis
+        let clubId = selectedClubId
+        let clubName = selectedClubName
+        let mode = context?.shotMode ?? .course
+        let visibility = ShotVisibility(rawValue: defaultVisibilityRaw) ?? .friends
+        let roundId = context?.courseRoundId
+        let holeNumber = context?.holeNumber
+        let lat = context?.playerCoordinate?.latitude
+        let lon = context?.playerCoordinate?.longitude
+        let savedMetrics = SavedShotMetrics(metrics)
+        let shot = await Task.detached(priority: .userInitiated) { () -> SavedShot? in
+            let service = ShotPersistenceService(userId: uid, backend: backend)
             let composite = ShotCompositeRenderer().render(analysis: analysis)
-            let shot = try await service.saveShot(
-                metrics: SavedShotMetrics(metrics),
+            return try? await service.saveShot(
+                metrics: savedMetrics,
                 compositeImage: composite,
-                replayFrames: analysis.frames.compactMap { $0.brightenedImage },
-                clubId: selectedClubId,
-                clubName: selectedClubName,
-                mode: context?.shotMode ?? .course,
-                visibility: ShotVisibility(rawValue: defaultVisibilityRaw) ?? .friends,
-                roundId: context?.courseRoundId,
-                holeNumber: context?.holeNumber,
+                replayFrames: analysis.frames.map { $0.brightenedImage ?? $0.originalFrame.image },
+                clubId: clubId,
+                clubName: clubName,
+                mode: mode,
+                visibility: visibility,
+                roundId: roundId,
+                holeNumber: holeNumber,
                 isBadShot: false,
                 badShotReason: nil,
-                shotLatitude: context?.playerCoordinate?.latitude,
-                shotLongitude: context?.playerCoordinate?.longitude
+                shotLatitude: lat,
+                shotLongitude: lon
             )
-            onShotSaved?(shot)
-        } catch {
-            // Even if remote save fails, returning lets the user place the shot manually.
-        }
+        }.value
+        // Even if remote save fails, returning lets the user place the shot manually.
+        if let shot { onShotSaved?(shot) }
         onDone()
     }
 
@@ -519,6 +551,26 @@ struct ShotResultView: View {
         }
         .padding(.vertical, 8)
         .background(Color.black)
+    }
+
+    // MARK: - Putt Metrics Bar (Distance/Face/Path, no Carry — nothing carries on a putt)
+
+    private var puttMetricsBar: some View {
+        HStack(spacing: 0) {
+            metricCard("Distance",  distanceFt(m?.distance.totalYards ?? m?.distance.carryYards))
+            metricCard("Ball Speed", spd(m?.ballLaunch.ballSpeedMph))
+            metricCard("Start Dir",  m?.ballLaunch.hlaDisplay ?? "--")
+            metricCard("Face",       m?.faceAngle.faceAngleDisplay ?? "--")
+            metricCard("VLA",        "0.0°")
+            metricCard("Club Path",  m?.clubPath.clubPathDisplay ?? "--")
+        }
+        .padding(.vertical, 8)
+        .background(Color.black)
+    }
+
+    private func distanceFt(_ yards: Double?) -> String {
+        guard let yards else { return "--" }
+        return String(format: "%.1f ft", yards * 3.0)
     }
 
     private func metricCard(_ label: String, _ value: String) -> some View {
@@ -995,6 +1047,149 @@ struct ShotResultView: View {
                     .font(.system(size: 6, design: .monospaced))
                     .foregroundColor(Color.white.opacity(0.22)),
                  at: CGPoint(x: size.width - 3, y: padTop + 3), anchor: .topTrailing)
+    }
+
+    // MARK: - Putt Grid Canvas
+    //
+    // Replaces the flight-arc + dispersion panels for a putter shot: one large, fine-grained
+    // (feet/inches, not yards) top-down grid showing exactly how the ball started and broke,
+    // out to the full roll distance. VLA is always 0 for a putt, so there's no vertical
+    // component worth drawing at all — this is the whole picture.
+
+    /// Lateral offset (feet, +right/−left) at fraction `p` of the total roll: straight HLA
+    /// component plus the same spin-driven curve term `drawTopDown` uses for full shots.
+    private func puttOffsetFt(_ p: Double, totalFt: Double) -> Double {
+        let hlaRad = (m?.ballLaunch.hlaDegrees ?? 0) * .pi / 180.0
+        let spinAxis = m?.spin.estimatedSpinAxisDegreesSigned
+        let sidespin = m?.spin.estimatedSidespinRpmSigned
+        let curveStrength: Double
+        if let sa = spinAxis, abs(sa) > 0.5 {
+            curveStrength = (sa > 0 ? 1.0 : -1.0) * min(abs(sa) / 16.0, 1.0)
+        } else if let ss = sidespin, abs(ss) > 30 {
+            curveStrength = (ss > 0 ? 1.0 : -1.0) * min(abs(ss) / 1100.0, 1.0)
+        } else {
+            curveStrength = 0
+        }
+        let curveMagnitudeFt = abs(curveStrength) * max(totalFt * 0.12, 1.0)
+        let curveSign: Double = curveStrength >= 0 ? 1.0 : -1.0
+        return tan(hlaRad) * totalFt * p + curveSign * curveMagnitudeFt * pow(max(0, p), 1.6)
+    }
+
+    private var puttSummaryText: String {
+        guard let m else { return "" }
+        let totalFt = (m.distance.totalYards ?? 0) * 3.0
+        guard totalFt > 0.05 else { return "Start: \(m.ballLaunch.hlaDisplay)" }
+        let hlaRad = (m.ballLaunch.hlaDegrees ?? 0) * .pi / 180.0
+        let straightFt = tan(hlaRad) * totalFt
+        let breakFt = puttOffsetFt(1.0, totalFt: totalFt) - straightFt
+        let breakInches = abs(breakFt) * 12.0
+        guard breakInches > 1.0 else {
+            return "Start: \(m.ballLaunch.hlaDisplay)  ·  Straight over \(String(format: "%.1f", totalFt)) ft"
+        }
+        let dir = breakFt > 0 ? "right" : "left"
+        return "Start: \(m.ballLaunch.hlaDisplay)  ·  Fading \(String(format: "%.0f", breakInches))in \(dir) over \(String(format: "%.1f", totalFt)) ft"
+    }
+
+    private func drawPuttGrid(ctx: GraphicsContext, size: CGSize, rp: Double) {
+        let totalFt = max((m?.distance.totalYards ?? 0) * 3.0, 1.0)
+
+        // Nice feet-based scales — a putt's whole world is a few feet to a few dozen feet, so the
+        // yard-scale niceties from drawTopDown would render it as a sliver in the corner.
+        var maxSampledOff = 0.0
+        for i in 0...20 { maxSampledOff = max(maxSampledOff, abs(puttOffsetFt(Double(i) / 20.0, totalFt: totalFt))) }
+        let neededOff = max(maxSampledOff, 1.0)
+        let offNice: [Double] = [1, 2, 3, 4, 6, 8, 12, 18, 24]
+        let maxOff = offNice.first { $0 >= neededOff * 1.3 } ?? ceil(neededOff * 1.3)
+        let downNice: [Double] = [3, 6, 9, 12, 18, 24, 36, 48, 60, 80, 100]
+        let maxDown = downNice.first { $0 >= totalFt * 1.12 } ?? ceil(totalFt * 1.12)
+
+        let padH: CGFloat = 20
+        let padTop: CGFloat = 20
+        let padBot: CGFloat = 46
+        let originX = size.width / 2
+        let originY = size.height - padBot
+        let plotW   = size.width - padH * 2
+        let plotH   = size.height - padTop - padBot
+
+        func px(_ offFt: Double) -> CGFloat { originX + CGFloat(offFt / maxOff) * (plotW / 2) }
+        func py(_ downFt: Double) -> CGFloat { originY - CGFloat(downFt / maxDown) * plotH }
+
+        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.06)))
+
+        // Forward distance rings, every "nice" foot step.
+        let downStep: Double = maxDown <= 12 ? 1 : (maxDown <= 36 ? 3 : (maxDown <= 60 ? 6 : 10))
+        var downFt = downStep
+        while downFt <= maxDown + 0.01 {
+            let y = py(downFt)
+            var h = Path(); h.move(to: CGPoint(x: padH, y: y)); h.addLine(to: CGPoint(x: size.width - padH, y: y))
+            ctx.stroke(h, with: .color(Color.white.opacity(0.09)), lineWidth: 0.75)
+            ctx.draw(Text(String(format: "%.0f ft", downFt)).font(.system(size: 8, design: .monospaced))
+                        .foregroundColor(Color.white.opacity(0.34)),
+                     at: CGPoint(x: padH + 3, y: y), anchor: .leading)
+            downFt += downStep
+        }
+
+        // Lateral lanes, every "nice" inch/foot step — 0° lane is bold and unmistakable.
+        let offStep: Double = maxOff <= 4 ? 1 : (maxOff <= 12 ? 2 : 4)
+        var offFt = 0.0
+        while offFt <= maxOff + 0.01 {
+            for sign: Double in offFt == 0 ? [1] : [-1, 1] {
+                let x = px(sign * offFt)
+                guard x > padH && x < size.width - padH else { continue }
+                let isZero = offFt == 0
+                var v = Path(); v.move(to: CGPoint(x: x, y: padTop)); v.addLine(to: CGPoint(x: x, y: originY))
+                ctx.stroke(v, with: .color(isZero ? Color.white.opacity(0.55) : Color.white.opacity(0.10)),
+                           style: StrokeStyle(lineWidth: isZero ? 2.0 : 0.75))
+                let label = isZero ? "0°" : (sign < 0 ? "\(Int(offFt))in L" : "\(Int(offFt))in R")
+                ctx.draw(Text(label).font(.system(size: isZero ? 9 : 7, weight: isZero ? .bold : .regular, design: .monospaced))
+                            .foregroundColor(isZero ? Color.white.opacity(0.70) : Color.white.opacity(0.32)),
+                         at: CGPoint(x: x, y: originY + 4), anchor: .top)
+            }
+            offFt += offStep
+        }
+
+        // Origin (ball start)
+        ctx.fill(Path(ellipseIn: CGRect(x: originX - 5, y: originY - 5, width: 10, height: 10)),
+                 with: .color(.white))
+
+        func pathPt(_ p: Double) -> CGPoint {
+            CGPoint(x: px(puttOffsetFt(p, totalFt: totalFt)), y: py(p * totalFt))
+        }
+
+        // Faint full-path guide + progressive rolled path.
+        let guideSteps = 40
+        var guide = Path(); var guideFirst = true
+        for i in 0...guideSteps {
+            let pt = pathPt(Double(i) / Double(guideSteps))
+            if guideFirst { guide.move(to: pt); guideFirst = false } else { guide.addLine(to: pt) }
+        }
+        ctx.stroke(guide, with: .color(Color.white.opacity(0.10)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
+
+        if rp > 0.001 {
+            let maxStep = max(1, Int(Double(guideSteps) * rp))
+            var rolled = Path(); rolled.move(to: pathPt(0))
+            for i in 1...maxStep { rolled.addLine(to: pathPt(Double(i) / Double(guideSteps) * rp)) }
+            ctx.stroke(rolled, with: .color(Self.rolloutColor), style: StrokeStyle(lineWidth: 4.0, lineCap: .round))
+        }
+
+        if rp > 0.004 && rp < 0.996 {
+            drawGolfBall(ctx: ctx, center: pathPt(rp), radius: 9, phaseColor: Self.rolloutColor)
+        }
+
+        if rp >= 1.0 {
+            let tp = pathPt(1.0)
+            ctx.fill(Path(ellipseIn: CGRect(x: tp.x - 6, y: tp.y - 6, width: 12, height: 12)),
+                     with: .color(Self.totalColor))
+            drawGolfBall(ctx: ctx, center: tp, radius: 9, phaseColor: Self.totalColor)
+        }
+
+        // Summary caption up top, out of the way of the bottom-center tap prompt overlay.
+        if rp >= 1.0 {
+            ctx.draw(Text(puttSummaryText)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.88)),
+                     at: CGPoint(x: size.width / 2, y: padTop - 6), anchor: .top)
+        }
     }
 
     // MARK: - Formatters

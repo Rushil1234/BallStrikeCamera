@@ -165,7 +165,12 @@ struct LaunchMonitorScaffoldView: View {
                 .ignoresSafeArea()
                 // Lefty orientation is handled by the device orientation lock (.landscapeLeft), not a
                 // view transform — see OrientationManager. Re-lock when the hand toggles.
-                .onChange(of: hitHandRaw) { _ in OrientationManager.shared.lockLandscape() }
+                .onChange(of: hitHandRaw) { _ in
+                    OrientationManager.shared.lockLandscape()
+                    // The detection buffer must rotate with the UI lock, or the search ROI
+                    // maps to the wrong region of the frame (lefty could never see the ball).
+                    camera.applyHandOrientation()
+                }
             }
         }
         .ignoresSafeArea()
@@ -173,10 +178,15 @@ struct LaunchMonitorScaffoldView: View {
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         // Cache the last shot's composite for the side panel when a shot completes.
-        .onChange(of: camera.showShotResult) { showing in
-            guard showing, let analysis = camera.latestShotAnalysis else { return }
-            if let image = ShotCompositeRenderer().render(analysis: analysis) {
-                lastComposite = image
+        // Keyed on the analysis timestamp (not showShotResult): the cover now presents BEFORE
+        // analysis finishes, so this must fire when the result actually lands. The render runs
+        // off-main — doing it on the main thread here was freezing the cover's presentation.
+        .onChange(of: camera.latestShotAnalysis?.createdAt) { _ in
+            guard camera.showShotResult, let analysis = camera.latestShotAnalysis else { return }
+            Task.detached(priority: .utility) {
+                if let image = ShotCompositeRenderer().render(analysis: analysis) {
+                    await MainActor.run { lastComposite = image }
+                }
             }
         }
         .fullScreenCover(isPresented: $camera.showShotResult) {
@@ -186,11 +196,25 @@ struct LaunchMonitorScaffoldView: View {
                     context: context,
                     selectedClubId: selectedClubId,
                     selectedClubName: selectedClub,
+                    isPutterShot: camera.isPutterMode,
                     onShotSaved: onShotSaved
                 ) {
                     camera.dismissShotPresentation()
                     onShotComplete?()
                 }
+            } else {
+                // Analysis still running — the cover appears the instant the swing is captured.
+                ZStack {
+                    Color(white: 0.06).ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        ProgressView().tint(.white).scaleEffect(1.4)
+                        Text("Analyzing shot…")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
+                }
+                .tcAppearance()
+                .statusBarHidden(true)
             }
         }
         .sheet(isPresented: $showShareSheet) {

@@ -12,6 +12,9 @@ struct GroundCalibration {
 
     let samples: [Sample]
 
+    /// Parsed once — the JSON has ~1000 samples and is looked up on every shot analysis.
+    static let shared: GroundCalibration? = autoLoad()
+
     static func autoLoad() -> GroundCalibration? {
         guard let url = ModelResourceLoader.url(forModelResource: "ground_ball_size_calibration"),
               let data = try? Data(contentsOf: url),

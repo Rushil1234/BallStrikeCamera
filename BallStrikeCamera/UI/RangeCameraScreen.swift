@@ -23,6 +23,14 @@ struct RangeCameraScreen: View {
     private let userId: UUID
     private let backend: AppBackend
     private var isCourseMode: Bool { context?.sourceMode == .course }
+    // Falls back to a name match for the "7 Iron" default before clubs finish loading — matches
+    // the same club-type lookup the capture pipeline needs before a shot is ever hit.
+    private var isPutterSelected: Bool {
+        if let match = clubs.first(where: { $0.id == selectedClubId }) {
+            return match.type == .putter
+        }
+        return selectedClub.localizedCaseInsensitiveContains("putter")
+    }
 
     init(userId: UUID,
          backend: AppBackend,
@@ -89,24 +97,33 @@ struct RangeCameraScreen: View {
         .onChange(of: showClubPicker) { isShowing in
             if !isShowing { nfcManager.cancelRead() }
         }
-        .onChange(of: camera.showShotResult) { isShowing in
-            guard isShowing, !isCourseMode,
+        .onChange(of: selectedClub) { _ in syncPutterMode() }
+        .onChange(of: selectedClubId) { _ in syncPutterMode() }
+        // Keyed on the analysis timestamp: the result cover now presents before analysis
+        // completes, so showShotResult flips while latestShotAnalysis is still nil.
+        .onChange(of: camera.latestShotAnalysis?.createdAt) { _ in
+            guard camera.showShotResult, !isCourseMode,
                   let analysis = camera.latestShotAnalysis,
                   let metrics = analysis.metrics else { return }
             Task { await autoSave(analysis: analysis, metrics: SavedShotMetrics(metrics)) }
         }
         .onAppear {
             OrientationManager.shared.lockLandscape()
+            syncPutterMode()
             camera.start()
             if !isCourseMode {
                 Task {
                     await loadClubs()
+                    syncPutterMode()
                     await rangeVM.startSession()
                     registerWatchRangeControls()
                     publishWatchRangeState()
                 }
             } else {
-                Task { await loadClubs() }
+                Task {
+                    await loadClubs()
+                    syncPutterMode()
+                }
             }
         }
         .onDisappear {
@@ -151,6 +168,10 @@ struct RangeCameraScreen: View {
         }
     }
 
+    private func syncPutterMode() {
+        camera.isPutterMode = isPutterSelected
+    }
+
     private func beginSaveSessionFlow() {
         guard rangeVM.sessionActive, !rangeVM.shots.isEmpty else { return }
         isFinishing = false
@@ -166,18 +187,30 @@ struct RangeCameraScreen: View {
         guard metrics.carryYards > 0 || metrics.ballSpeedMph > 0 else { return }
         // Every shot belongs to a session — autostart one if needed (also resolves the frame cap).
         await rangeVM.ensureSessionStarted()
-        let composite = ShotCompositeRenderer().render(analysis: analysis)
-        let service = ShotPersistenceService(userId: userId, backend: backend)
-        guard let shot = try? await service.saveShot(
-            metrics: metrics,
-            compositeImage: composite,
-            replayFrames: analysis.frames.compactMap { $0.brightenedImage },
-            clubId: selectedClubId,
-            clubName: selectedClub,
-            mode: .range,
-            visibility: ShotVisibility(rawValue: defaultVisibilityRaw) ?? .friends,
-            sessionId: rangeVM.activeSession?.id
-        ) else { return }
+        // This fires the instant the result screen starts presenting. The composite render +
+        // JPEG encoding of the replay frames are seconds of work — running them on the main
+        // actor (the default for a view method) froze the presentation animation. Hop off.
+        let userId = self.userId
+        let backend = self.backend
+        let clubId = selectedClubId
+        let clubName = selectedClub
+        let visibility = ShotVisibility(rawValue: defaultVisibilityRaw) ?? .friends
+        let sessionId = rangeVM.activeSession?.id
+        let shot = await Task.detached(priority: .userInitiated) { () -> SavedShot? in
+            let composite = ShotCompositeRenderer().render(analysis: analysis)
+            let service = ShotPersistenceService(userId: userId, backend: backend)
+            return try? await service.saveShot(
+                metrics: metrics,
+                compositeImage: composite,
+                replayFrames: analysis.frames.map { $0.brightenedImage ?? $0.originalFrame.image },
+                clubId: clubId,
+                clubName: clubName,
+                mode: .range,
+                visibility: visibility,
+                sessionId: sessionId
+            )
+        }.value
+        guard let shot else { return }
         await rangeVM.addShot(shot)
         publishWatchRangeState()
     }

@@ -63,8 +63,14 @@ final class ImpactDetector {
         if current < threshold {
             consecutiveImpactFrames += 1
             if consecutiveImpactFrames >= configuration.minimumConsecutiveImpactFrames {
-                print(String(format: "ROI IMPACT DETECTED baseline=%.4f current=%.4f threshold=%.4f consecutive=%d",
-                             baseline, current, threshold, consecutiveImpactFrames))
+                // Print on first confirmation and then sparsely — when the caller suppresses
+                // the trigger (lock-age gate) this fires every frame and was flooding the
+                // console with 60+ identical lines per swing.
+                if consecutiveImpactFrames == configuration.minimumConsecutiveImpactFrames
+                    || consecutiveImpactFrames % 60 == 0 {
+                    print(String(format: "ROI IMPACT DETECTED baseline=%.4f current=%.4f threshold=%.4f consecutive=%d",
+                                 baseline, current, threshold, consecutiveImpactFrames))
+                }
                 return true
             }
         } else {

@@ -69,9 +69,10 @@ struct ClubPathFaceEstimator {
 
         let dxdt = zip(times, xs).map { ($0 - meanT) * $1 }.reduce(0, +) / denom
         let dydt = zip(times, ys).map { ($0 - meanT) * $1 }.reduce(0, +) / denom
-        // Negate image-x so club-path "forward" follows the reversed travel direction (lateral = dyPx untouched).
+        // The reversed mount is a 180° rotation — flip BOTH axes. Flipping only x is a mirror,
+        // which inverts L/R (same handedness bug that made ball HLA read the wrong side).
         let dxPx = HitDirection.sign * dxdt * W
-        let dyPx = dydt * H
+        let dyPx = HitDirection.sign * dydt * H
 
         let movLen = sqrt(dxPx * dxPx + dyPx * dyPx)
         guard movLen > 1e-6 else {

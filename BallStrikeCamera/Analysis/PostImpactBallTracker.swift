@@ -28,6 +28,16 @@ final class PostImpactBallTracker {
         var movementThresholdNorm: CGFloat = 0.006
         var confirmFrames: Int = 2
         var stableWindowCount: Int = 10
+        // The live ROI trigger fires when the ball EXITS the impact ROI (~2.5 ball-widths), so
+        // it always fires AFTER true impact — instantly for full swings, but ~8-12 frames late
+        // for putts/slow shots that take that long to roll out of the ROI. The fallback frame
+        // is therefore an UPPER bound on impact: movement-based detection may legitimately
+        // land well EARLIER than it, but landing LATER is physically impossible and means the
+        // detector latched onto the club. (A symmetric ±4 clamp here previously forced putt
+        // impacts from their true frame ~10 back to 20, making the analysis treat 10 frames of
+        // rolling ball as "stationary pre-impact".)
+        var maxEarlyShiftFrames: Int = 16
+        var maxLateShiftFrames: Int = 2
     }
 
     struct Configuration {
@@ -66,13 +76,62 @@ final class PostImpactBallTracker {
         var postBwdScale: CGFloat = 1.2             // ball-widths backward
         var postVertScaleUntracked: CGFloat = 1.5   // ball-widths lateral when no prior post-hit
         var postVertScaleTracked: CGFloat = 2.5     // ball-widths lateral once tracking started
-        var launchAngleDegrees: CGFloat = 0.0       // 0 = ball goes right (positive x)
+        // 0° = ball goes right (+x). Sign-based so it follows the hand-aware direction:
+        // righty (sign −1) → 180°, lefty (sign +1, buffer rotated) → 0°. Config is built fresh
+        // per shot, so it picks up the current hand.
+        var launchAngleDegrees: CGFloat = HitDirection.sign < 0 ? 180.0 : 0.0
 
         var diameterRefinement: DiameterRefinementConfig = DiameterRefinementConfig()
         var impactDetection: ImpactDetectionConfiguration = ImpactDetectionConfiguration()
         var isPostImpactDebugLoggingEnabled: Bool = false   // per-frame PARITY spam — off in normal runs
         var enableStrictImpactDiameterGate: Bool = true
         var impactFrameMaxDiameterGrowthRatio: CGFloat = 1.25
+
+        // Absolute normalized-distance gates tuned for full-swing ball speeds. A slow putt observed
+        // over even a widened 101-frame window can fail to cross these, leaving launchDir unset and
+        // the track never confirmed as terminated. launchLockDistanceNorm: distance from the impact
+        // point (fraction of frame width) before the launch direction locks. terminationMinProgressNorm:
+        // minimum distance traveled before 3 consecutive misses are treated as the ball leaving frame.
+        var launchLockDistanceNorm: CGFloat = 0.02
+        var terminationMinProgressNorm: CGFloat = 0.05
+
+        // Candidate selection was purely nearest-to-previous-center, which let bright putter
+        // markings (chrome glare, white alignment lines — which travel along the exact ball
+        // line during a stroke) steal the track from the ball. The ball's apparent diameter is
+        // known and stable, so prefer size-consistent candidates: accepted candidates within
+        // [min, max]×expected diameter win; only if none match does it fall back to any
+        // accepted candidate (so tracking never goes blind).
+        var chosenDiameterRatioMin: CGFloat = 0.55
+        var chosenDiameterRatioMax: CGFloat = 1.9
+        // Per-shot candidate table: one line per analyzed frame listing every blob considered
+        // (center, size, brightness, pixel count, accept/reject reason, chosen marker).
+        // Bounded at ~41-101 lines/shot — cheap enough to leave on while tuning.
+        var logCandidateDetail: Bool = true
+
+        // Monotonicity constraints — the physics the tracker was ignoring:
+        // Pre-impact the ball is STATIONARY at the locked position by definition; any chosen
+        // blob further than this many locked-diameters from the lock center is the club, not
+        // the ball. (Previously the anchor drifted to whatever was chosen last frame, so one
+        // bad pick walked the track onto the club permanently.)
+        var preAnchorMaxDriftDiameters: CGFloat = 1.2
+        // Post-impact the ball only moves AWAY from the impact point (along launchDir once
+        // locked). A chosen blob whose progress regresses more than this is the club swinging
+        // back through — reject it and let prediction/rescue or a miss handle the frame.
+        var monotonicBacktrackAllowanceNorm: CGFloat = 0.012
+        // Once the tracked ball gets this close to any frame edge it is leaving the frame —
+        // terminate the track. Without this, the frame after exit the tracker adopted whatever
+        // static junk blob sat nearest the edge (observed: ball exits at x=0.059, next frame a
+        // dim blob at (0.012,0.775) gets tracked motionless for the rest of the capture).
+        var edgeTerminationMarginNorm: CGFloat = 0.06
+
+        // First-pass putter tuning — not yet validated against real slow-roll footage, expect to
+        // adjust these two numbers after testing on-device.
+        static var putterPreset: Configuration {
+            var cfg = Configuration()
+            cfg.launchLockDistanceNorm = 0.008
+            cfg.terminationMinProgressNorm = 0.02
+            return cfg
+        }
     }
 
     struct TrackingResult {
@@ -119,6 +178,7 @@ final class PostImpactBallTracker {
         var sumX: Int
         var sumY: Int
         var count: Int
+        var sumBrightness: Int
     }
 
     private struct Candidate {
@@ -129,6 +189,7 @@ final class PostImpactBallTracker {
         let accepted: Bool
         let rejectionReason: String?
         let brightPixelCount: Int
+        let meanBrightness: Int
     }
 
     private struct MaskComponent {
@@ -144,12 +205,27 @@ final class PostImpactBallTracker {
 
     private struct MaskRefineOutput {
         let diameter: CGFloat?
+        // Vertical extent of the mask component at FULL pixel resolution (fraction of frame
+        // height). The stride-sampled bbox height quantizes in 2px steps (~6" of inferred ball
+        // height each); this halves the quantum and is the preferred VLA-from-size input.
+        let heightNorm: CGFloat?
         let whitePixelCount: Int
         let reason: String
+
+        init(diameter: CGFloat?, heightNorm: CGFloat? = nil, whitePixelCount: Int, reason: String) {
+            self.diameter = diameter
+            self.heightNorm = heightNorm
+            self.whitePixelCount = whitePixelCount
+            self.reason = reason
+        }
     }
 
     private let cfg: Configuration
     private var recentDiameters: [CGFloat] = []
+    // Candidate-table lines accumulate here and flush as ONE print after the final pass.
+    // ~120 individual print() calls per shot (each flushing to the console) measurably
+    // stretched the analyzing screen; a single joined print is near-free.
+    private var candidateLogLines: [String] = []
 
     init(configuration: Configuration = Configuration()) {
         self.cfg = configuration
@@ -180,10 +256,29 @@ final class PostImpactBallTracker {
             postConfig: postConfig
         )
 
-        let impactResult = detectImpact(
+        var impactResult = detectImpact(
             observations: firstPass.observations,
             fallbackImpactIndex: fallbackImpactFrameIndex
         )
+
+        // Asymmetric plausibility window around the live-trigger fallback. The trigger only
+        // ever fires AFTER true impact (the ball must exit the impact ROI first), so earlier
+        // detections are trigger latency — real and expected, especially on putts. Later
+        // detections (or absurdly early ones) mean club contamination → use fallback.
+        let shift = impactResult.detectedImpactFrameIndex - fallbackImpactFrameIndex
+        if shift < -cfg.impactDetection.maxEarlyShiftFrames || shift > cfg.impactDetection.maxLateShiftFrames {
+            print("PostImpactBallTracker: detected impact frame \(impactResult.detectedImpactFrameIndex) is outside plausible window [fallback-\(cfg.impactDetection.maxEarlyShiftFrames), fallback+\(cfg.impactDetection.maxLateShiftFrames)] of \(fallbackImpactFrameIndex) — using fallback")
+            impactResult = ImpactDetectionResult(
+                detectedImpactFrameIndex: fallbackImpactFrameIndex,
+                fallbackImpactFrameIndex: fallbackImpactFrameIndex,
+                impactDetectionReason: impactResult.impactDetectionReason + "_rejected_outside_window",
+                initialBallCenter: impactResult.initialBallCenter,
+                movementThresholdNorm: impactResult.movementThresholdNorm,
+                initialJitter: impactResult.initialJitter
+            )
+        } else if shift != 0 {
+            print("PostImpactBallTracker: using movement-detected impact frame \(impactResult.detectedImpactFrameIndex) (live trigger fired \(-shift) frames late — normal for slow shots)")
+        }
 
         let finalPass: TrackingPassResult
         if impactResult.detectedImpactFrameIndex != fallbackImpactFrameIndex {
@@ -198,6 +293,12 @@ final class PostImpactBallTracker {
             )
         } else {
             finalPass = firstPass
+        }
+
+        // One print for the whole candidate table — individual per-line prints were a
+        // measurable chunk of the analyzing-screen latency.
+        if cfg.logCandidateDetail, !candidateLogLines.isEmpty {
+            print(candidateLogLines.joined(separator: "\n"))
         }
 
         let result = TrackingResult(
@@ -285,6 +386,7 @@ final class PostImpactBallTracker {
         postConfig: ScanConfig
     ) -> TrackingPassResult {
         recentDiameters = []
+        candidateLogLines = []   // only the final pass's table gets printed
 
         var observations: [ShotBallObservation] = []
         var debugInfos: [ShotFrameDebugInfo] = []
@@ -298,6 +400,8 @@ final class PostImpactBallTracker {
         var ballLaunched = false
         var ballTerminated = false
         var consecutiveMissesAfterLaunch = 0
+        // Monotonic progress along the launch path — the ball never comes back.
+        var lastProgress: CGFloat = 0
         var expectedDiameter: CGFloat? = nil
         var preFinalDiameters: [CGFloat] = []
         var recentPostPoints: [(x: CGFloat, y: CGFloat, t: Double)] = []
@@ -320,13 +424,31 @@ final class PostImpactBallTracker {
 
             if idx < impactFrameIndex {
                 let roi = expanded(lockedBallRect, scale: cfg.preImpactSearchScale)
-                let (candidates, chosen) = findCandidates(
+                let lockedDiameter = (lockedBallRect.width + lockedBallRect.height) / 2
+                // Anchor to the LOCKED center, not the drifting last pick — pre-impact the ball
+                // hasn't moved yet, so "nearest to wherever we wandered last frame" is exactly
+                // how one club pick walked the whole pre-track onto the club.
+                let anchor = lockedBallRect.center
+                let (candidates, chosenRaw) = findCandidates(
                     pd,
                     roi: roi,
                     config: preConfig,
-                    preferredCenter: lastPreCenter
+                    preferredCenter: anchor,
+                    expectedDiameter: lockedDiameter
                 )
-                let reason = chosen == nil ? firstRejectionReason(candidates) : nil
+                var chosen = chosenRaw
+                var driftReason: String? = nil
+                if let c = chosen {
+                    let drift = hypot(c.center.x - anchor.x, c.center.y - anchor.y)
+                    let maxDrift = lockedDiameter * cfg.preAnchorMaxDriftDiameters
+                    if drift > maxDrift {
+                        driftReason = String(format: "pre_drift_reject(%.3f>%.3f)", drift, maxDrift)
+                        chosen = nil
+                    }
+                }
+                logCandidateTable(frameIndex: idx, phase: "pre", chosen: chosen,
+                                  candidates: candidates, expectedDiameter: lockedDiameter)
+                let reason = chosen == nil ? (driftReason ?? firstRejectionReason(candidates)) : nil
                 if let c = chosen {
                     let obs = makeHit(frame, c, pd: pd)
                     observations.append(obs)
@@ -357,12 +479,16 @@ final class PostImpactBallTracker {
                 ))
             } else if idx == impactFrameIndex {
                 let roi = expanded(lockedBallRect, scale: cfg.impactSearchScale)
+                let lockedDiameter = (lockedBallRect.width + lockedBallRect.height) / 2
                 let (candidates, chosenRaw) = findCandidates(
                     pd,
                     roi: roi,
                     config: preConfig,
-                    preferredCenter: lastPreCenter
+                    preferredCenter: lastPreCenter,
+                    expectedDiameter: lockedDiameter
                 )
+                logCandidateTable(frameIndex: idx, phase: "impact", chosen: chosenRaw,
+                                  candidates: candidates, expectedDiameter: lockedDiameter)
                 var chosen = chosenRaw
                 // Strict impact diameter gate: reject if candidate is >1.25× pre-impact median diameter
                 if cfg.enableStrictImpactDiameterGate, let c = chosen {
@@ -433,11 +559,17 @@ final class PostImpactBallTracker {
                     launchDir: launchDir
                 )
 
-                // Find all candidates (accepted + rejected) for rescue
+                // Find all candidates (accepted + rejected) for rescue. Expected size: the
+                // pre-impact median when available, else the locked-rect diameter.
+                let postExpectedDiameter = expectedDiameter
+                    ?? (lockedBallRect.width + lockedBallRect.height) / 2
                 let (allCandidates, chosen0) = findCandidates(
-                    pd, roi: roi, config: postConfig, preferredCenter: roiCenter
+                    pd, roi: roi, config: postConfig, preferredCenter: roiCenter,
+                    expectedDiameter: postExpectedDiameter
                 )
                 var chosen: Candidate? = chosen0
+                logCandidateTable(frameIndex: idx, phase: "post", chosen: chosen0,
+                                  candidates: allCandidates, expectedDiameter: postExpectedDiameter)
 
                 // Prediction cross rescue: if no normal candidate, search ALL raw candidates
                 // near the predicted position — including size-rejected blobs (Python: enable_prediction_cross_rescue)
@@ -452,6 +584,28 @@ final class PostImpactBallTracker {
                         pd: pd,
                         frameIndex: idx
                     )
+                }
+
+                // Monotonicity: the ball only moves away from the impact point (along the launch
+                // direction once locked). A pick whose progress regresses is the club swinging
+                // through the same region — drop it (better a miss than a track that teleports
+                // back to the clubhead, which is what the user observed).
+                if let c = chosen {
+                    let progress: CGFloat
+                    if let ld = launchDir {
+                        progress = (c.center.x - initCenter.x) * ld.dx + (c.center.y - initCenter.y) * ld.dy
+                    } else {
+                        progress = hypot(c.center.x - initCenter.x, c.center.y - initCenter.y)
+                    }
+                    if progress < lastProgress - cfg.monotonicBacktrackAllowanceNorm {
+                        if cfg.logCandidateDetail {
+                            candidateLogLines.append(String(format: "[TrackDebug] f=%02d post MONOTONIC REJECT (%.3f,%.3f) progress=%.4f < last=%.4f",
+                                         idx, c.center.x, c.center.y, progress, lastProgress))
+                        }
+                        chosen = nil
+                    } else {
+                        lastProgress = max(lastProgress, progress)
+                    }
                 }
 
                 // Debug log (Part G: detailed parity diagnostics for early post-impact frames)
@@ -505,21 +659,31 @@ final class PostImpactBallTracker {
                         let ddx = c.center.x - initCenter.x
                         let ddy = c.center.y - initCenter.y
                         let dist = hypot(ddx, ddy)
-                        if dist >= 0.02 {
+                        if dist >= cfg.launchLockDistanceNorm {
                             launchDir = (dx: ddx / dist, dy: ddy / dist)
                             ballLaunched = true
                             dbg(String(format: "Ball launched at frame %d dir=(%.3f,%.3f)", idx, ddx / dist, ddy / dist))
+                        }
+                    }
+
+                    // The ball has reached the frame edge — it's leaving. End the track here so
+                    // subsequent frames can't adopt static junk blobs near the border.
+                    let em = cfg.edgeTerminationMarginNorm
+                    if c.center.x < em || c.center.x > 1 - em || c.center.y < em || c.center.y > 1 - em {
+                        ballTerminated = true
+                        if cfg.logCandidateDetail {
+                            candidateLogLines.append(String(format: "[TrackDebug] f=%02d ball at frame edge (%.3f,%.3f) — track terminated", idx, c.center.x, c.center.y))
                         }
                     }
                 } else {
                     observation = miss(frame, reason: firstRejectionReason(allCandidates))
                     if ballLaunched {
                         consecutiveMissesAfterLaunch += 1
-                        // Termination: Python sc_term_miss_limit=3, sc_term_min_progress=0.05
+                        // Termination: Python sc_term_miss_limit=3, sc_term_min_progress=0.05 (default)
                         let maxProgress: CGFloat = lastPostCenter.map {
                             hypot($0.x - initCenter.x, $0.y - initCenter.y)
                         } ?? 0
-                        if consecutiveMissesAfterLaunch >= 3 && maxProgress >= 0.05 {
+                        if consecutiveMissesAfterLaunch >= 3 && maxProgress >= cfg.terminationMinProgressNorm {
                             ballTerminated = true
                             dbg(String(format: "Ball track terminated at frame %d after %d misses maxProgress=%.4f",
                                          idx, consecutiveMissesAfterLaunch, maxProgress))
@@ -672,7 +836,8 @@ final class PostImpactBallTracker {
         _ pd: (bytes: [UInt8], width: Int, height: Int),
         roi: CGRect,
         config: ScanConfig,
-        preferredCenter: CGPoint
+        preferredCenter: CGPoint,
+        expectedDiameter: CGFloat? = nil
     ) -> ([Candidate], Candidate?) {
         let (bytes, width, height) = pd
         let step = max(1, cfg.sampleStride)
@@ -689,6 +854,7 @@ final class PostImpactBallTracker {
         let rows = (yEnd - yStart + step - 1) / step
         var bright = [Bool](repeating: false, count: cols * rows)
         var visited = [Bool](repeating: false, count: cols * rows)
+        var lumaGrid = [UInt8](repeating: 0, count: cols * rows)
 
         for row in 0..<rows {
             let py = yStart + row * step
@@ -703,6 +869,7 @@ final class PostImpactBallTracker {
                 let spread = max(r, max(g, b)) - min(r, min(g, b))
                 bright[row * cols + col] = brightness >= config.brightnessThreshold
                     && spread <= config.maxChannelSpread
+                lumaGrid[row * cols + col] = UInt8(brightness)
             }
         }
 
@@ -719,7 +886,8 @@ final class PostImpactBallTracker {
                     maxY: 0,
                     sumX: 0,
                     sumY: 0,
-                    count: 0
+                    count: 0,
+                    sumBrightness: 0
                 )
                 var queue = [startIndex]
                 var head = 0
@@ -736,6 +904,7 @@ final class PostImpactBallTracker {
                     blob.count += 1
                     blob.sumX += px
                     blob.sumY += py
+                    blob.sumBrightness += Int(lumaGrid[index])
                     if px < blob.minX { blob.minX = px }
                     if px > blob.maxX { blob.maxX = px }
                     if py < blob.minY { blob.minY = py }
@@ -761,14 +930,52 @@ final class PostImpactBallTracker {
         let candidates = blobs.map {
             evaluateBlob($0, step: step, width: width, height: height, config: config)
         }
-        let chosen = candidates
-            .filter { $0.accepted }
-            .min {
-                hypot($0.center.x - preferredCenter.x, $0.center.y - preferredCenter.y)
-                    < hypot($1.center.x - preferredCenter.x, $1.center.y - preferredCenter.y)
+        let accepted = candidates.filter { $0.accepted }
+
+        // Prefer candidates whose size matches the known ball diameter. A bright putter
+        // marking (alignment line, chrome glare) can sit closer to the previous center than
+        // the ball itself — proximity alone picked it. Only when no candidate is
+        // size-consistent do we fall back to any accepted candidate.
+        let pool: [Candidate]
+        if let expected = expectedDiameter, expected > 1e-6 {
+            let sizeConsistent = accepted.filter {
+                let ratio = $0.diameter / expected
+                return ratio >= cfg.chosenDiameterRatioMin && ratio <= cfg.chosenDiameterRatioMax
             }
+            pool = sizeConsistent.isEmpty ? accepted : sizeConsistent
+        } else {
+            pool = accepted
+        }
+
+        let chosen = pool.min {
+            hypot($0.center.x - preferredCenter.x, $0.center.y - preferredCenter.y)
+                < hypot($1.center.x - preferredCenter.x, $1.center.y - preferredCenter.y)
+        }
 
         return (candidates, chosen)
+    }
+
+    // One compact line per frame: every blob the scanner considered, with the chosen one
+    // starred. This is the "what else did it see and why didn't it pick the ball" view.
+    private func logCandidateTable(
+        frameIndex: Int, phase: String, chosen: Candidate?,
+        candidates: [Candidate], expectedDiameter: CGFloat?
+    ) {
+        guard cfg.logCandidateDetail else { return }
+        let expStr = expectedDiameter.map { String(format: "%.4f", $0) } ?? "n/a"
+        if candidates.isEmpty {
+            candidateLogLines.append("[TrackDebug] f=\(String(format: "%02d", frameIndex)) \(phase) expD=\(expStr) NO BLOBS")
+            return
+        }
+        // Largest blobs first; cap the line at 6 entries to stay readable.
+        let sorted = candidates.sorted { $0.brightPixelCount > $1.brightPixelCount }.prefix(6)
+        let entries = sorted.map { c -> String in
+            let star = (chosen != nil && c.center == chosen!.center && c.diameter == chosen!.diameter) ? "*" : ""
+            let status = c.accepted ? "ok" : (c.rejectionReason ?? "rej")
+            return String(format: "%@(%.3f,%.3f d=%.4f br=%d px=%d %@)",
+                          star, c.center.x, c.center.y, c.diameter, c.meanBrightness, c.brightPixelCount, status)
+        }
+        candidateLogLines.append("[TrackDebug] f=\(String(format: "%02d", frameIndex)) \(phase) expD=\(expStr) cands: \(entries.joined(separator: " "))")
     }
 
     private func evaluateBlob(
@@ -820,7 +1027,8 @@ final class PostImpactBallTracker {
             confidence: reason == nil ? confidence : 0,
             accepted: reason == nil,
             rejectionReason: reason,
-            brightPixelCount: blob.count
+            brightPixelCount: blob.count,
+            meanBrightness: blob.count > 0 ? blob.sumBrightness / blob.count : 0
         )
     }
 
@@ -882,7 +1090,10 @@ final class PostImpactBallTracker {
             wasInterpolated: false,
             debugReason: "ok",
             diameterDebugReason: diameterReason,
-            maskWhitePixelCount: maskOutput.whitePixelCount
+            maskWhitePixelCount: maskOutput.whitePixelCount,
+            // Prefer the pixel-resolution mask height (1px quanta) over the stride-sampled
+            // candidate bbox (2px quanta) — VLA-from-size is quantization-limited.
+            bboxHeightNorm: maskOutput.heightNorm ?? candidate.rect.height
         )
     }
 
@@ -977,6 +1188,7 @@ final class PostImpactBallTracker {
 
         return MaskRefineOutput(
             diameter: refinedDiameter,
+            heightNorm: CGFloat(bboxHeightPx) / CGFloat(height),
             whitePixelCount: component.count,
             reason: "mask_refined_threshold_\(effectiveMaskThreshold)_connected"
         )

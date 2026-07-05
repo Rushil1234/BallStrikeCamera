@@ -8,9 +8,17 @@ final class LightweightBallDetector {
 
     struct Config {
         var brightnessThresholdCap: UInt8 = 165   // adaptive threshold is capped here
-        var minBallRadiusPx: Float = 4.0
+        // Raised from 4.0 — the real ball measured 10-48px radius across a session (varies with
+        // ROI zoom/distance), while glints/grass texture were producing spurious 1.5-3px "ball"
+        // candidates that competed with the real one for the stability lock.
+        var minBallRadiusPx: Float = 8.0
         var maxBallRadiusPx: Float = 45.0
         var maxCandidates: Int = 6
+        // Scanning every pixel in a ~400x400 ROI three times (stats/mask/BFS) is ~500k pixel
+        // touches/frame — far too slow to sustain 240fps (measured 92-97% frame drop). The old
+        // BallDetector used stride 6 and ran at full framerate; matching that here keeps the
+        // better per-blob clustering algorithm without reintroducing the same bottleneck.
+        var sampleStride: Int = 6
     }
 
     private let config: Config
@@ -20,6 +28,10 @@ final class LightweightBallDetector {
     private var visitedBuf: [UInt8] = []
     private var queueX:     [Int32] = []
     private var queueY:     [Int32] = []
+
+    // Diagnostic throttling — detect() runs at up to 240fps.
+    private var frameCounter: Int = 0
+    private let diagnosticLogInterval = 60   // ~4x/sec at 240fps
 
     init(config: Config = Config()) {
         self.config = config
@@ -48,11 +60,16 @@ final class LightweightBallDetector {
         let y1 = min(height - 1, Int(roi.maxY * CGFloat(height)))
         guard x0 < x1, y0 < y1 else { return nil }
 
+        frameCounter += 1
+        let shouldLog = frameCounter % diagnosticLogInterval == 0
+
         // ROI pixel center (for candidate scoring and ellipse check)
         let roiCX = Int(roi.midX * CGFloat(width))
         let roiCY = Int(roi.midY * CGFloat(height))
         let halfRX = max(1.0, roi.width  / 2.0 * CGFloat(width))
         let halfRY = max(1.0, roi.height / 2.0 * CGFloat(height))
+
+        let step = max(1, config.sampleStride)
 
         // ── ROI statistics (adaptive threshold) ──────────────────────────────
         var totalSum: Int = 0
@@ -60,9 +77,9 @@ final class LightweightBallDetector {
         var totalCount: Int = 0
         var maxLuma: UInt8 = 0
 
-        for y in y0...y1 {
+        for y in Swift.stride(from: y0, through: y1, by: step) {
             let row = ptr + y * bpr
-            for x in x0...x1 {
+            for x in Swift.stride(from: x0, through: x1, by: step) {
                 let luma = lumaAt(row: row, x: x)
                 totalSum   += Int(luma)
                 totalSqSum += Int64(luma) * Int64(luma)
@@ -70,7 +87,7 @@ final class LightweightBallDetector {
                 if luma > maxLuma { maxLuma = luma }
             }
         }
-        guard totalCount > 80 else { return nil }
+        guard totalCount > 20 else { return nil }
 
         let mean    = Float(totalSum) / Float(totalCount)
         let variance = Float(totalSqSum) / Float(totalCount) - mean * mean
@@ -78,11 +95,21 @@ final class LightweightBallDetector {
 
         let adaptive = UInt8(min(255.0, max(mean + 18.0, mean + 1.35 * stddev)))
         let thr      = min(config.brightnessThresholdCap, adaptive)
-        guard maxLuma >= thr else { return nil }
 
-        // ── Binary mask ───────────────────────────────────────────────────────
-        let roiW    = x1 - x0 + 1
-        let roiH    = y1 - y0 + 1
+        if shouldLog {
+            print("LightweightBallDetector scan: roiPx=\(x1 - x0 + 1)x\(y1 - y0 + 1) mean=\(String(format: "%.1f", mean)) stddev=\(String(format: "%.1f", stddev)) adaptiveThr=\(thr) (cap \(config.brightnessThresholdCap)) maxLuma=\(maxLuma)")
+        }
+
+        guard maxLuma >= thr else {
+            if shouldLog {
+                print("LightweightBallDetector: NO CANDIDATE — nothing in ROI reached adaptive threshold \(thr) (maxLuma=\(maxLuma))")
+            }
+            return nil
+        }
+
+        // ── Binary mask (grid space — one cell per sampled pixel, `step` apart) ─
+        let roiW    = (x1 - x0) / step + 1
+        let roiH    = (y1 - y0) / step + 1
         let roiArea = roiW * roiH
 
         if maskBuf.count < roiArea {
@@ -96,12 +123,12 @@ final class LightweightBallDetector {
             visitedBuf.withUnsafeMutableBytes { _ = memset($0.baseAddress!, 0, roiArea) }
         }
 
-        for y in y0...y1 {
+        for y in Swift.stride(from: y0, through: y1, by: step) {
             let row    = ptr + y * bpr
-            let localY = y - y0
-            for x in x0...x1 {
+            let localY = (y - y0) / step
+            for x in Swift.stride(from: x0, through: x1, by: step) {
                 if lumaAt(row: row, x: x) >= thr {
-                    maskBuf[localY * roiW + (x - x0)] = 1
+                    maskBuf[localY * roiW + (x - x0) / step] = 1
                 }
             }
         }
@@ -130,8 +157,10 @@ final class LightweightBallDetector {
                 var minLX = startX, maxLX = startX, minLY = startY, maxLY = startY
 
                 while head < tail {
+                    // lx/ly are grid coordinates (mask/visited/queue bookkeeping); gx/gy are the
+                    // corresponding real pixel coordinates, `step` apart, used for sums/output.
                     let lx = Int(queueX[head]); let ly = Int(queueY[head]); head += 1
-                    let gx = x0 + lx;           let gy = y0 + ly
+                    let gx = x0 + lx * step;    let gy = y0 + ly * step
                     let luma = Float(lumaAt(row: ptr + gy * bpr, x: gx))
 
                     pixCount += 1
@@ -151,18 +180,23 @@ final class LightweightBallDetector {
                         }
                     }
                 }
-                guard pixCount >= 8 else { continue }
+                // Lowered from 8 — at stride 6 a ball right at minBallRadiusPx only covers a
+                // handful of grid samples, so the old full-resolution floor would reject it.
+                guard pixCount >= 4 else { continue }
 
-                let bboxW   = Float(maxLX - minLX + 1)
-                let bboxH   = Float(maxLY - minLY + 1)
-                let radius  = (bboxW + bboxH) * 0.25
-                let aspect  = max(bboxW, bboxH) / max(1, min(bboxW, bboxH))
-                let fill    = Float(pixCount) / max(1, bboxW * bboxH)
+                // bbox in grid units for fill/aspect (scale-invariant ratios, correct either way);
+                // radius converts to real pixels via `step` since size thresholds are pixel-based.
+                let bboxWGrid = Float(maxLX - minLX + 1)
+                let bboxHGrid = Float(maxLY - minLY + 1)
+                let radius  = (bboxWGrid + bboxHGrid) * 0.25 * Float(step)
+                let aspect  = max(bboxWGrid, bboxHGrid) / max(1, min(bboxWGrid, bboxHGrid))
+                let fill    = Float(pixCount) / max(1, bboxWGrid * bboxHGrid)
                 let meanBr  = sumBright / Float(pixCount)
                 let meanDk  = Float(totalSum - Int(sumBright)) / Float(max(1, totalCount - pixCount))
                 let contrast   = max(0, min(1, (meanBr - meanDk) / 100.0))
                 let compactness = min(1, fill / 0.785)
-                let countScore  = min(1, Float(pixCount) / 100.0)
+                // Expected sample count for a "full" blob scales down by step² versus full-res.
+                let countScore  = min(1, Float(pixCount) / max(1, 100.0 / Float(step * step)))
                 let aspectScore = max(0, 1 - min(1, (aspect - 1) / 1.4))
                 let sizeScore: Float = {
                     if radius < config.minBallRadiusPx { return radius / max(1, config.minBallRadiusPx) }
@@ -211,9 +245,18 @@ final class LightweightBallDetector {
         }
 
         candidates.sort { $0.confidence > $1.confidence }
-        guard let best = candidates.first,
-              best.confidence >= 0.18,
-              best.sizePass, best.aspectPass, best.fillPass else { return nil }
+        guard let best = candidates.first else {
+            if shouldLog {
+                print("LightweightBallDetector: NO CANDIDATE — 0 compact blobs (>=8px) survived masking/ellipse filter out of a bright ROI")
+            }
+            return nil
+        }
+        guard best.confidence >= 0.18, best.sizePass, best.aspectPass, best.fillPass else {
+            if shouldLog {
+                print("LightweightBallDetector: candidate rejected — radius=\(String(format: "%.1f", best.radiusPx))px confidence=\(String(format: "%.2f", best.confidence)) (need >=0.18) sizePass=\(best.sizePass) aspectPass=\(best.aspectPass) fillPass=\(best.fillPass) [\(candidates.count) blobs total]")
+            }
+            return nil
+        }
 
         // Build normalizedRect centred on detected blob
         let padR = CGFloat(best.radiusPx) * 1.30
@@ -224,6 +267,9 @@ final class LightweightBallDetector {
         let rect = CGRect(x: nCX - nRX, y: nCY - nRY, width: nRX * 2, height: nRY * 2)
             .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
 
+        if shouldLog {
+            print("LightweightBallDetector: CANDIDATE FOUND — center=(\(Int(best.cxPx)),\(Int(best.cyPx)))px radius=\(String(format: "%.1f", best.radiusPx))px confidence=\(String(format: "%.2f", best.confidence)) rect=\(rect)")
+        }
         return BallObservation(normalizedRect: rect, confidence: Double(best.confidence))
     }
 

@@ -221,7 +221,7 @@ struct ShotTrackingReviewView: View {
             let shot = try await service.saveShot(
                 metrics: SavedShotMetrics(metrics),
                 compositeImage: composite,
-                replayFrames: analysis.frames.compactMap { $0.brightenedImage },
+                replayFrames: analysis.frames.map { $0.brightenedImage ?? $0.originalFrame.image },
                 clubId: selectedClubId,
                 clubName: selectedClubName,
                 mode: context?.shotMode ?? .range,
