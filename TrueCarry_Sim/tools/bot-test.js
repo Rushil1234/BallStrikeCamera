@@ -150,12 +150,15 @@ function playCourse(courseName, holes) {
     }
 
     let pos = { x: course.teePos.x, y: course.teePos.y + 0.0214, z: course.teePos.z };
-    let lie = 'tee', strokes = 0, holed = false, waterBias = 0, retryClubBump = 0;
+    let lie = 'tee', strokes = 0, holed = false, waterBias = 0, retryClubBump = 0, sandStreak = 0;
     const pin = course.pinPos;
 
     for (let shot = 1; shot <= 16 && !holed; shot++) {
       // After a splash the replay is from the same spot; carry further each try.
-      const rem = Math.hypot(pos.x - pin.x, pos.z - pin.z) + waterBias;
+      const remFlat = Math.hypot(pos.x - pin.x, pos.z - pin.z);
+      // Plays-like: uphill pins need more club, downhill less (true elevation).
+      const elev = (pin.y ?? pos.y) - pos.y;
+      const rem = Math.max(3, remFlat + Math.max(-20, Math.min(28, elev * 2.0))) + waterBias;
       const lieE = LIE_EFFECT[lie] || LIE_EFFECT.fairway;
       let c, power, mode = 'fly';
 
@@ -174,16 +177,23 @@ function playCourse(courseName, holes) {
           else break;
         }
         if (lie === 'sand' && rem < 110) c = CLUBS[CLUBS.length - 2];
+        // True-elevation bunkers have real lips: if the last blast stayed in
+        // the sand, swing progressively harder instead of repeating it.
+        const sandBoost = lie === 'sand' ? Math.min(0.5, 0.16 * sandStreak) : 0;
         if (retryClubBump > 0) {
           // Replaying over water: a longer club, not the same splash again.
           c = CLUBS[Math.max(0, CLUBS.indexOf(c) - retryClubBump)];
         }
-        const frac = Math.min(rem * 0.97 / (c.carryM * lieE.speed), 1.05);
-        power = Math.min(Math.max((Math.pow(frac, 1 / 1.8) - 0.3) / 0.7, 0.2), 1);
+        const fitRem = (lie === 'sand' && remFlat < 40) ? Math.max(6, rem * 0.62) : rem;
+        const frac = Math.min(fitRem * 0.97 / (c.carryM * lieE.speed), 1.05);
+        power = Math.min(Math.max((Math.pow(frac, 1 / 1.8) - 0.3) / 0.7, 0.2) + sandBoost, 1);
       }
 
       let target = pin;
-      if (mode === 'fly' && rem > 125) {
+      if (mode === 'fly' && lie === 'sand' && remFlat < 40) {
+        const f = 0.62;
+        target = { x: pos.x + (pin.x - pos.x) * f, z: pos.z + (pin.z - pos.z) * f };
+      } else if (mode === 'fly' && rem > 125) {
         const current = course.pathInfo(pos.x, pos.z);
         const advance = Math.max(72, Math.min(c.carryM * 0.82, rem * 0.78)) + waterBias;
         target = course.pointAtAlong(Math.min(holeLength(hole), current.along + advance));
@@ -193,7 +203,9 @@ function playCourse(courseName, holes) {
       strokes++;
       const sim = createShot({
         pos: { ...pos }, dir: { x: dx / L, z: dz / L }, speed,
-        launchDeg: c.putter ? 0 : c.launch,
+        // Open the face for greenside bunker blasts — true-elevation pot
+        // lips are unclimbable at a stock wedge launch.
+        launchDeg: c.putter ? 0 : (lie === 'sand' && remFlat < 40 ? Math.min(58, c.launch * 1.7) : c.launch),
         backspinRpm: c.putter ? 0 : c.spin * lieE.spin * (0.55 + 0.45 * power),
         sidespinRpm: 0, wind: { x: 0, z: 0 }, course,
         pin: { x: pin.x, z: pin.z }, mode: c.putter ? 'roll' : 'fly',
@@ -209,8 +221,10 @@ function playCourse(courseName, holes) {
         print("  shot " + shot + " " + c.name + " pw" + power.toFixed(2) + " -> WATER (+1, replay)");
         continue;
       } else {
+        const prevLie = lie;
         pos = { x: sim.pos.x, y: sim.pos.y, z: sim.pos.z };
         lie = course.surfaceAt(pos.x, pos.z);
+        sandStreak = (lie === 'sand' && prevLie === 'sand') ? sandStreak + 1 : 0;
         waterBias = 0;
         retryClubBump = 0;
       }

@@ -145,7 +145,7 @@ const data = {
   min: Number(Math.min(...finite).toFixed(2)),
   max: Number(Math.max(...finite).toFixed(2)),
   base: Number(percentile(finite, 0.04).toFixed(2)),
-  scale: 0.42,
+  scale: 1,
   values,
 };
 
