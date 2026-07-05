@@ -1214,6 +1214,51 @@ export function buildCourse(hole, assets) {
     }
     // (combined animation hook assigned after trees/birds are built)
 
+    // ---------- landmark bridges (Swilcan-style stone arch) ----------
+    for (const b of visualZones.bridges || []) {
+      if (b.x < minX || b.x > maxX || b.z < minZ || b.z > maxZ) continue;
+      const stone = new THREE.MeshStandardMaterial({ color: 0x9a917e, roughness: 0.95 });
+      const bridgeGrp = new THREE.Group();
+      const span = b.span || 14;
+      const deckW = 2.6;
+      const groundY = waterLevel + 0.15;
+      const rise = 1.1;
+      // Arched deck: short segments along a shallow parabola.
+      const SEGS = 9;
+      for (let i = 0; i < SEGS; i++) {
+        const t0 = i / SEGS - 0.5;
+        const t1 = (i + 1) / SEGS - 0.5;
+        const y0 = groundY + rise * (1 - 4 * t0 * t0);
+        const y1 = groundY + rise * (1 - 4 * t1 * t1);
+        const segLen = Math.hypot((t1 - t0) * span, y1 - y0) + 0.06;
+        const seg = new THREE.Mesh(new THREE.BoxGeometry(deckW, 0.32, segLen), stone);
+        seg.position.set(0, (y0 + y1) / 2, ((t0 + t1) / 2) * span);
+        seg.rotation.x = -Math.atan2(y1 - y0, (t1 - t0) * span);
+        seg.castShadow = true;
+        seg.receiveShadow = true;
+        bridgeGrp.add(seg);
+        // low stone parapets
+        for (const sideX of [-deckW / 2 + 0.12, deckW / 2 - 0.12]) {
+          const par = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.34, segLen), stone);
+          par.position.set(sideX, (y0 + y1) / 2 + 0.3, ((t0 + t1) / 2) * span);
+          par.rotation.x = seg.rotation.x;
+          par.castShadow = true;
+          bridgeGrp.add(par);
+        }
+      }
+      // solid abutments at each bank
+      for (const end of [-1, 1]) {
+        const ab = new THREE.Mesh(new THREE.BoxGeometry(deckW + 0.5, 1.3, 1.6), stone);
+        ab.position.set(0, groundY - 0.35, end * (span / 2 + 0.5));
+        ab.castShadow = true;
+        ab.receiveShadow = true;
+        bridgeGrp.add(ab);
+      }
+      bridgeGrp.position.set(b.x, 0, b.z);
+      bridgeGrp.rotation.y = (b.rot || 0) + Math.PI / 2;   // deck runs ACROSS the burn
+      group.add(bridgeGrp);
+    }
+
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];

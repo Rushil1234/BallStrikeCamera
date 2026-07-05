@@ -610,6 +610,34 @@ const worldPaths = pathWays.map((w) => ({
   points: rdp(projectWay(w), 2).map((p) => ({ x: round2(p.x), z: round2(p.z) })),
 })).filter((p) => p.points.length >= 2);
 
+// Swilcan Bridge: find where the 18th's burn channel crosses the centerline.
+function segIntersect(a, b, c, d) {
+  const r = { x: b.x - a.x, z: b.z - a.z };
+  const s2 = { x: d.x - c.x, z: d.z - c.z };
+  const denom = r.x * s2.z - r.z * s2.x;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((c.x - a.x) * s2.z - (c.z - a.z) * s2.x) / denom;
+  const u = ((c.x - a.x) * r.z - (c.z - a.z) * r.x) / denom;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return { x: a.x + r.x * t, z: a.z + r.z * t, rot: Math.atan2(s2.x, s2.z) };
+}
+const bridges = [];
+const h18 = holes[17];
+for (const w of h18.water) {
+  if (w.type !== 'channel' || bridges.length) continue;
+  for (let i = 0; i < h18.path.length - 1 && !bridges.length; i++) {
+    for (let j = 0; j < w.pts.length - 1; j++) {
+      const hit = segIntersect(h18.path[i], h18.path[i + 1], w.pts[j], w.pts[j + 1]);
+      if (hit) {
+        // Span perpendicular to the burn, wide enough to clear its banks.
+        bridges.push({ x: round2(hit.x), z: round2(hit.z), rot: round2(hit.rot), span: (w.width || 9) + 6 });
+        break;
+      }
+    }
+  }
+}
+if (bridges.length) console.log(`Swilcan Bridge at ${bridges[0].x}, ${bridges[0].z}`);
+
 const worldRealism = {
   attribution: '(c) OpenStreetMap contributors (ODbL)',
   paths: worldPaths,
@@ -626,6 +654,7 @@ const worldRealism = {
     forestFloor: { color: 0xb9a35e, start: 6 },
     flora: 'gorse',
     bunkerDepth: 1.7,
+    bridges,
   },
 };
 
