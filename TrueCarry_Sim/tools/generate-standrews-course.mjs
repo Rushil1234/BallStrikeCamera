@@ -579,7 +579,7 @@ for (let ref = 1; ref <= 18; ref++) {
 // Resolve bunker ownership (each bunker to its nearest hole only).
 for (const { ref, poly } of usedBunkers.values()) {
   const hole = holes[ref - 1];
-  hole.bunkers.push({ ...fitEllipse(poly.points, 3, 18), depth: 1.1 });
+  hole.bunkers.push({ ...fitEllipse(poly.points, 3, 18), depth: 1.6 });
   osmByHole[ref].bunkers.push({ id: poly.id, points: rdp(poly.points, 0.8).map((p) => ({ x: round2(p.x), z: round2(p.z) })) });
 }
 
@@ -620,6 +620,12 @@ const worldRealism = {
     sandColor: 0xdcd3bd,
     roughColor: 0x6f7c46,
     deepColor: 0x596a3a,
+    // Links ground game: humps/hollows, golden fescue floor, gorse (whin)
+    // banks, and deep revetted pot bunkers.
+    dunes: { amp: 1.35, freq: 0.021 },
+    forestFloor: { color: 0xb9a35e, start: 6 },
+    flora: 'gorse',
+    bunkerDepth: 1.7,
   },
 };
 

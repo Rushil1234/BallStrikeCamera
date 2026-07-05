@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-3';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-3';
-import { makeFbm, makeRng } from './noise.js?v=gspro-3';
-import { SURF } from './physics.js?v=gspro-3';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-4';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-4';
+import { makeFbm, makeRng } from './noise.js?v=gspro-4';
+import { SURF } from './physics.js?v=gspro-4';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -577,6 +577,8 @@ export function buildCourse(hole, assets) {
   const visualScrub = visualZones.scrub || [];
   const forest = visualZones.forest || null;
   const forestFloor = visualZones.forestFloor || null;
+  const dunes = visualZones.dunes || null;
+  const bunkerDepthMult = visualZones.bunkerDepth || 1;
   const forestFloorStart = forestFloor?.start ?? 26;
   const rawCoastLandPts = isCoastal ? (hole.island?.coastline?.land || []) : [];
   const rawCoastEdgePts = isCoastal ? (hole.island?.coastline?.beach || rawCoastLandPts) : [];
@@ -674,6 +676,12 @@ export function buildCourse(hole, assets) {
     }
     h += fbmDetail(x * 0.05, z * 0.05) * 0.85 * (1 - fairMask);  // bumpy rough
     h += fairMask * 0.15;                                        // slight fairway crown
+    if (dunes) {
+      // links mounding: 30-60m humps and hollows that run THROUGH fairways
+      // (softened), the defining ground game of seaside golf
+      const dn = fbmBase(x * (dunes.freq || 0.02) + 71, z * (dunes.freq || 0.02) - 37);
+      h += dn * (dunes.amp || 1.3) * (1 - fairMask * 0.55);
+    }
 
     // green plateau with gentle internal contours
     const gv = ellipseVal(hole.green, x, z);
@@ -695,7 +703,7 @@ export function buildCourse(hole, assets) {
 
     // bunkers: bowl + soft lip
     if (inFeaturePolys(osmBunkers, x, z)) {
-      h -= 0.75;
+      h -= 0.75 * bunkerDepthMult;
     }
     for (const b of hole.bunkers) {
       const bv = ellipseVal(b, x, z);
@@ -1244,21 +1252,29 @@ export function buildCourse(hole, assets) {
             : [0.82 + rng() * 0.34, 0.84 + rng() * 0.34, 0.82 + rng() * 0.28],
       });
     }
-    if (visualZones.flora === 'azalea') {
-      // Flowering banks under the tree lines: small leaf-canopy instances in
-      // azalea pinks/whites, hugging the corridor edges (never in play).
+    if (visualZones.flora === 'azalea' || visualZones.flora === 'gorse') {
+      // Flowering underplanting along the corridor edges (never in play):
+      // azalea pinks/whites for parkland, whin-bush green-and-gold for links.
+      const gorse = visualZones.flora === 'gorse';
       const aRng = makeRng(hole.seed * 97 + 13);
-      // Foliage texture is green-heavy, so pink needs a strong red multiplier.
-      const palette = [
-        [2.7, 0.55, 1.15], [2.9, 0.4, 0.7], [2.3, 2.15, 2.25],
-        [2.7, 0.8, 0.5], [2.4, 0.5, 1.35],
-      ];
+      // Foliage texture is green-heavy, so warm tones need strong multipliers.
+      const palette = gorse
+        ? [
+            [0.5, 0.75, 0.35], [0.42, 0.62, 0.3], [2.6, 2.1, 0.35],
+            [0.55, 0.8, 0.4], [2.4, 1.9, 0.3],
+          ]
+        : [
+            [2.7, 0.55, 1.15], [2.9, 0.4, 0.7], [2.3, 2.15, 2.25],
+            [2.7, 0.8, 0.5], [2.4, 0.5, 1.35],
+          ];
+      const maxPlaced = gorse ? 200 : 130;
+      const bandMax = gorse ? 60 : 46;
       let placed = 0;
-      for (let i = 0; i < 2600 && placed < 130; i++) {
+      for (let i = 0; i < 3200 && placed < maxPlaced; i++) {
         const x = minX + 14 + aRng() * (maxX - minX - 28);
         const z = minZ + 14 + aRng() * (maxZ - minZ - 28);
         const p = pathInfo(x, z);
-        if (p.dist < fhw + 8 || p.dist > fhw + 46) continue;
+        if (p.dist < fhw + 8 || p.dist > fhw + bandMax) continue;
         if (inFeaturePolys(osmFairways, x, z) || inFeaturePolys(osmGreens, x, z)
           || inFeaturePolys(osmTees, x, z) || inFeaturePolys(osmBunkers, x, z)) continue;
         if (ellipseVal(hole.green, x, z) < 2.2) continue;
