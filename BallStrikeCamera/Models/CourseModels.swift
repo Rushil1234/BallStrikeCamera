@@ -173,6 +173,13 @@ struct CourseGeometryMetadata: Codable, Hashable {
     }
 }
 
+/// Drives which tee rating/slope a round uses for handicap calculation (see
+/// `TeeBox.resolvedRating(for:)`/`resolvedSlope(for:)`) — not a gameplay setting.
+enum Gender: String, Codable, CaseIterable {
+    case male   = "Male"
+    case female = "Female"
+}
+
 // MARK: - Tee Box
 
 struct TeeBox: Codable, Identifiable {

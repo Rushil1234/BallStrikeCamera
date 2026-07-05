@@ -41,13 +41,6 @@ enum Handedness: String, Codable, CaseIterable {
     var short: String { self == .right ? "RH" : "LH" }
 }
 
-/// Drives which tee rating/slope a round uses for handicap calculation (see
-/// `TeeBox.resolvedRating(for:)`/`resolvedSlope(for:)`) — not a gameplay setting.
-enum Gender: String, Codable, CaseIterable {
-    case male   = "Male"
-    case female = "Female"
-}
-
 enum DistanceUnit: String, Codable, CaseIterable {
     case yards = "Yards"
     case meters = "Meters"
