@@ -1,7 +1,7 @@
 // HUD: telemetry panels, 3-click swing meter, toasts, scorecard,
 // and the top-down minimap (drawn straight from the hole definition).
 
-import { fmtYards } from './clubs.js?v=gspro-2';
+import { fmtYards } from './clubs.js?v=gspro-3';
 
 const $ = (id) => document.getElementById(id);
 
@@ -16,6 +16,7 @@ export class HUD {
       hud: $('hud'),
       hcHole: $('hc-hole'), hcPar: $('hc-par'), hcYds: $('hc-yds'),
       hcStroke: $('hc-stroke'), hcTotal: $('hc-total'), hcName: $('hc-name'),
+      hcPlayer: $('hc-player'),
       wind: $('wind'), windArrow: $('wind-arrow'), windSpeed: $('wind-speed'),
       toast: $('toast'),
       clubName: $('club-name'), clubCarry: $('club-carry'),
@@ -60,6 +61,13 @@ export class HUD {
   setStroke(stroke, totalToPar) {
     this.el.hcStroke.textContent = `STROKE ${stroke}`;
     this.el.hcTotal.textContent = `${toParStr(totalToPar)} TOTAL`;
+  }
+
+  /** Multi-player only — shows whose turn it is. Hidden entirely for single-player sessions. */
+  setPlayer(name) {
+    if (!this.el.hcPlayer) return;
+    this.el.hcPlayer.textContent = `UP: ${(name || 'YOU').toUpperCase()}`;
+    this.el.hcPlayer.classList.remove('hidden');
   }
 
   setWind(mph, relAngleRad) {

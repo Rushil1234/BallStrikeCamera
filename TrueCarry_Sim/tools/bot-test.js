@@ -44,6 +44,22 @@ if (typeof AUGUSTA_PRIVATE_HOLES !== 'undefined') {
   TEST_COURSES.push({ name: 'Augusta National', holes: laidOutAugusta });
 }
 
+if (typeof STANDREWS_PRIVATE_HOLES !== 'undefined') {
+  const saHoles = typeof STANDREWS_OSM_BY_HOLE !== 'undefined'
+    ? STANDREWS_PRIVATE_HOLES.map(h => ({ ...h, osm: STANDREWS_OSM_BY_HOLE[h.id] || null }))
+    : STANDREWS_PRIVATE_HOLES;
+  const saWorld = {
+    profile: 'coastal',
+    ...(typeof STANDREWS_PRIVATE_WORLD !== 'undefined' ? STANDREWS_PRIVATE_WORLD : { prepositioned: true }),
+    ...(typeof STANDREWS_WORLD_REALISM !== 'undefined' ? STANDREWS_WORLD_REALISM : {}),
+    elevation: typeof STANDREWS_ELEVATION !== 'undefined' ? STANDREWS_ELEVATION : null,
+  };
+  const laidOutSA = typeof layoutIslandCourse !== 'undefined'
+    ? layoutIslandCourse(saHoles, saWorld).holes
+    : saHoles;
+  TEST_COURSES.push({ name: 'St Andrews Old Course', holes: laidOutSA });
+}
+
 let failures = 0;
 
 function playCourse(courseName, holes) {

@@ -398,10 +398,30 @@ for (let ref = 1; ref <= 18; ref++) {
   // Match by nearest polygon EDGE, not centroid — the Old Course's double
   // greens are so large that a hole's own half can be 80m from the centroid.
   const nearestVertexDist = (pts) => Math.min(...pts.map((p) => dist(end, p)));
-  const green = greenPolys
+  let green = greenPolys
     .map((g) => ({ g, d: nearestVertexDist(g.points) }))
     .sort((a, b) => a.d - b.d)[0];
-  if (!green || green.d > 60) fail(`hole ${ref}: no green polygon near centerline end (best ${green?.d?.toFixed(1)}m)`);
+  if (!green || green.d > 60) {
+    // OSM is missing this green (the Eden-loop doubles) — synthesise a
+    // links-scale green at the centerline end, oriented to the approach.
+    const prev = path[Math.max(0, path.length - 2)];
+    const ang = Math.atan2(end.x - prev.x, end.z - prev.z);
+    const rx = 17, rz = 14;
+    const pts = [];
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const lx = Math.cos(a) * rx;
+      const lz = Math.sin(a) * rz;
+      pts.push({
+        x: round2(end.x + lx * Math.cos(ang) - lz * Math.sin(ang)),
+        z: round2(end.z + lx * Math.sin(ang) + lz * Math.cos(ang)),
+      });
+    }
+    const synth = { id: -(1000 + ref), points: pts };
+    greenPolys.push(synth);
+    green = { g: synth, d: 0 };
+    console.log(`hole ${ref}: green synthesised at centerline end (missing in OSM)`);
+  }
   const greenEllipse = fitEllipse(green.g.points, 8, 26);
   // Pin sits in THIS hole's half of the green: blend the boundary vertex
   // nearest the approach with the polygon centroid, then nudge inside.
@@ -417,9 +437,38 @@ for (let ref = 1; ref <= 18; ref++) {
   else path.push(pin);
 
   const [par, yards] = CARD[ref];
-  const centerlineYards = lineLength(path) * 1.09361;
+  let centerlineYards = lineLength(path) * 1.09361;
   if (Math.abs(centerlineYards - yards) / yards > 0.22) {
-    fail(`hole ${ref}: centerline ${centerlineYards.toFixed(0)}y vs card ${yards}y (>22% off)`);
+    // OSM hole ways sometimes start at back plates or walk-backs. Adjust the
+    // TEE end along the opening segment so the playing length matches the
+    // official card; the green end never moves.
+    const targetM = yards * 0.9144;
+    const excessM = lineLength(path) - targetM;
+    if (excessM > 0) {
+      let cut = excessM;
+      while (path.length > 2 && cut > 0) {
+        const segLen = dist(path[0], path[1]);
+        if (segLen <= cut) { cut -= segLen; path.shift(); }
+        else break;
+      }
+      const segLen = dist(path[0], path[1]);
+      const f = Math.min(cut / segLen, 0.95);
+      path[0] = {
+        x: round2(path[0].x + (path[1].x - path[0].x) * f),
+        z: round2(path[0].z + (path[1].z - path[0].z) * f),
+      };
+    } else {
+      const dx = path[0].x - path[1].x;
+      const dz = path[0].z - path[1].z;
+      const L2 = Math.hypot(dx, dz) || 1;
+      path[0] = {
+        x: round2(path[0].x + (dx / L2) * -excessM),
+        z: round2(path[0].z + (dz / L2) * -excessM),
+      };
+    }
+    const fixed = lineLength(path) * 1.09361;
+    console.log(`hole ${ref}: tee adjusted ${centerlineYards.toFixed(0)}y -> ${fixed.toFixed(0)}y (card ${yards}y)`);
+    centerlineYards = fixed;
   }
 
   const tees = teePolys.filter((t) => dist(centroid(t.points), path[0]) < 50);
@@ -597,6 +646,8 @@ export const STANDREWS_PRIVATE_WORLD = {
   prepositioned: true,
   boundsMargin: 240,
   water: [],
+  // Open links: quick-but-fair greens, baked firm turf, relentless gusts.
+  conditions: { stimp: 10.5, firmness: 1.3, gustiness: 0.5 },
 };
 `;
 
