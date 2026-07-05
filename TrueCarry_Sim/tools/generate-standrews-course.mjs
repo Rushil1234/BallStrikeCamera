@@ -638,6 +638,40 @@ for (const w of h18.water) {
 }
 if (bridges.length) console.log(`Swilcan Bridge at ${bridges[0].x}, ${bridges[0].z}`);
 
+// Sense of place: the town edge. Real building footprints + boundary walls
+// near the links (R&A clubhouse, Hamilton Grand, the Links Road row).
+const townJson = await fs.readFile(`${DIR}/standrews-town.json`, 'utf8').then(JSON.parse).catch(() => ({ elements: [] }));
+const nearCourse = (pts, maxD) => {
+  const c = centroid(pts);
+  if (pointInPolygon(coursePoly, c.x, c.z)) return true;
+  return Math.min(...coursePoly.map((q) => Math.hypot(q.x - c.x, q.z - c.z))) < maxD;
+};
+const buildings = [];
+for (const w of townJson.elements) {
+  if (w.type !== 'way' || !w.tags?.building || !w.geometry) continue;
+  const pts = projectWay(w);
+  if (pts.length < 4 || !nearCourse(pts, 140)) continue;
+  const e = fitEllipse(pts, 1, 200);
+  const levels = Number(w.tags['building:levels']) || 0;
+  const hgt = Number(String(w.tags.height || '').replace(/[^0-9.]/g, '')) || 0;
+  buildings.push({
+    x: e.cx, z: e.cz, rot: e.rot,
+    w: round2(Math.max(4, e.rx * 2 * 0.9)),
+    d: round2(Math.max(4, e.rz * 2 * 0.9)),
+    h: round2(hgt || (levels ? levels * 3.1 + 1.5 : 6.5 + Math.random() * 3)),
+  });
+  if (buildings.length >= 150) break;
+}
+const wallLines = [];
+for (const w of townJson.elements) {
+  if (w.type !== 'way' || !w.tags?.barrier || !w.geometry) continue;
+  const pts = projectWay(w);
+  if (pts.length < 2 || !nearCourse(pts, 70)) continue;
+  wallLines.push(rdp(pts, 1.5).map((q) => ({ x: round2(q.x), z: round2(q.z) })));
+  if (wallLines.length >= 80) break;
+}
+console.log(`town: ${buildings.length} buildings, ${wallLines.length} wall runs`);
+
 const worldRealism = {
   attribution: '(c) OpenStreetMap contributors (ODbL)',
   paths: worldPaths,
@@ -655,6 +689,9 @@ const worldRealism = {
     flora: 'gorse',
     bunkerDepth: 1.7,
     bridges,
+    buildings,
+    walls: wallLines,
+    atmosphere: 'overcast',
   },
 };
 

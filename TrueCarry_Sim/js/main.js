@@ -353,6 +353,32 @@ const ring = new THREE.Mesh(
 ring.rotation.x = -Math.PI / 2;
 scene.add(ring);
 
+// ---------- atmosphere presets (per-course, G to cycle) ----------
+const ATMOSPHERES = {
+  sunny:    { exposure: 1.0,  fog: [0xd2dee8, 430, 2600], sun: [0xfff1d8, 2.0],  hemi: 0.62, bg: 1.0,  env: 0.55 },
+  overcast: { exposure: 0.9,  fog: [0xb9c2c9, 290, 1800], sun: [0xdfe4e8, 0.85], hemi: 0.9,  bg: 0.48, env: 0.3  },
+  golden:   { exposure: 1.06, fog: [0xe6d5ba, 380, 2300], sun: [0xffd9a0, 1.75], hemi: 0.5,  bg: 0.92, env: 0.5  },
+};
+const ATMO_ORDER = ['sunny', 'overcast', 'golden'];
+let currentAtmo = 'sunny';
+function applyAtmosphere(name) {
+  const a = ATMOSPHERES[name] || ATMOSPHERES.sunny;
+  currentAtmo = ATMOSPHERES[name] ? name : 'sunny';
+  renderer.toneMappingExposure = a.exposure;
+  if (scene.fog) {
+    scene.fog.color.setHex(a.fog[0]);
+    scene.fog.near = a.fog[1];
+    scene.fog.far = a.fog[2];
+  }
+  if (sky) {
+    sky.sun.color.setHex(a.sun[0]);
+    sky.sun.intensity = a.sun[1];
+    sky.hemi.intensity = a.hemi;
+  }
+  scene.backgroundIntensity = a.bg;
+  scene.environmentIntensity = a.env;
+}
+
 // ---------- game state ----------
 
 const game = {
@@ -622,6 +648,7 @@ function switchActivePlayer(idx, name) {
 
 function startHole(idx) {
   pitchMarks.clear();
+  applyAtmosphere(courseHoles[idx]?.island?.visualZones?.atmosphere || activeCourse?.world?.atmosphere || 'sunny');
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = false;
   rangePanel?.classList.add('hidden');
@@ -1568,6 +1595,11 @@ window.addEventListener('keydown', (e) => {
       break;
     case 'KeyR':
       if (game.state === 'AIM' || game.state === 'HOLE_DONE') startReplay();
+      break;
+    case 'KeyG':
+      applyAtmosphere(ATMO_ORDER[(ATMO_ORDER.indexOf(currentAtmo) + 1) % ATMO_ORDER.length]);
+      hud.toast('<span class="t-gold">' + currentAtmo.toUpperCase() + '</span>', 1100);
+      SFX.tick();
       break;
     default: break;
   }

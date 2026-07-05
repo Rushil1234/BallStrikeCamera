@@ -1259,6 +1259,51 @@ export function buildCourse(hole, assets) {
       group.add(bridgeGrp);
     }
 
+    // ---------- town edge: real building footprints + boundary walls ----------
+    if ((visualZones.buildings || []).length) {
+      const stoneWall = new THREE.MeshStandardMaterial({ color: 0x8d8579, roughness: 0.95 });
+      const facades = [0xb8a98e, 0xa79274, 0x9e8f80, 0xc4b49a, 0x8f7f6b].map(
+        (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }),
+      );
+      const roofMat = new THREE.MeshStandardMaterial({ color: 0x5d5a55, roughness: 0.85 });
+      let bi = 0;
+      for (const b of visualZones.buildings) {
+        if (b.x < minX - 60 || b.x > maxX + 60 || b.z < minZ - 60 || b.z > maxZ + 60) continue;
+        const gy = heightAt(b.x, b.z);
+        const bodyH = Math.max(3.5, b.h * 0.72);
+        const body = new THREE.Mesh(new THREE.BoxGeometry(b.w, bodyH, b.d), facades[bi++ % facades.length]);
+        body.position.set(b.x, gy + bodyH / 2, b.z);
+        body.rotation.y = b.rot || 0;
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+        // simple pitched roof: stretched octahedron reads as a gable at distance
+        const roofH = Math.max(1.4, b.h * 0.28);
+        const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, b.d * 0.72, roofH, 4, 1), roofMat);
+        roof.scale.x = (b.w / Math.max(b.d, 1)) * 1.0;
+        roof.rotation.y = (b.rot || 0) + Math.PI / 4;
+        roof.position.set(b.x, gy + bodyH + roofH / 2, b.z);
+        roof.castShadow = true;
+        group.add(roof);
+      }
+      for (const run of visualZones.walls || []) {
+        for (let i = 0; i < run.length - 1; i++) {
+          const a = run[i], c = run[i + 1];
+          if ((a.x < minX - 40 && c.x < minX - 40) || (a.x > maxX + 40 && c.x > maxX + 40)
+            || (a.z < minZ - 40 && c.z < minZ - 40) || (a.z > maxZ + 40 && c.z > maxZ + 40)) continue;
+          const len = Math.hypot(c.x - a.x, c.z - a.z);
+          if (len < 0.5) continue;
+          const seg = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.0, len + 0.1), stoneWall);
+          const mx2 = (a.x + c.x) / 2, mz2 = (a.z + c.z) / 2;
+          seg.position.set(mx2, heightAt(mx2, mz2) + 0.5, mz2);
+          seg.rotation.y = Math.atan2(c.x - a.x, c.z - a.z);
+          seg.castShadow = true;
+          seg.receiveShadow = true;
+          group.add(seg);
+        }
+      }
+    }
+
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];
