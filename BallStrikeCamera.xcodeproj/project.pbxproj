@@ -39,7 +39,6 @@
 		BF000001000000000000001B /* ShotAnalysisModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011C /* ShotAnalysisModels.swift */; };
 		BF000001000000000000001C /* FrameNormalizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011D /* FrameNormalizer.swift */; };
 		BF000001000000000000001E /* PostImpactBallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011E /* PostImpactBallTracker.swift */; };
-		BF0000010000000000000901 /* GroundPlaneMetricsCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000902 /* GroundPlaneMetricsCalculator.swift */; };
 		BF000001000000000000001F /* ShotTrackingReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011F /* ShotTrackingReviewView.swift */; };
 		BF0000010000000000000020 /* ShotCompositeRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000120 /* ShotCompositeRenderer.swift */; };
 		BF0000010000000000000021 /* ShotCompositeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000121 /* ShotCompositeView.swift */; };
@@ -89,15 +88,16 @@
 		BF0000010000000000000053 /* EnsembleBFSClubTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000153 /* EnsembleBFSClubTracker.swift */; };
 		BF0000010000000000000701 /* StoredZip.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000801 /* StoredZip.swift */; };
 		BF0000010000000000000702 /* FrameArchiveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000802 /* FrameArchiveService.swift */; };
+		BF0000010000000000000703 /* WindModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000803 /* WindModel.swift */; };
+		BF0000010000000000000704 /* WindService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000804 /* WindService.swift */; };
+		BF0000010000000000000705 /* CaddieEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000805 /* CaddieEngine.swift */; };
+		BF0000010000000000000901 /* GroundPlaneMetricsCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000902 /* GroundPlaneMetricsCalculator.swift */; };
+		BF000001000000000000A001 /* CourseLandingMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000B001 /* CourseLandingMapView.swift */; };
+		BF000001000000000000HD02 /* HitDirection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000HD01 /* HitDirection.swift */; };
 		BF0000010000000000GDR101 /* GoogleDriveConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000GDR001 /* GoogleDriveConfig.swift */; };
 		BF0000010000000000GDR102 /* KeychainTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000GDR002 /* KeychainTokenStore.swift */; };
 		BF0000010000000000GDR103 /* GoogleDriveAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000GDR003 /* GoogleDriveAuthService.swift */; };
 		BF0000010000000000GDR104 /* GoogleDriveUploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000GDR004 /* GoogleDriveUploadService.swift */; };
-		BF0000010000000000000703 /* WindModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000803 /* WindModel.swift */; };
-		BF0000010000000000000704 /* WindService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000804 /* WindService.swift */; };
-		BF0000010000000000000705 /* CaddieEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000805 /* CaddieEngine.swift */; };
-		BF000001000000000000A001 /* CourseLandingMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000B001 /* CourseLandingMapView.swift */; };
-		BF000001000000000000HD02 /* HitDirection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000HD01 /* HitDirection.swift */; };
 		BF0000030000000000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000001 /* AppDelegate.swift */; };
 		BF0000030000000000000002 /* AppBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000002 /* AppBackend.swift */; };
 		BF0000030000000000000003 /* AppStorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000003 /* AppStorageManager.swift */; };
@@ -107,7 +107,6 @@
 		BF0000030000000000000007 /* ShotPersistenceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000007 /* ShotPersistenceService.swift */; };
 		BF0000030000000000000008 /* SimOutputService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000008 /* SimOutputService.swift */; };
 		BF0000030000000000000009 /* GolfCourseAPIConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000009 /* GolfCourseAPIConfig.swift */; };
-		BF0000030000000000OWM001 /* OpenWeatherMapConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000OWM001 /* OpenWeatherMapConfig.swift */; };
 		BF000003000000000000000A /* CourseProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000A /* CourseProvider.swift */; };
 		BF000003000000000000000B /* MockCourseProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000B /* MockCourseProvider.swift */; };
 		BF000003000000000000000C /* GolfCourseAPIProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000C /* GolfCourseAPIProvider.swift */; };
@@ -131,6 +130,7 @@
 		BF0000030000000000000099 /* TrueCarryLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000099 /* TrueCarryLaunchView.swift */; };
 		BF00000300000000000000A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF00000200000000000000A1 /* OnboardingView.swift */; };
 		BF0000030000000000000E01 /* GolfGeometryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000E01 /* GolfGeometryHelpers.swift */; };
+		BF0000030000000000OWM001 /* OpenWeatherMapConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000OWM001 /* OpenWeatherMapConfig.swift */; };
 		BF0000050000000000000002 /* OrientationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000050000000000000001 /* OrientationManager.swift */; };
 		BF0000060000000000000002 /* TCTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000001 /* TCTheme.swift */; };
 		BF0000060000000000000004 /* TrueCarryBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000003 /* TrueCarryBackground.swift */; };
@@ -200,12 +200,12 @@
 		CAFE00000000000000000109 /* SimNetworkScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000108 /* SimNetworkScanner.swift */; };
 		CAFE0000000000000000010B /* SimBLEPeripheral.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000010A /* SimBLEPeripheral.swift */; };
 		CAFE0000000000000000010D /* SimBLEViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000010C /* SimBLEViewModel.swift */; };
+		CAFE00000000000000000121 /* TCLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000120 /* TCLog.swift */; };
 		CAFE0000000000000000FA11 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FA10 /* ShareSheet.swift */; };
 		CAFE0000000000000000FB11 /* ReplayPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FB10 /* ReplayPlayerView.swift */; };
 		CAFE0000000000000000FC11 /* FlightArcModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FC10 /* FlightArcModel.swift */; };
 		F87102851E39D771471CCF94 /* BallStrikeCameraWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		LIVE00000000000000000001 /* LiveSimService.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000002 /* LiveSimService.swift */; };
-		CAFE00000000000000000121 /* TCLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000120 /* TCLog.swift */; };
 		LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000004 /* LiveSimCodeView.swift */; };
 		LIVE00000000000000000005 /* LiveSimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000006 /* LiveSimCameraScreen.swift */; };
 /* End PBXBuildFile section */
@@ -286,7 +286,6 @@
 		BF000001000000000000011C /* ShotAnalysisModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotAnalysisModels.swift; sourceTree = "<group>"; };
 		BF000001000000000000011D /* FrameNormalizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameNormalizer.swift; sourceTree = "<group>"; };
 		BF000001000000000000011E /* PostImpactBallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostImpactBallTracker.swift; sourceTree = "<group>"; };
-		BF0000010000000000000902 /* GroundPlaneMetricsCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundPlaneMetricsCalculator.swift; sourceTree = "<group>"; };
 		BF000001000000000000011F /* ShotTrackingReviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotTrackingReviewView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000120 /* ShotCompositeRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotCompositeRenderer.swift; sourceTree = "<group>"; };
 		BF0000010000000000000121 /* ShotCompositeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotCompositeView.swift; sourceTree = "<group>"; };
@@ -336,15 +335,16 @@
 		BF0000010000000000000153 /* EnsembleBFSClubTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnsembleBFSClubTracker.swift; sourceTree = "<group>"; };
 		BF0000010000000000000801 /* StoredZip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoredZip.swift; sourceTree = "<group>"; };
 		BF0000010000000000000802 /* FrameArchiveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameArchiveService.swift; sourceTree = "<group>"; };
+		BF0000010000000000000803 /* WindModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindModel.swift; sourceTree = "<group>"; };
+		BF0000010000000000000804 /* WindService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindService.swift; sourceTree = "<group>"; };
+		BF0000010000000000000805 /* CaddieEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaddieEngine.swift; sourceTree = "<group>"; };
+		BF0000010000000000000902 /* GroundPlaneMetricsCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundPlaneMetricsCalculator.swift; sourceTree = "<group>"; };
+		BF000001000000000000B001 /* CourseLandingMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseLandingMapView.swift; sourceTree = "<group>"; };
+		BF000001000000000000HD01 /* HitDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitDirection.swift; sourceTree = "<group>"; };
 		BF0000010000000000GDR001 /* GoogleDriveConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveConfig.swift; sourceTree = "<group>"; };
 		BF0000010000000000GDR002 /* KeychainTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTokenStore.swift; sourceTree = "<group>"; };
 		BF0000010000000000GDR003 /* GoogleDriveAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveAuthService.swift; sourceTree = "<group>"; };
 		BF0000010000000000GDR004 /* GoogleDriveUploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleDriveUploadService.swift; sourceTree = "<group>"; };
-		BF0000010000000000000803 /* WindModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindModel.swift; sourceTree = "<group>"; };
-		BF0000010000000000000804 /* WindService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindService.swift; sourceTree = "<group>"; };
-		BF0000010000000000000805 /* CaddieEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaddieEngine.swift; sourceTree = "<group>"; };
-		BF000001000000000000B001 /* CourseLandingMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseLandingMapView.swift; sourceTree = "<group>"; };
-		BF000001000000000000HD01 /* HitDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitDirection.swift; sourceTree = "<group>"; };
 		BF0000020000000000000001 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		BF0000020000000000000002 /* AppBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppBackend.swift; sourceTree = "<group>"; };
 		BF0000020000000000000003 /* AppStorageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStorageManager.swift; sourceTree = "<group>"; };
@@ -354,7 +354,6 @@
 		BF0000020000000000000007 /* ShotPersistenceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotPersistenceService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000008 /* SimOutputService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimOutputService.swift; sourceTree = "<group>"; };
 		BF0000020000000000000009 /* GolfCourseAPIConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfCourseAPIConfig.swift; sourceTree = "<group>"; };
-		BF0000020000000000OWM001 /* OpenWeatherMapConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenWeatherMapConfig.swift; sourceTree = "<group>"; };
 		BF000002000000000000000A /* CourseProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseProvider.swift; sourceTree = "<group>"; };
 		BF000002000000000000000B /* MockCourseProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockCourseProvider.swift; sourceTree = "<group>"; };
 		BF000002000000000000000C /* GolfCourseAPIProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfCourseAPIProvider.swift; sourceTree = "<group>"; };
@@ -378,6 +377,7 @@
 		BF0000020000000000000099 /* TrueCarryLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryLaunchView.swift; sourceTree = "<group>"; };
 		BF00000200000000000000A1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000E01 /* GolfGeometryHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfGeometryHelpers.swift; sourceTree = "<group>"; };
+		BF0000020000000000OWM001 /* OpenWeatherMapConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenWeatherMapConfig.swift; sourceTree = "<group>"; };
 		BF0000050000000000000001 /* OrientationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationManager.swift; sourceTree = "<group>"; };
 		BF0000060000000000000001 /* TCTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCTheme.swift; sourceTree = "<group>"; };
 		BF0000060000000000000003 /* TrueCarryBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryBackground.swift; sourceTree = "<group>"; };
@@ -447,6 +447,7 @@
 		CAFE00000000000000000108 /* SimNetworkScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimNetworkScanner.swift; sourceTree = "<group>"; };
 		CAFE0000000000000000010A /* SimBLEPeripheral.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimBLEPeripheral.swift; sourceTree = "<group>"; };
 		CAFE0000000000000000010C /* SimBLEViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimBLEViewModel.swift; sourceTree = "<group>"; };
+		CAFE00000000000000000120 /* TCLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCLog.swift; sourceTree = "<group>"; };
 		CAFE0000000000000000FA10 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
 		CAFE0000000000000000FB10 /* ReplayPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplayPlayerView.swift; sourceTree = "<group>"; };
 		CAFE0000000000000000FC10 /* FlightArcModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightArcModel.swift; sourceTree = "<group>"; };
@@ -454,7 +455,6 @@
 		E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchConnectivityBridge.swift; sourceTree = "<group>"; };
 		E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000002 /* LiveSimService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimService.swift; sourceTree = "<group>"; };
-		CAFE00000000000000000120 /* TCLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCLog.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000004 /* LiveSimCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCodeView.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000006 /* LiveSimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCameraScreen.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -1356,11 +1356,11 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWatch/Info.plist;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1505,7 +1505,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCamera/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1514,7 +1514,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1535,7 +1535,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCamera/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1544,7 +1544,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1561,11 +1561,11 @@
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWatch/Info.plist;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -1587,7 +1587,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -1597,7 +1597,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.BallStrikeCameraWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera.BallStrikeCameraWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
@@ -1617,7 +1617,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -1627,7 +1627,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.BallStrikeCameraWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad.BallStrikeCamera.BallStrikeCameraWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
