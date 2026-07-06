@@ -1763,6 +1763,43 @@ export function buildCourse(hole, assets) {
       });
     }
 
+    // ---------- tree contact AO: soft shadow discs at every trunk base ----------
+    // (GSPro step 3a) grounds the card trees — without these they float.
+    if (spots.length) {
+      const aoCv = document.createElement('canvas');
+      aoCv.width = aoCv.height = 64;
+      const aoCtx = aoCv.getContext('2d');
+      const aoG = aoCtx.createRadialGradient(32, 32, 3, 32, 32, 31);
+      aoG.addColorStop(0, 'rgba(10,16,8,0.42)');
+      aoG.addColorStop(0.6, 'rgba(10,16,8,0.22)');
+      aoG.addColorStop(1, 'rgba(10,16,8,0)');
+      aoCtx.fillStyle = aoG;
+      aoCtx.fillRect(0, 0, 64, 64);
+      const aoTex = new THREE.CanvasTexture(aoCv);
+      const aoMesh = new THREE.InstancedMesh(
+        new THREE.PlaneGeometry(1, 1),
+        new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false }),
+        Math.min(spots.length, 1400),
+      );
+      const m4a = new THREE.Matrix4();
+      const qa = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+      let na = 0;
+      for (const t of spots) {
+        if (na >= aoMesh.count) break;
+        const r = (t.kind <= 1 ? 2.6 : 3.4) * t.s;
+        m4a.compose(
+          new THREE.Vector3(t.x, heightAt(t.x, t.z) + 0.025 + (na % 7) * 0.002, t.z),
+          qa,
+          new THREE.Vector3(r, r, r),
+        );
+        aoMesh.setMatrixAt(na++, m4a);
+      }
+      aoMesh.count = na;
+      aoMesh.instanceMatrix.needsUpdate = true;
+      aoMesh.renderOrder = 1;
+      group.add(aoMesh);
+    }
+
     // ---------- birds: distant circling silhouettes ----------
     const birds = [];
     {
