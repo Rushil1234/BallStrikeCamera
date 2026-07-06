@@ -620,8 +620,32 @@ function pushLiveState(extra = {}) {
     to_par: totalToPar(),
     distance_to_pin_yards: Math.round(distPin * 1.09361),
     sim_state: game.state,
+    match: matchPayload(),
     ...extra,
   });
+}
+
+// Compact multi-player standings for spectators (null in single-player).
+function matchPayload() {
+  const m = game.match;
+  if (!m) return null;
+  const players = m.names.map((name, i) => {
+    let strokes = 0, holesDone = 0, toPar = 0;
+    for (let h = 0; h < courseHoles.length; h++) {
+      const sc = m.scores[i][h];
+      if (sc == null) continue;
+      strokes += sc;
+      holesDone += 1;
+      toPar += sc - (courseHoles[h].par || 4);
+    }
+    return { name, strokes, holesDone, toPar };
+  });
+  return {
+    format: m.n === 2 ? 'match' : 'stroke',
+    activeIndex: m.idx,
+    status: matchStatusText(),
+    players,
+  };
 }
 
 function setHolePickerActive(idx) {
