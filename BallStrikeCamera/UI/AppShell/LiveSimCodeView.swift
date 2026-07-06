@@ -39,6 +39,71 @@ struct LiveSimCodeView: View {
 
     // MARK: - Connected (the "really cool" live link)
 
+    // Session pulse: fills the card even before the first swing.
+    @ViewBuilder private var sessionPulse: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                sessionStat(value: "\(liveSimService.shotsSent)", label: "SHOTS SENT")
+                sessionStat(value: liveSimService.lastSentCarryYds.map { "\($0)y" } ?? "—", label: "LAST CARRY")
+                Button {
+                    UIPasteboard.general.string = liveSimService.enteredCode
+                } label: {
+                    VStack(spacing: 3) {
+                        HStack(spacing: 4) {
+                            Text(liveSimService.enteredCode)
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundColor(BSTheme.gold)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(BSTheme.textMuted)
+                        }
+                        Text("SESSION CODE")
+                            .font(.system(size: 8.5, weight: .bold)).kerning(1.2)
+                            .foregroundColor(BSTheme.textMuted)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(BSTheme.backgroundTop.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+
+            if liveSimService.shotsSent == 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: "figure.golf")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(BSTheme.fairwayGreen)
+                    Text("Waiting on your first swing — tap Hit Shot below and watch it fly on the big screen.")
+                        .font(.system(size: 12.5))
+                        .foregroundColor(BSTheme.textPrimary.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(BSTheme.fairwayGreen.opacity(0.09))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+    }
+
+    private func sessionStat(value: String, label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .foregroundColor(BSTheme.textPrimary)
+            Text(label)
+                .font(.system(size: 8.5, weight: .bold)).kerning(1.2)
+                .foregroundColor(BSTheme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(BSTheme.backgroundTop.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
     private var connectedCard: some View {
         VStack(spacing: 16) {
             // Animated broadcast: concentric rings pulsing out of a signal icon.
@@ -146,6 +211,8 @@ struct LiveSimCodeView: View {
                         .strokeBorder(BSTheme.gold.opacity(0.25), lineWidth: 1)
                 )
             }
+
+            sessionPulse
 
             // Live shot telemetry — flashes as each shot streams to the sim.
             if let shot = liveSimService.lastShot {

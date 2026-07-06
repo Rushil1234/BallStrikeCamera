@@ -80,10 +80,12 @@ struct FeedView: View {
                 LazyVStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
                         Button { showNotifications = true } label: {
-                            Image(systemName: "bell")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(TCTheme.textSecondary)
+                            Image(systemName: "bell.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(TCTheme.gold)
                                 .frame(width: 32, height: 32)
+                                .background(Circle().fill(TCTheme.panelRaised))
+                                .overlay(Circle().strokeBorder(TCTheme.gold.opacity(0.35), lineWidth: 1))
                                 .overlay(alignment: .topTrailing) {
                                     if unreadNotifs > 0 {
                                         Text(unreadNotifs > 9 ? "9+" : "\(unreadNotifs)")
@@ -97,10 +99,12 @@ struct FeedView: View {
                         }
                         .buttonStyle(.plain)
                         Button { showFriends = true } label: {
-                            Image(systemName: "person.2")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(TCTheme.textSecondary)
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(TCTheme.gold)
                                 .frame(width: 32, height: 32)
+                                .background(Circle().fill(TCTheme.panelRaised))
+                                .overlay(Circle().strokeBorder(TCTheme.gold.opacity(0.35), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                         TCProfileAvatarButton(initials: userInitials,

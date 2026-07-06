@@ -179,7 +179,8 @@ struct TrueCarryLogo: View {
 struct TCHeaderBar<RightContent: View>: View {
     let initials: String
     @ViewBuilder let rightContent: () -> RightContent
-    private let sideWidth: CGFloat = 80
+    // Three 32pt buttons + spacing need real room; 80 was clipping them.
+    private let sideWidth: CGFloat = 118
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
@@ -188,7 +189,7 @@ struct TCHeaderBar<RightContent: View>: View {
             TrueCarryLogo(size: 20)
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
-            HStack(spacing: 6) { rightContent() }
+            HStack(spacing: 8) { rightContent() }
                 .frame(width: sideWidth, height: 44, alignment: .trailing)
         }
         .padding(.horizontal, TCTheme.hPad)

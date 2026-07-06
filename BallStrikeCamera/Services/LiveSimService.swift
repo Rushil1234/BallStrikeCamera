@@ -140,6 +140,7 @@ final class LiveSimService: ObservableObject {
     @Published private(set) var isConnectedToSim = false
     @Published private(set) var lastBroadcastError: String?
     @Published private(set) var shotsSent = 0
+    @Published private(set) var lastSentCarryYds: Int?
 
     // Live session telemetry — fuels the connected-state UI.
     @Published private(set) var lastShot: SavedShotMetrics?
@@ -291,6 +292,7 @@ final class LiveSimService: ObservableObject {
     ///     requiring a separate lookup) so the sim never renders a blank name for a late-joining
     ///     player relayed before `broadcastPlayers` finishes.
     func broadcast(metrics: SavedShotMetrics, playerIndex: Int = 0, playerName: String = "You") async {
+        lastSentCarryYds = Int(metrics.carryYards.rounded())
         guard isReadyToConnect else {
             lastBroadcastError = "Enter the code shown on screen"
             return
