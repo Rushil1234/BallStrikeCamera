@@ -479,6 +479,9 @@ final class SupabaseBackendService: AppBackend {
             "payload": try toDict(course),
             "updated_at": ISO8601DateFormatter().string(from: Date())
         ]
+        // Only ever set the flag forward. Omitting the key on unverified saves means an upsert
+        // can't downgrade a row that a previous (scorecard-merged) play already verified.
+        if course.scorecardVerified == true { body["scorecard_verified"] = true }
         if let confidence = metadata.confidence { body["confidence"] = confidence }
         if let generatedBy = metadata.generatedBy { body["generated_by"] = generatedBy }
         if let imagerySource = metadata.imagerySource { body["imagery_source"] = imagerySource }

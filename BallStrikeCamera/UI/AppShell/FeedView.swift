@@ -55,6 +55,7 @@ struct FeedView: View {
     }
     @State private var pendingRound: PendingRound?
     @State private var stagedRound: PendingRound?
+    @State private var unfinishedRound: CourseRound?
 
     init(userId: UUID, authorName: String, backend: AppBackend) {
         self.userId = userId
@@ -71,6 +72,46 @@ struct FeedView: View {
         let parts = authorName.components(separatedBy: " ")
         if parts.count >= 2, let f = parts[0].first, let l = parts[1].first { return "\(f)\(l)" }
         return String(authorName.prefix(2)).uppercased()
+    }
+
+    /// Home-screen banner for a round that's still in progress (endedAt == nil) —
+    /// e.g. the app was closed mid-round. Tapping routes to the Play tab and reopens it.
+    private func resumeRoundBanner(_ round: CourseRound) -> some View {
+        Button {
+            NotificationCenter.default.post(name: .tcResumeRound, object: nil)
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(TCTheme.goldGradient)
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("ROUND IN PROGRESS")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(TCTheme.gold)
+                        .tracking(1.2)
+                    Text(round.courseName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .lineLimit(1)
+                    let played = round.holes.filter { $0.score != nil }.count
+                    Text("\(played)/\(round.holes.count) holes scored — tap to resume")
+                        .font(.system(size: 11))
+                        .foregroundColor(TCTheme.textMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.textMuted)
+            }
+            .tcCard()
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, TCTheme.hPad)
     }
 
     var body: some View {
@@ -109,6 +150,10 @@ struct FeedView: View {
                         .buttonStyle(.plain)
                         TCProfileAvatarButton(initials: userInitials,
                                               devMode: session.entitlementVM.isDeveloperMode) { showProfile = true }
+                    }
+                    if let r = unfinishedRound {
+                        resumeRoundBanner(r)
+                        sectionGap
                     }
                     activityHero
                     sectionGap
@@ -159,6 +204,8 @@ struct FeedView: View {
             }
             if let hs = session.cachedHomeSummary { vm.homeSummary = hs }
             await vm.load()
+            let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
+            unfinishedRound = all.first(where: { $0.endedAt == nil })
         }
         .sheet(isPresented: $showFriends, onDismiss: { Task { await vm.load() } }) {
             NavigationStack { FriendsView(userId: userId, backend: backend) }

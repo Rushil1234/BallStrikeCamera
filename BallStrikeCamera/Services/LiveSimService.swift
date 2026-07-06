@@ -85,6 +85,9 @@ extension Notification.Name {
     /// Posted when a truecarry://livesim?code= deep link (the web sim's QR)
     /// arrives; the shell routes to the Sim tab and the code view connects.
     static let tcOpenLiveSim = Notification.Name("tc.openLiveSim")
+    /// Posted by the home-screen resume banner; the shell routes to the Play tab
+    /// and PlayView opens the unfinished round.
+    static let tcResumeRound = Notification.Name("tc.resumeRound")
 }
 
 @MainActor

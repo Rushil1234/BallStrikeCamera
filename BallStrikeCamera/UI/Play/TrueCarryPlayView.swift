@@ -143,6 +143,12 @@ struct TrueCarryPlayView: View {
             guard let loc = prewarmLocation.currentLocation else { return }
             prewarmer.warm(near: loc)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tcResumeRound)) { _ in
+            Task {
+                await refreshUnfinishedRound()
+                if let r = unfinishedRound { resumeRound = r }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .tcOpenLiveSim)) { _ in
             selectedMode = .sim
             if session.entitlementVM.canPerform(.simMode).allowed {

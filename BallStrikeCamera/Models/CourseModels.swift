@@ -17,6 +17,11 @@ struct GolfCourse: Codable, Identifiable {
     var cachedAt: Date?
     var coursePolygon: PolygonRing?  = nil    // outer course boundary if available
     var geometryMetadata: CourseGeometryMetadata? = nil
+    /// True once GolfCourseAPI scorecard data (authoritative tees/ratings/handicaps) has been
+    /// merged into this course. Rows saved with this set are complete — the app serves them
+    /// from our own backend and skips GolfCourseAPI entirely. Optional so old cached/stored
+    /// payloads without the key still decode.
+    var scorecardVerified: Bool?     = nil
 
     var coordinate: CLLocationCoordinate2D? {
         guard let lat = latitude, let lng = longitude else { return nil }
@@ -313,6 +318,9 @@ struct GolfHole: Codable, Identifiable {
     var number: Int
     var par: Int
     var handicap: Int?
+    /// Women's stroke index when the data source publishes a separate handicap row (many
+    /// scorecards print both — mixing them was showing the wrong set for the golfer).
+    var womensHandicap: Int? = nil
     var teeYardsByTeeBox: [String: Int]     = [:]
     var greenFrontCoordinate: Coordinate?
     var greenCenterCoordinate: Coordinate?
@@ -342,6 +350,42 @@ struct GolfHole: Codable, Identifiable {
         let a = CLLocation(latitude: tee.latitude, longitude: tee.longitude)
         let b = CLLocation(latitude: g.latitude,   longitude: g.longitude)
         return Int((a.distance(from: b) * 1.09361).rounded())
+    }
+
+    /// The stroke index appropriate for the golfer's gender — women's row when published,
+    /// men's row otherwise (and as the universal fallback).
+    func strokeIndex(for gender: Gender?) -> Int? {
+        if gender == .female, let w = womensHandicap { return w }
+        return handicap
+    }
+}
+
+// Decoder lives in an extension so the struct keeps its synthesized memberwise init
+// (encode(to:) stays synthesized as well).
+extension GolfHole {
+    /// Lenient decoding: geometry payloads written by the backfill pipeline omit `id`/`courseId`
+    /// (and other optionals). Synthesized Codable rejects a missing `id` even though the property
+    /// has a default, which made every stored course_geometries row undecodable on the phone.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        number   = try c.decode(Int.self, forKey: .number)
+        par      = try c.decodeIfPresent(Int.self, forKey: .par) ?? 4
+        courseId = try c.decodeIfPresent(String.self, forKey: .courseId) ?? ""
+        id       = try c.decodeIfPresent(String.self, forKey: .id) ?? "\(courseId)-hole-\(number)"
+        handicap       = try c.decodeIfPresent(Int.self, forKey: .handicap)
+        womensHandicap = try c.decodeIfPresent(Int.self, forKey: .womensHandicap)
+        teeYardsByTeeBox      = try c.decodeIfPresent([String: Int].self, forKey: .teeYardsByTeeBox) ?? [:]
+        greenFrontCoordinate  = try c.decodeIfPresent(Coordinate.self, forKey: .greenFrontCoordinate)
+        greenCenterCoordinate = try c.decodeIfPresent(Coordinate.self, forKey: .greenCenterCoordinate)
+        greenBackCoordinate   = try c.decodeIfPresent(Coordinate.self, forKey: .greenBackCoordinate)
+        teeCoordinateByTeeBox = try c.decodeIfPresent([String: Coordinate].self, forKey: .teeCoordinateByTeeBox)
+        pathCoordinates       = try c.decodeIfPresent([Coordinate].self, forKey: .pathCoordinates)
+        hazards               = try c.decodeIfPresent([Hazard].self, forKey: .hazards) ?? []
+        teeCoordinate         = try c.decodeIfPresent(Coordinate.self, forKey: .teeCoordinate)
+        greenPolygon          = try c.decodeIfPresent(PolygonRing.self, forKey: .greenPolygon)
+        fairwayPolygon        = try c.decodeIfPresent(PolygonRing.self, forKey: .fairwayPolygon)
+        bunkerPolygons        = try c.decodeIfPresent([PolygonRing].self, forKey: .bunkerPolygons) ?? []
+        waterPolygons         = try c.decodeIfPresent([PolygonRing].self, forKey: .waterPolygons) ?? []
     }
 }
 
