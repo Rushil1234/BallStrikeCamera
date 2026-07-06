@@ -76,9 +76,12 @@ function lineIntersectsBounds(points, bounds, pad = 0) {
 function elevationAtWorld(elevation, x, z) {
   if (!elevation?.values || !elevation.worldBounds) return null;
   const b = elevation.worldBounds;
-  if (x < b.minX || x > b.maxX || z < b.minZ || z > b.maxZ) return null;
-  const u = (x - b.minX) / ((b.maxX - b.minX) || 1) * (elevation.width - 1);
-  const v = (z - b.minZ) / ((b.maxZ - b.minZ) || 1) * (elevation.height - 1);
+  // Clamp instead of bailing: at 1:1 elevation a hard fallback outside the
+  // grid becomes a cliff wall across any hole near the DEM edge.
+  const cx2 = Math.min(b.maxX, Math.max(b.minX, x));
+  const cz2 = Math.min(b.maxZ, Math.max(b.minZ, z));
+  const u = (cx2 - b.minX) / ((b.maxX - b.minX) || 1) * (elevation.width - 1);
+  const v = (cz2 - b.minZ) / ((b.maxZ - b.minZ) || 1) * (elevation.height - 1);
   const x0 = Math.floor(u), z0 = Math.floor(v);
   const x1 = Math.min(elevation.width - 1, x0 + 1);
   const z1 = Math.min(elevation.height - 1, z0 + 1);
@@ -1180,9 +1183,23 @@ export function buildCourse(hole, assets) {
         sx = wMaxX - wMinX + w.width * 2 + 20;
         sz = wMaxZ - wMinZ + w.width * 2 + 20;
       }
+      if (waters.length >= 1 || w.type === 'channel') {
+        // cheap non-reflective plate: dark, slightly glossy, no scene re-render
+        const flat = new THREE.Mesh(
+          new THREE.PlaneGeometry(sx, sz),
+          new THREE.MeshStandardMaterial({
+            color: new THREE.Color(visualZones.waterColor ?? 0x0e3526).multiplyScalar(0.7),
+            roughness: 0.18, metalness: 0.05, envMapIntensity: 0.5,
+          }),
+        );
+        flat.rotation.x = -Math.PI / 2;
+        flat.position.set(cx, waterLevel, cz);
+        group.add(flat);
+        continue;
+      }
       const water = new Water(new THREE.PlaneGeometry(sx, sz), {
-        textureWidth: 512,
-        textureHeight: 512,
+        textureWidth: 256,
+        textureHeight: 256,
         waterNormals: assets.waterN,
         sunDirection: assets.sunDir.clone(),
         sunColor: 0xffffff,
@@ -1260,47 +1277,71 @@ export function buildCourse(hole, assets) {
     }
 
     // ---------- town edge: real building footprints + boundary walls ----------
+    // Instanced (2 draw calls for all buildings, 1 for walls), no shadow
+    // casting, sizes clamped — the previous per-mesh version was both the
+    // frame-rate hit and the "grey warehouse" look.
     if ((visualZones.buildings || []).length) {
-      const stoneWall = new THREE.MeshStandardMaterial({ color: 0x8d8579, roughness: 0.95 });
-      const facades = [0xb8a98e, 0xa79274, 0x9e8f80, 0xc4b49a, 0x8f7f6b].map(
-        (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 }),
-      );
-      const roofMat = new THREE.MeshStandardMaterial({ color: 0x5d5a55, roughness: 0.85 });
-      let bi = 0;
-      for (const b of visualZones.buildings) {
-        if (b.x < minX - 60 || b.x > maxX + 60 || b.z < minZ - 60 || b.z > maxZ + 60) continue;
-        const gy = heightAt(b.x, b.z);
-        const bodyH = Math.max(3.5, b.h * 0.72);
-        const body = new THREE.Mesh(new THREE.BoxGeometry(b.w, bodyH, b.d), facades[bi++ % facades.length]);
-        body.position.set(b.x, gy + bodyH / 2, b.z);
-        body.rotation.y = b.rot || 0;
-        body.castShadow = true;
-        body.receiveShadow = true;
-        group.add(body);
-        // simple pitched roof: stretched octahedron reads as a gable at distance
-        const roofH = Math.max(1.4, b.h * 0.28);
-        const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, b.d * 0.72, roofH, 4, 1), roofMat);
-        roof.scale.x = (b.w / Math.max(b.d, 1)) * 1.0;
-        roof.rotation.y = (b.rot || 0) + Math.PI / 4;
-        roof.position.set(b.x, gy + bodyH + roofH / 2, b.z);
-        roof.castShadow = true;
-        group.add(roof);
+      const blds = visualZones.buildings.filter((b) =>
+        b.x >= minX - 60 && b.x <= maxX + 60 && b.z >= minZ - 60 && b.z <= maxZ + 60);
+      if (blds.length) {
+        const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
+        const roofGeo = new THREE.CylinderGeometry(0.02, 0.72, 1, 4, 1);
+        const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        const roofMat = new THREE.MeshLambertMaterial({ color: 0x4a4742 });
+        const bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, blds.length);
+        const roofs = new THREE.InstancedMesh(roofGeo, roofMat, blds.length);
+        const facades = [0x8f8271, 0x7d7264, 0x97887a, 0x857a6c, 0x6e655a];
+        const m4 = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const up = new THREE.Vector3(0, 1, 0);
+        const col = new THREE.Color();
+        blds.forEach((b, i) => {
+          const w2 = Math.min(46, b.w), d2 = Math.min(46, b.d);
+          const gy = heightAt(b.x, b.z);
+          const bodyH = Math.min(13, Math.max(3.5, b.h * 0.72));
+          q.setFromAxisAngle(up, b.rot || 0);
+          m4.compose(new THREE.Vector3(b.x, gy + bodyH / 2, b.z), q, new THREE.Vector3(w2, bodyH, d2));
+          bodies.setMatrixAt(i, m4);
+          bodies.setColorAt(i, col.setHex(facades[i % facades.length]));
+          const roofH = Math.min(4.5, Math.max(1.2, b.h * 0.26));
+          q.setFromAxisAngle(up, (b.rot || 0) + Math.PI / 4);
+          m4.compose(new THREE.Vector3(b.x, gy + bodyH + roofH / 2, b.z), q, new THREE.Vector3(w2 * 1.02, roofH, d2 * 1.02));
+          roofs.setMatrixAt(i, m4);
+        });
+        bodies.instanceMatrix.needsUpdate = true;
+        if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
+        roofs.instanceMatrix.needsUpdate = true;
+        bodies.receiveShadow = true;
+        group.add(bodies);
+        group.add(roofs);
       }
+      const segs = [];
       for (const run of visualZones.walls || []) {
         for (let i = 0; i < run.length - 1; i++) {
           const a = run[i], c = run[i + 1];
           if ((a.x < minX - 40 && c.x < minX - 40) || (a.x > maxX + 40 && c.x > maxX + 40)
             || (a.z < minZ - 40 && c.z < minZ - 40) || (a.z > maxZ + 40 && c.z > maxZ + 40)) continue;
           const len = Math.hypot(c.x - a.x, c.z - a.z);
-          if (len < 0.5) continue;
-          const seg = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.0, len + 0.1), stoneWall);
-          const mx2 = (a.x + c.x) / 2, mz2 = (a.z + c.z) / 2;
-          seg.position.set(mx2, heightAt(mx2, mz2) + 0.5, mz2);
-          seg.rotation.y = Math.atan2(c.x - a.x, c.z - a.z);
-          seg.castShadow = true;
-          seg.receiveShadow = true;
-          group.add(seg);
+          if (len >= 0.5) segs.push([a, c, len]);
         }
+      }
+      if (segs.length) {
+        const wallMesh = new THREE.InstancedMesh(
+          new THREE.BoxGeometry(1, 1, 1),
+          new THREE.MeshLambertMaterial({ color: 0x6d675c }),
+          segs.length,
+        );
+        const m4 = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const up = new THREE.Vector3(0, 1, 0);
+        segs.forEach(([a, c, len], i) => {
+          const mx2 = (a.x + c.x) / 2, mz2 = (a.z + c.z) / 2;
+          q.setFromAxisAngle(up, Math.atan2(c.x - a.x, c.z - a.z));
+          m4.compose(new THREE.Vector3(mx2, heightAt(mx2, mz2) + 0.4, mz2), q, new THREE.Vector3(0.35, 0.8, len + 0.1));
+          wallMesh.setMatrixAt(i, m4);
+        });
+        wallMesh.instanceMatrix.needsUpdate = true;
+        group.add(wallMesh);
       }
     }
 

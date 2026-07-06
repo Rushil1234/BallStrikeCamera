@@ -3,9 +3,9 @@
 import fs from 'fs/promises';
 
 const ORIGIN = { lat: 56.34750, lng: -2.81020 };
-const BBOX = { south: 56.336, west: -2.828, north: 56.359, east: -2.790 };
-const WIDTH = 90;
-const HEIGHT = 70;
+const BBOX = { south: 56.333, west: -2.834, north: 56.363, east: -2.784 };
+const WIDTH = 100;
+const HEIGHT = 80;
 const OUT_PATH = new URL('../js/standrews-elevation.js', import.meta.url);
 const CACHE_PATH = '/tmp/standrews-eudem-cache.json';
 

@@ -29,7 +29,8 @@ const launchCourseId = launchParams.get('course') || launchParams.get('courseId'
 let urlLaunchHandled = false;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Cap DPR: the post-fx chain at retina 2x quadruples fragment cost.
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -250,7 +251,8 @@ function refreshGhostLabel(playerIdx, name) {
 
 // shot tracer — broadcast style: bright at the ball, fading down the tail
 const TRACER_MAX = 2400;
-const tracerPts = new Float32Array(TRACER_MAX * 3);   // raw flight points
+const tracerPts = new Float32Array(TRACER_MAX * 3);
+const tracerHf = new Float32Array(TRACER_MAX);   // width factor: thin when rolling   // raw flight points
 // Broadcast-style tracer RIBBON: a camera-facing tapered strip (GL lines are
 // stuck at 1px). Two vertices per point, billboarded in JS each repaint;
 // additive blending gives the comet glow through the bloom pass.
@@ -306,7 +308,7 @@ function tracerRepaint() {
     }
     _tv.right.normalize();
     // Screen-proportional width (like a TV tracer): slim tail, comet head.
-    const w = Math.min(2.2, Math.max(0.04, dist * (0.0022 + 0.0055 * t * t)));
+    const w = Math.min(2.2, Math.max(0.04, dist * (0.0022 + 0.0055 * t * t))) * tracerHf[i];
     const gk = 0.22 + 0.78 * t * t;   // dim gold tail -> near-white head
     for (let sdx = 0; sdx < 2; sdx++) {
       const v = i * 2 + sdx;
@@ -1733,6 +1735,10 @@ function pushTracer(p) {
   tracerPts[tracerCount * 3] = p.x;
   tracerPts[tracerCount * 3 + 1] = p.y;
   tracerPts[tracerCount * 3 + 2] = p.z;
+  {
+    const gh = game.course ? game.course.heightAt(p.x, p.z) : 0;
+    tracerHf[tracerCount] = Math.min(1, Math.max(0.1, 0.12 + (p.y - gh) * 0.55));
+  }
   tracerCount++;
   tracerRepaint();
 }

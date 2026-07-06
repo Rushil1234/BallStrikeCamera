@@ -678,7 +678,7 @@ const worldRealism = {
   visualZones: {
     // Open links look: near-treeless fescue, pale revetted sand, cold burn
     // water, wind-burnt olive rough fading to dune scrub.
-    waterColor: 0x27404d,
+    waterColor: 0x1a2b33,
     sandColor: 0xdcd3bd,
     roughColor: 0x6f7c46,
     deepColor: 0x596a3a,
