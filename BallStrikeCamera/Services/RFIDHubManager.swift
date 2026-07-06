@@ -114,7 +114,7 @@ final class RFIDHubManager: NSObject, ObservableObject {
     /// "Pair hub" button while the user holds their hub next to the phone.
     func startPairing() {
         guard central.state == .poweredOn else { return }
-        print("[RFIDHub] Pairing started — collecting candidates for \(pairingWindow)s")
+        TCLog.ble.info("[RFIDHub] Pairing started — collecting candidates for \(self.pairingWindow)s")
         if let p = peripheral { central.cancelPeripheralConnection(p); peripheral = nil }
         pairingCandidates.removeAll()
         connectionState = .pairing
@@ -127,7 +127,7 @@ final class RFIDHubManager: NSObject, ObservableObject {
 
     /// Forget the bound hub so the user can pair again. The "reset" escape hatch.
     func resetPairing() {
-        print("[RFIDHub] Pairing reset for user \(currentUserId?.uuidString ?? "default")")
+        TCLog.ble.info("[RFIDHub] Pairing reset for user \(self.currentUserId?.uuidString ?? "default")")
         central.stopScan()
         if let p = peripheral { central.cancelPeripheralConnection(p) }
         peripheral = nil
@@ -151,14 +151,14 @@ final class RFIDHubManager: NSObject, ObservableObject {
     private func connectToBoundHub() {
         guard let id = boundIdentifier else { connectionState = .needsPairing; return }
         if let known = central.retrievePeripherals(withIdentifiers: [id]).first {
-            print("[RFIDHub] Reconnecting to bound hub \(id)")
+            TCLog.ble.info("[RFIDHub] Reconnecting to bound hub \(id)")
             peripheral = known
             known.delegate = self
             connectionState = .connecting
             central.connect(known, options: nil)   // resolves whenever the bound hub is in range
         } else {
             // Not cached → scan and connect only when the bound identifier appears.
-            print("[RFIDHub] Bound hub not cached — scanning for \(id)")
+            TCLog.ble.info("[RFIDHub] Bound hub not cached — scanning for \(id)")
             connectionState = .scanning
             central.scanForPeripherals(withServices: [Self.serviceUUID], options: nil)
         }
@@ -168,11 +168,11 @@ final class RFIDHubManager: NSObject, ObservableObject {
         central.stopScan()
         guard connectionState == .pairing else { return }
         guard let best = pairingCandidates.max(by: { $0.rssi < $1.rssi })?.peripheral else {
-            print("[RFIDHub] Pairing found no hubs")
+            TCLog.ble.info("[RFIDHub] Pairing found no hubs")
             connectionState = .needsPairing
             return
         }
-        print("[RFIDHub] Paired to \(best.name ?? "hub") \(best.identifier) (\(pairingCandidates.count) candidates)")
+        TCLog.ble.info("[RFIDHub] Paired to \(best.name ?? "hub") \(best.identifier) (\(self.pairingCandidates.count) candidates)")
         boundIdentifier = best.identifier
         peripheral = best
         best.delegate = self
@@ -203,7 +203,7 @@ final class RFIDHubManager: NSObject, ObservableObject {
 extension RFIDHubManager: @preconcurrency CBCentralManagerDelegate {
 
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        print("[RFIDHub] centralManagerDidUpdateState: \(central.state.rawValue)")
+        TCLog.ble.info("[RFIDHub] centralManagerDidUpdateState: \(central.state.rawValue)")
         switch central.state {
         case .poweredOn:
             isPaired = (boundIdentifier != nil)
@@ -232,7 +232,7 @@ extension RFIDHubManager: @preconcurrency CBCentralManagerDelegate {
         }
         // Normal scan fallback: connect ONLY to the bound hub, ignore everyone else's.
         guard peripheral.identifier == boundIdentifier else {
-            print("[RFIDHub] Ignoring non-bound hub \(peripheral.identifier)")
+            TCLog.ble.info("[RFIDHub] Ignoring non-bound hub \(peripheral.identifier)")
             return
         }
         central.stopScan()
@@ -243,7 +243,7 @@ extension RFIDHubManager: @preconcurrency CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        print("[RFIDHub] Connected to bound hub")
+        TCLog.ble.info("[RFIDHub] Connected to bound hub")
         connectionState = .connected
         peripheral.delegate = self
         peripheral.discoverServices([Self.serviceUUID])
@@ -251,7 +251,7 @@ extension RFIDHubManager: @preconcurrency CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager,
                         didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        print("[RFIDHub] Disconnected — will reconnect to bound hub")
+        TCLog.ble.info("[RFIDHub] Disconnected — will reconnect to bound hub")
         self.peripheral = nil
         connectionState = .disconnected
         scheduleReconnect()
@@ -259,7 +259,7 @@ extension RFIDHubManager: @preconcurrency CBCentralManagerDelegate {
 
     func centralManager(_ central: CBCentralManager,
                         didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        print("[RFIDHub] Failed to connect: \(error?.localizedDescription ?? "unknown")")
+        TCLog.ble.error("[RFIDHub] Failed to connect: \(error?.localizedDescription ?? "unknown")")
         self.peripheral = nil
         connectionState = .disconnected
         scheduleReconnect()

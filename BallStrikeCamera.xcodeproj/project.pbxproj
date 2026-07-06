@@ -205,6 +205,7 @@
 		CAFE0000000000000000FC11 /* FlightArcModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FC10 /* FlightArcModel.swift */; };
 		F87102851E39D771471CCF94 /* BallStrikeCameraWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		LIVE00000000000000000001 /* LiveSimService.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000002 /* LiveSimService.swift */; };
+		CAFE00000000000000000121 /* TCLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000120 /* TCLog.swift */; };
 		LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000004 /* LiveSimCodeView.swift */; };
 		LIVE00000000000000000005 /* LiveSimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000006 /* LiveSimCameraScreen.swift */; };
 /* End PBXBuildFile section */
@@ -453,6 +454,7 @@
 		E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchConnectivityBridge.swift; sourceTree = "<group>"; };
 		E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000002 /* LiveSimService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimService.swift; sourceTree = "<group>"; };
+		CAFE00000000000000000120 /* TCLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCLog.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000004 /* LiveSimCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCodeView.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000006 /* LiveSimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCameraScreen.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -938,6 +940,7 @@
 				BF000007000000000000BLE1 /* RFIDHubManager.swift */,
 				BF000009000000000000CRS1 /* CrashReporter.swift */,
 				LIVE00000000000000000002 /* LiveSimService.swift */,
+				CAFE00000000000000000120 /* TCLog.swift */,
 				BF000007000000000000000A /* Golf */,
 			);
 			path = Services;
@@ -1287,6 +1290,7 @@
 				CAFE0000000000000000FA11 /* ShareSheet.swift in Sources */,
 				CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */,
 				LIVE00000000000000000001 /* LiveSimService.swift in Sources */,
+				CAFE00000000000000000121 /* TCLog.swift in Sources */,
 				LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */,
 				LIVE00000000000000000005 /* LiveSimCameraScreen.swift in Sources */,
 				CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */,
