@@ -1913,6 +1913,7 @@ function frame() {
   if (game.course) {
     game.course.updateFlag(game.time, game.wind.speed);
     game.course.updateWater(game.time, game.wind);
+    game.course.updateGrass?.(game.time);
 
     switch (game.state) {
       case 'FLYOVER':

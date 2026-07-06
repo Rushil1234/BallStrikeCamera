@@ -1350,6 +1350,98 @@ export function buildCourse(hole, assets) {
       }
     }
 
+    // ---------- 3D rough grass: instanced swaying tufts (GSPro step 2) ----------
+    if (visualZones.grass3d !== false && !hole.isRange) {
+      // tuft geometry: 3 thin bent blades, vertex-color gradient base->tip
+      const gPos = [], gCol = [], gIdx = [];
+      const baseC = new THREE.Color(0x2c4a22);
+      const tipC = new THREE.Color(0x628f41);
+      for (let bIdx = 0; bIdx < 3; bIdx++) {
+        const a = (bIdx / 3) * Math.PI * 2 + 0.5;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const w = 0.016, hgt = 0.26 + (bIdx % 3) * 0.05, bend = 0.06;
+        const o = gPos.length / 3;
+        gPos.push(-w * ca, 0, -w * sa,  w * ca, 0, w * sa,  bend * ca, hgt, bend * sa);
+        gCol.push(baseC.r, baseC.g, baseC.b,  baseC.r, baseC.g, baseC.b,  tipC.r, tipC.g, tipC.b);
+        gIdx.push(o, o + 1, o + 2);
+      }
+      const tuftGeo = new THREE.BufferGeometry();
+      tuftGeo.setAttribute('position', new THREE.Float32BufferAttribute(gPos, 3));
+      tuftGeo.setAttribute('color', new THREE.Float32BufferAttribute(gCol, 3));
+      tuftGeo.setIndex(gIdx);
+      tuftGeo.computeVertexNormals();
+
+      const grassMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
+      group.userData.grassMat = grassMat;
+      grassMat.userData.uniforms = { uTime: { value: 0 } };
+      grassMat.onBeforeCompile = (sh) => {
+        sh.uniforms.uTime = grassMat.userData.uniforms.uTime;
+        sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          {
+            float wx = instanceMatrix[3][0], wz = instanceMatrix[3][2];
+            float sway = sin(uTime * 1.6 + wx * 0.37 + wz * 0.29) * 0.05
+                       + sin(uTime * 3.1 + wx * 0.83) * 0.02;
+            transformed.x += sway * transformed.y * 4.0;
+            transformed.z += sway * 0.6 * transformed.y * 4.0;
+          }`
+        );
+      };
+
+      const MAX_TUFTS = 15000;
+      const gRng = makeRng(hole.seed * 31 + 7);
+      const hCache = new Map();
+      const cachedH = (x, z) => {
+        const k = ((x * 0.66) | 0) * 100000 + ((z * 0.66) | 0);
+        let v = hCache.get(k);
+        if (v === undefined) { v = heightAt(x, z); hCache.set(k, v); }
+        return v;
+      };
+      const mats = [];
+      const m4 = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const up = new THREE.Vector3(0, 1, 0);
+      const cols = [];
+      const cTmp = new THREE.Color();
+      for (let seg = 0; seg < path.length - 1 && mats.length < MAX_TUFTS; seg++) {
+        const a2 = path[seg], b2 = path[seg + 1];
+        const segLen = Math.hypot(b2.x - a2.x, b2.z - a2.z) || 1;
+        const dirX = (b2.x - a2.x) / segLen, dirZ = (b2.z - a2.z) / segLen;
+        const perpX = -dirZ, perpZ = dirX;
+        for (let d = 0; d < segLen && mats.length < MAX_TUFTS; d += 1.1) {
+        const cX = a2.x + dirX * d, cZ = a2.z + dirZ * d;
+        for (let k2 = 0; k2 < 4; k2++) {
+          if (mats.length >= MAX_TUFTS) break;
+          const side = gRng() < 0.5 ? -1 : 1;
+          const lat = fhw * 0.9 + gRng() * 42;
+          // denser just off the fairway, sparser deep
+          if (gRng() < (lat - fhw) / 55) continue;
+          const dx2 = cX + side * lat * perpX + (gRng() - 0.5) * 2;
+          const dz2 = cZ + side * lat * perpZ + (gRng() - 0.5) * 2;
+          const su = surfaceAt(dx2, dz2);
+          if (su === SURF.SAND || su === SURF.GREEN || su === SURF.TEE || su === SURF.WATER) continue;
+          const hh = cachedH(dx2, dz2);
+          if (hh < waterLevel + 0.2) continue;
+          q.setFromAxisAngle(up, gRng() * Math.PI * 2);
+          const sc = 0.8 + gRng() * 0.9;
+          m4.compose(new THREE.Vector3(dx2, hh, dz2), q, new THREE.Vector3(sc, sc * (0.85 + gRng() * 0.5), sc));
+          mats.push(m4.clone());
+          cTmp.setHSL(0.24 + gRng() * 0.03, 0.5, 0.32 + gRng() * 0.12);
+          cols.push(cTmp.clone());
+        }
+        }
+      }
+      if (mats.length) {
+        const tufts = new THREE.InstancedMesh(tuftGeo, grassMat, mats.length);
+        mats.forEach((m, i) => { tufts.setMatrixAt(i, m); tufts.setColorAt(i, cols[i]); });
+        tufts.instanceMatrix.needsUpdate = true;
+        if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
+        tufts.receiveShadow = true;
+        group.add(tufts);
+      }
+    }
+
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];
@@ -1895,6 +1987,7 @@ export function buildCourse(hole, assets) {
     conditions: hole.island?.conditions || null,
     pinPos, teePos: { x: tee.x, y: teeH, z: tee.z },
     pointAtAlong, pathInfo, isOB, updateFlag, updateWater, dispose,
+    updateGrass(t) { const gm = group?.userData?.grassMat; if (gm) gm.userData.uniforms.uTime.value = t; },
     greenGrid: group ? group.userData.greenGrid : null,
     bounds: { minX, maxX, minZ, maxZ },
     trees: spots.map(t => ({ x: t.x, z: t.z, h: t.h, s: t.s, isPine: t.kind <= 1 })),
