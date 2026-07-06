@@ -446,6 +446,8 @@ function applyAtmosphere(name) {
   scene.background = skyVariant(currentAtmo);
 }
 
+let matchConfig = null;
+
 // ---------- game state ----------
 
 const game = {
@@ -738,9 +740,12 @@ function startHole(idx) {
   if (idx === 0) {
     // Hot-seat match play: ?players=2..4&names=a,b,c — everyone plays each
     // hole in turn on the same screen (one launch monitor, GSPro style).
-    const nPlayers = Math.min(4, Math.max(1, parseInt(launchParams.get('players') || '1', 10) || 1));
+    const nPlayers = matchConfig?.n
+      ?? Math.min(4, Math.max(1, parseInt(launchParams.get('players') || '1', 10) || 1));
     if (nPlayers > 1) {
-      const names = (launchParams.get('names') || '').split(',').map((x) => x.trim()).filter(Boolean);
+      const names = matchConfig?.names?.length
+        ? matchConfig.names
+        : (launchParams.get('names') || '').split(',').map((x) => x.trim()).filter(Boolean);
       game.match = {
         n: nPlayers,
         idx: 0,
@@ -2081,6 +2086,10 @@ notifyParent('SIM_READY', {
 window.addEventListener('message', (e) => {
   // Play page tells the sim to start. Works from any state (course switching).
   if (e.data?.type === 'START_SIM') {
+    const np = parseInt(e.data.players, 10) || 1;
+    matchConfig = np > 1
+      ? { n: Math.min(4, np), names: Array.isArray(e.data.names) ? e.data.names : [] }
+      : null;
     assetsReady.then(() => {
       startCourseRound(e.data.courseId || activeCourse.courseId, e.data.holeIndex || 0);
     });

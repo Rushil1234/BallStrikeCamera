@@ -29,6 +29,8 @@ export default function PlayPage() {
   const [activeCourse, setActiveCourse] = useState<CourseOption | null>(null);
   const [copied, setCopied] = useState(false);
   const [showEndConfirm, setShowEndConfirm] = useState(false);
+  const [players, setPlayers] = useState(1);
+  const [names, setNames] = useState<string[]>(["", "", "", ""]);
   const hostRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -95,8 +97,13 @@ export default function PlayPage() {
   useEffect(() => {
     if (stage !== "launching" || !activeCourse || !simReady || !connected) return;
     const msgType = activeCourse.id === "range" ? "START_RANGE" : "START_SIM";
-    iframeRef.current?.contentWindow?.postMessage({ type: msgType, courseId: activeCourse.id }, window.location.origin);
-  }, [activeCourse, simReady, stage, connected]);
+    iframeRef.current?.contentWindow?.postMessage({
+      type: msgType,
+      courseId: activeCourse.id,
+      players,
+      names: names.slice(0, players).map((n, i) => n.trim() || `PLAYER ${i + 1}`),
+    }, window.location.origin);
+  }, [activeCourse, simReady, stage, connected, players, names]);
 
   // Safety net: never sit on the launch screen without a paired phone — the
   // round can't start, so fall back to the (gated) selector instead of hanging.
@@ -254,6 +261,34 @@ export default function PlayPage() {
                 <p>Course Select</p>
                 <span>{connected ? "Ready for live shots" : "🔒 Pair phone to unlock"}</span>
               </div>
+              <div className="sim-players-row" role="group" aria-label="Players">
+                <span className="sim-players-label">Players</span>
+                {[1, 2, 3, 4].map(n => (
+                  <button
+                    key={n}
+                    className={`sim-players-btn${players === n ? " active" : ""}`}
+                    onClick={() => setPlayers(n)}
+                    aria-pressed={players === n}
+                  >
+                    {n}
+                  </button>
+                ))}
+                {players > 1 && <span className="sim-players-hint">hot-seat match · everyone plays each hole</span>}
+              </div>
+              {players > 1 && (
+                <div className="sim-players-names">
+                  {Array.from({ length: players }, (_, i) => (
+                    <input
+                      key={i}
+                      aria-label={`Player ${i + 1} name`}
+                      placeholder={`Player ${i + 1}`}
+                      maxLength={12}
+                      value={names[i]}
+                      onChange={e => setNames(ns => ns.map((v, j) => (j === i ? e.target.value : v)))}
+                    />
+                  ))}
+                </div>
+              )}
               <div className="sim-course-list">
                 {COURSES.map(c => {
                   const locked = !c.disabled && !connected;
