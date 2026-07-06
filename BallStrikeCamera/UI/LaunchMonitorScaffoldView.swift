@@ -81,7 +81,7 @@ struct LaunchMonitorScaffoldView: View {
                                         HStack(spacing: 4) {
                                             Text("Count")
                                                 .font(.system(size: 10, weight: .semibold))
-                                                .foregroundColor(.white.opacity(0.6))
+                                                .foregroundColor(.white.opacity(0.88))
 
                                             Text("\(shotCount)")
                                                 .font(.system(size: 12, weight: .bold))
@@ -210,7 +210,7 @@ struct LaunchMonitorScaffoldView: View {
                         ProgressView().tint(.white).scaleEffect(1.4)
                         Text("Analyzing shot…")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.white.opacity(0.92))
                     }
                 }
                 .tcAppearance()
@@ -249,7 +249,7 @@ struct LaunchMonitorScaffoldView: View {
             HStack(spacing: 4) {
                 Text("Club")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.white.opacity(0.88))
 
                 Text(selectedClub)
                     .font(.system(size: 12, weight: .bold))
@@ -270,7 +270,7 @@ struct LaunchMonitorScaffoldView: View {
             if let par = context?.holePar {
                 Text("Par \(par)")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
+                    .foregroundColor(.white.opacity(0.92))
             }
             if let yd = context?.holeYardage {
                 Divider().frame(height: 12).overlay(Color.white.opacity(0.25))
@@ -280,15 +280,15 @@ struct LaunchMonitorScaffoldView: View {
                         .foregroundColor(Color(red: 0.55, green: 0.73, blue: 0.37))
                     Text("yd to pin")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.7))
+                        .foregroundColor(.white.opacity(0.92))
                 }
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
-        .background(Color.black.opacity(0.55))
+        .background(Color.black.opacity(0.8))
         .clipShape(Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1))
+        .overlay(Capsule().strokeBorder(.white.opacity(0.26), lineWidth: 1))
     }
 
     private func exportFrames() {
@@ -309,7 +309,7 @@ struct RangeOverlayPill<Content: View>: View {
         content
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.black.opacity(0.6))
+            .background(Color.black.opacity(0.82))
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 }
@@ -324,14 +324,14 @@ private struct HandPickerOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.45)
+            Color.black.opacity(0.76)
                 .ignoresSafeArea()
                 .onTapGesture(perform: onCancel)
 
             VStack(spacing: 14) {
                 Text("Hitting Hand")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white.opacity(0.75))
+                    .foregroundColor(.white.opacity(0.94))
 
                 HStack(spacing: 12) {
                     handButton("Righty", value: "R")
@@ -341,7 +341,7 @@ private struct HandPickerOverlay: View {
                 Button(action: onCancel) {
                     Text("Cancel")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.55))
+                        .foregroundColor(.white.opacity(0.85))
                 }
                 .buttonStyle(.plain)
             }
@@ -353,7 +353,7 @@ private struct HandPickerOverlay: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.22), lineWidth: 1)
             )
         }
         .transition(.opacity)

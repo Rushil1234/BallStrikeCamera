@@ -48,7 +48,7 @@ struct ShotResultView: View {
     static let rolloutColor  = Color(red: 0.02, green: 0.34, blue: 0.14)
     static let totalColor    = Color(red: 0.62, green: 1.00, blue: 0.48)
     static let metricValueColor = Color.white
-    static let metricLabelColor = Color.white.opacity(0.55)
+    static let metricLabelColor = Color.white.opacity(0.85)
 
     init(analysis: ShotAnalysisResult,
          context: ShotContext? = nil,
@@ -155,7 +155,7 @@ struct ShotResultView: View {
                             .frame(maxWidth: .infinity)
                             .layoutPriority(1)
 
-                            Rectangle().fill(Color.white.opacity(0.09)).frame(width: 1)
+                            Rectangle().fill(Color.white.opacity(0.22)).frame(width: 1)
 
                             // Right: satellite landing map (course) or abstract top-down grid (range)
                             if context?.sourceMode == .course, let ctx = context {
@@ -209,7 +209,7 @@ struct ShotResultView: View {
             HStack {
                 Text(context?.courseName ?? "Course")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.white.opacity(0.88))
                     .lineLimit(1)
                 Spacer()
                 if let hole = context?.holeNumber {
@@ -238,7 +238,7 @@ struct ShotResultView: View {
                 Text("TOTAL DISTANCE")
                     .font(.system(size: 10, weight: .bold))
                     .tracking(1.5)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.white.opacity(0.82))
             }
 
             // Carry / yd-to-pin / direction
@@ -276,7 +276,7 @@ struct ShotResultView: View {
 
             Button("Discard") { onDone() }
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.white.opacity(0.82))
                 .padding(.top, 14)
                 .padding(.bottom, 24)
         }
@@ -300,13 +300,13 @@ struct ShotResultView: View {
                 .lineLimit(1).minimumScaleFactor(0.6)
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.white.opacity(0.82))
         }
         .frame(maxWidth: .infinity)
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.1)).frame(width: 1, height: 32)
+        Rectangle().fill(Color.white.opacity(0.24)).frame(width: 1, height: 32)
     }
 
     /// Persist the shot, then hand it back so the course screen can animate the flight.
@@ -386,7 +386,7 @@ struct ShotResultView: View {
                 if let name = context?.courseName {
                     Text(name)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.70))
+                        .foregroundColor(.white.opacity(0.92))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
                 }
@@ -400,14 +400,14 @@ struct ShotResultView: View {
                 if let par = context?.holePar {
                     Text("Par \(par)")
                         .font(.system(size: 10))
-                        .foregroundColor(.white.opacity(0.50))
+                        .foregroundColor(.white.opacity(0.82))
                 }
             }
             .padding(.horizontal, 8)
             .padding(.top, 12)
             .padding(.bottom, 8)
 
-            Divider().background(Color.white.opacity(0.12))
+            Divider().background(Color.white.opacity(0.26))
 
             // Carry to par remaining
             VStack(spacing: 8) {
@@ -467,9 +467,9 @@ struct ShotResultView: View {
             if !animationFinished {
                 Button("Skip ›") { skipToEnd() }
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white.opacity(0.70))
+                    .foregroundColor(.white.opacity(0.92))
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.white.opacity(0.10))
+                    .background(Color.white.opacity(0.24))
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             }
             Button("GO BACK TO HITTING") { onDone() }
@@ -522,7 +522,7 @@ struct ShotResultView: View {
             metricRow("Total",   yds(m?.distance.totalYards))
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(Color.black.opacity(0.62))
+        .background(Color.black.opacity(0.82))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
@@ -656,11 +656,11 @@ struct ShotResultView: View {
                 var h = Path()
                 h.move(to: CGPoint(x: leftPad, y: tickY))
                 h.addLine(to: CGPoint(x: size.width - rightPad, y: tickY))
-                ctx.stroke(h, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
+                ctx.stroke(h, with: .color(Color.white.opacity(0.22)), lineWidth: 1)
             }
             let lbl = tickFt == 0 ? "0" : String(format: "%.0f ft", tickFt)
             ctx.draw(Text(lbl).font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.40)),
+                        .foregroundColor(Color.white.opacity(0.78)),
                      at: CGPoint(x: leftPad - 4, y: tickY), anchor: .trailing)
             tickFt += tickFtInt
         }
@@ -932,7 +932,7 @@ struct ShotResultView: View {
                 if arcFirst { arcPath.move(to: CGPoint(x: cx, y: cy)); arcFirst = false }
                 else { arcPath.addLine(to: CGPoint(x: cx, y: cy)) }
             }
-            ctx.stroke(arcPath, with: .color(Color.white.opacity(0.10)),
+            ctx.stroke(arcPath, with: .color(Color.white.opacity(0.24)),
                        style: StrokeStyle(lineWidth: 0.75, dash: [3, 5]))
             // Distance label at top of arc (off=0)
             ctx.draw(Text("\(Int(arcD))").font(.system(size: 7, design: .monospaced))
@@ -967,7 +967,7 @@ struct ShotResultView: View {
         ctx.stroke(cLine, with: .color(Color.white.opacity(0.22)),
                    style: StrokeStyle(lineWidth: 1.2, dash: [5, 7]))
         ctx.draw(Text("0").font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.40)),
+                    .foregroundColor(Color.white.opacity(0.78)),
                  at: CGPoint(x: originX, y: padTop + 4), anchor: .top)
 
         // Origin dot
@@ -989,7 +989,7 @@ struct ShotResultView: View {
             let pt = pathPt(Double(i) / Double(guideSteps))
             if guideFirst { guide.move(to: pt); guideFirst = false } else { guide.addLine(to: pt) }
         }
-        ctx.stroke(guide, with: .color(Color.white.opacity(0.08)),
+        ctx.stroke(guide, with: .color(Color.white.opacity(0.22)),
                    style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
 
         // Airborne path (cyan) — progressive
@@ -1122,7 +1122,7 @@ struct ShotResultView: View {
         while downFt <= maxDown + 0.01 {
             let y = py(downFt)
             var h = Path(); h.move(to: CGPoint(x: padH, y: y)); h.addLine(to: CGPoint(x: size.width - padH, y: y))
-            ctx.stroke(h, with: .color(Color.white.opacity(0.09)), lineWidth: 0.75)
+            ctx.stroke(h, with: .color(Color.white.opacity(0.22)), lineWidth: 0.75)
             ctx.draw(Text(String(format: "%.0f ft", downFt)).font(.system(size: 8, design: .monospaced))
                         .foregroundColor(Color.white.opacity(0.34)),
                      at: CGPoint(x: padH + 3, y: y), anchor: .leading)
@@ -1138,11 +1138,11 @@ struct ShotResultView: View {
                 guard x > padH && x < size.width - padH else { continue }
                 let isZero = offFt == 0
                 var v = Path(); v.move(to: CGPoint(x: x, y: padTop)); v.addLine(to: CGPoint(x: x, y: originY))
-                ctx.stroke(v, with: .color(isZero ? Color.white.opacity(0.55) : Color.white.opacity(0.10)),
+                ctx.stroke(v, with: .color(isZero ? Color.white.opacity(0.55) : Color.white.opacity(0.24)),
                            style: StrokeStyle(lineWidth: isZero ? 2.0 : 0.75))
                 let label = isZero ? "0°" : (sign < 0 ? "\(Int(offFt))in L" : "\(Int(offFt))in R")
                 ctx.draw(Text(label).font(.system(size: isZero ? 9 : 7, weight: isZero ? .bold : .regular, design: .monospaced))
-                            .foregroundColor(isZero ? Color.white.opacity(0.70) : Color.white.opacity(0.32)),
+                            .foregroundColor(isZero ? Color.white.opacity(0.92) : Color.white.opacity(0.32)),
                          at: CGPoint(x: x, y: originY + 4), anchor: .top)
             }
             offFt += offStep
@@ -1163,7 +1163,7 @@ struct ShotResultView: View {
             let pt = pathPt(Double(i) / Double(guideSteps))
             if guideFirst { guide.move(to: pt); guideFirst = false } else { guide.addLine(to: pt) }
         }
-        ctx.stroke(guide, with: .color(Color.white.opacity(0.10)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
+        ctx.stroke(guide, with: .color(Color.white.opacity(0.24)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
 
         if rp > 0.001 {
             let maxStep = max(1, Int(Double(guideSteps) * rp))

@@ -38,7 +38,7 @@ struct ReplayPlayerView: View {
                     } else if loaded {
                         Text("No replay frames")
                             .font(.system(size: 12))
-                            .foregroundColor(TCTheme.textMuted)
+                            .foregroundColor(.white.opacity(0.85))
                     } else {
                         ProgressView()
                     }
@@ -53,12 +53,12 @@ struct ReplayPlayerView: View {
                         .foregroundColor(TCTheme.gold)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
-                        .background(Color.black.opacity(0.55))
+                        .background(Color.black.opacity(0.8))
                         .clipShape(Capsule())
                         .padding(8)
                 }
             }
-            .background(Color.black.opacity(0.35))
+            .background(Color.black.opacity(0.72))
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .contentShape(Rectangle())
             .onTapGesture { playing.toggle() }
@@ -80,7 +80,7 @@ struct ReplayPlayerView: View {
 
                     Text("\(Int(index) + 1)/\(frames.count)")
                         .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                        .foregroundColor(TCTheme.textMuted)
+                        .foregroundColor(.white.opacity(0.85))
                         .frame(minWidth: 44, alignment: .trailing)
                 }
             }

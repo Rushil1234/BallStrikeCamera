@@ -48,7 +48,7 @@ struct CompactMetricsBarView: View {
         VStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.white.opacity(0.82))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
 
@@ -62,7 +62,7 @@ struct CompactMetricsBarView: View {
                 if !unit.isEmpty {
                     Text(unit)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.white.opacity(0.78))
                 }
             }
         }
@@ -71,7 +71,7 @@ struct CompactMetricsBarView: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.1))
+            .fill(Color.white.opacity(0.24))
             .frame(width: 1, height: 30)
     }
 }
