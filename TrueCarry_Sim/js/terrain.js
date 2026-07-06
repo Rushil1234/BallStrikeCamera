@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-4';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-4';
-import { makeFbm, makeRng } from './noise.js?v=gspro-4';
-import { SURF } from './physics.js?v=gspro-4';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-5';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-5';
+import { makeFbm, makeRng } from './noise.js?v=gspro-5';
+import { SURF } from './physics.js?v=gspro-5';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -1001,8 +1001,9 @@ export function buildCourse(hole, assets) {
           tmp.copy(C.rough).lerp(C.deep, t);
           sr = 1;
           // Hills read as hills: steep banks dry out and crests catch light.
-          const gx = heightAt(x + 1.6, z) - h;
-          const gz2 = heightAt(x, z + 1.6) - h;
+          const _e0 = elevationAtWorld(elevation, x, z);
+          const gx = _e0 == null ? 0 : (elevationAtWorld(elevation, x + 1.6, z) ?? _e0) - _e0;
+          const gz2 = _e0 == null ? 0 : (elevationAtWorld(elevation, x, z + 1.6) ?? _e0) - _e0;
           const slope = Math.min(1, Math.hypot(gx, gz2) * 0.9);
           if (slope > 0.12) {
             tmp.lerp(_dryBank, Math.min(0.4, (slope - 0.12) * 0.75));
