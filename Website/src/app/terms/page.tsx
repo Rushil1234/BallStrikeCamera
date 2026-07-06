@@ -56,7 +56,7 @@ export default function TermsPage() {
           <p>
             We may update these terms; material changes will be announced in the app or by
             email. Continued use after changes means acceptance. Questions:
-            {" "}<a href="mailto:support@truecarry.app">support@truecarry.app</a>.
+            {" "}<a href="mailto:rushil@truecarrygolf.com">rushil@truecarrygolf.com</a>.
           </p>
         </div>
       </main>

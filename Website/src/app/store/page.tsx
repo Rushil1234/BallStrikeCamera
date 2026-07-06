@@ -99,7 +99,7 @@ export default function StorePage() {
                   ) : (
                     <a
                       className="product-cta ghost"
-                      href={`mailto:store@truecarry.app?subject=Notify%20me%20—%20${encodeURIComponent(p.name)}`}
+                      href={`mailto:rushil@truecarrygolf.com?subject=Notify%20me%20—%20${encodeURIComponent(p.name)}`}
                     >
                       Notify me
                     </a>

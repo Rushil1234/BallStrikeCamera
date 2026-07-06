@@ -50,7 +50,7 @@ export default function PrivacyPage() {
             Cloud data is stored with Supabase (Postgres, row-level security scoped to your
             account). Media uploads live in Supabase Storage. Referral rewards are tracked by
             invite code. You can request deletion of your account and all associated data at
-            any time via <a href="mailto:support@truecarry.app">support@truecarry.app</a>.
+            any time via <a href="mailto:rushil@truecarrygolf.com">rushil@truecarrygolf.com</a>.
           </p>
           <h2>Sharing</h2>
           <p>
@@ -60,7 +60,7 @@ export default function PrivacyPage() {
           </p>
           <h2>Contact</h2>
           <p>
-            Questions about this policy: <a href="mailto:support@truecarry.app">support@truecarry.app</a>.
+            Questions about this policy: <a href="mailto:rushil@truecarrygolf.com">rushil@truecarrygolf.com</a>.
           </p>
         </div>
       </main>
@@ -77,7 +77,7 @@ export default function PrivacyPage() {
         </ul>
         <p>
           Questions or requests we haven&apos;t automated yet: email{" "}
-          <a href="mailto:privacy@truecarry.app">privacy@truecarry.app</a> — we respond within 30 days.
+          <a href="mailto:rushil@truecarrygolf.com">rushil@truecarrygolf.com</a> — we respond within 30 days.
         </p>
       </section>
       <SiteFooter />
