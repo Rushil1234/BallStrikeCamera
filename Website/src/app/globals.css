@@ -2392,3 +2392,16 @@ button.plan-cta { font: inherit; cursor: pointer; width: 100%; border: none; }
 .watch-note{ margin-top:26px; font-size:13px; color:rgba(236,228,210,.5); max-width:60ch; }
 .sim-pairing-watch{ display:inline-block; margin-top:10px; font-size:13px; color:var(--carry-gold,#c9a86a); text-decoration:none; letter-spacing:.04em; }
 .sim-pairing-watch:hover{ text-decoration:underline; }
+
+/* ---------- privacy rights + billing disclosure ---------- */
+.account-privacy-card h2{ margin-bottom:8px; }
+.account-privacy-copy{ color:rgba(236,228,210,.75); max-width:62ch; margin-bottom:14px; }
+.account-privacy-actions{ display:flex; gap:12px; flex-wrap:wrap; }
+.btn-danger{ background:transparent; border:1px solid rgba(220,110,90,.6); color:#e8a292; padding:10px 18px; border-radius:10px; cursor:pointer; }
+.btn-danger:hover{ background:rgba(220,110,90,.12); }
+.locker-link-btn{ background:none; border:0; color:rgba(236,228,210,.7); text-decoration:underline; cursor:pointer; padding:4px 0; font-size:14px; }
+.account-renewal-note{ display:block; font-size:12.5px; color:rgba(236,228,210,.6); max-width:44ch; margin-top:6px; }
+.pricing-disclosure{ max-width:760px; margin:24px auto 56px; padding:22px 26px; border:1px solid rgba(236,228,210,.15); border-radius:14px; background:rgba(236,228,210,.04); }
+.pricing-disclosure h2{ font-size:18px; margin-bottom:10px; }
+.pricing-disclosure p{ color:rgba(236,228,210,.78); margin-bottom:10px; font-size:14.5px; line-height:1.55; }
+.pricing-disclosure a{ color:var(--carry-gold,#c9a86a); }

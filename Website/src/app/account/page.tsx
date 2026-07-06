@@ -70,6 +70,51 @@ export default function AccountPage() {
     });
   }, [loadAccount]);
 
+  const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleExportData() {
+    setError(null);
+    setExporting(true);
+    try {
+      const { data, error: rpcErr } = await supabase.rpc("export_my_data");
+      if (rpcErr) throw rpcErr;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "truecarry-data-export.json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    if (!window.confirm(
+      "Delete your TrueCarry account and ALL data (sessions, shots, bag, billing profile)? This cannot be undone."
+    )) return;
+    setError(null);
+    setDeleting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not signed in");
+      const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const res = await fetch(`${base}/functions/v1/delete-account`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) throw new Error(`Deletion failed (${res.status})`);
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Deletion failed");
+      setDeleting(false);
+    }
+  }
+
   async function handleManageBilling() {
     setError(null);
     setPortalLoading(true);
@@ -190,9 +235,18 @@ export default function AccountPage() {
                 : "Billing status syncs after checkout completes."}
             </span>
             {premium ? (
-              <button className="btn btn-outline" onClick={handleManageBilling} disabled={portalLoading}>
-                {portalLoading ? "Opening..." : "Manage Billing"}
-              </button>
+              <>
+                <button className="btn btn-outline" onClick={handleManageBilling} disabled={portalLoading}>
+                  {portalLoading ? "Opening..." : "Manage Billing"}
+                </button>
+                <button className="locker-link-btn" onClick={handleManageBilling} disabled={portalLoading}>
+                  Cancel subscription
+                </button>
+                <span className="account-renewal-note">
+                  Your plan renews automatically until you cancel. Cancel anytime — you keep
+                  access through the end of the paid period, no fees.
+                </span>
+              </>
             ) : (
               <button className="btn btn-gold" onClick={handleUpgrade} disabled={checkoutLoading}>
                 {checkoutLoading ? "Preparing checkout..." : "Upgrade to Premium"}
@@ -204,6 +258,24 @@ export default function AccountPage() {
         {error && <p className="error-msg account-error">{error}</p>}
 
         {user && <ReferralCard userId={user.id} />}
+
+        {user && (
+          <section className="card account-privacy-card" aria-labelledby="privacy-rights-h">
+            <h2 id="privacy-rights-h">Privacy &amp; your data</h2>
+            <p className="account-privacy-copy">
+              Your data belongs to you. Export everything we hold, or delete your account
+              and all of it — no email required, effective immediately.
+            </p>
+            <div className="account-privacy-actions">
+              <button className="btn btn-outline" onClick={handleExportData} disabled={exporting}>
+                {exporting ? "Preparing..." : "Download my data"}
+              </button>
+              <button className="btn btn-danger" onClick={handleDeleteAccount} disabled={deleting}>
+                {deleting ? "Deleting..." : "Delete my account"}
+              </button>
+            </div>
+          </section>
+        )}
 
         {dashboard && user ? (
           <LockerDashboard

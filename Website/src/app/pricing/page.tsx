@@ -44,6 +44,20 @@ export default function PricingPage() {
           prices stay this low. Referral rewards stack as complimentary Pro time.
         </p>
       </main>
+            <section className="pricing-disclosure" aria-label="Subscription terms">
+        <h2>Auto-renewal &amp; cancellation</h2>
+        <p>
+          Paid plans <strong>renew automatically</strong> at the then-current price — monthly
+          plans every month, annual plans every year — until you cancel. We&apos;ll charge the
+          payment method on file at each renewal.
+        </p>
+        <p>
+          <strong>Cancel anytime</strong> in <a href="/account">Account → Manage Billing</a> (two
+          clicks, no phone call, no chat queue). Cancellation takes effect at the end of the
+          current billing period and you keep full access until then. See the{" "}
+          <a href="/terms">Terms</a> for details.
+        </p>
+      </section>
       <SiteFooter />
 
       {checkoutTier && (

@@ -64,6 +64,22 @@ export default function PrivacyPage() {
           </p>
         </div>
       </main>
+            <section className="legal-section" aria-labelledby="your-rights-h">
+        <h2 id="your-rights-h">Your rights over your data</h2>
+        <p>
+          Wherever you live, we honor these rights for everyone:
+        </p>
+        <ul>
+          <li><strong>Access &amp; portability</strong> — download a complete JSON export of your data, self-serve, from <a href="/account">your account</a>.</li>
+          <li><strong>Deletion</strong> — delete your account and all associated data (sessions, shots, bag, billing profile) from <a href="/account">your account</a>, effective immediately. Backups age out within 30 days.</li>
+          <li><strong>Correction</strong> — edit your profile and bag directly in the app or the locker.</li>
+          <li><strong>No sale of personal data</strong> — we don&apos;t sell it or share it for cross-context advertising.</li>
+        </ul>
+        <p>
+          Questions or requests we haven&apos;t automated yet: email{" "}
+          <a href="mailto:privacy@truecarry.app">privacy@truecarry.app</a> — we respond within 30 days.
+        </p>
+      </section>
       <SiteFooter />
     </>
   );
