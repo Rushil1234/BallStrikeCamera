@@ -56,7 +56,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body>
-        {children}
+        <a href="#main-content" className="skip-link">Skip to main content</a>
+        <div id="main-content">{children}</div>
       </body>
     </html>
   );

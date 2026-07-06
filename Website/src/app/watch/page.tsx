@@ -87,6 +87,7 @@ function WatchInner() {
             >
               <input
                 inputMode="numeric"
+                aria-label="Session code"
                 placeholder="Session code"
                 value={input}
                 onChange={(e) => setInput(e.target.value.replace(/\D/g, "").slice(0, 10))}

@@ -2405,3 +2405,17 @@ button.plan-cta { font: inherit; cursor: pointer; width: 100%; border: none; }
 .pricing-disclosure h2{ font-size:18px; margin-bottom:10px; }
 .pricing-disclosure p{ color:rgba(236,228,210,.78); margin-bottom:10px; font-size:14.5px; line-height:1.55; }
 .pricing-disclosure a{ color:var(--carry-gold,#c9a86a); }
+
+/* ---------- accessibility: skip link, focus rings, reduced motion ---------- */
+.skip-link{ position:absolute; left:-9999px; top:0; z-index:9999; background:var(--carry-gold,#c9a86a); color:#16201a; padding:10px 18px; border-radius:0 0 10px 0; font-weight:700; }
+.skip-link:focus{ left:0; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible{
+  outline:2px solid var(--carry-gold,#c9a86a); outline-offset:2px; border-radius:4px;
+}
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important; scroll-behavior:auto !important;
+  }
+}

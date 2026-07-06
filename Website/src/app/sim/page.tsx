@@ -71,7 +71,7 @@ function SimContent() {
             }}
           >
             <input
-              ref={inputRef}
+aria-label="Pairing code"               ref={inputRef}
               className="sim-code-input"
               type="text"
               inputMode="numeric"
