@@ -33,7 +33,18 @@ export const LOCAL_COURSES = [
     courseName: 'Pine Hollow National',
     sub: 'Built-in routed island course',
     holes: HOLES,
-    world: { profile: 'island' },
+    world: {
+      profile: 'island',
+      // Carolina parkland setup: mixed pine/hardwood corridors, deeper
+      // greens-and-olive palette (the pale defaults bloomed to milk).
+      conditions: { stimp: 10, firmness: 0.95, gustiness: 0.2 },
+      visualZones: {
+        roughColor: 0x55693c,
+        deepColor: 0x475a33,
+        sandColor: 0xe2d7b8,
+        forest: { pineShare: 0.55, scaleMin: 0.8, scaleRange: 0.5 },
+      },
+    },
     local: true,
   },
   {
@@ -47,6 +58,16 @@ export const LOCAL_COURSES = [
       ...PEBBLE_OSM_WORLD,
       ...PEBBLE_WORLD_REALISM,
       elevation: PEBBLE_ELEVATION,
+      // Monterey golden hour: dry coastal scrub beyond the corridors, low
+      // dune mounding, richer turf tones over the generated zones.
+      visualZones: {
+        ...(PEBBLE_WORLD_REALISM.visualZones || {}),
+        roughColor: 0x5d7040,
+        deepColor: 0x4b5b36,
+        sandColor: 0xe6ddc4,
+        dunes: { amp: 0.9, freq: 0.028 },
+        forestFloor: { color: 0xa89a6e, start: 16 },
+      },
     },
     local: true,
   },

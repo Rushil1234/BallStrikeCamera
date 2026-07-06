@@ -260,6 +260,13 @@ export const HOLES = [
 // Driving range: longer practice field with multiple target greens.
 export const RANGE = {
   id: 0, name: 'RANGE', par: null, seed: 9999, isRange: true,
+  island: {
+    visualZones: {
+      roughColor: 0x55693c,
+      deepColor: 0x475a33,
+      sandColor: 0xe2d7b8,
+    },
+  },
   path: [{ x: 0, z: 0 }, { x: 0, z: 430 }],
   fairwayHalf: 115,
   obMargin: 9999,

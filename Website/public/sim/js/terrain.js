@@ -101,6 +101,8 @@ function elevationAtWorld(elevation, x, z) {
 function splatMaterial(assets) {
   const g = assets.ground;
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1.0, metalness: 0 });
+  // Grazing-angle sky reflection was washing open fairways to milk.
+  mat.envMapIntensity = 0.22;
   mat.envMapIntensity = 0.3;   // tame grazing-angle sky reflection washout
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, {

@@ -60,7 +60,7 @@ try {
   sao.params.saoKernelRadius = 18;
   sao.params.saoBlur = true;
   composer.addPass(sao);
-  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.22, 0.5, 0.88);
+  const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.16, 0.35, 0.97);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 } catch (err) {
@@ -648,13 +648,17 @@ function switchActivePlayer(idx, name) {
   hud.setPlayer(incoming.name);
 }
 
-function startHole(idx) {
-  pitchMarks.clear();
+function dismissBoot() {
   const boot = document.getElementById('boot-overlay');
   if (boot && !boot.classList.contains('done')) {
     boot.classList.add('done');
     setTimeout(() => boot.remove(), 600);
   }
+}
+
+function startHole(idx) {
+  pitchMarks.clear();
+  dismissBoot();
   applyAtmosphere(courseHoles[idx]?.island?.visualZones?.atmosphere || activeCourse?.world?.atmosphere || 'sunny');
   SFX.setAmbience({
     windMph: (game.wind?.speed || 2) * 2.237,
@@ -1343,6 +1347,7 @@ function addRangeFlag(x, z, color = 0xf2e6c9) {
 }
 
 function startRange() {
+  dismissBoot();
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = true;
   resetRangeStats();
