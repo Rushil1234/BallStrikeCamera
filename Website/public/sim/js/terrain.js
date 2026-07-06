@@ -843,6 +843,7 @@ export function buildCourse(hole, assets) {
   let group = null;
   let updateFlag = () => {};
   let updateWater = () => {};
+  const flatWaters = [];
   let oceanMesh = null;
   let spots = [];
 
@@ -1190,13 +1191,18 @@ export function buildCourse(hole, assets) {
       }
       if (waters.length >= 1 || w.type === 'channel') {
         // cheap non-reflective plate: dark, slightly glossy, no scene re-render
+        const flatNorm = assets.waterN.clone();
+        flatNorm.wrapS = flatNorm.wrapT = THREE.RepeatWrapping;
+        flatNorm.repeat.set(sx / 18, sz / 18);
         const flat = new THREE.Mesh(
           new THREE.PlaneGeometry(sx, sz),
           new THREE.MeshStandardMaterial({
             color: new THREE.Color(visualZones.waterColor ?? 0x0e3526).multiplyScalar(0.7),
-            roughness: 0.18, metalness: 0.05, envMapIntensity: 0.5,
+            roughness: 0.14, metalness: 0.05, envMapIntensity: 0.7,
+            normalMap: flatNorm, normalScale: new THREE.Vector2(0.55, 0.55),
           }),
         );
+        flatWaters.push(flatNorm);
         flat.rotation.x = -Math.PI / 2;
         flat.position.set(cx, waterLevel, cz);
         group.add(flat);
@@ -1287,7 +1293,11 @@ export function buildCourse(hole, assets) {
     // frame-rate hit and the "grey warehouse" look.
     if ((visualZones.buildings || []).length) {
       const blds = visualZones.buildings.filter((b) =>
-        b.x >= minX - 60 && b.x <= maxX + 60 && b.z >= minZ - 60 && b.z <= maxZ + 60);
+        [b.x, b.z, b.w, b.d, b.h].every(Number.isFinite)
+        && b.x >= minX - 60 && b.x <= maxX + 60 && b.z >= minZ - 60 && b.z <= maxZ + 60
+        // never inside the playing corridor — an OSM footprint mapped over
+        // the tee put the camera INSIDE a roof (sky went black)
+        && distToPolyline(path, b.x, b.z).dist > fhw + Math.max(b.w, b.d) * 0.6 + 6);
       if (blds.length) {
         const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
         const roofGeo = new THREE.CylinderGeometry(0.02, 0.72, 1, 4, 1);
@@ -1304,12 +1314,12 @@ export function buildCourse(hole, assets) {
           const w2 = Math.min(46, b.w), d2 = Math.min(46, b.d);
           const gy = heightAt(b.x, b.z);
           const bodyH = Math.min(13, Math.max(3.5, b.h * 0.72));
-          q.setFromAxisAngle(up, b.rot || 0);
+          q.setFromAxisAngle(up, Number.isFinite(b.rot) ? b.rot : 0);
           m4.compose(new THREE.Vector3(b.x, gy + bodyH / 2, b.z), q, new THREE.Vector3(w2, bodyH, d2));
           bodies.setMatrixAt(i, m4);
           bodies.setColorAt(i, col.setHex(facades[i % facades.length]));
           const roofH = Math.min(4.5, Math.max(1.2, b.h * 0.26));
-          q.setFromAxisAngle(up, (b.rot || 0) + Math.PI / 4);
+          q.setFromAxisAngle(up, (Number.isFinite(b.rot) ? b.rot : 0) + Math.PI / 4);
           m4.compose(new THREE.Vector3(b.x, gy + bodyH + roofH / 2, b.z), q, new THREE.Vector3(w2 * 1.02, roofH, d2 * 1.02));
           roofs.setMatrixAt(i, m4);
         });
@@ -1784,6 +1794,7 @@ export function buildCourse(hole, assets) {
     updateWater = (t, wind) => {
       if (oceanMesh) oceanMesh.material.uniforms.time.value = t * 0.35;
       for (const w of waters) w.material.uniforms.time.value = t * 0.5;
+      for (const fn of flatWaters) { fn.offset.x = t * 0.008; fn.offset.y = t * 0.011; }
       const sh = terrain.material.userData.shader;
       if (sh) {
         sh.uniforms.uTime.value = t;

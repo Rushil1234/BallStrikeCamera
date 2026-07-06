@@ -137,6 +137,27 @@ const ball = new THREE.Mesh(
 );
 ball.castShadow = true;
 
+// Contact shadow: soft dark disc under the ball — grounds it visually far
+// better than the 4096 shadow map can at ball scale.
+const ballAO = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const c2 = cv.getContext('2d');
+  const g = c2.createRadialGradient(32, 32, 2, 32, 32, 30);
+  g.addColorStop(0, 'rgba(0,0,0,0.5)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  c2.fillStyle = g;
+  c2.fillRect(0, 0, 64, 64);
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false }),
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.renderOrder = 2;
+  return m;
+})();
+scene.add(ballAO);
+
 // Instant replay: ghost ball that re-flies the recorded flight path while a
 // side-on broadcast camera tracks it. Toggled with R after any shot.
 const replayBall = new THREE.Mesh(
@@ -360,9 +381,47 @@ scene.add(ring);
 // ---------- atmosphere presets (per-course, G to cycle) ----------
 const ATMOSPHERES = {
   sunny:    { exposure: 1.0,  fog: [0xd2dee8, 430, 2600], sun: [0xfff1d8, 2.0],  hemi: 0.62, bg: 1.0,  env: 0.55 },
-  overcast: { exposure: 0.9,  fog: [0xb9c2c9, 290, 1800], sun: [0xdfe4e8, 0.85], hemi: 0.9,  bg: 0.48, env: 0.3  },
+  overcast: { exposure: 0.9,  fog: [0xb9c2c9, 290, 1800], sun: [0xdfe4e8, 1.1],  hemi: 1.0,  bg: 0.62, env: 0.3  },
   golden:   { exposure: 1.06, fog: [0xe6d5ba, 380, 2300], sun: [0xffd9a0, 1.75], hemi: 0.5,  bg: 0.92, env: 0.5  },
 };
+const _skyVariants = { sunny: null };
+function skyVariant(name) {
+  // Lazily bake grey/warm versions of the sunny panorama so overcast light
+  // doesn't sit under a blue postcard sky.
+  if (name === 'sunny') return assets.skyBg;
+  if (_skyVariants[name]) return _skyVariants[name];
+  const src = assets.skyBg.image;
+  if (!src?.width) return assets.skyBg;
+  const cv = document.createElement('canvas');
+  cv.width = src.width; cv.height = src.height;
+  const c2 = cv.getContext('2d');
+  c2.filter = name === 'overcast'
+    ? 'saturate(0.22) brightness(0.92) contrast(0.9)'
+    : 'saturate(1.2) brightness(0.97) sepia(0.25)';
+  c2.drawImage(src, 0, 0);
+  c2.filter = 'none';
+  const grad = c2.createLinearGradient(0, 0, 0, cv.height);
+  if (name === 'overcast') {
+    // the pano's zenith is deep blue; desaturation turns it black, so the
+    // grey lid must be near-opaque up top
+    grad.addColorStop(0, 'rgba(158,165,172,0.96)');
+    grad.addColorStop(0.35, 'rgba(168,174,180,0.7)');
+    grad.addColorStop(0.6, 'rgba(180,186,191,0.3)');
+    grad.addColorStop(1, 'rgba(180,186,191,0)');
+  } else {
+    grad.addColorStop(0, 'rgba(255,196,120,0.18)');
+    grad.addColorStop(0.6, 'rgba(255,170,90,0.28)');
+    grad.addColorStop(1, 'rgba(255,150,80,0)');
+  }
+  c2.fillStyle = grad;
+  c2.fillRect(0, 0, cv.width, cv.height);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _skyVariants[name] = tex;
+  return tex;
+}
+
 const ATMO_ORDER = ['sunny', 'overcast', 'golden'];
 let currentAtmo = 'sunny';
 function applyAtmosphere(name) {
@@ -381,6 +440,7 @@ function applyAtmosphere(name) {
   }
   scene.backgroundIntensity = a.bg;
   scene.environmentIntensity = a.env;
+  scene.background = skyVariant(currentAtmo);
 }
 
 // ---------- game state ----------
@@ -1914,6 +1974,14 @@ function frame() {
     game.course.updateFlag(game.time, game.wind.speed);
     game.course.updateWater(game.time, game.wind);
     game.course.updateGrass?.(game.time);
+    if (ball.visible && game.course) {
+      const bh = Math.max(0, ball.position.y - game.course.heightAt(ball.position.x, ball.position.z));
+      ballAO.visible = bh < 6;
+      const sc = 0.09 + bh * 0.16;
+      ballAO.scale.set(sc, sc, sc);
+      ballAO.material.opacity = Math.max(0.12, 0.85 - bh * 0.22);
+      ballAO.position.set(ball.position.x, ball.position.y - bh + 0.012, ball.position.z);
+    } else ballAO.visible = false;
 
     switch (game.state) {
       case 'FLYOVER':
