@@ -658,7 +658,25 @@ function startHole(idx) {
   game.isRange = false;
   rangePanel?.classList.add('hidden');
   document.getElementById('range-pill')?.classList.add('hidden');
-  if (idx === 0) game.scores = courseHoles.map(() => null);
+  if (idx === 0) {
+    // Hot-seat match play: ?players=2..4&names=a,b,c — everyone plays each
+    // hole in turn on the same screen (one launch monitor, GSPro style).
+    const nPlayers = Math.min(4, Math.max(1, parseInt(launchParams.get('players') || '1', 10) || 1));
+    if (nPlayers > 1) {
+      const names = (launchParams.get('names') || '').split(',').map((x) => x.trim()).filter(Boolean);
+      game.match = {
+        n: nPlayers,
+        idx: 0,
+        names: Array.from({ length: nPlayers }, (_, i) => names[i] || `PLAYER ${i + 1}`),
+        scores: Array.from({ length: nPlayers }, () => courseHoles.map(() => null)),
+      };
+      game.scores = game.match.scores[0];
+    } else {
+      game.match = null;
+      game.scores = courseHoles.map(() => null);
+    }
+  }
+  if (game.match && idx > 0) game.scores = game.match.scores[game.match.idx];
   if (game.course) {
     scene.remove(game.course.group);
     game.course.dispose();
@@ -1124,8 +1142,49 @@ function resolveShot() {
   });
 }
 
+
+// ---------- hot-seat match play ----------
+
+function matchStatusText() {
+  const m = game.match;
+  if (!m) return '';
+  if (m.n === 2) {
+    let a = 0, b = 0;
+    for (let h = 0; h < courseHoles.length; h++) {
+      const sa = m.scores[0][h], sb = m.scores[1][h];
+      if (sa == null || sb == null) continue;
+      if (sa < sb) a++; else if (sb < sa) b++;
+    }
+    if (a === b) return 'MATCH TIED';
+    return a > b ? `${m.names[0]} ${a - b}UP` : `${m.names[1]} ${b - a}UP`;
+  }
+  // 3-4 players: running stroke totals
+  return m.names.map((nm, i) => {
+    const t = m.scores[i].reduce((acc, v) => acc + (v ?? 0), 0);
+    return `${nm} ${t}`;
+  }).join(' · ');
+}
+
+function reTeeNextPlayer() {
+  const m = game.match;
+  m.idx += 1;
+  game.scores = m.scores[m.idx];
+  game.strokes = 0;
+  const t = game.course.teePos;
+  game.ballPos = { x: t.x, y: t.y + 0.0214, z: t.z };
+  game.lie = SURF.TEE;
+  game.shotStart = { ...game.ballPos };
+  tracerCount = 0;
+  tracerGeo.setDrawRange(0, 0);
+  ball.visible = true;
+  hud.toastHide();
+  hud.toast(`<span class="t-gold">${m.names[m.idx]}</span><span class="t-sub">ON THE TEE · ${matchStatusText()}</span>`, 3000);
+  setupShot();
+}
+
 function nextHole() {
   hud.toastHide();
+  if (game.match) game.scores = game.match.scores[0];
   if (game.holeIdx + 1 < courseHoles.length) {
     startHole(game.holeIdx + 1);
   } else {
@@ -1856,7 +1915,18 @@ function frame() {
         break;
       case 'HOLE_DONE':
         game.doneTimer += frameDt;
-        if (game.doneTimer > 3.0) nextHole();
+        if (game.doneTimer > 3.0) {
+          if (game.match && game.match.idx < game.match.n - 1) {
+            game.state = 'AIM';
+            reTeeNextPlayer();
+          } else {
+            if (game.match) {
+              game.match.idx = 0;
+              hud.toast(`<span class="t-gold">${matchStatusText()}</span>`, 2600);
+            }
+            nextHole();
+          }
+        }
         break;
       case 'REPLAY':
         updateReplay();
