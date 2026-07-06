@@ -331,7 +331,10 @@ function tracerRepaint() {
     }
     _tv.right.normalize();
     // Screen-proportional width (like a TV tracer): slim tail, comet head.
-    const w = Math.min(2.2, Math.max(0.04, dist * (0.0022 + 0.0055 * t * t))) * tracerHf[i];
+    // Thin pro-tracer: distance keeps it visible from tower/aerial cams but
+    // the cap stops it becoming a white road when viewed along the flight
+    // line from the chase camera.
+    const w = Math.min(0.85, Math.max(0.035, dist * (0.0012 + 0.0028 * t * t))) * tracerHf[i];
     const gk = 0.22 + 0.78 * t * t;   // dim gold tail -> near-white head
     for (let sdx = 0; sdx < 2; sdx++) {
       const v = i * 2 + sdx;

@@ -269,7 +269,7 @@ function bakeCanopyAO(geo) {
   for (let i = 0; i < pos.count; i++) {
     const dx = pos.getX(i) - c.x, dy = pos.getY(i) - c.y, dz = pos.getZ(i) - c.z;
     const r = Math.min(1, Math.hypot(dx, dy, dz) / maxR);
-    const v = 0.58 + 0.42 * r;
+    const v = 0.74 + 0.26 * r;   // 0.58 floor read as burnt-black against the sun
     col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
