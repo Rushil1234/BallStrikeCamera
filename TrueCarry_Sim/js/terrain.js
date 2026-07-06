@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-5';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-5';
-import { makeFbm, makeRng } from './noise.js?v=gspro-5';
-import { SURF } from './physics.js?v=gspro-5';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-6';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-6';
+import { makeFbm, makeRng } from './noise.js?v=gspro-6';
+import { SURF } from './physics.js?v=gspro-6';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -1700,34 +1700,51 @@ export function buildCourse(hole, assets) {
       setInstances(im, mine, false);
     }
 
-    // ---------- backdrop tree line (the HDRI supplies the far horizon) ----------
-    // unlit + vertex gradient: lit Lambert showed its backfaces as a black
-    // wall; an unlit hazy gradient reads as distant forest instead
+    // ---------- layered horizon: distant ridgelines with atmospheric depth ----------
+    // Three concentric silhouette rings — near treeline, mid hills, far
+    // mountains — each taller, hazier, bluer. This is what makes a course sit
+    // in a real landscape instead of behind a flat band (GSPro look).
     const ccx = (minX + maxX) / 2, ccz = (minZ + maxZ) / 2;
     const fbmBack = makeFbm(hole.seed + 77, 3);
-    {
-      const radius = Math.max(maxX - ccx, maxZ - ccz) + 170;
-      const rgeo = new THREE.CylinderGeometry(radius, radius, 1, 140, 1, true);
-      const rpos = rgeo.attributes.position;
-      const rcol = new Float32Array(rpos.count * 3);
-      const lo = new THREE.Color(0x2f4d28);
-      const hi = new THREE.Color(0x5d7a55).lerp(new THREE.Color(0xaebfd0), 0.45);
-      for (let i = 0; i < rpos.count; i++) {
-        const x = rpos.getX(i), z = rpos.getZ(i);
-        const top = rpos.getY(i) > 0;
+    const baseR = Math.max(maxX - ccx, maxZ - ccz);
+    const hazeSky = new THREE.Color(visualZones.hazeColor ?? 0xbcccdb);
+    function ridgeRing(rad, segs, floorY, baseH, ampH, freq, groundC, crestHaze, seedOff, dip) {
+      const geo = new THREE.CylinderGeometry(rad, rad, 1, segs, 1, true);
+      const pos = geo.attributes.position;
+      const cols = new Float32Array(pos.count * 3);
+      const ground = new THREE.Color(groundC);
+      const crest = ground.clone().lerp(hazeSky, crestHaze);
+      const c = new THREE.Color();
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), z = pos.getZ(i);
+        const top = pos.getY(i) > 0;
         const a = Math.atan2(z, x);
-        const n = fbmBack(Math.cos(a) * 2.4 + 4, Math.sin(a) * 2.4) * 0.5 + 0.5;
-        rpos.setY(i, top ? 10 + n * 9 : -6);
-        const c = top ? hi : lo;
-        rcol[i * 3] = c.r; rcol[i * 3 + 1] = c.g; rcol[i * 3 + 2] = c.b;
+        // multi-octave silhouette so peaks and valleys read distinct
+        const n = (fbmBack(Math.cos(a) * freq + seedOff, Math.sin(a) * freq) * 0.5 + 0.5)
+          * 0.7 + (fbmBack(Math.cos(a) * freq * 2.7 + 9, Math.sin(a) * freq * 2.7) * 0.5 + 0.5) * 0.3;
+        // optional dip toward the ocean side so the sea horizon stays open
+        let h = baseH + n * ampH;
+        if (dip) {
+          const oceanBias = Math.max(0, Math.cos(a - dip)) ** 2;
+          h *= 1 - oceanBias * 0.72;
+        }
+        pos.setY(i, top ? floorY + h : floorY - 8);
+        c.copy(top ? crest : ground);
+        cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
       }
-      rgeo.setAttribute('color', new THREE.BufferAttribute(rcol, 3));
-      const rm = new THREE.Mesh(rgeo, new THREE.MeshBasicMaterial({
-        vertexColors: true, side: THREE.BackSide, fog: true,
+      geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        vertexColors: true, side: THREE.BackSide, fog: true, depthWrite: false,
       }));
-      rm.position.set(ccx, 0, ccz);
-      group.add(rm);
+      m.position.set(ccx, 0, ccz);
+      m.renderOrder = -1;
+      group.add(m);
     }
+    // Point the ocean-dip toward the sea (coastal only)
+    const oceanDir = hasOcean ? Math.atan2(0, 1) : null;
+    ridgeRing(baseR + 150, 128, 0, 12, 16, 2.4, 0x33502b, 0.35, 4, null);          // near treeline
+    ridgeRing(baseR + 620, 96, 0, 34, 60, 1.7, 0x3f5744, 0.62, 31, oceanDir);      // mid hills
+    ridgeRing(baseR + 1500, 80, 0, 70, 150, 1.1, 0x5a6f78, 0.82, 57, oceanDir);    // far mountains
 
     if (hole.isRange && hole.rangeScenery?.mountains) {
       const mountainRng = makeRng(hole.seed * 421 + 9);
