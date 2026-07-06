@@ -649,6 +649,11 @@ function switchActivePlayer(idx, name) {
 function startHole(idx) {
   pitchMarks.clear();
   applyAtmosphere(courseHoles[idx]?.island?.visualZones?.atmosphere || activeCourse?.world?.atmosphere || 'sunny');
+  SFX.setAmbience({
+    windMph: (game.wind?.speed || 2) * 2.237,
+    surf: activeCourse?.world?.profile === 'coastal',
+    birds: activeCourse?.world?.profile !== 'coastal',
+  });
   if (rangeMarkers) { rangeMarkers.forEach(m => scene.remove(m)); rangeMarkers = null; }
   game.isRange = false;
   rangePanel?.classList.add('hidden');
@@ -930,7 +935,21 @@ function fire(accuracyRaw) {
   tracerGeo.setDrawRange(0, 0);
   game.state = 'FLIGHT';
   setGuides(false);
-  SFX.strike(power, !!c.putter);
+  SFX.strike(power, !!c.putter, clubKind(c), game.lie === SURF.SAND ? 'sand' : 'fairway');
+}
+
+function clubKind(c) {
+  const n = (c.name || '').toUpperCase();
+  if (n.includes('DRIVER')) return 'driver';
+  if (n.includes('WOOD') || n.includes('HYBRID')) return 'wood';
+  if (n.includes('WEDGE') || n === 'SW' || n === 'LW') return 'wedge';
+  return 'iron';
+}
+
+function surfSfxName(su) {
+  if (su === SURF.SAND) return 'sand';
+  if (su === SURF.GREEN) return 'green';
+  return 'fairway';
 }
 
 // ---------- shot resolution ----------
@@ -1762,7 +1781,7 @@ function updateFlight() {
   sim.step(frameDt);
 
   for (const ev of sim.events.splice(0)) {
-    if (ev.type === 'bounce') SFX.bounce(ev.speed);
+    if (ev.type === 'bounce') SFX.bounce(ev.speed, surfSfxName(ev.surface));
     else if (ev.type === 'splash') SFX.splash();
     else if (ev.type === 'holed') SFX.holed();
     else if (ev.type === 'lip') hud.toast('<span class="t-gold">LIP OUT</span>', 1400);
@@ -2143,7 +2162,7 @@ function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaD
   tracerGeo.setDrawRange(0, 0);
   game.state = 'FLIGHT';
   setGuides(false);
-  SFX.strike(0.8, false);
+  SFX.strike(0.8, false, clubKind(club()), game.lie === SURF.SAND ? 'sand' : 'fairway');
 }
 
 // dev hooks: #range starts practice; #play skips title; #aim also skips flyover,
