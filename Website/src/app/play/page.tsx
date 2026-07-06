@@ -309,7 +309,12 @@ export default function PlayPage() {
                 <p className="sim-pairing-or">or type the code in Sim → Live Sim</p>
               )}
               {connected ? (
-                <p className="sim-pairing-hint">Shots will feed the selected mode in real time.</p>
+                <>
+                  <p className="sim-pairing-hint">Shots will feed the selected mode in real time.</p>
+                  <a className="sim-pairing-watch" href={`/watch?code=${code}`} target="_blank" rel="noreferrer">
+                    Share a spectate link →
+                  </a>
+                </>
               ) : (
                 <div className="sim-pairing-waiting" role="status" aria-live="polite">
                   <span className="sim-pairing-spinner" aria-hidden="true" />

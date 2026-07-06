@@ -2363,3 +2363,32 @@ button.plan-cta { font: inherit; cursor: pointer; width: 100%; border: none; }
 .sim-pairing-qr img { width: 168px; height: 168px; border-radius: 10px; border: 1px solid color-mix(in oklab, var(--cream) 22%, transparent); }
 .sim-pairing-qr span { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.6; }
 .sim-pairing-or { font-size: 11px; opacity: 0.5; margin-top: 8px; }
+
+/* ---------- spectator watch page ---------- */
+.watch-page{ min-height:100vh; display:flex; flex-direction:column; background:var(--carry-ink,#10160f); color:#ece4d2; }
+.watch-main{ flex:1; max-width:880px; width:100%; margin:0 auto; padding:96px 24px 64px; }
+.watch-join h1{ font-size:clamp(34px,5vw,52px); margin:10px 0 14px; }
+.watch-deck{ color:rgba(236,228,210,.75); max-width:52ch; margin-bottom:26px; }
+.watch-form{ display:flex; gap:10px; max-width:420px; }
+.watch-form input{ flex:1; font-family:var(--r-mono); font-size:20px; letter-spacing:.12em; padding:13px 16px; border-radius:10px; border:1px solid rgba(201,168,106,.35); background:rgba(201,168,106,.06); color:#ece4d2; }
+.watch-cta{ padding:13px 22px; border-radius:10px; border:0; background:var(--carry-gold,#c9a86a); color:#16201a; font-weight:700; cursor:pointer; }
+.watch-head{ display:flex; align-items:center; gap:12px; margin-bottom:22px; }
+.watch-head h1{ font-size:28px; margin:0; }
+.watch-dot{ width:10px; height:10px; border-radius:50%; background:#5a5a52; }
+.watch-dot.on{ background:#7dc97a; box-shadow:0 0 10px rgba(125,201,122,.7); animation:watchpulse 1.6s infinite; }
+@keyframes watchpulse{ 50%{ opacity:.55; } }
+.watch-status{ color:rgba(236,228,210,.7); font-size:14px; letter-spacing:.08em; text-transform:uppercase; }
+.watch-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+.watch-card{ background:rgba(236,228,210,.05); border:1px solid rgba(236,228,210,.12); border-radius:14px; padding:20px 22px; }
+.watch-card.wide{ grid-column:1/-1; }
+.watch-label{ font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:rgba(236,228,210,.55); margin-bottom:8px; }
+.watch-big{ font-size:34px; font-weight:700; }
+.watch-unit{ font-size:16px; font-weight:500; color:rgba(236,228,210,.65); }
+.watch-sub{ color:rgba(236,228,210,.7); margin-top:4px; }
+.watch-scoreline{ display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; font-family:var(--r-mono); }
+.watch-scoreline span{ width:28px; height:28px; display:grid; place-items:center; border-radius:6px; background:rgba(236,228,210,.08); }
+.watch-scoreline span.birdie{ background:rgba(125,201,122,.25); color:#a9e6a4; }
+.watch-scoreline span.bogey{ background:rgba(220,120,100,.2); color:#eab3a5; }
+.watch-note{ margin-top:26px; font-size:13px; color:rgba(236,228,210,.5); max-width:60ch; }
+.sim-pairing-watch{ display:inline-block; margin-top:10px; font-size:13px; color:var(--carry-gold,#c9a86a); text-decoration:none; letter-spacing:.04em; }
+.sim-pairing-watch:hover{ text-decoration:underline; }
