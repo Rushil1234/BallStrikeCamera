@@ -232,13 +232,13 @@ function normalsUp(geo) {
 
 // Southern loblolly pine: a tall bare pole with an irregular crown in the top
 // third only — the signature silhouette of Georgia parkland courses.
-function loblollyCanopy(seed) {
+function loblollyCanopy(seed, dense) {
   const rng = makeRng(seed);
   const sprig = cardGeo(2.7, 4.2, PINE_SPRIG);
   const cards = [];
-  for (let y = 10.2; y <= 14.0; y += 0.72) {
+  for (let y = 10.2; y <= 14.0; y += (dense ? 0.48 : 0.72)) {
     const t = (y - 10.2) / 3.8;
-    const n = Math.round(5.5 - 2.4 * t);
+    const n = Math.round((dense ? 7.5 : 5.5) - 2.4 * t);
     const s = 1.3 - 0.5 * t;
     for (let i = 0; i < n; i++) {
       const yaw = (i / n) * Math.PI * 2 + rng() * 1.4;
@@ -257,13 +257,32 @@ function loblollyCanopy(seed) {
   return normalsUp(mergeGeometries(cards));
 }
 
-function pineCanopy(seed) {
+function bakeCanopyAO(geo) {
+  // Fake self-occlusion: vertices toward the canopy interior darken. This is
+  // what makes card foliage read as a volume instead of a paper cutout.
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox;
+  const c = bb.getCenter(new THREE.Vector3());
+  const maxR = bb.getSize(new THREE.Vector3()).length() * 0.5 || 1;
+  const pos = geo.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
+    const dx = pos.getX(i) - c.x, dy = pos.getY(i) - c.y, dz = pos.getZ(i) - c.z;
+    const r = Math.min(1, Math.hypot(dx, dy, dz) / maxR);
+    const v = 0.58 + 0.42 * r;
+    col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+
+function pineCanopy(seed, dense) {
   const rng = makeRng(seed);
   const sprig = cardGeo(1.9, 3.2, PINE_SPRIG);
   const cards = [];
-  for (let y = 2.4; y <= 8.2; y += 0.92) {
+  for (let y = 2.4; y <= 8.2; y += (dense ? 0.6 : 0.92)) {
     const t = (y - 2.4) / 5.8;
-    const n = Math.round(6 - 3 * t);
+    const n = Math.round((dense ? 8 : 6) - 3 * t);
     const s = 1.15 - 0.62 * t;
     for (let i = 0; i < n; i++) {
       const yaw = (i / n) * Math.PI * 2 + rng() * 1.2;
@@ -274,16 +293,16 @@ function pineCanopy(seed) {
   // upright crown
   cards.push(placed(sprig, 0, 8.0, 0, -0.06, rng() * Math.PI, 0, 0.8));
   cards.push(placed(sprig, 0, 8.0, 0, -0.06, rng() * Math.PI + Math.PI / 2, 0, 0.72));
-  return normalsUp(mergeGeometries(cards));
+  return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
 }
 
-function leafCanopy(seed) {
+function leafCanopy(seed, dense) {
   const rng = makeRng(seed);
   const a = cardGeo(3.1, 3.1, LEAF_RECT_A);
   const b = cardGeo(2.8, 3.0, LEAF_RECT_B);
   const cards = [];
   const CY = 5.2;
-  for (let i = 0; i < 26; i++) {
+  for (let i = 0; i < (dense ? 48 : 26); i++) {
     const az = rng() * Math.PI * 2;
     const elev = (rng() - 0.32) * 1.9;
     const r = 0.7 + rng() * 1.9;
@@ -297,7 +316,7 @@ function leafCanopy(seed) {
       0.8 + rng() * 0.5,
     ));
   }
-  return normalsUp(mergeGeometries(cards));
+  return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
 }
 
 function trunkGeo(rTop, rBot, h, vRepeat) {
@@ -342,7 +361,7 @@ function treeKit(assets) {
     return mat;
   };
   const canopyMat = (map, cut) => addSway(new THREE.MeshLambertMaterial({
-    map, alphaTest: cut, side: THREE.DoubleSide,
+    map, alphaTest: cut, side: THREE.DoubleSide, vertexColors: true,
   }));
   const depthMat = (map, cut) => new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking, map, alphaTest: cut,
@@ -355,6 +374,10 @@ function treeKit(assets) {
       { geo: leafCanopy(89), mat: canopyMat(t.leafCard, 0.4), depth: depthMat(t.leafCard, 0.4), trunk: 'leaf' },
       { geo: loblollyCanopy(31), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pineTall' },
       { geo: loblollyCanopy(73), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pineTall' },
+      // 6-8: dense near-LOD canopies for corridor trees (GSPro step 3b)
+      { geo: pineCanopy(19, true), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pine' },
+      { geo: leafCanopy(57, true), mat: canopyMat(t.leafCard, 0.4), depth: depthMat(t.leafCard, 0.4), trunk: 'leaf' },
+      { geo: loblollyCanopy(91, true), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pineTall' },
     ],
     trunks: {
       pine: { geo: trunkGeo(0.07, 0.30, 8.6, 3), mat: new THREE.MeshLambertMaterial({ map: t.pineBark }) },
@@ -1597,6 +1620,12 @@ export function buildCourse(hole, assets) {
       }
     }
 
+    // Corridor trees get the dense near-LOD canopy (where the camera lands)
+    for (const t of spots) {
+      if (pathInfo(t.x, t.z).dist < fhw + 40) {
+        t.kind = t.kind <= 1 ? 6 : (t.kind <= 3 ? 7 : 8);
+      }
+    }
     const kit = treeKit(assets);
     const m4 = new THREE.Matrix4();
     const q = new THREE.Quaternion();
