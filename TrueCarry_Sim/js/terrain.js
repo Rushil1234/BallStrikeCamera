@@ -163,8 +163,10 @@ function splatMaterial(assets) {
           float rS = texture2D(uSandR, uvSand()).g;
           float w = clamp(vSplat.x + vSplat.y + vSplat.z, 0.0, 1.0);
           float blended = rG * vSplat.x + rR * vSplat.y + rS * vSplat.z;
-          blended = mix(blended, blended * 0.72, vSplat.w * vSplat.x);
-          roughnessFactor = mix(1.0, clamp(blended, 0.35, 1.0), w);
+          blended = mix(blended, blended * 0.9, vSplat.w * vSplat.x);
+          // Floor at 0.8: lower values let the sun's specular lobe paint a
+          // huge bright veil across mid-distance fairways at grazing angles.
+          roughnessFactor = mix(1.0, clamp(blended, 0.8, 1.0), w);
         }`)
       .replace('#include <normal_fragment_maps>', `
         {

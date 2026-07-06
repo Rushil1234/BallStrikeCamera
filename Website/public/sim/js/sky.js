@@ -22,10 +22,12 @@ export function makeSky(scene, renderer, assets) {
   sun.position.copy(sunDir).multiplyScalar(300);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
-  const S = 110;
+  // Cover the whole visible hole: a tight box left everything past ~110m
+  // unshadowed, which read as a bright veil across open fairways.
+  const S = 340;
   sun.shadow.camera.left = -S; sun.shadow.camera.right = S;
   sun.shadow.camera.top = S; sun.shadow.camera.bottom = -S;
-  sun.shadow.camera.near = 50; sun.shadow.camera.far = 700;
+  sun.shadow.camera.near = 20; sun.shadow.camera.far = 1400;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
   sun.shadow.radius = 2.2;
@@ -36,13 +38,13 @@ export function makeSky(scene, renderer, assets) {
     sun, hemi, sunDir,
     update(t, focus) {
       if (focus) {
-        // keep the shadow frustum centred on the action
-        sun.position.set(
-          focus.x + sunDir.x * 300,
-          sunDir.y * 300,
-          focus.z + sunDir.z * 300,
-        );
-        sun.target.position.set(focus.x, 0, focus.z);
+        // Snap the frustum centre to the shadow-texel grid so the map
+        // doesn't shimmer as the camera moves.
+        const texel = (S * 2) / 4096;
+        const fx = Math.round(focus.x / texel) * texel;
+        const fz = Math.round(focus.z / texel) * texel;
+        sun.position.set(fx + sunDir.x * 600, sunDir.y * 600, fz + sunDir.z * 600);
+        sun.target.position.set(fx, 0, fz);
       }
     },
   };

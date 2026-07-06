@@ -47,6 +47,8 @@ const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerH
 // in the chain fails on an exotic GPU, fall back to the direct render path.
 let composer = null;
 try {
+  if (launchParams.has('nofx')) throw new Error('postfx disabled via ?nofx');
+
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
     samples: 4,
@@ -415,6 +417,7 @@ const game = {
 let rangeMarkers = null;
 let lastRangeShot = null;
 let rangeStats = { shots: 0, totalCarry: 0, bestCarry: 0, recent: [] };
+if (launchParams.has('debug')) window.__tc = { scene, game: () => game };
 const holePickerCard = document.getElementById('hole-picker-card');
 const holePicker = document.getElementById('hole-picker');
 const holeGrid = document.getElementById('hole-grid');
