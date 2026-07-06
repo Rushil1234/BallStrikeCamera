@@ -899,14 +899,23 @@ export function buildCourse(hole, assets) {
           waterNormals: assets.waterN,
           sunDirection: assets.sunDir.clone(),
           sunColor: 0xffffff,
-          waterColor: 0x0a3247,
-          distortionScale: 3.4,
+          waterColor: 0x1a4f6b,
+          distortionScale: 2.6,
           fog: true,
         });
         ocean.rotation.x = -Math.PI / 2;
         ocean.position.set(icx, waterLevel - 0.02, icz);
         group.add(ocean);
         oceanMesh = ocean;
+        // Deep-blue tint plate: keeps the Pacific reading blue instead of a
+        // silver sky mirror when viewed down the coast.
+        const oceanTint = new THREE.Mesh(
+          new THREE.PlaneGeometry(26000, 26000),
+          new THREE.MeshBasicMaterial({ color: 0x134a68, transparent: true, opacity: 0.58, depthWrite: false, fog: true }),
+        );
+        oceanTint.rotation.x = -Math.PI / 2;
+        oceanTint.position.set(icx, waterLevel + 0.01, icz);
+        group.add(oceanTint);
       } else if (hole.island.profile === 'coastal') {
         // Inland real-data course: forested land to the horizon, no sea.
         const landSkirt = new THREE.Mesh(
@@ -991,6 +1000,16 @@ export function buildCourse(hole, assets) {
         const inMappedScrub = visualScrub.length > 0 && inFeaturePolys(visualScrub, x, z);
         const coastDist = hasOcean ? distToPolyline(coastEdgePts, x, z).dist : Infinity;
         let sg = 0, sr = 0, ss = 0, sw = 0;   // grass, rough, sand, tight-mow
+        // Terrain steepness (rise/run) from the DEM — drives cliff rock.
+        let slopeMag = 0;
+        if (elevation) {
+          const _se0 = elevationAtWorld(elevation, x, z);
+          if (_se0 != null) {
+            const _sex = (elevationAtWorld(elevation, x + 1.6, z) ?? _se0) - _se0;
+            const _sez = (elevationAtWorld(elevation, x, z + 1.6) ?? _se0) - _se0;
+            slopeMag = Math.hypot(_sex, _sez) / 1.6;
+          }
+        }
 
         if (hasWater && h < waterLevel + 0.05 && waterMask(x, z).m > 0.45) {
           tmp.copy(C.bed); sr = 1;
@@ -1029,13 +1048,9 @@ export function buildCourse(hole, assets) {
           tmp.copy(C.rough).lerp(C.deep, t);
           sr = 1;
           // Hills read as hills: steep banks dry out and crests catch light.
-          const _e0 = elevationAtWorld(elevation, x, z);
-          const gx = _e0 == null ? 0 : (elevationAtWorld(elevation, x + 1.6, z) ?? _e0) - _e0;
-          const gz2 = _e0 == null ? 0 : (elevationAtWorld(elevation, x, z + 1.6) ?? _e0) - _e0;
-          const slope = Math.min(1, Math.hypot(gx, gz2) * 0.9);
+          const slope = Math.min(1, slopeMag * 1.4);
           if (slope > 0.12) {
             tmp.lerp(_dryBank, Math.min(0.4, (slope - 0.12) * 0.75));
-            tmp.multiplyScalar(1 + 0.10 * Math.max(0, -gz2) * Math.min(1, slope * 2));
           }
           if (forestFloor && p.dist > fhw + forestFloorStart) {
             // Pine-straw carpet under the tree lines (parkland courses).
@@ -1046,6 +1061,15 @@ export function buildCourse(hole, assets) {
             sr = 1 - ss;
           }
         }
+        // Cliff faces: near-vertical terrain is bare rock, not stretched grass.
+        if (slopeMag > 0.55 && surf !== SURF.GREEN && surf !== SURF.TEE
+            && surf !== SURF.FAIRWAY && surf !== SURF.FRINGE) {
+          const rockT = Math.min(0.9, (slopeMag - 0.55) * 1.15);
+          const cliff = new THREE.Color(0x6b5d4a).lerp(new THREE.Color(0x8a7a63),
+            fbmDetail(x * 0.08, z * 0.08) * 0.5 + 0.5);
+          tmp.lerp(cliff, rockT);
+          sr = 1; ss = 0; sg = 0; sw = 0;
+        }
         if (surf !== SURF.SAND && ss === 0) {
           let bv = 9;
           for (const b of hole.bunkers) bv = Math.min(bv, ellipseVal(b, x, z));
@@ -1055,8 +1079,12 @@ export function buildCourse(hole, assets) {
             if (lip > 0) tmp.multiplyScalar(1 + 0.13 * lip);
           }
         }
-        const vmod = 1 + fbmDetail(x * 0.11 + 31, z * 0.11) * 0.10
-          + fbmDetail(x * 0.031 + 7, z * 0.031) * 0.05;
+        // Manicured turf stays smooth; only rough gets real mottling — the
+        // uniform noise was making greens/fairways look blotchy.
+        const mottle = (surf === SURF.GREEN || surf === SURF.TEE) ? 0.15
+          : (surf === SURF.FAIRWAY || surf === SURF.FRINGE) ? 0.4 : 1.0;
+        const vmod = 1 + (fbmDetail(x * 0.11 + 31, z * 0.11) * 0.07
+          + fbmDetail(x * 0.031 + 7, z * 0.031) * 0.045) * mottle;
         colors[vi * 3] = tmp.r * vmod;
         colors[vi * 3 + 1] = tmp.g * vmod;
         colors[vi * 3 + 2] = tmp.b * vmod;
@@ -1387,14 +1415,16 @@ export function buildCourse(hole, assets) {
     if (visualZones.grass3d !== false && !hole.isRange) {
       // tuft geometry: 3 thin bent blades, vertex-color gradient base->tip
       const gPos = [], gCol = [], gIdx = [];
-      const baseC = new THREE.Color(0x2c4a22);
-      const tipC = new THREE.Color(0x628f41);
-      for (let bIdx = 0; bIdx < 3; bIdx++) {
-        const a = (bIdx / 3) * Math.PI * 2 + 0.5;
+      const baseC = new THREE.Color(0x40602c);
+      const tipC = new THREE.Color(0x86b055);
+      for (let bIdx = 0; bIdx < 5; bIdx++) {
+        const a = (bIdx / 5) * Math.PI * 2 + bIdx * 0.7;
         const ca = Math.cos(a), sa = Math.sin(a);
-        const w = 0.016, hgt = 0.26 + (bIdx % 3) * 0.05, bend = 0.06;
+        const rad = 0.02 + (bIdx % 2) * 0.03;      // fan out into a clump
+        const w = 0.02, hgt = 0.11 + (bIdx % 3) * 0.03, bend = 0.05;
+        const bx = ca * rad, bz = sa * rad;
         const o = gPos.length / 3;
-        gPos.push(-w * ca, 0, -w * sa,  w * ca, 0, w * sa,  bend * ca, hgt, bend * sa);
+        gPos.push(bx - w * ca, 0, bz - w * sa,  bx + w * ca, 0, bz + w * sa,  bx + bend * ca, hgt, bz + bend * sa);
         gCol.push(baseC.r, baseC.g, baseC.b,  baseC.r, baseC.g, baseC.b,  tipC.r, tipC.g, tipC.b);
         gIdx.push(o, o + 1, o + 2);
       }
@@ -1457,10 +1487,10 @@ export function buildCourse(hole, assets) {
           const hh = cachedH(dx2, dz2);
           if (hh < waterLevel + 0.2) continue;
           q.setFromAxisAngle(up, gRng() * Math.PI * 2);
-          const sc = 0.8 + gRng() * 0.9;
+          const sc = 0.7 + gRng() * 0.5;
           m4.compose(new THREE.Vector3(dx2, hh, dz2), q, new THREE.Vector3(sc, sc * (0.85 + gRng() * 0.5), sc));
           mats.push(m4.clone());
-          cTmp.setHSL(0.24 + gRng() * 0.03, 0.5, 0.32 + gRng() * 0.12);
+          cTmp.setHSL(0.25 + gRng() * 0.03, 0.42, 0.42 + gRng() * 0.12);
           cols.push(cTmp.clone());
         }
         }
