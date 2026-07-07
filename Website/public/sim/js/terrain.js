@@ -135,16 +135,32 @@ function splatMaterial(assets) {
         vec2 uvFair() { return vWPos.xz * 0.27; }
         vec2 uvGreen() { return vWPos.xz * 0.9; }
         vec2 uvRough() { return vWPos.xz * 0.16; }
-        vec2 uvSand() { return vWPos.xz * 0.55; }`)
+        vec2 uvSand() { return vWPos.xz * 0.55; }
+        // Anti-tiling grass: a base tile broken up by a large-scale multiply
+        // (kills the visible repeat) plus a fine octave for close-up blades.
+        vec3 grassTex(vec2 uv) {
+          vec3 base  = texture2D(uGrassD, uv).rgb;
+          vec3 macro = texture2D(uGrassD, uv * 0.19 + 3.1).rgb;
+          vec3 fine  = texture2D(uGrassD, uv * 3.4 + 0.7).rgb;
+          vec3 detiled = base * macro * 2.0;
+          return mix(detiled, detiled * fine * 1.7, 0.32) / uGrassMean;
+        }
+        vec3 roughTex(vec2 uv) {
+          vec3 base  = texture2D(uRoughD, uv).rgb;
+          vec3 macro = texture2D(uRoughD, uv * 0.21 + 5.3).rgb;
+          return (base * macro * 2.0) / uRoughMean;
+        }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
         {
-          vec3 gA = texture2D(uGrassD, uvFair()).rgb / uGrassMean;
-          vec3 gB = texture2D(uGrassD, uvGreen()).rgb / uGrassMean;
+          vec3 gA = grassTex(uvFair());
+          vec3 gB = grassTex(uvGreen());
           vec3 grassC = mix(gA, gB, vSplat.w);
-          vec3 roughC = texture2D(uRoughD, uvRough()).rgb / uRoughMean;
+          vec3 roughC = roughTex(uvRough());
           vec3 sandC  = texture2D(uSandD, uvSand()).rgb / uSandMean;
           vec3 structure = grassC * vSplat.x + roughC * vSplat.y + sandC * vSplat.z;
-          structure = mix(vec3(1.0), structure, 0.85);   // soften photo contrast
+          // Manicured turf keeps more of its crisp texture; rough softens.
+          float texAmt = mix(0.78, 0.92, vSplat.w);
+          structure = mix(vec3(1.0), structure, texAmt);
           diffuseColor.rgb *= clamp(structure, 0.25, 1.9);
 
           // drifting cloud shadows
