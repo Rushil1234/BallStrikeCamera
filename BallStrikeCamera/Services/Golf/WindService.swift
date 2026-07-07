@@ -24,6 +24,12 @@ final class WindService: ObservableObject {
 
     private let service = WeatherKit.WeatherService.shared
 
+    /// OpenWeatherMap fallback kill switch — OFF while validating that WeatherKit provisioning
+    /// works (profile regenerated 2026-07-04 with the weatherkit entitlement). With this false,
+    /// "Wind unavailable" in the HUD means WeatherKit itself failed — check the console for
+    /// `[WindService] WeatherKit fetch failed`. Flip back to true to restore the fallback.
+    private static let useOpenWeatherFallback = false
+
     /// True once we've fetched for roughly this location recently (5 min) — avoids hammering the API.
     private var lastCoord: CLLocationCoordinate2D?
 
@@ -47,11 +53,21 @@ final class WindService: ObservableObject {
             lastCoord = coord
             return
         } catch {
-            print("[WindService] WeatherKit fetch failed: \(error)")
+            // Full diagnostic dump — domain/code pinpoint the failure class:
+            //  • WeatherDaemon "WDSJWTAuthenticatorServiceListener" code 2 = provisioning/App ID
+            //    (entitlement missing from the INSTALLED app's profile → delete app, reinstall
+            //    from Xcode so the new WeatherKit-enabled profile is embedded)
+            //  • CLError / network errors = connectivity, not provisioning
+            let ns = error as NSError
+            print("[WindService] WeatherKit fetch failed: domain=\(ns.domain) code=\(ns.code) \(ns.localizedDescription) underlying=\(String(describing: ns.userInfo[NSUnderlyingErrorKey]))")
         }
         // WeatherKit is unavailable (provisioning, offline, etc.) — fall back to OpenWeatherMap so
         // wind still works. Feeds the same `Reading` the UI already renders, so once WeatherKit is
         // fixed this path just stops being exercised — no UI changes needed either way.
+        guard Self.useOpenWeatherFallback else {
+            errorText = "Wind unavailable"
+            return
+        }
         do {
             reading = try await fetchFromOpenWeatherMap(at: coord)
             lastCoord = coord

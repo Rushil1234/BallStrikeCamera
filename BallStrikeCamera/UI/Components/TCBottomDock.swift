@@ -171,6 +171,9 @@ struct TrueCarryAppShell: View {
         .onReceive(NotificationCenter.default.publisher(for: .tcOpenLiveSim)) { _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .tcResumeRound)) { _ in
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
+        }
         .onAppear(perform: maybePromptUsername)
         .onChange(of: session.userProfile?.username) { _ in maybePromptUsername() }
     }

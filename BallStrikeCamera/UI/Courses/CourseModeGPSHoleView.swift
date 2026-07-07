@@ -198,9 +198,123 @@ private final class GreenDistanceStackAnnotationView: MKAnnotationView {
 // MARK: - Flag / Pin Annotation
 
 private class GreenPinAnnotation: NSObject, MKAnnotation {
-    let coordinate: CLLocationCoordinate2D
+    @objc dynamic var coordinate: CLLocationCoordinate2D
     init(coordinate: CLLocationCoordinate2D) { self.coordinate = coordinate }
     var title: String? { nil }
+}
+
+/// Small reference dot left at the true green center after the user moves the flag.
+private final class GreenCenterDotAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    init(coordinate: CLLocationCoordinate2D) { self.coordinate = coordinate }
+}
+
+/// Draggable flag view — same continuous-pan approach as AimPointAnnotationView. The parent
+/// applies the rules on drag end (snap to center ≤3yd, clamp to 15yd, or spawn a waypoint).
+private final class DraggableFlagAnnotationView: MKAnnotationView {
+    var onDragEnded: ((CLLocationCoordinate2D) -> Void)?
+    weak var mapView: MKMapView?
+    /// Green center + boundary so the ring can preview live whether releasing here keeps
+    /// the flag (gold ring) or spawns a waypoint (white ring) — prevents accidental
+    /// waypoint creation when the intended pin spot is near the 20y boundary.
+    var greenCenter: CLLocationCoordinate2D?
+    var waypointBoundaryYds: Double = 30
+
+    private var ring: UIView!
+
+    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+        isDraggable    = false
+        canShowCallout = false
+        backgroundColor = .clear
+        // Same grab affordance as the aim-point rings — big hit area + visible ring —
+        // so the flag reads as draggable the way waypoints do.
+        let hitSize:  CGFloat = 88
+        let ringSize: CGFloat = 40
+        frame = CGRect(x: 0, y: 0, width: hitSize, height: hitSize)
+        centerOffset = .zero
+
+        ring = UIView(frame: CGRect(
+            x: (hitSize - ringSize) / 2, y: (hitSize - ringSize) / 2,
+            width: ringSize, height: ringSize))
+        ring.layer.cornerRadius = ringSize / 2
+        ring.layer.borderWidth  = 2.5
+        ring.layer.shadowColor  = UIColor.black.cgColor
+        ring.layer.shadowRadius = 5
+        ring.layer.shadowOpacity = 0.55
+        ring.layer.shadowOffset  = .zero
+        ring.isUserInteractionEnabled = false
+        addSubview(ring)
+        setRingStyle(isFlag: true)
+
+        let cfg = UIImage.SymbolConfiguration(pointSize: 16, weight: .bold)
+        let img = UIImage(systemName: "flag.fill", withConfiguration: cfg)?
+            .withTintColor(UIColor(red: 1.0, green: 0.82, blue: 0.0, alpha: 1.0),
+                           renderingMode: .alwaysOriginal)
+        let iv = UIImageView(image: img)
+        iv.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        iv.isUserInteractionEnabled = false
+        addSubview(iv)
+
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        addGestureRecognizer(pan)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -20, dy: -20).contains(point)
+    }
+
+    private func setRingStyle(isFlag: Bool) {
+        if isFlag {
+            ring.backgroundColor    = UIColor(red: 1.0, green: 0.82, blue: 0.0, alpha: 0.12)
+            ring.layer.borderColor  = UIColor(red: 1.0, green: 0.82, blue: 0.0, alpha: 0.92).cgColor
+        } else {
+            ring.backgroundColor    = UIColor.white.withAlphaComponent(0.15)
+            ring.layer.borderColor  = UIColor.white.withAlphaComponent(0.92).cgColor
+        }
+    }
+
+    private func previewDropState(at coord: CLLocationCoordinate2D) {
+        guard let green = greenCenter else { return }
+        let a = MKMapPoint(coord), b = MKMapPoint(green)
+        let yards = a.distance(to: b) * 1.09361
+        setRingStyle(isFlag: yards <= waypointBoundaryYds)
+    }
+
+    /// Transform to restore after a drag (set by the factory: inverse-stretch correction).
+    private var restingTransform: CGAffineTransform = .identity
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard let map = mapView,
+              let pin = annotation as? GreenPinAnnotation else { return }
+        let coord = map.convert(gesture.location(in: map), toCoordinateFrom: map)
+        switch gesture.state {
+        case .began:
+            map.isScrollEnabled = false
+            pin.coordinate = coord
+            // Grow while dragging — makes the gold↔white (flag↔waypoint) boundary preview
+            // readable under the finger.
+            restingTransform = transform
+            UIView.animate(withDuration: 0.12) {
+                self.transform = self.restingTransform.scaledBy(x: 1.45, y: 1.45)
+            }
+            previewDropState(at: coord)
+        case .changed:
+            pin.coordinate = coord
+            previewDropState(at: coord)
+        case .ended, .cancelled:
+            map.isScrollEnabled = true
+            UIView.animate(withDuration: 0.12) {
+                self.transform = self.restingTransform
+            }
+            setRingStyle(isFlag: true)
+            onDragEnded?(coord)
+        default:
+            break
+        }
+    }
 }
 
 // MARK: - Identifiable coordinate box (for sheet(item:))
@@ -317,7 +431,11 @@ private enum ShotDispersion {
 
 private final class AimPointAnnotation: NSObject, MKAnnotation {
     @objc dynamic var coordinate: CLLocationCoordinate2D
+    /// Index into the PARENT's activeAimPoints (original index — not the drawn position,
+    /// which can differ when the backwards-filter drops points).
     let index: Int
+    /// Flag-spawned waypoints render smaller than the hole's own waypoints.
+    var isFlagSpawned = false
 
     init(coordinate: CLLocationCoordinate2D, index: Int) {
         self.coordinate = coordinate
@@ -340,8 +458,8 @@ private final class AimPointAnnotationView: MKAnnotationView {
         backgroundColor = .clear
         centerOffset    = .zero
 
-        let hitSize:  CGFloat = 64
-        let ringSize: CGFloat = 36
+        let hitSize:  CGFloat = 88   // was 64 — field feedback: rings were hard to grab
+        let ringSize: CGFloat = 42   // was 48 — field feedback: slightly too big
         frame = CGRect(x: 0, y: 0, width: hitSize, height: hitSize)
 
         let ring = UIView(frame: CGRect(
@@ -358,7 +476,7 @@ private final class AimPointAnnotationView: MKAnnotationView {
         ring.isUserInteractionEnabled = false
         addSubview(ring)
 
-        let dotSize: CGFloat = 6
+        let dotSize: CGFloat = 8
         let dot = UIView(frame: CGRect(
             x: (hitSize - dotSize) / 2, y: (hitSize - dotSize) / 2,
             width: dotSize, height: dotSize))
@@ -375,8 +493,11 @@ private final class AimPointAnnotationView: MKAnnotationView {
 
     // Expand the touch area beyond the visible bounds.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        bounds.insetBy(dx: -12, dy: -12).contains(point)
+        bounds.insetBy(dx: -20, dy: -20).contains(point)
     }
+
+    /// Transform to restore after a drag (set by the factory: inverse-stretch correction).
+    private var restingTransform: CGAffineTransform = .identity
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard let map  = mapView,
@@ -387,10 +508,18 @@ private final class AimPointAnnotationView: MKAnnotationView {
         case .began:
             // Prevent MapKit's own pan gesture from competing and stealing events.
             map.isScrollEnabled = false
+            // Grow while dragging so the ring stays visible under the finger.
+            restingTransform = transform
+            UIView.animate(withDuration: 0.12) {
+                self.transform = self.restingTransform.scaledBy(x: 1.45, y: 1.45)
+            }
         case .changed:
             onDragChanged?(aim.index, coord)
         case .ended, .cancelled:
             map.isScrollEnabled = true
+            UIView.animate(withDuration: 0.12) {
+                self.transform = self.restingTransform
+            }
             onDragEnded?(aim.index, coord)
         default:
             break
@@ -439,16 +568,16 @@ private final class SegmentLabelAnnotation: NSObject, MKAnnotation {
 private final class SegmentLabelAnnotationView: MKAnnotationView {
     private let pill  = UIView()
     private let label = UILabel()
-    private static let labelFont = UIFont.systemFont(ofSize: 14, weight: .bold)
+    private static let labelFont = UIFont.systemFont(ofSize: 15, weight: .bold)
 
     override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-        frame = CGRect(x: 0, y: 0, width: 48, height: 26)
+        frame = CGRect(x: 0, y: 0, width: 50, height: 28)
         backgroundColor = .clear
         isUserInteractionEnabled = false
 
         pill.backgroundColor = UIColor(white: 0.04, alpha: 0.82)
-        pill.layer.cornerRadius = 13
+        pill.layer.cornerRadius = 14
         pill.layer.borderColor  = UIColor.white.withAlphaComponent(0.22).cgColor
         pill.layer.borderWidth  = 0.5
         pill.frame = bounds
@@ -469,9 +598,9 @@ private final class SegmentLabelAnnotationView: MKAnnotationView {
             label.text = "\(a.yardage)"
             let tw = (label.text! as NSString).size(withAttributes: [
                 .font: Self.labelFont
-            ]).width + 18
-            let w = max(38, tw)
-            frame = CGRect(x: 0, y: 0, width: w, height: 26)
+            ]).width + 20
+            let w = max(40, tw)
+            frame = CGRect(x: 0, y: 0, width: w, height: 28)
             pill.frame = bounds
             label.frame = bounds
         }
@@ -635,8 +764,17 @@ private struct SatelliteMapBackground: UIViewRepresentable {
     var topUIInset:    CGFloat = 100   // pts: safe area + top pills height
     var bottomUIInset: CGFloat = 100   // pts: bottom bar + home indicator height
     var gpsKey:        String = ""
+    // Fine-grained (~5m) GPS key: redraws the aim lines/labels as the player walks, without
+    // triggering the camera reframe that gpsKey (coarse, ~20yd) governs.
+    var fineGpsKey:    String = ""
+    /// activeAimPoints index of the flag-spawned waypoint (nil when none) — drawn smaller.
+    var flagSpawnedIndex: Int? = nil
     // Custom aim target placed by a tap within 225 yards of the green.
     var customAimTarget: CLLocationCoordinate2D? = nil
+    // User-moved pin position (≤15yd from green center). Lines target this; flag renders here.
+    var pinCoord: CLLocationCoordinate2D? = nil
+    // Fires when the user drags the flag; parent applies the snap/limit/waypoint rules.
+    var onPinMoved: ((CLLocationCoordinate2D) -> Void)? = nil
     // Per-polygon hazard hit counts: "bunker_0", "water_1" → 0…3.
     var hazardCounts: [String: Int] = [:]
     var onHazardCountChanged: ((String, Int) -> Void)? = nil
@@ -700,7 +838,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         map.mapType = .satellite
         map.isScrollEnabled     = true
         map.isZoomEnabled       = true
-        map.isRotateEnabled     = false
+        map.isRotateEnabled     = true    // two-finger rotation; recenter arrow restores heading
         map.isPitchEnabled      = false
         map.showsUserLocation   = true
         map.showsCompass        = false
@@ -747,6 +885,8 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         // Par 5s use a reduced horizontal stretch so the narrow fairway corridor fills
         // the screen proportionally rather than appearing as a skinny central strip.
         let targetStretch = aimPoints.count >= 2 ? Self.kHorizStretchPar5 : Self.kHorizStretch
+        // Always enforce the stretch — the frame was laid out under it, so any drop to identity
+        // shrinks the rendered map and exposes white bands at the edges.
         if abs(map.transform.a - targetStretch) > 0.01 {
             map.transform = CGAffineTransform(scaleX: targetStretch, y: 1.0)
         }
@@ -772,7 +912,8 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             }
             return "\(dispersionDots.count)@\(acc)"
         }()
-        let renderKey = "\(focusId)|\(g)|\(t)|\(trackedShots.count)|\(aimKey)|\(recenterToken)|\(gpsKey)|\(aimTgtKey)|\(dispKey)"
+        let pinKey = pinCoord.map { "\(Int($0.latitude * 1_000_000)),\(Int($0.longitude * 1_000_000))" } ?? ""
+        let renderKey = "\(focusId)|\(g)|\(t)|\(trackedShots.count)|\(aimKey)|\(recenterToken)|\(gpsKey)|\(fineGpsKey)|\(aimTgtKey)|\(dispKey)|\(pinKey)"
         let flightPending = flightRequest != nil && flightRequest!.id != context.coordinator.lastFlightId
         if renderKey == context.coordinator.lastRenderKey && !flightPending {
             return
@@ -816,18 +957,19 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
         // Always start the aim line from the user's GPS when available; fall back to tee.
         let lineStart: CLLocationCoordinate2D? = userCoord ?? teeCoord
-        // Custom aim target overrides the pin as the effective aim endpoint.
-        let effectiveGreen: CLLocationCoordinate2D? = customAimTarget ?? greenCoord
+        // Custom aim target overrides the pin; the (possibly user-moved) FLAG position is the
+        // final line target — never the green center dot once the flag has been moved.
+        let effectiveGreen: CLLocationCoordinate2D? = customAimTarget ?? pinCoord ?? greenCoord
 
         var holePathForOverlay: [CLLocationCoordinate2D] = []
         if let green = effectiveGreen, let start = lineStart, !coordsEqual(start, green) {
             holePathForOverlay = preferredHolePath(start: start, green: green)
             if shouldRecenter {
-                // Frame the FULL hole — always tee → green — regardless of where the player is
-                // standing. This makes switching holes auto-fit the whole hole (tee box to flag),
-                // exactly like the recenter button, instead of zooming to the remaining shot and
-                // cropping the tee. Falls back to the aim-line start only when no tee geometry.
-                let frameStart = teeCoord ?? (holePathForOverlay.first ?? start)
+                // Frame from the PLAYER when they're on the hole (progressive follow: as the
+                // player advances, the view zooms toward the green with the player pinned near
+                // the bottom, same screen position the tee occupies pre-round). With no live
+                // fix, frame the full hole tee → green as before.
+                let frameStart = userCoord ?? teeCoord ?? (holePathForOverlay.first ?? start)
                 let routeEnd   = holePathForOverlay.last  ?? green
                 let heading    = Self.bearing(from: frameStart, to: routeEnd)
 
@@ -837,8 +979,10 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 let kMPerDeg = 111_320.0
                 var minX = Double.infinity, maxX = -Double.infinity
                 var minY = Double.infinity, maxY = -Double.infinity
-                // Bounds measured from the tee: tee + aim path + green.
-                let boundsCoords = (teeCoord.map { [$0] } ?? []) + holePathForOverlay + [routeEnd]
+                // Bounds: remaining route only when following the player (player + aim path +
+                // green); tee is included only when there's no live fix.
+                let boundsCoords = (userCoord == nil ? (teeCoord.map { [$0] } ?? []) : [])
+                    + holePathForOverlay + [routeEnd]
                 for coord in boundsCoords {
                     let dn = (coord.latitude  - frameStart.latitude)  * kMPerDeg
                     let de = (coord.longitude - frameStart.longitude) * kMPerDeg * cosLat
@@ -892,6 +1036,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                                       pitch: 0,
                                       heading: heading)
                 context.coordinator.setProgrammaticRegionChange(true)
+                context.coordinator.lastProgrammaticHeading = heading
                 map.setCamera(cam, animated: context.coordinator.hasInitializedRegion)
                 context.coordinator.completeRecenter(focusId: focusId, recenterToken: recenterToken, gpsKey: gpsKey)
             }
@@ -972,13 +1117,40 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             map.addAnnotation(AimTargetAnnotation(coordinate: at))
         }
 
+        // HARD RULE: lines never run backwards. Any aim point farther from the green than the
+        // player is dropped at draw time (belt-and-suspenders on top of activeAimPoints; a
+        // stale/late GPS fix could otherwise draw player → tee-side waypoint → green).
+        // Capped at 3 — a corrupted override state once produced 10+ criss-crossing lines.
+        // Each entry keeps its ORIGINAL activeAimPoints index — the filter can drop earlier
+        // points, and drag callbacks must report the original index or overrides land on the
+        // wrong waypoint (and the flag-spawned waypoint gets mistaken for a base one).
+        var drawnAim: [(idx: Int, coord: CLLocationCoordinate2D)] =
+            aimPoints.enumerated().prefix(3).map { ($0.offset, $0.element) }
+        if let u = userCoord, let g = effectiveGreen {
+            let userToGreen = MKMapPoint(u).distance(to: MKMapPoint(g))
+            drawnAim = drawnAim.filter {
+                MKMapPoint($0.coord).distance(to: MKMapPoint(g)) < userToGreen - 5
+            }
+        }
+        // HARD RULE #2: segments always run toward the green. Draw order is by distance to
+        // the green (farthest first) regardless of array order, so no state can ever produce
+        // backwards / crossing lines.
+        if let g = effectiveGreen {
+            let gp = MKMapPoint(g)
+            drawnAim.sort {
+                MKMapPoint($0.coord).distance(to: gp) > MKMapPoint($1.coord).distance(to: gp)
+            }
+        }
+        let drawnAimPoints = drawnAim.map(\.coord)
+
         // Aim segments (when aim points are active) replace the single HolePathPolyline.
         // For par 3 / straight short holes, aimPoints is empty and we fall back to path line.
-        if !aimPoints.isEmpty, let lineStart = userCoord ?? teeCoord, let green = effectiveGreen {
+        if !drawnAimPoints.isEmpty, let lineStart = userCoord ?? teeCoord, let green = effectiveGreen {
             // Draw segments: lineStart → aim[0] → aim[1] → … → effective green
-            let waypoints = [lineStart] + aimPoints + [green]
+            let waypoints = [lineStart] + drawnAimPoints + [green]
             // Store in coordinator so drag handler can rebuild lines in real-time.
             context.coordinator.currentAimWaypoints = waypoints
+            context.coordinator.currentAimOriginalIndices = drawnAim.map(\.idx)
             for i in 0..<waypoints.count - 1 {
                 var pts = [waypoints[i], waypoints[i + 1]]
                 map.addOverlay(AimSegmentCasingPolyline(coordinates: &pts, count: 2), level: .aboveLabels)
@@ -988,27 +1160,34 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 let yards = Int((MKMapPoint(waypoints[i]).distance(to: MKMapPoint(waypoints[i + 1])) * 1.09361).rounded())
                 map.addAnnotation(SegmentLabelAnnotation(coordinate: mid, yardage: yards))
             }
-            // Tee dot
-            if let tee = teeCoord {
+            // Tee dot — only when there's no live player fix on the hole (the player IS the
+            // line origin once GPS is live; the tee marker is just clutter behind them).
+            if userCoord == nil, let tee = teeCoord {
                 map.addAnnotation(TeeAnnotation(coordinate: tee))
             }
-            // Draggable aim-point rings
-            for (i, ap) in aimPoints.enumerated() {
-                map.addAnnotation(AimPointAnnotation(coordinate: ap, index: i))
+            // Draggable aim-point rings (original indices; flag-spawned renders smaller)
+            for entry in drawnAim {
+                let a = AimPointAnnotation(coordinate: entry.coord, index: entry.idx)
+                a.isFlagSpawned = (entry.idx == flagSpawnedIndex)
+                map.addAnnotation(a)
             }
         } else if holePathForOverlay.count >= 2 {
             // Straight line (par 3 or no aim points)
             var pts = holePathForOverlay
             map.addOverlay(HolePathCasingPolyline(coordinates: &pts, count: pts.count), level: .aboveLabels)
             map.addOverlay(HolePathPolyline(coordinates: &pts, count: pts.count), level: .aboveLabels)
-            if let tee = teeCoord {
+            if userCoord == nil, let tee = teeCoord {
                 map.addAnnotation(TeeAnnotation(coordinate: tee))
             }
         }
 
-        // Yellow flag at green center
+        // Yellow flag at the pin (user-moved position when set, else green center). When the
+        // flag has been moved, keep a small dot at the true green center for reference.
         if let green = greenCoord {
-            map.addAnnotation(GreenPinAnnotation(coordinate: green))
+            map.addAnnotation(GreenPinAnnotation(coordinate: pinCoord ?? green))
+            if pinCoord != nil {
+                map.addAnnotation(GreenCenterDotAnnotation(coordinate: green))
+            }
         }
 
         // Tracked shot polylines + markers
@@ -1043,6 +1222,10 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
         var parent: SatelliteMapBackground?
         var hasInitializedRegion = false
+        // True after a manual pan/zoom/rotate; suspends GPS auto-follow until recenter.
+        var userAdjustedCamera = false
+        // Heading last set programmatically — used to distinguish rotation from pan.
+        var lastProgrammaticHeading: Double = 0
         var lastRenderKey = ""
         private var lastFocusId = ""
         private var lastRecenterToken = -1
@@ -1051,6 +1234,9 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         // Full waypoints [lineStart, aim[0], …, green] — kept in sync so the drag handler can
         // rebuild segment overlays in real-time without a SwiftUI round-trip.
         var currentAimWaypoints: [CLLocationCoordinate2D] = []
+        /// Original activeAimPoints index for each drawn aim point (parallel to the aim
+        /// entries inside currentAimWaypoints, which is [start] + aims + [green]).
+        var currentAimOriginalIndices: [Int] = []
 
         // Flight animation state
         var lastFlightId: UUID?
@@ -1189,8 +1375,13 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         }
 
         func shouldRecenter(for focusId: String, recenterToken: Int, gpsKey: String) -> Bool {
-            // Never reframe just because the user walked — only on hole change or manual recenter.
-            !hasInitializedRegion || focusId != lastFocusId || recenterToken != lastRecenterToken
+            if !hasInitializedRegion || focusId != lastFocusId || recenterToken != lastRecenterToken {
+                return true
+            }
+            // Progressive follow: reframe as the player advances (~20yd GPS quanta) so the view
+            // zooms toward the green over the length of the hole. Suspended once the user
+            // manually pans/zooms/rotates — the recenter arrow restores auto-follow.
+            return !userAdjustedCamera && gpsKey != lastGpsKey && !gpsKey.isEmpty
         }
 
         func completeRecenter(focusId: String, recenterToken: Int, gpsKey: String) {
@@ -1198,6 +1389,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             lastFocusId = focusId
             lastRecenterToken = recenterToken
             lastGpsKey = gpsKey
+            userAdjustedCamera = false
         }
 
         func setProgrammaticRegionChange(_ value: Bool) {
@@ -1208,8 +1400,19 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             if isProgrammaticRegionChange {
                 isProgrammaticRegionChange = false
             } else {
-                // User manually panned — notify SwiftUI to show the recenter button.
-                parent?.onUserPanned?()
+                // User manually panned/zoomed/rotated — stop auto-follow, show recenter button.
+                // NOTE: never touch the stretch transform here. SwiftUI sized the frame while the
+                // stretch was active (bounds = width / stretch), so dropping to .identity renders
+                // the map at ~77% width — white bands on both sides. A slightly stretched rotated
+                // map beats a shrunken one.
+                userAdjustedCamera = true
+                // Async: MapKit can fire a second regionDidChange for one programmatic
+                // setCamera (animation begin/end) after the flag was consumed — landing this
+                // @State write inside SwiftUI's update pass ("Modifying state during view
+                // update" console warnings). Deferring a tick is always safe here.
+                DispatchQueue.main.async { [weak self] in
+                    self?.parent?.onUserPanned?()
+                }
             }
         }
 
@@ -1229,7 +1432,10 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                                         to newCoord: CLLocationCoordinate2D,
                                         isDragging: Bool = true) {
             var waypoints = currentAimWaypoints
-            let wi = movingIndex + 1
+            // movingIndex is the ORIGINAL activeAimPoints index; map it to the drawn slot
+            // (the backwards-filter can drop earlier points, shifting positions).
+            guard let pos = currentAimOriginalIndices.firstIndex(of: movingIndex) else { return }
+            let wi = pos + 1
             guard wi > 0, wi < waypoints.count - 1 else { return }
             waypoints[wi] = newCoord
 
@@ -1362,15 +1568,36 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             if let pin = annotation as? GreenPinAnnotation {
                 let id = "greenPin"
                 let v  = mapView.dequeueReusableAnnotationView(withIdentifier: id)
-                         ?? MKAnnotationView(annotation: pin, reuseIdentifier: id)
-                v.annotation     = pin
+                            as? DraggableFlagAnnotationView
+                            ?? DraggableFlagAnnotationView(annotation: pin, reuseIdentifier: id)
+                v.annotation      = pin
+                v.mapView         = mapView
                 v.displayPriority = .required
-                v.centerOffset    = CGPoint(x: 0, y: -10)   // anchor bottom of flag to coordinate
-                let cfg = UIImage.SymbolConfiguration(pointSize: 14, weight: .bold)
-                let img = UIImage(systemName: "flag.fill", withConfiguration: cfg)?
-                    .withTintColor(UIColor(red: 1.0, green: 0.82, blue: 0.0, alpha: 1.0),
-                                   renderingMode: .alwaysOriginal)
-                v.image = img
+                v.transform       = invStretch
+                v.greenCenter     = parent?.greenCoord
+                v.onDragEnded     = { [weak self] coord in
+                    self?.parent?.onPinMoved?(coord)
+                }
+                return v
+            }
+
+            if annotation is GreenCenterDotAnnotation {
+                let id = "greenCenterDot"
+                let v = mapView.dequeueReusableAnnotationView(withIdentifier: id)
+                    ?? MKAnnotationView(annotation: annotation, reuseIdentifier: id)
+                v.annotation = annotation
+                v.displayPriority = .required
+                v.isUserInteractionEnabled = false
+                if v.subviews.isEmpty {
+                    v.frame = CGRect(x: 0, y: 0, width: 10, height: 10)
+                    let dot = UIView(frame: v.bounds)
+                    dot.backgroundColor = UIColor.white.withAlphaComponent(0.9)
+                    dot.layer.cornerRadius = 5
+                    dot.layer.borderColor = UIColor.black.withAlphaComponent(0.5).cgColor
+                    dot.layer.borderWidth = 1
+                    dot.isUserInteractionEnabled = false
+                    v.addSubview(dot)
+                }
                 v.transform = invStretch
                 return v
             }
@@ -1490,6 +1717,7 @@ struct CourseModeGPSHoleView: View {
     @State private var showCamera      = false
     @State private var showScoreEntry  = false
     @State private var showScorecard   = false
+    @State private var showFinalScorecard = false
     @State private var showFinishAlert = false
     @State private var showDeleteRoundConfirm = false
     @State private var gpsOn           = true
@@ -1507,6 +1735,17 @@ struct CourseModeGPSHoleView: View {
     @State private var userAimPointOverrides: [Int: CLLocationCoordinate2D] = [:]
     // Custom tap-to-aim target (within 225 yd of green)
     @State private var aimTarget: CLLocationCoordinate2D?
+    // User-moved flag position (≤15 yd from green center); nil = flag at center.
+    @State private var pinOverride: CLLocationCoordinate2D?
+    // Waypoint spawned by dragging the flag beyond 15 yd while within 240 of the green —
+    // the one allowed exception to the "never more waypoints than the hole started with" cap.
+    @State private var flagWaypoint: CLLocationCoordinate2D?
+    // Shot tracker (replaces the old GPS on/off rail button)
+    @State private var showShotLogSheet = false
+    @State private var showStationaryPrompt = false
+    @State private var lastStationaryCheckCoord: CLLocationCoordinate2D?
+    @State private var stationarySince: Date?
+    @State private var loggedShotCoords: [CLLocationCoordinate2D] = []
     // Hazard hit counts per polygon: "bunker_0", "water_1", etc. (0→1→2→3→0)
     @State private var hazardCounts: [String: Int] = [:]
     // HUD flight animation state
@@ -1647,18 +1886,26 @@ struct CourseModeGPSHoleView: View {
         let reference = (userIsNearCurrentHole ? vm.location.currentLocation : nil)
             ?? gh.teeCoordinate?.clCoordinate
             ?? gh.greenCenterCoordinate?.clCoordinate
-        guard let ref = reference, let refElev = elevation.elevation(at: ref) else { return SlopeReadout() }
+        // Direction of play — used to sample tree-filtered elevations PERPENDICULAR to the
+        // shot line (the fairway corridor is clear; one side or the other is often trees).
+        // Base waypoints only: a flag-spawned waypoint must not rotate the probe direction
+        // (moving it was visibly changing plays-like on par 3s).
+        let playTarget = baseActiveAimPoints.first ?? gh.greenCenterCoordinate?.clCoordinate
+        let playBearing = (reference != nil && playTarget != nil)
+            ? reference!.bearing(to: playTarget!) : 0
+        guard let ref = reference,
+              let refElev = treeFilteredElevation(at: ref, playBearingDeg: playBearing) else { return SlopeReadout() }
 
         func slope(_ coord: Coordinate?, _ horiz: Int?) -> Int? {
             guard let coord, let horiz,
-                  let targetElev = elevation.elevation(at: coord.clCoordinate) else { return nil }
+                  let targetElev = treeFilteredElevation(at: coord.clCoordinate, playBearingDeg: playBearing) else { return nil }
             // Plays-like = horizontal + (target elevation − your elevation).
             // Uphill (target higher) plays longer (+); if you're above it, shorter (−).
             let vertYds = (targetElev - refElev) * ElevationService.yardsPerMeter
             return max(0, Int((Double(horiz) + vertYds).rounded()))
         }
         let vert = gh.greenCenterCoordinate.flatMap { c -> Int? in
-            elevation.elevation(at: c.clCoordinate).map {
+            treeFilteredElevation(at: c.clCoordinate, playBearingDeg: playBearing).map {
                 Int((($0 - refElev) * ElevationService.yardsPerMeter).rounded())
             }
         }
@@ -1668,6 +1915,23 @@ struct CourseModeGPSHoleView: View {
             back:   slope(gh.greenBackCoordinate,   d.back),
             verticalYards: vert
         )
+    }
+
+    /// Elevation with tree-canopy rejection. Surface-model grids read the TOP of tree cover,
+    /// so a point under/near trees can read 6m+ high. Sample the point plus two probes ±8m
+    /// PERPENDICULAR to the direction of play (the shot corridor is clear ground; trees sit
+    /// to one side, not both) — if the spread exceeds 6m, the high readings are canopy and
+    /// the LOWEST sample is the ground.
+    private func treeFilteredElevation(at coord: CLLocationCoordinate2D, playBearingDeg: Double) -> Double? {
+        guard let center = elevation.elevation(at: coord) else { return nil }
+        let leftCoord  = coord.projected(yardsForward: 0, yardsRight: -8.75, bearingDeg: playBearingDeg)  // ~8m
+        let rightCoord = coord.projected(yardsForward: 0, yardsRight:  8.75, bearingDeg: playBearingDeg)
+        let sides = [elevation.elevation(at: leftCoord), elevation.elevation(at: rightCoord)].compactMap { $0 }
+        guard !sides.isEmpty else { return center }
+        let all = [center] + sides
+        let spread = all.max()! - all.min()!
+        // Canopy only ever ADDS height — when the samples disagree badly, ground = minimum.
+        return spread >= 6 ? all.min()! : center
     }
 
     // MARK: - Wind (#2, WeatherKit)
@@ -1959,9 +2223,19 @@ struct CourseModeGPSHoleView: View {
     /// - Drops any aim point that is behind the user (user is closer to the green)
     /// - Drops all aim points when user is within 225 yards of the green
     private var activeAimPoints: [CLLocationCoordinate2D] {
+        var base = baseActiveAimPoints
+        // Flag-spawned waypoint (drag beyond 15yd while inside 240) is the single allowed
+        // addition beyond the hole's starting waypoint count.
+        if let fw = flagWaypoint { base.append(fw) }
+        return base
+    }
+
+    private var baseActiveAimPoints: [CLLocationCoordinate2D] {
+        // HARD CAP: never more waypoints than the hole started with (stale overrides once
+        // produced 10+ lines fanning in every direction).
         let pts = suggestedAimPoints.enumerated().map { i, def in
             userAimPointOverrides[i] ?? def
-        }
+        }.prefix(suggestedAimPoints.count).map { $0 }
         guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate else { return pts }
 
         // When we have a live GPS position, filter aim points relative to the user.
@@ -1992,6 +2266,168 @@ struct CourseModeGPSHoleView: View {
         return pts
     }
 
+    /// Flag ↔ waypoint boundary: within this many yards of the green center a drag moves the
+    /// FLAG; beyond it the drag becomes a waypoint. The two can never coexist closer than this.
+    static let kFlagWaypointBoundaryYds = 30.0
+    /// Two waypoints can never sit closer than this — a new placement inside the ring moves
+    /// the existing waypoint there instead, and drags clamp away from their nearest neighbor.
+    static let kWaypointMinSeparationYds = 30.0
+
+    private func handlePinMoved(_ coord: CLLocationCoordinate2D) {
+        guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate else { return }
+        let yards = Self.metersBetween(coord, green) * 1.09361
+        if yards <= 5 {
+            pinOverride = nil   // close enough — snap home to the center point
+        } else if yards <= Self.kFlagWaypointBoundaryYds {
+            // FLAG PRIORITY: a valid flag placement always wins. Any waypoint inside the
+            // 30y separation yields to the flag instead of blocking it — so a validly
+            // moved flag ALWAYS gets the line (never a waypoint line into the center).
+            pinOverride = coord
+            resolveWaypointConflicts(withFlagAt: coord)
+        } else {
+            // Dragged clear off the green (>30y): this becomes a waypoint, flag snaps home.
+            pinOverride = nil
+            placeFlagSpawnedWaypoint(at: coord, green: green)
+        }
+    }
+
+    /// Flag priority: any waypoint within 30y of a newly-placed flag yields. Base waypoints
+    /// go back to their ORIGINAL suggested spot (discarding prior user moves; clamped to the
+    /// 30y ring if even home conflicts); the flag-spawned waypoint has no home — it's removed.
+    private func resolveWaypointConflicts(withFlagAt flag: CLLocationCoordinate2D) {
+        if let fw = flagWaypoint,
+           Self.metersBetween(fw, flag) * 1.09361 < Self.kWaypointMinSeparationYds {
+            flagWaypoint = nil
+        }
+        for i in suggestedAimPoints.indices {
+            let eff = userAimPointOverrides[i] ?? suggestedAimPoints[i]
+            guard Self.metersBetween(eff, flag) * 1.09361 < Self.kWaypointMinSeparationYds else { continue }
+            let home = suggestedAimPoints[i]
+            if Self.metersBetween(home, flag) * 1.09361 < Self.kWaypointMinSeparationYds {
+                userAimPointOverrides[i] = flag.projected(
+                    yardsForward: Self.kWaypointMinSeparationYds,
+                    yardsRight: 0,
+                    bearingDeg: flag.bearing(to: home))
+            } else {
+                userAimPointOverrides[i] = nil   // back to the original spot
+            }
+        }
+    }
+
+    /// Waypoint-from-flag placement with merge rules:
+    ///  • within 30y of an existing waypoint, or BEHIND one (farther from the green than it),
+    ///    don't add a second waypoint — move that existing waypoint to the drop point instead.
+    ///  • otherwise it becomes the flag-spawned waypoint (the one cap exception).
+    private func placeFlagSpawnedWaypoint(at coord: CLLocationCoordinate2D, green: CLLocationCoordinate2D) {
+        var c = coord
+        // Keep 30y clear of the flag itself when the flag sits off center.
+        if let pin = pinOverride,
+           Self.metersBetween(c, pin) * 1.09361 < Self.kWaypointMinSeparationYds {
+            c = pin.projected(yardsForward: Self.kWaypointMinSeparationYds,
+                              yardsRight: 0,
+                              bearingDeg: pin.bearing(to: c))
+        }
+        let dropToGreen = Self.metersBetween(c, green)
+        for wp in baseActiveAimPoints {
+            let nearExisting   = Self.metersBetween(c, wp) * 1.09361 <= Self.kWaypointMinSeparationYds
+            let behindExisting = dropToGreen > Self.metersBetween(wp, green)
+            guard nearExisting || behindExisting else { continue }
+            // baseActiveAimPoints is a filtered view — resolve wp back to its original
+            // suggested-index so the override lands on the right waypoint.
+            if let orig = suggestedAimPoints.indices.first(where: {
+                let eff = userAimPointOverrides[$0] ?? suggestedAimPoints[$0]
+                return Self.metersBetween(eff, wp) < 0.5
+            }) {
+                // The relocated waypoint must keep 30y from the OTHER waypoints too.
+                var target = c
+                for other in baseActiveAimPoints where Self.metersBetween(other, wp) > 0.5 {
+                    if Self.metersBetween(target, other) * 1.09361 < Self.kWaypointMinSeparationYds {
+                        target = other.projected(yardsForward: Self.kWaypointMinSeparationYds,
+                                                 yardsRight: 0,
+                                                 bearingDeg: other.bearing(to: target))
+                    }
+                }
+                userAimPointOverrides[orig] = target
+                flagWaypoint = nil
+                return
+            }
+        }
+        flagWaypoint = c
+    }
+
+    // MARK: - Stationary shot prompt
+
+    /// Player has held position ~20s without logging a shot near here → surface the shot
+    /// tracker. Never auto-inputs: dismissing (or ignoring) the banner records nothing.
+    private func evaluateStationaryPrompt() {
+        guard vm.roundActive, userIsNearCurrentHole,
+              let loc = vm.location.currentLocation else {
+            stationarySince = nil
+            return
+        }
+        if let last = lastStationaryCheckCoord, Self.metersBetween(last, loc) < 8 {
+            if stationarySince == nil { stationarySince = Date() }
+        } else {
+            stationarySince = nil
+            if showStationaryPrompt { withAnimation { showStationaryPrompt = false } }
+        }
+        lastStationaryCheckCoord = loc
+
+        guard let since = stationarySince, Date().timeIntervalSince(since) >= 20 else { return }
+        let alreadyLoggedNearby = loggedShotCoords.contains { Self.metersBetween($0, loc) < 25 }
+        let holeNum = vm.currentHole?.holeNumber ?? 0
+        if !alreadyLoggedNearby,
+           !vm.hasManualOrigin(nearCurrentPositionForHole: holeNum),
+           !showShotLogSheet, !showStationaryPrompt, !showScoreEntry, !showCamera, !showFinalScorecard {
+            withAnimation(.spring(response: 0.35)) { showStationaryPrompt = true }
+        }
+    }
+
+    private var stationaryPromptBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "figure.golf.circle.fill")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(HUDStyle.pin)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Hitting from here?")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                Text("Tap to log your club — GPS marks this spot.")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.6))
+            }
+            Button {
+                withAnimation { showStationaryPrompt = false }
+                // Remember the dismissal spot so we don't re-prompt until they move on.
+                if let loc = vm.location.currentLocation { loggedShotCoords.append(loc) }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.white.opacity(0.55))
+                    .padding(6)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .hudGlass(22)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation { showStationaryPrompt = false }
+            showShotLogSheet = true
+        }
+    }
+
+    /// One-tap escape hatch: wipe every waypoint/pin customization and re-apply the standard
+    /// True Carry rules from the player's current position (used when overrides get tangled).
+    private func resetWaypointsAndRecenter() {
+        userAimPointOverrides = [:]
+        aimTarget = nil
+        pinOverride = nil
+        flagWaypoint = nil
+        recenterToken += 1
+        withAnimation(.spring(response: 0.3)) { showRecenter = false }
+    }
+
     /// True if the hole path bends more than 30 m from a straight tee-to-green line.
     private static func isSignificantDogleg(_ path: [CLLocationCoordinate2D]) -> Bool {
         guard path.count >= 3, let tee = path.first, let green = path.last else { return false }
@@ -2016,7 +2452,7 @@ struct CourseModeGPSHoleView: View {
         guard let hole = vm.currentHole,
               let gh = vm.selectedCourse?.holes.first(where: { $0.number == hole.holeNumber })
         else { return vm.currentHole?.par == 3 ? 9 : 7 }
-        return gh.handicap ?? 9
+        return gh.strokeIndex(for: session.userProfile?.gender) ?? 9
     }
 
     private var userName: String { session.userProfile?.displayName ?? "Player" }
@@ -2042,12 +2478,24 @@ struct CourseModeGPSHoleView: View {
             .first?.windows.first?.safeAreaInsets.bottom ?? 34
     }
 
-    /// GPS rounded to ~40 m resolution. Changes here trigger a camera reframe (GPS→green zoom-in).
+    /// GPS rounded to ~20 yd resolution. Changes here trigger a camera reframe (GPS→green
+    /// progressive zoom-in as the player walks the hole).
     private var coarseGpsKey: String {
         guard gpsOn, userIsNearCurrentHole,
               let loc = vm.location.currentLocation else { return "" }
-        let lat = (loc.latitude  / 0.0004).rounded() * 0.0004
-        let lon = (loc.longitude / 0.0004).rounded() * 0.0004
+        let lat = (loc.latitude  / 0.0002).rounded() * 0.0002
+        let lon = (loc.longitude / 0.0002).rounded() * 0.0002
+        return "\(lat),\(lon)"
+    }
+
+    /// GPS rounded to ~3 m — redraws aim lines/labels continuously as the player walks,
+    /// without waiting for the coarser camera quantum. This is what makes lines/yardages
+    /// live instead of requiring a GPS toggle to force a refresh.
+    private var fineGpsKey: String {
+        guard gpsOn, userIsNearCurrentHole,
+              let loc = vm.location.currentLocation else { return "" }
+        let lat = (loc.latitude  / 0.00003).rounded() * 0.00003
+        let lon = (loc.longitude / 0.00003).rounded() * 0.00003
         return "\(lat),\(lon)"
     }
 
@@ -2240,17 +2688,66 @@ struct CourseModeGPSHoleView: View {
                 pathCoordinates: currentHolePathCoordinates,
                 aimPoints:      activeAimPoints,
                 onAimPointMoved: { idx, coord in
-                    userAimPointOverrides[idx] = coord
+                    // The flag-spawned waypoint rides at the END of the array — route its
+                    // drags to flagWaypoint, not the override dict (indices must never grow
+                    // the override set past the hole's starting waypoint count).
+                    if flagWaypoint != nil && idx == activeAimPoints.count - 1 {
+                        guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate else {
+                            flagWaypoint = coord; return
+                        }
+                        let yards = Self.metersBetween(coord, green) * 1.09361
+                        if yards <= Self.kFlagWaypointBoundaryYds {
+                            // Dragged back inside the flag boundary → it stops being a waypoint
+                            // and becomes the flag again (flag and waypoint are never within 30y).
+                            flagWaypoint = nil
+                            pinOverride = yards <= 5 ? nil : coord
+                        } else {
+                            // Re-run the merge/ordering rules: dragging it back past an existing
+                            // waypoint must merge into that waypoint, never draw backwards lines.
+                            flagWaypoint = nil
+                            placeFlagSpawnedWaypoint(at: coord, green: green)
+                        }
+                    } else if idx < suggestedAimPoints.count {
+                        // Normal waypoints can never enter the flag's 30y zone — clamp to the ring.
+                        var c = coord
+                        if let green = currentMapHole?.greenCenterCoordinate?.clCoordinate {
+                            let yards = Self.metersBetween(coord, green) * 1.09361
+                            if yards < Self.kFlagWaypointBoundaryYds {
+                                c = green.projected(yardsForward: Self.kFlagWaypointBoundaryYds,
+                                                    yardsRight: 0,
+                                                    bearingDeg: green.bearing(to: coord))
+                            }
+                        }
+                        // …and never within 30y of another waypoint OR the (moved) flag —
+                        // clamp to the separation ring around the nearest along the drag.
+                        let others = suggestedAimPoints.indices
+                            .filter { $0 != idx }
+                            .map { userAimPointOverrides[$0] ?? suggestedAimPoints[$0] }
+                            + (flagWaypoint.map { [$0] } ?? [])
+                            + (pinOverride.map { [$0] } ?? [])
+                        if let near = others.min(by: {
+                            Self.metersBetween($0, c) < Self.metersBetween($1, c)
+                        }), Self.metersBetween(near, c) * 1.09361 < Self.kWaypointMinSeparationYds {
+                            c = near.projected(yardsForward: Self.kWaypointMinSeparationYds,
+                                               yardsRight: 0,
+                                               bearingDeg: near.bearing(to: c))
+                        }
+                        userAimPointOverrides[idx] = c
+                    }
                 },
                 onUserPanned: {
                     withAnimation(.spring(response: 0.3)) { showRecenter = true }
                 },
                 trackedShots:   vm.currentHoleTrackedShots,
                 dispersionDots: dispersionDots,
-                topUIInset:    topSafeArea + 115, // clears the info strip with a bit more breathing room than +90 (was +184, then +168 — both too conservative, left a large gap above the flag)
-                bottomUIInset: bottomSafeArea + 76, // bottom bar content + home indicator
+                topUIInset:    topSafeArea + 140, // clears the lowered top bar + info strip
+                bottomUIInset: bottomSafeArea + 130, // raised bottom stack (score bar, badges, pills) — keeps the tee dot visible above it
                 gpsKey:        coarseGpsKey,
+                fineGpsKey:    fineGpsKey,
+                flagSpawnedIndex: flagWaypoint != nil ? activeAimPoints.count - 1 : nil,
                 customAimTarget: aimTarget,
+                pinCoord:      pinOverride,
+                onPinMoved:    { coord in handlePinMoved(coord) },
                 hazardCounts:  hazardCounts,
                 onHazardCountChanged: { key, count in hazardCounts[key] = count },
                 onMapTap: { coord in
@@ -2351,7 +2848,7 @@ struct CourseModeGPSHoleView: View {
 
                 // Top bar — lowered well off the notch/island for breathing room
                 topBar
-                    .padding(.top, 106)
+                    .padding(.top, 158)
 
                 // Hole info strip
                 holeInfoStrip
@@ -2367,7 +2864,7 @@ struct CourseModeGPSHoleView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .padding(.leading, 6)
                 .padding(.top, topSafeArea + 120)
-                .padding(.bottom, 190)
+                .padding(.bottom, 250)
                 .ignoresSafeArea(edges: .bottom)
 
             // Right sidebar
@@ -2383,7 +2880,7 @@ struct CourseModeGPSHoleView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                 .padding(.trailing, 12)
                 .padding(.top, topSafeArea + 120)
-                .padding(.bottom, 190)
+                .padding(.bottom, 250)
                 .ignoresSafeArea(edges: .bottom)
 
             // Wind readout — top-center banner while wind mode is on. Raised to sit close to the
@@ -2419,7 +2916,7 @@ struct CourseModeGPSHoleView: View {
                     Spacer()
                     gpsStatusBadge
                         .padding(.trailing, 10)
-                        .padding(.bottom, 164)
+                        .padding(.bottom, 232)
                 }
             }
             .ignoresSafeArea(edges: .bottom)
@@ -2430,12 +2927,24 @@ struct CourseModeGPSHoleView: View {
                 HStack {
                     OSMAttributionBadge()
                         .padding(.leading, 10)
-                        .padding(.bottom, 156)   // above the bottom bar
+                        .padding(.bottom, 224)   // above the bottom bar
                     Spacer()
                 }
             }
             .ignoresSafeArea(edges: .bottom)
 
+        }
+        // Stationary auto-prompt: you've been standing still without logging a shot here —
+        // offer the shot tracker (never auto-inputs; dismissing does nothing).
+        .overlay(alignment: .top) {
+            if showStationaryPrompt {
+                stationaryPromptBanner
+                    .padding(.top, topSafeArea + 132)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
+            evaluateStationaryPrompt()
         }
         // Bottom bar
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -2507,17 +3016,23 @@ struct CourseModeGPSHoleView: View {
                     existingScore:  scoreEntryInitialScore(for: hole),
                     existingPutts:  scoreEntryInitialPutts(for: hole),
                     holeYardage:    scorecardYardage,
-                    handicap:       currentCourseHole?.handicap,
+                    handicap:       currentCourseHole?.strokeIndex(for: session.userProfile?.gender),
                     prefillTeeClubName: teeClubName(for: hole),
                     prefillFirstPuttFeet: firstPuttFeet(for: hole)
                 ) { s, p, f, g in
                     let idx = vm.currentHoleIndex
+                    let holeNum = hole.holeNumber
+                    let isLastHole = idx >= (vm.activeRound?.holes.count ?? 0) - 1
+                    // Advance IMMEDIATELY and persist in the background — waiting on the
+                    // network round-trip made switching holes feel sluggish.
+                    if isLastHole {
+                        showFinalScorecard = true
+                    } else {
+                        vm.advanceHole()
+                    }
                     Task {
+                        await vm.closeManualShotForHole(holeNum)
                         await vm.setScore(holeIndex: idx, score: s, putts: p, fairwayHit: f, gir: g)
-                        // Auto-advance to the next hole after saving score.
-                        if vm.currentHoleIndex < (vm.activeRound?.holes.count ?? 0) - 1 {
-                            vm.advanceHole()
-                        }
                     }
                 }
                 .tcAppearance()
@@ -2530,6 +3045,39 @@ struct CourseModeGPSHoleView: View {
                 }
                 .tcAppearance()
             }
+        }
+        // Final flow after hole 18: editable scorecard → post / save privately / delete → home.
+        .fullScreenCover(isPresented: $showFinalScorecard) {
+            FinalRoundReviewView(vm: vm) { action in
+                Task {
+                    switch action {
+                    case .postPublic:   await vm.finishRound(shareToFeed: true)
+                    case .savePrivate:  await vm.finishRound(shareToFeed: false)
+                    case .delete:       await vm.discardRound()
+                    }
+                    WidgetBridge.clear()
+                    if #available(iOS 16.2, *) { ActivityBridge.end() }
+                    showFinalScorecard = false
+                    dismiss()
+                }
+            }
+            .tcAppearance()
+        }
+        // Shot tracker: "I'm hitting from HERE with CLUB" — the manual equivalent of NFC tags.
+        .sheet(isPresented: $showShotLogSheet) {
+            ShotLogSheet(clubs: clubs) { club, movedOrDropped in
+                Task {
+                    let ok = await vm.logManualShot(club: club, movedOrDropped: movedOrDropped)
+                    if ok, let loc = vm.location.currentLocation {
+                        loggedShotCoords.append(loc)
+                    } else if !ok {
+                        infoMessage = "No GPS fix yet — walk to your ball and try again."
+                    }
+                }
+            }
+            // Opens at (near) full height so the whole bag is visible without dragging.
+            .presentationDetents([.fraction(0.92), .large])
+            .tcAppearance()
         }
         .sheet(isPresented: $showDispersionPicker) {
             dispersionPickerSheet
@@ -2588,7 +3136,11 @@ struct CourseModeGPSHoleView: View {
             recenterToken += 1
             userAimPointOverrides = [:]
             aimTarget = nil
+            pinOverride = nil
+            flagWaypoint = nil
             hazardCounts = [:]
+            loggedShotCoords = []
+            stationarySince = nil
             showRecenter = false
             pushWidgetData()
             loadElevationForHole()
@@ -2968,7 +3520,15 @@ struct CourseModeGPSHoleView: View {
         VStack {
             Spacer(minLength: 0)
             VStack(spacing: 14) {
-                railButton("location.fill", isActive: gpsOn) { gpsOn.toggle() }
+                // Shot tracker (replaced the GPS on/off toggle — GPS is now always live and
+                // the HUD updates continuously, so the toggle had no remaining purpose).
+                railButton("figure.golf.circle.fill", isActive: showShotLogSheet) {
+                    showShotLogSheet = true
+                }
+                // Reset waypoints/pin to the True Carry defaults from the current position.
+                railButton("arrow.counterclockwise", isActive: false) {
+                    resetWaypointsAndRecenter()
+                }
                 railButton("scope", isActive: !dispersionClubIds.isEmpty) {
                     showDispersionPicker = true
                 }
@@ -3378,7 +3938,7 @@ struct CourseModeGPSHoleView: View {
         }
         .padding(.horizontal, 18)
         .padding(.top, 12)
-        .padding(.bottom, 78)
+        .padding(.bottom, 160)
         .frame(maxWidth: .infinity)
         .background(
             ZStack {
@@ -3721,5 +4281,204 @@ struct LivePulseDot: View {
             .onAppear {
                 withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { on = true }
             }
+    }
+}
+
+// MARK: - Shot Log Sheet (manual shot tracker — the NFC-tag flow with manual input)
+
+private struct ShotLogSheet: View {
+    let clubs: [UserClub]
+    /// (club, movedOrDropped) — club nil is not emitted; tapping a club logs immediately.
+    let onLog: (UserClub, Bool) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var movedOrDropped = false
+
+    private var activeClubs: [UserClub] { clubs.filter { $0.isActive } }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Log Shot")
+                .font(.system(size: 20, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .padding(.top, 18)
+
+            // The GPS position at the moment of logging IS the measurement — say so every time.
+            HStack(spacing: 8) {
+                Image(systemName: "location.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(HUDStyle.live)
+                Text("Log this at (or near) the spot you're hitting from — your GPS position is used to measure this shot.")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.75))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Toggle(isOn: $movedOrDropped) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("I took a drop / moved my ball")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("The distance into this spot won't count toward club stats.")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundColor(.white.opacity(0.55))
+                }
+            }
+            .tint(HUDStyle.pin)
+
+            Text("WHAT ARE YOU HITTING?")
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .tracking(1.2)
+                .foregroundColor(.white.opacity(0.5))
+                .padding(.top, 4)
+
+            ScrollView(showsIndicators: false) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 10)], spacing: 10) {
+                    ForEach(activeClubs) { club in
+                        Button {
+                            onLog(club, movedOrDropped)
+                            dismiss()
+                        } label: {
+                            VStack(spacing: 3) {
+                                Text(club.name)
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                Text("\(club.expectedTotalYards) yd")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.white.opacity(0.5))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.white.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.bottom, 24)
+            }
+        }
+        .padding(.horizontal, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color(white: 0.07).ignoresSafeArea())
+    }
+}
+
+// MARK: - Final Round Review (after hole 18: edit scores → post / private / delete)
+
+enum FinalRoundAction { case postPublic, savePrivate, delete }
+
+struct FinalRoundReviewView: View {
+    @ObservedObject var vm: CourseRoundViewModel
+    let onAction: (FinalRoundAction) -> Void
+    @State private var editingHoleIndex: Int?
+    @State private var confirmDelete = false
+
+    var body: some View {
+        ZStack {
+            TrueCarryBackground().ignoresSafeArea()
+            VStack(spacing: 0) {
+                Text("Round Complete")
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.top, 24)
+                Text("Tap any hole to fix its score before saving.")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.55))
+                    .padding(.top, 4)
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 6) {
+                        if let round = vm.activeRound {
+                            ForEach(Array(round.holes.enumerated()), id: \.element.holeNumber) { idx, hole in
+                                Button { editingHoleIndex = idx } label: {
+                                    HStack {
+                                        Text("Hole \(hole.holeNumber)")
+                                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                                            .foregroundColor(.white)
+                                        Text("Par \(hole.par)")
+                                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                            .foregroundColor(.white.opacity(0.5))
+                                        Spacer()
+                                        if let s = hole.score {
+                                            Text("\(s)")
+                                                .font(.system(size: 16, weight: .black, design: .rounded))
+                                                .foregroundColor(s < hole.par ? .green : (s == hole.par ? .white : .orange))
+                                        } else {
+                                            Text("—")
+                                                .font(.system(size: 16, weight: .black, design: .rounded))
+                                                .foregroundColor(.white.opacity(0.4))
+                                        }
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.white.opacity(0.3))
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 11)
+                                    .background(Color.white.opacity(0.06))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 16)
+                    .padding(.bottom, 12)
+                }
+
+                VStack(spacing: 10) {
+                    TCPrimaryGoldButton(title: "Post Round", icon: "globe") {
+                        onAction(.postPublic)
+                    }
+                    TCOutlineButton(title: "Save Privately", color: TCTheme.sage) {
+                        onAction(.savePrivate)
+                    }
+                    Button("Delete Round") { confirmDelete = true }
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(.red.opacity(0.85))
+                        .padding(.top, 2)
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 24)
+            }
+        }
+        .alert("Delete this round?", isPresented: $confirmDelete) {
+            Button("Delete Round", role: .destructive) { onAction(.delete) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This cannot be undone.")
+        }
+        .sheet(item: Binding(
+            get: { editingHoleIndex.map { EditingHole(index: $0) } },
+            set: { editingHoleIndex = $0?.index }
+        )) { editing in
+            if let round = vm.activeRound, editing.index < round.holes.count {
+                let hole = round.holes[editing.index]
+                ScoreEntryView(
+                    holeNumber:    hole.holeNumber,
+                    par:           hole.par,
+                    existingScore: hole.score,
+                    existingPutts: hole.putts,
+                    holeYardage:   nil,
+                    handicap:      nil,
+                    prefillTeeClubName: nil,
+                    prefillFirstPuttFeet: nil
+                ) { s, p, f, g in
+                    let idx = editing.index
+                    Task { await vm.setScore(holeIndex: idx, score: s, putts: p, fairwayHit: f, gir: g) }
+                }
+                .tcAppearance()
+            }
+        }
+    }
+
+    private struct EditingHole: Identifiable {
+        let index: Int
+        var id: Int { index }
     }
 }

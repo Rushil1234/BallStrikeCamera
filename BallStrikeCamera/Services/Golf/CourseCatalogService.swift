@@ -167,11 +167,20 @@ enum CourseCatalog {
 
             // Tee boxes: prefer the feed's declared tee_boxes (they carry real names/colors like
             // "Blue", "Black"; the per-hole yardage keys may just be opaque ids). Recompute the
-            // total from the per-hole yardages keyed by the tee id so it stays consistent. Only
-            // when no tee_boxes are present do we synthesize from the per-hole keys (OSM blobs use
-            // the tee name as the key, so that path still yields readable names).
+            // total from the per-hole yardages keyed by the tee id so it stays consistent.
+            // TRUST CHECK: some blobs carry a declared list from a different course entirely
+            // (Berkshire Valley declared Purple/Orange/Teal while its per-hole data held the real
+            // Black/Blue/White/Yellow/Red). Declared ids that never key into the per-hole yardage
+            // maps can't drive hole yardages anyway — synthesize from the per-hole keys instead.
+            var totalsByTee: [String: Int] = [:]
+            for h in holes {
+                for (name, yards) in (h.teeYardsByTeeBox ?? [:]) where yards > 0 {
+                    totalsByTee[name, default: 0] += yards
+                }
+            }
             let teeBoxes: [TeeBox]
-            if let declared = self.teeBoxes, !declared.isEmpty {
+            if let declared = self.teeBoxes, !declared.isEmpty,
+               totalsByTee.isEmpty || declared.contains(where: { totalsByTee[$0.id] != nil }) {
                 teeBoxes = declared.map { tb in
                     let summed = holes.reduce(0) { $0 + max(0, $1.teeYardsByTeeBox?[tb.id] ?? 0) }
                     return TeeBox(id: tb.id,
@@ -182,14 +191,12 @@ enum CourseCatalog {
                                   slope: tb.slope)
                 }
             } else {
-                var totalsByTee: [String: Int] = [:]
-                for h in holes {
-                    for (name, yards) in (h.teeYardsByTeeBox ?? [:]) where yards > 0 {
-                        totalsByTee[name, default: 0] += yards
-                    }
-                }
+                // Two per-hole keys with identical 18-hole totals are the same physical markers
+                // under two names (Berkshire lists Yellow and Gold both at 5234) — keep one.
+                var seenTotals = Set<Int>()
                 teeBoxes = totalsByTee
                     .sorted { $0.value > $1.value }   // longest tee first
+                    .filter { seenTotals.insert($0.value).inserted }
                     .map { name, total in
                         TeeBox(id: name, name: name, color: name.lowercased(), totalYards: total)
                     }

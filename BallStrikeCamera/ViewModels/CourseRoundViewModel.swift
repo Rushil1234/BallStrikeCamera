@@ -1,5 +1,6 @@
 import Foundation
 import CoreLocation
+import Combine
 
 @MainActor
 final class CourseRoundViewModel: ObservableObject {
@@ -122,6 +123,7 @@ final class CourseRoundViewModel: ObservableObject {
     }
 
     private var discardObserver: NSObjectProtocol?
+    private var locationForwarder: AnyCancellable?
 
     init(userId: UUID, backend: AppBackend) {
         self.userId  = userId
@@ -133,6 +135,13 @@ final class CourseRoundViewModel: ObservableObject {
             guard let id = note.userInfo?["id"] as? UUID else { return }
             Task { @MainActor in self?.dropShot(id) }
         }
+        // CRITICAL: LocationService is a NESTED ObservableObject — its @Published GPS updates
+        // do NOT propagate to views observing this view model. Without this forwarding, the
+        // course HUD (lines, yardages, F/C/B pill, camera) only refreshed when some *other*
+        // vm property changed — users had to toggle the GPS button to force a redraw.
+        locationForwarder = location.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
     }
 
     deinit { if let o = discardObserver { NotificationCenter.default.removeObserver(o) } }
@@ -197,6 +206,14 @@ final class CourseRoundViewModel: ObservableObject {
         // Show a non-blocking note for degraded tiers; nil for full GPS.
         degradedTierNote = readiness.tier == .fullGPS ? nil : readiness.report?.message
         isLoading = false
+        // Write every playable course we enrich into our own geometry DB so repeat plays
+        // (by anyone) stop depending on GolfCourseAPI.
+        if playCourse.holes.contains(where: { $0.handicap != nil || !$0.teeYardsByTeeBox.isEmpty }) {
+            let snapshot = playCourse
+            Task.detached(priority: .utility) { [backend] in
+                try? await backend.saveCourseGeometry(snapshot)
+            }
+        }
         await startRound(course: playCourse, teeBox: resolvedTee, gender: gender)
     }
 
@@ -334,6 +351,78 @@ final class CourseRoundViewModel: ObservableObject {
         activeRound = round
         await saveRoundOfflineSafe(round)
         return shot
+    }
+
+    // MARK: - Manual shot tracker ("I'm hitting from HERE with CLUB")
+    //
+    // Works like NFC tags but with manual input: each log records the player's current GPS as
+    // a shot origin. When the NEXT log (or the hole's score entry) arrives, the previous
+    // origin → new position becomes a TrackedShot segment for that club. A "moved/drop" flag
+    // on a log marks the segment ending there as .penalty so club-distance analytics
+    // (which filter on isMeaningfulForCarry) never trust that distance.
+    private var pendingManualOrigin: [Int: (coord: Coordinate, club: ShotClub?)] = [:]
+
+    /// Logs a shot origin at the current GPS position. Returns false when no fix exists.
+    @discardableResult
+    func logManualShot(club: UserClub?, movedOrDropped: Bool) async -> Bool {
+        guard let loc = location.currentLocation else { return false }
+        let here = Coordinate(latitude: loc.latitude, longitude: loc.longitude)
+        let holeNum = currentHole?.holeNumber ?? (currentHoleIndex + 1)
+
+        // Close the previous open origin into a completed segment.
+        if let pending = pendingManualOrigin[holeNum] {
+            await appendTrackedShot(
+                start: pending.coord,
+                end: here,
+                club: pending.club,
+                lie: .unknown,
+                result: movedOrDropped ? .penalty : .inPlay
+            )
+        }
+
+        let shotClub = club.map { c -> ShotClub in
+            let category: ShotClub.ClubCategory
+            switch c.type {
+            case .driver:      category = .driver
+            case .fairwayWood: category = .wood
+            case .hybrid:      category = .hybrid
+            case .iron:        category = .iron
+            case .wedge:       category = .wedge
+            case .putter:      category = .putter
+            }
+            return ShotClub(clubId: c.id, name: c.name, category: category)
+        }
+        pendingManualOrigin[holeNum] = (here, shotClub)
+        // Feed smart scoring exactly like an NFC tap would.
+        if let club { recordNFCShot(club: club) }
+        return true
+    }
+
+    /// Score entered for the hole → close any open manual origin at the green center so the
+    /// final segment (approach/putt) still gets a distance.
+    func closeManualShotForHole(_ holeNumber: Int) async {
+        guard let pending = pendingManualOrigin[holeNumber] else { return }
+        pendingManualOrigin[holeNumber] = nil
+        let greenCoord = selectedCourse?.holes
+            .first(where: { $0.number == holeNumber })?.greenCenterCoordinate
+        guard let green = greenCoord else { return }
+        await appendTrackedShot(
+            start: pending.coord,
+            end: green,
+            club: pending.club,
+            lie: .unknown,
+            result: .inPlay
+        )
+    }
+
+    /// True when a manual origin has already been logged near this position for the hole
+    /// (used to suppress the stationary auto-prompt at spots already logged).
+    func hasManualOrigin(nearCurrentPositionForHole holeNumber: Int, withinMeters: Double = 25) -> Bool {
+        guard let pending = pendingManualOrigin[holeNumber],
+              let loc = location.currentLocation else { return false }
+        let a = CLLocation(latitude: pending.coord.latitude, longitude: pending.coord.longitude)
+        let b = CLLocation(latitude: loc.latitude, longitude: loc.longitude)
+        return a.distance(from: b) < withinMeters
     }
 
     func updateTrackedShot(_ shot: TrackedShot) async {
@@ -499,7 +588,9 @@ final class CourseRoundViewModel: ObservableObject {
         activeRound = nil
     }
 
-    func finishRound() async {
+    /// `shareToFeed`: nil follows the user's auto-share setting; true/false is an explicit
+    /// choice from the end-of-round Post Publicly / Save Privately buttons.
+    func finishRound(shareToFeed: Bool? = nil) async {
         guard var round = activeRound else { return }
         let hasShots  = !round.shotIds.isEmpty
         let hasScores = round.holes.contains(where: { $0.score != nil })
@@ -516,8 +607,9 @@ final class CourseRoundViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        // Auto-share the completed round to the social feed (opt-out in settings).
-        await FeedAutoPoster.share(round: round, backend: backend)
+        // Share to the social feed (explicit choice, else the auto-share setting).
+        await FeedAutoPoster.share(round: round, backend: backend,
+                                   enabled: shareToFeed ?? FeedSharing.autoShareEnabled)
         activeRound = nil
     }
 

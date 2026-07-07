@@ -191,23 +191,42 @@ final class GolfCourseAPIProvider: CourseProvider {
 
     private func buildTeeBoxes(raw: RawCourse, courseId: String) -> [TeeBox] {
         let rawTees = allRawTees(raw)
+        // Raw payload audit — phantom tee colors (purple/orange at Berkshire Valley) and
+        // missing ones trace back to what the API actually returns; this makes it visible.
+        #if DEBUG
+        let maleDesc = (raw.tees?.male ?? []).map { "\($0.tee_name ?? $0.name ?? "?")/\($0.tee_color ?? "-")/\($0.total_yards ?? $0.total_distance ?? 0)y" }
+        let femaleDesc = (raw.tees?.female ?? []).map { "\($0.tee_name ?? $0.name ?? "?")/\($0.tee_color ?? "-")/\($0.total_yards ?? $0.total_distance ?? 0)y" }
+        print("[GolfCourseAPI] raw tees for \(raw.club_name ?? raw.course_name ?? "?") — male: \(maleDesc) female: \(femaleDesc)")
+        #endif
         guard !rawTees.isEmpty else {
             return [TeeBox(id: "\(courseId)-default", name: "Standard", color: "White", totalYards: 0)]
         }
-        let all = rawTees.enumerated().map { idx, entry -> (tee: TeeBox, isFemale: Bool) in
+        let all = rawTees.enumerated().compactMap { idx, entry -> (tee: TeeBox, isFemale: Bool)? in
             let t = entry.tee
+            let yards = t.total_yards ?? t.total_distance ?? 0
+            let holeYards = (t.holes ?? []).compactMap { $0.yardage ?? $0.yards ?? $0.distance }.reduce(0, +)
+            // Sanitize: a tee with no total AND no per-hole yardage is data noise, not a
+            // playable set of markers — drop it instead of listing a phantom tee.
+            guard yards > 0 || holeYards > 0 else { return nil }
             let tee = TeeBox(
                 id: t.id ?? "\(courseId)-tee-\(idx)",
                 name: t.tee_name ?? t.name ?? "Tee \(idx+1)",
                 color: inferredTeeColor(explicit: t.tee_color,
                                         name: t.tee_name ?? t.name),
-                totalYards: t.total_yards ?? t.total_distance ?? 0,
+                totalYards: yards > 0 ? yards : holeYards,
                 rating: t.course_rating,
                 slope: t.slope_rating
             )
             return (tee, entry.isFemale)
         }
-        return TeeBox.mergingGenderedDuplicates(all)
+        var merged = TeeBox.mergingGenderedDuplicates(all)
+        // Dedupe exact duplicates (same color + same yardage) that survive the gender merge.
+        var seen = Set<String>()
+        merged = merged.filter { tee in
+            let key = "\(tee.color.lowercased())|\(tee.totalYards)"
+            return seen.insert(key).inserted
+        }
+        return merged
     }
 
     private func inferredTeeColor(explicit: String?, name: String?) -> String {
@@ -234,6 +253,29 @@ final class GolfCourseAPIProvider: CourseProvider {
             inferredTeeColor(explicit: $0.tee.tee_color, name: $0.tee.tee_name ?? $0.tee.name)
         })
 
+        // Handicap pass FIRST, gender-separated. Many scorecards publish two stroke-index
+        // rows; the old last-write-wins loop let a women's tee overwrite the men's handicaps
+        // (one of Berkshire Valley's two handicap rows showing for everyone).
+        for (tee, isFemale) in rawEntries {
+            for (idx, rawHole) in (tee.holes ?? []).enumerated() {
+                let num = rawHole.hole_number ?? rawHole.number ?? idx + 1
+                guard num > 0, let hcp = rawHole.handicap else { continue }
+                var hole = holesMap[num] ?? GolfHole(
+                    id: "\(courseId)-hole-\(num)",
+                    courseId: courseId,
+                    number: num,
+                    par: rawHole.par ?? 4,
+                    handicap: nil
+                )
+                if isFemale {
+                    if hole.womensHandicap == nil { hole.womensHandicap = hcp }
+                } else {
+                    if hole.handicap == nil { hole.handicap = hcp }
+                }
+                holesMap[num] = hole
+            }
+        }
+
         for (tee, isFemale) in rawEntries {
             let rawName = tee.tee_name ?? tee.name ?? ""
             let rawColor = inferredTeeColor(explicit: tee.tee_color, name: rawName)
@@ -255,13 +297,10 @@ final class GolfCourseAPIProvider: CourseProvider {
                     courseId: courseId,
                     number: num,
                     par: rawHole.par ?? 4,
-                    handicap: rawHole.handicap
+                    handicap: nil
                 )
                 if let par = rawHole.par {
                     hole.par = par
-                }
-                if let handicap = rawHole.handicap {
-                    hole.handicap = handicap
                 }
                 let yds = rawHole.yardage ?? rawHole.yards ?? rawHole.distance ?? 0
                 if yds > 0 {

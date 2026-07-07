@@ -27,6 +27,22 @@ final class CourseDataAggregator {
     /// Enrich a discovered (MapKit) course stub with merged scorecard + geometry.
     /// Loads course geometry from Supabase. Falls back to disk cache if offline.
     func enrich(_ course: GolfCourse, backend: AppBackend? = nil) async -> GolfCourse {
+        // 0. Our own backend first: a scorecard-verified row already contains the full
+        // authoritative tee set + handicaps merged from GolfCourseAPI on a previous play —
+        // serve it directly and make zero third-party calls.
+        var sharedRow = await loadSharedGeometry(courseId: course.id, backend: backend)
+        if sharedRow == nil { sharedRow = await loadSharedGeometryFuzzy(course, backend: backend) }
+        if let shared = sharedRow,
+           shared.scorecardVerified == true, shared.hasTrustedGeometry {
+            var result = shared
+            result.id = course.id
+            OSMGolfService.shared.cacheMergedCourse(result)
+            #if DEBUG
+            print("[Aggregator] served \(result.name) from course_geometries (scorecard-verified) — GolfCourseAPI skipped")
+            #endif
+            return result
+        }
+
         // Primary source: Supabase catalog (geometry storage bucket).
         // All tee, green, and path data lives here — no third-party API calls needed.
         if let catalog = await CourseCatalog.geometry(for: course),
@@ -48,14 +64,14 @@ final class CourseDataAggregator {
         return course
     }
 
-    /// When the GPS geometry carries only a single tee (common for traced courses where only one
-    /// tee box was digitized), pull the full tee set + per-hole yardages from the GolfCourse
-    /// scorecard API and merge in the tees we're missing. Best-effort and non-blocking — any
-    /// failure (API off, no confident name match, no extra tees) returns the geometry unchanged,
-    /// so it never blocks or slows a course that already has a full tee set.
+    /// Pull the authoritative tee set + per-hole yardages from the GolfCourse scorecard API and
+    /// merge in whatever the GPS geometry is missing — extra tees, and rating/slope on tees the
+    /// geometry names but doesn't rate (synthesized-from-per-hole-keys tees carry no ratings).
+    /// Runs for every enriched course so the round write-through stores the full authoritative tee
+    /// set, progressively weaning the DB off GolfCourseAPI. Best-effort and non-blocking — any
+    /// failure (API off, no confident name match, nothing to add) returns the geometry unchanged.
     private func mergeScorecardTees(into geo: GolfCourse) async -> GolfCourse {
-        guard geo.teeBoxes.count <= 1, !geo.name.isEmpty,
-              GolfCourseAPIConfig.isConfigured else { return geo }
+        guard !geo.name.isEmpty, GolfCourseAPIConfig.isConfigured else { return geo }
         let matches = (try? await golfAPI.searchCourses(query: geo.name, near: geo.coordinate)) ?? []
         guard var scorecard = matches.first(where: { Self.courseNamesMatch($0.name, geo.name) }) else { return geo }
         // Search results can be summary-only; fetch full detail if per-hole yardages are missing.
@@ -63,11 +79,27 @@ final class CourseDataAggregator {
            let detail = try? await golfAPI.loadCourseDetails(courseId: scorecard.id) {
             scorecard = detail
         }
-        let existing = Set(geo.teeBoxes.map { $0.name.lowercased() })
-        let newTees = scorecard.teeBoxes.filter { $0.totalYards > 0 && !existing.contains($0.name.lowercased()) }
-        guard !newTees.isEmpty else { return geo }
-
         var result = geo
+        // Rating/slope backfill onto same-name geometry tees.
+        for i in result.teeBoxes.indices {
+            guard result.teeBoxes[i].rating == nil || result.teeBoxes[i].slope == nil,
+                  let sc = scorecard.teeBoxes.first(where: {
+                      $0.name.caseInsensitiveCompare(result.teeBoxes[i].name) == .orderedSame
+                  }) else { continue }
+            if result.teeBoxes[i].rating == nil { result.teeBoxes[i].rating = sc.rating }
+            if result.teeBoxes[i].slope == nil { result.teeBoxes[i].slope = sc.slope }
+            if result.teeBoxes[i].womensRating == nil { result.teeBoxes[i].womensRating = sc.womensRating }
+            if result.teeBoxes[i].womensSlope == nil { result.teeBoxes[i].womensSlope = sc.womensSlope }
+        }
+        let existing = Set(geo.teeBoxes.map { $0.name.lowercased() })
+        let existingTotals = geo.teeBoxes.map(\.totalYards).filter { $0 > 0 }
+        // A scorecard tee whose 18-hole total lands within 25y of a geometry tee is the same
+        // physical markers under another name (Berkshire: geometry "Yellow" == API "Gold") — skip.
+        let newTees = scorecard.teeBoxes.filter { sc in
+            sc.totalYards > 0
+                && !existing.contains(sc.name.lowercased())
+                && !existingTotals.contains(where: { abs($0 - sc.totalYards) <= 25 })
+        }
         result.teeBoxes.append(contentsOf: newTees)
         let newIds = Set(newTees.map { $0.id })
         // Align scorecard holes to the geometry by par + true tee→green distance, NOT by hole
@@ -89,9 +121,17 @@ final class CourseDataAggregator {
             for (teeId, yards) in scorecard.holes[k].teeYardsByTeeBox where yards > 0 && newIds.contains(teeId) {
                 result.holes[i].teeYardsByTeeBox[teeId] = yards
             }
+            // Gendered stroke indexes from the scorecard, when geometry doesn't carry them.
+            if result.holes[i].handicap == nil { result.holes[i].handicap = scorecard.holes[k].handicap }
+            if result.holes[i].womensHandicap == nil { result.holes[i].womensHandicap = scorecard.holes[k].womensHandicap }
         }
+        // A confident scorecard match makes this course complete: the tee set is confirmed
+        // (added or already present), ratings are backfilled, handicaps grafted. Rounds started
+        // on it save the payload with this flag, and enrich() serves it from our backend from
+        // then on — GolfCourseAPI never called again for this course.
+        result.scorecardVerified = true
         #if DEBUG
-        print("[Aggregator] merged \(newTees.count) scorecard tee(s) into \(geo.name)")
+        print("[Aggregator] merged \(newTees.count) scorecard tee(s) into \(geo.name) — scorecard-verified")
         #endif
         return result
     }
