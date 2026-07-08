@@ -174,7 +174,14 @@ struct TrueCarryAppShell: View {
         .onReceive(NotificationCenter.default.publisher(for: .tcResumeRound)) { _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
         }
-        .onAppear(perform: maybePromptUsername)
+        .onAppear {
+            maybePromptUsername()
+            // Cold-start QR pairing: the deep link can arrive before this view exists,
+            // so the .tcOpenLiveSim notification it posts has no listener yet. The code
+            // parks in pendingDeepLinkCode — steer to Play here so the sim screen mounts
+            // and consumes it.
+            if LiveSimService.pendingDeepLinkCode != nil { selectedTab = .play }
+        }
         .onChange(of: session.userProfile?.username) { _ in maybePromptUsername() }
     }
 

@@ -44,12 +44,14 @@ final class CourseDataAggregator {
         }
 
         // Primary source: Supabase catalog (geometry storage bucket).
-        // All tee, green, and path data lives here — no third-party API calls needed.
+        // All tee, green, and path data lives here. Course mode serves OUR database
+        // only — no live GolfCourseAPI/OSM merging on this path anymore (the R&A +
+        // scorecard backfills own tee data now; anything missing surfaces as a
+        // readiness error instead of silently pulling third-party data).
         if let catalog = await CourseCatalog.geometry(for: course),
            catalog.hasTrustedGeometry {
             var result = catalog
             result.id = course.id
-            result = await mergeScorecardTees(into: result)
             OSMGolfService.shared.cacheMergedCourse(result)
             return result
         }

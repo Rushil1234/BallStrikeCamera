@@ -492,25 +492,15 @@ struct CourseSearchView: View {
         // Red/Gold) sit adjacent in distance ranking, so a small limit clips the second course.
         // onlyGeometry: nearby shows just GPS-ready courses — unmapped ones surface only
         // when the player searches for them by name.
-        let catalog = await CourseCatalog.search(query: "", near: userLoc, limit: 50, onlyGeometry: true)
-        if !catalog.isEmpty {
-            nearbyCourses = catalog.sorted {
-                (distanceMiles(course: $0, user: userLoc) ?? .infinity)
-                    < (distanceMiles(course: $1, user: userLoc) ?? .infinity)
-            }
+        // OUR database only: when it's unreachable, say so — never MapKit/OSM stand-ins.
+        guard let catalog = await CourseCatalog.searchChecked(query: "", near: userLoc, limit: 50, onlyGeometry: true) else {
+            errorMessage = "Couldn't reach the course database. Check your connection and try again."
+            nearbyCourses = []
             return
         }
-        // Fallback: database unavailable — use MapKit but filter out obvious non-golf venues.
-        do {
-            let request = MKLocalSearch.Request()
-            request.naturalLanguageQuery = "golf course"
-            request.region = MKCoordinateRegion(center: userLoc, latitudinalMeters: 80_000, longitudinalMeters: 80_000)
-            let response = try await MKLocalSearch(request: request).start()
-            nearbyCourses = response.mapItems.compactMap { mapKitCourse(from: $0) }
-                .sorted { (distanceMiles(course: $0, user: userLoc) ?? .infinity) < (distanceMiles(course: $1, user: userLoc) ?? .infinity) }
-        } catch {
-            errorMessage = "Couldn't load nearby courses."
-            nearbyCourses = []
+        nearbyCourses = catalog.sorted {
+            (distanceMiles(course: $0, user: userLoc) ?? .infinity)
+                < (distanceMiles(course: $1, user: userLoc) ?? .infinity)
         }
     }
 
@@ -518,33 +508,17 @@ struct CourseSearchView: View {
         isSearching = true
         errorMessage = nil
         defer { isSearching = false }
-        do {
-            // Our course catalog first — 42k+ courses, so the user can find ANY course (geometry
-            // loads on open for the ones we've mapped; others still appear, "map coming soon").
-            let catalog = await CourseCatalog.search(query: query, near: location.currentLocation)
-            if !catalog.isEmpty {
-                searchResults = catalog
-                return
-            }
-
-            // Fallback: MapKit (location-aware), then GolfCourseAPI text search.
-            let request = MKLocalSearch.Request()
-            request.naturalLanguageQuery = query + " golf"
-            let response = try await MKLocalSearch(request: request).start()
-            let mapKitResults = response.mapItems.compactMap { mapKitCourse(from: $0) }
-            if !mapKitResults.isEmpty {
-                searchResults = mapKitResults
-                return
-            }
-
-            let provider = CourseProviderFactory.make(userId: userId)
-            searchResults = try await provider.searchCourses(query: query, near: location.currentLocation)
-            if searchResults.isEmpty {
-                errorMessage = "No courses found. Try a shorter name."
-            }
-        } catch {
+        // Our course catalog ONLY — 46k+ courses, so the user can find ANY course (geometry
+        // loads on open for the ones we've mapped; others still appear, "map coming soon").
+        // No MapKit/GolfCourseAPI fallbacks: if the database is down, that's an error.
+        guard let catalog = await CourseCatalog.searchChecked(query: query, near: location.currentLocation) else {
             searchResults = []
-            errorMessage = "Search unavailable. Check your connection."
+            errorMessage = "Couldn't reach the course database. Check your connection and try again."
+            return
+        }
+        searchResults = catalog
+        if catalog.isEmpty {
+            errorMessage = "No courses found. Try a shorter name."
         }
     }
 

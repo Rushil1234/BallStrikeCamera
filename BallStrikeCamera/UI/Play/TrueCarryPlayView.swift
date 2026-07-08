@@ -157,6 +157,19 @@ struct TrueCarryPlayView: View {
                 showUpgradeAlert = true
             }
         }
+        // Cold-start QR pairing: deep link arrived before the listeners mounted —
+        // the parked code is the signal to open sim mode now (it's consumed by
+        // LiveSimCodeView's .task, which autofills and connects).
+        .onAppear {
+            if LiveSimService.pendingDeepLinkCode != nil {
+                selectedMode = .sim
+                if session.entitlementVM.canPerform(.simMode).allowed {
+                    showSim = true
+                } else {
+                    showUpgradeAlert = true
+                }
+            }
+        }
         .onDisappear { prewarmer.cancel() }
     }
 
