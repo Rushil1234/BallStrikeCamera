@@ -57,3 +57,7 @@ DataPipeline/*.json
 DataPipeline/*.jsonl
 DataPipeline/*.key
 __pycache__/
+
+# Course-data pipeline artifacts (regenerable outputs, blob backups, dumps)
+tools/artifacts/
+tools/__pycache__/
