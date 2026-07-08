@@ -166,6 +166,15 @@ export default function PlayPage() {
     else returnToSelect();
   }
 
+  // Switch mode/course mid-session WITHOUT ending the phone pairing: the sim iframe
+  // stays loaded and connected; the selector re-opens and picking a mode just posts a
+  // fresh START_SIM / START_RANGE to the same runtime. Clearing activeCourse matters —
+  // otherwise the auto-start effect would relaunch the old mode instantly.
+  function switchMode() {
+    setActiveCourse(null);
+    setStage("select");
+  }
+
   function endSession() {
     iframeRef.current?.contentWindow?.postMessage({ type: "END_SESSION" }, window.location.origin);
     setConnected(false);
@@ -203,6 +212,11 @@ export default function PlayPage() {
             <button className="sim-full" type="button" onClick={toggleFullscreen}>
               {isFullscreen ? "Exit full screen" : "Full screen"}
             </button>
+            {connected && (
+              <button className="sim-change-btn" onClick={switchMode}>
+                {"⇄ Switch mode"}
+              </button>
+            )}
             <button className="sim-change-btn" onClick={requestExit}>
               {connected ? "↩ End session" : "↩ Change"}
             </button>
