@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-7';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-7';
-import { RANGE, holeLength } from './holes.js?v=gspro-7';
-import { buildCourse } from './terrain.js?v=gspro-7';
-import { makeSky } from './sky.js?v=gspro-7';
-import { loadAssets } from './assets.js?v=gspro-7';
-import { HUD, toParStr } from './ui.js?v=gspro-7';
-import { SFX } from './audio.js?v=gspro-7';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-7';
-import { fetchSimCourses } from './courses.js?v=gspro-7';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-7';
-import { layoutIslandCourse } from './world.js?v=gspro-7';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-8';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-8';
+import { RANGE, holeLength } from './holes.js?v=gspro-8';
+import { buildCourse } from './terrain.js?v=gspro-8';
+import { makeSky } from './sky.js?v=gspro-8';
+import { loadAssets } from './assets.js?v=gspro-8';
+import { HUD, toParStr } from './ui.js?v=gspro-8';
+import { SFX } from './audio.js?v=gspro-8';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-8';
+import { fetchSimCourses } from './courses.js?v=gspro-8';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-8';
+import { layoutIslandCourse } from './world.js?v=gspro-8';
 
 // ---------- boot ----------
 
@@ -383,9 +383,12 @@ scene.add(ring);
 
 // ---------- atmosphere presets (per-course, G to cycle) ----------
 const ATMOSPHERES = {
-  sunny:    { exposure: 1.0,  fog: [0xd2dee8, 430, 2600], sun: [0xfff1d8, 2.0],  hemi: 0.62, bg: 1.0,  env: 0.55 },
-  overcast: { exposure: 0.9,  fog: [0xb9c2c9, 290, 1800], sun: [0xdfe4e8, 1.1],  hemi: 1.0,  bg: 0.62, env: 0.3  },
-  golden:   { exposure: 1.06, fog: [0xe6d5ba, 380, 2300], sun: [0xffd9a0, 1.75], hemi: 0.5,  bg: 0.92, env: 0.5  },
+  sunny:    { exposure: 1.0,  fog: [0xd2dee8, 430, 2600], sun: [0xfff1d8, 2.0],  hemi: 0.62, bg: 1.0,  env: 0.55,
+    sky: { zenith: 0x2461a8, horizon: 0x9cc4e8, sun: 0xfff4dc, cloudLit: 0xffffff, cloudDark: 0xc6d2de, cover: 0.4, sharp: 0.74, haze: 0xc4d8ea } },
+  overcast: { exposure: 0.9,  fog: [0xb9c2c9, 290, 1800], sun: [0xdfe4e8, 1.1],  hemi: 1.0,  bg: 0.62, env: 0.3,
+    sky: { zenith: 0x8b98a4, horizon: 0xb8c1c9, sun: 0xdfe6ea, cloudLit: 0xc8cfd6, cloudDark: 0x8792a0, cover: 0.86, sharp: 0.34, haze: 0xbcc4cc } },
+  golden:   { exposure: 1.06, fog: [0xe6d5ba, 380, 2300], sun: [0xffd9a0, 1.75], hemi: 0.5,  bg: 0.92, env: 0.5,
+    sky: { zenith: 0x355a92, horizon: 0xf0c98e, sun: 0xffe1a8, cloudLit: 0xfff0d2, cloudDark: 0xc0a084, cover: 0.48, sharp: 0.66, haze: 0xefce9a } },
 };
 const _skyVariants = { sunny: null };
 function skyVariant(name) {
@@ -441,9 +444,18 @@ function applyAtmosphere(name) {
     sky.sun.intensity = a.sun[1];
     sky.hemi.intensity = a.hemi;
   }
-  scene.backgroundIntensity = a.bg;
   scene.environmentIntensity = a.env;
-  scene.background = skyVariant(currentAtmo);
+  if (sky?.sky?.uniforms && a.sky) {
+    const u = sky.sky.uniforms;
+    u.uZenith.value.setHex(a.sky.zenith);
+    u.uHorizon.value.setHex(a.sky.horizon);
+    u.uSunColor.value.setHex(a.sky.sun);
+    u.uCloudLit.value.setHex(a.sky.cloudLit);
+    u.uCloudDark.value.setHex(a.sky.cloudDark);
+    u.uCloudCover.value = a.sky.cover;
+    u.uCloudSharp.value = a.sky.sharp;
+    u.uHazeColor.value.setHex(a.sky.haze);
+  }
 }
 
 let matchConfig = null;
@@ -2087,7 +2099,12 @@ function frame() {
     );
   }
 
-  if (sky) sky.update(game.time, camera.position);
+  if (sky) {
+    if (sky.sky?.uniforms && game.wind) {
+      sky.sky.uniforms.uWind.value.set(0.5 + game.wind.x * 0.4, 0.2 + game.wind.z * 0.4);
+    }
+    sky.update(game.time, camera.position);
+  }
   if (composer) composer.render();
   else renderer.render(scene, camera);
 }
