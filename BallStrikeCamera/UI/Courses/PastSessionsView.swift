@@ -116,6 +116,10 @@ struct PastSessionsView: View {
             }
             await loadData()
         }
+        // Reload when anything is deleted anywhere (e.g. inside a session detail screen).
+        .onReceive(NotificationCenter.default.publisher(for: .tcDataChanged)) { _ in
+            Task { await loadData() }
+        }
         .alert(
             "Delete \(itemToDelete?.label ?? "item")?",
             isPresented: Binding(get: { itemToDelete != nil }, set: { if !$0 { itemToDelete = nil } })

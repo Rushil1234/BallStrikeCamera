@@ -261,7 +261,11 @@ extension AppBackend {
 
         for post in posts {
             let author = post.authorName
-            if let drive = post.activityMetadata?.bestCarryYards ?? bestYardage(in: post) {
+            // Longest drive comes only from shot activities (range/sim). A course-round post
+            // was slipping in via its bestCarry metadata and showing as "Longest Drive" with
+            // the round's title as the description.
+            if post.type != .round,
+               let drive = post.activityMetadata?.bestCarryYards ?? bestYardage(in: post) {
                 let entry = FeedLeaderboardEntry(
                     userId: post.userId,
                     displayName: author,

@@ -43,12 +43,13 @@ enum CourseCatalog {
         var hasGeometry: Bool { dataTier == "gps_ready" }
     }
 
-    /// Search the full 42k-course catalog for the search screen. Returns ALL matching courses
-    /// (with or without geometry) as lightweight stubs — so users always see a course exists,
-    /// even when we don't have its map yet.
-    static func search(query: String, near: CLLocationCoordinate2D?, limit: Int = 25) async -> [GolfCourse] {
+    /// Search the full 42k-course catalog for the search screen. By default returns ALL
+    /// matching courses (with or without geometry) as lightweight stubs — so users always
+    /// see a course exists, even when we don't have its map yet. Pass `onlyGeometry: true`
+    /// for surfaces like the Nearby list that must only show courses with a GPS map.
+    static func search(query: String, near: CLLocationCoordinate2D?, limit: Int = 25, onlyGeometry: Bool = false) async -> [GolfCourse] {
         guard let config = SupabaseConfig.load() else { return [] }
-        let matches = await runSearch(q: query, coordinate: near, onlyGeometry: false, limit: limit, config: config)
+        let matches = await runSearch(q: query, coordinate: near, onlyGeometry: onlyGeometry, limit: limit, config: config)
         return matches.map { m in
             GolfCourse(
                 id: m.id, name: m.name,

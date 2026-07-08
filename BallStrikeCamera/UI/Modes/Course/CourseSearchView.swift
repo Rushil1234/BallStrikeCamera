@@ -375,7 +375,7 @@ struct CourseSearchView: View {
                         Text(course.name)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(TCTheme.textPrimary)
-                            .lineLimit(1)
+                            .lineLimit(2)
                         Text([course.city, course.state].filter { !$0.isEmpty }.joined(separator: ", "))
                             .font(.system(size: 12))
                             .foregroundColor(TCTheme.textMuted)
@@ -490,7 +490,9 @@ struct CourseSearchView: View {
         // venues like Topgolf / Xgolf slip through as "golf courses").
         // Pull the RPC max (50): multi-course facilities (e.g. Flanders Valley's Blue/White AND
         // Red/Gold) sit adjacent in distance ranking, so a small limit clips the second course.
-        let catalog = await CourseCatalog.search(query: "", near: userLoc, limit: 50)
+        // onlyGeometry: nearby shows just GPS-ready courses — unmapped ones surface only
+        // when the player searches for them by name.
+        let catalog = await CourseCatalog.search(query: "", near: userLoc, limit: 50, onlyGeometry: true)
         if !catalog.isEmpty {
             nearbyCourses = catalog.sorted {
                 (distanceMiles(course: $0, user: userLoc) ?? .infinity)
@@ -660,8 +662,11 @@ struct CourseSearchView: View {
 
 private struct TeeSelectorSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var session: AuthSessionStore
     let course: GolfCourse
     let onSelect: (TeeBox) -> Void
+    @State private var showReportDialog = false
+    @State private var reportResult: String?
 
     var body: some View {
         ZStack {
@@ -695,7 +700,7 @@ private struct TeeSelectorSheet: View {
                     Text(course.name)
                         .font(.system(size: 13))
                         .foregroundColor(TCTheme.textMuted)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, TCTheme.hPad)
@@ -716,7 +721,11 @@ private struct TeeSelectorSheet: View {
                             }
                             .padding(.bottom, 2)
                         }
-                        ForEach(course.teeBoxes) { tee in
+                        // Always longest tee first, whatever order the source emitted;
+                        // 0-yard (unknown distance) tees sink to the bottom.
+                        ForEach(course.teeBoxes.sorted {
+                            ($0.totalYards > 0 ? $0.totalYards : -1) > ($1.totalYards > 0 ? $1.totalYards : -1)
+                        }) { tee in
                             teeRow(tee)
                         }
                         if course.teeBoxes.isEmpty {
@@ -725,6 +734,19 @@ private struct TeeSelectorSheet: View {
                                 .foregroundColor(TCTheme.textMuted)
                                 .padding(.top, 40)
                         }
+
+                        // Bad tees / yardages / map? Files into the course_data_requests queue.
+                        Button { showReportDialog = true } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.bubble")
+                                    .font(.system(size: 12))
+                                Text("Report a problem with this course")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(TCTheme.textMuted)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 18)
                     }
                     .padding(.horizontal, TCTheme.hPad)
                     .padding(.top, 10)
@@ -733,6 +755,46 @@ private struct TeeSelectorSheet: View {
             }
         }
         .navigationBarHidden(true)
+        .confirmationDialog(
+            "Report a course error",
+            isPresented: $showReportDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Wrong or missing tees") { submitCourseIssue("Wrong or missing tees") }
+            Button("Wrong yardage or par") { submitCourseIssue("Wrong yardage or par") }
+            Button("Map / hole layout wrong") { submitCourseIssue("Map / hole layout wrong") }
+            Button("Duplicate or wrong course") { submitCourseIssue("Duplicate or wrong course") }
+            Button("Cancel", role: .cancel) {}
+        }
+        .alert("Course report", isPresented: Binding(
+            get: { reportResult != nil },
+            set: { if !$0 { reportResult = nil } }
+        )) {
+            Button("OK", role: .cancel) { reportResult = nil }
+        } message: {
+            Text(reportResult ?? "")
+        }
+    }
+
+    /// Files a course-data error report into the support queue.
+    private func submitCourseIssue(_ issue: String) {
+        guard let userId = session.currentUser?.id,
+              let supabase = session.backend as? SupabaseBackendService else {
+            reportResult = "Sign in with an online account to report course issues."
+            return
+        }
+        Task {
+            do {
+                try await supabase.reportCourseIssue(courseId: course.id,
+                                                     courseName: course.name,
+                                                     issue: issue,
+                                                     holeNumber: nil,
+                                                     userId: userId)
+                reportResult = "Thanks — we'll review \(course.name)."
+            } catch {
+                reportResult = "Couldn't send the report. Try again later."
+            }
+        }
     }
 
     private func teeRow(_ tee: TeeBox) -> some View {

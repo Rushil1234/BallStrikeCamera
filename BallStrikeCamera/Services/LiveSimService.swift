@@ -88,6 +88,10 @@ extension Notification.Name {
     /// Posted by the home-screen resume banner; the shell routes to the Play tab
     /// and PlayView opens the unfinished round.
     static let tcResumeRound = Notification.Name("tc.resumeRound")
+    /// Posted after any shot/round/session deletion so every screen showing derived
+    /// stats (feed summary, history, insights, home) reloads instead of serving stale
+    /// aggregates (e.g. a deleted 240yd best carry lingering in "Your Week").
+    static let tcDataChanged = Notification.Name("tc.dataChanged")
 }
 
 @MainActor

@@ -246,7 +246,14 @@ struct ShotDetailView: View {
 
     private var carry:     String { fmt(m.carryYards) }
     private var total:     String { fmt(m.totalYards) }
-    private var rollout:   String { fmt(m.rolloutYards) }
+    // Derived from the stored carry/total so shots saved before the estimator
+    // enforced total = carry + rollout can't show a rollout the total cap ate.
+    private var rollout:   String {
+        if m.totalYards > 0 && m.carryYards > 0 {
+            return fmt(max(m.totalYards - m.carryYards, 0))
+        }
+        return fmt(m.rolloutYards)
+    }
     private var ballSpeed: String { fmt(m.ballSpeedMph, decimals: 1) }
     private var vla:       String { fmt(m.vlaDegrees, decimals: 1) }
     private var hla: String {

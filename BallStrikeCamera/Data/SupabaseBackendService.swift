@@ -370,6 +370,7 @@ final class SupabaseBackendService: AppBackend {
 
     func deleteRangeSession(sessionId: UUID, userId: UUID) async throws {
         try await deleteRow(table: "range_sessions", id: sessionId)
+        await Self.postDataChanged()
     }
 
     func loadRangeSessions(userId: UUID) async throws -> [PracticeSession] {
@@ -398,6 +399,7 @@ final class SupabaseBackendService: AppBackend {
 
     func deleteSimSession(sessionId: UUID, userId: UUID) async throws {
         try await deleteRow(table: "sim_sessions", id: sessionId)
+        await Self.postDataChanged()
     }
 
     func loadSimSessions(userId: UUID) async throws -> [SimSession] {
@@ -431,6 +433,12 @@ final class SupabaseBackendService: AppBackend {
 
     func deleteCourseRound(roundId: UUID, userId: UUID) async throws {
         try await deleteRow(table: "course_rounds", id: roundId)
+        await Self.postDataChanged()
+    }
+
+    /// Deletions invalidate every derived aggregate (feed "Your Week", insights, history).
+    @MainActor private static func postDataChanged() {
+        NotificationCenter.default.post(name: .tcDataChanged, object: nil)
     }
 
     func loadCourseRounds(userId: UUID) async throws -> [CourseRound] {
@@ -611,6 +619,45 @@ final class SupabaseBackendService: AppBackend {
         guard status == 200 || status == 201 || status == 204 else {
             logError("upsert:geometry_backfill_requests", data: data, response: response)
             throw BackendError.saveFailed("geometry_backfill_requests")
+        }
+    }
+
+    /// In-app "Report course issue" — files a user report into course_data_requests
+    /// (RLS: insert-only for the signed-in user; the course tools drain the queue
+    /// with the service role).
+    func reportCourseIssue(courseId: String,
+                           courseName: String,
+                           issue: String,
+                           holeNumber: Int?,
+                           userId: UUID) async throws {
+        var payload: [String: Any] = [
+            "issue": issue,
+            "reported_at": ISO8601DateFormatter().string(from: Date())
+        ]
+        if let holeNumber { payload["hole"] = holeNumber }
+        var body: [String: Any] = [
+            "course_name": courseName,
+            "request_type": "user_report",
+            "status": "queued",
+            "submitted_by": userId.uuidString,
+            "notes": issue,
+            "raw_payload": payload
+        ]
+        // course_id is a uuid column; catalog ids are UUIDs, everything else
+        // (MapKit stubs, GolfCourseAPI ids) travels in external_course_id.
+        if courseId.count == 36, courseId.filter({ $0 == "-" }).count == 4 {
+            body["course_id"] = courseId
+        } else {
+            body["external_course_id"] = courseId
+        }
+        var req = authorizedRequest(url: restURL("course_data_requests"), method: "POST")
+        req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await performAuthorizedRequest(req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200 || status == 201 || status == 204 else {
+            logError("insert:course_data_requests", data: data, response: response)
+            throw BackendError.saveFailed("course_data_requests")
         }
     }
 
