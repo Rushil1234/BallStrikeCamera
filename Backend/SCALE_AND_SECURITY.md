@@ -68,7 +68,7 @@ Client code is done (native `SignInWithAppleButton` + id_token grant + `applesig
 To make it work end-to-end:
 
 1. **Apple Developer portal**
-   - Enable the *Sign In with Apple* capability on App ID `com.rushilkakkad.BallStrikeCamera`.
+   - Enable the *Sign In with Apple* capability on App ID `com.noahtobias.BallStrikeCamera`.
    - Create a **Services ID** (for the Supabase callback), and a **Sign in with Apple Key** (.p8).
    - Note your **Team ID**, **Key ID**, and the Services ID.
 2. **Supabase → Auth → Providers → Apple**: enable it, paste the Services ID (client id),
