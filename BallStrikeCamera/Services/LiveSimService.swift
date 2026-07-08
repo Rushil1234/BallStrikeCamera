@@ -94,6 +94,20 @@ extension Notification.Name {
     static let tcDataChanged = Notification.Name("tc.dataChanged")
 }
 
+/// Deep-link state that must survive mount-order races. A fire-once
+/// notification is lost if its listener isn't mounted yet (cold start: the URL
+/// arrives before the tab shell exists; warm: lazily-mounted tab content
+/// subscribes after the post). A @Published value re-emits to every NEW
+/// subscriber, so each layer of the shell reacts whenever it appears — and the
+/// code survives an intervening login screen untouched.
+@MainActor
+final class DeepLinkRouter: ObservableObject {
+    static let shared = DeepLinkRouter()
+    /// Pairing code from truecarry://livesim?code=…; cleared when the sim
+    /// screen consumes it and starts connecting.
+    @Published var pendingSimCode: String?
+}
+
 @MainActor
 final class LiveSimService: ObservableObject {
 
@@ -110,12 +124,9 @@ final class LiveSimService: ObservableObject {
     private var shotSeq = 0
     private var pendingShots: [PendingShot] = []
 
-    /// Pairing code delivered via deep link, consumed by LiveSimCodeView.
-    static var pendingDeepLinkCode: String?
-
     func consumeDeepLinkCode() async {
-        guard let code = Self.pendingDeepLinkCode else { return }
-        Self.pendingDeepLinkCode = nil
+        guard let code = DeepLinkRouter.shared.pendingSimCode else { return }
+        DeepLinkRouter.shared.pendingSimCode = nil
         enteredCode = code
         await connect()
     }
