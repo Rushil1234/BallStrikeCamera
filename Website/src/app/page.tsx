@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
 import PhoneDemo from "@/components/PhoneDemo";
+import SimDemo from "@/components/SimDemo";
 import ClubCards from "@/components/ClubCards";
 import SiteNav from "@/components/SiteNav";
 import { PLANS } from "@/lib/plans";
@@ -218,10 +219,7 @@ export default function HomePage() {
                     <a className="ghost" href="/sim/index.html?mode=course&course=pine-hollow" target="_blank" rel="noreferrer">Open full screen</a>
                   </div>
                 </div>
-                <a className="sim-shot" href="/play" aria-label="Play the True Carry Sim">
-                  <img src="/sim-preview.jpg" alt="Pine Hollow National, hole 1 — the True Carry Sim" loading="lazy" />
-                  <span className="sim-play">Tee off →</span>
-                </a>
+                <SimDemo />
               </div>
             </div>
           </section>
