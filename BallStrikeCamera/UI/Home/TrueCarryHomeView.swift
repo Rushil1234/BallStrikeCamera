@@ -73,16 +73,20 @@ struct TrueCarryHomeView: View {
             NavigationStack { TrueCarryProfileView() }
                 .tcAppearance()
         }
-        .task {
-            if let uid = session.currentUser?.id {
-                async let s = try? await session.backend.loadShots(userId: uid)
-                async let r = try? await session.backend.loadCourseRounds(userId: uid)
-                async let rs = try? await session.backend.loadRangeSessions(userId: uid)
-                shots = await s ?? []
-                rounds = await r ?? []
-                rangeSessions = await rs ?? []
-            }
+        .task { await reloadData() }
+        .onReceive(NotificationCenter.default.publisher(for: .tcDataChanged)) { _ in
+            Task { await reloadData() }
         }
+    }
+
+    private func reloadData() async {
+        guard let uid = session.currentUser?.id else { return }
+        async let s = try? await session.backend.loadShots(userId: uid)
+        async let r = try? await session.backend.loadCourseRounds(userId: uid)
+        async let rs = try? await session.backend.loadRangeSessions(userId: uid)
+        shots = await s ?? []
+        rounds = await r ?? []
+        rangeSessions = await rs ?? []
     }
 
     // MARK: Greeting Card

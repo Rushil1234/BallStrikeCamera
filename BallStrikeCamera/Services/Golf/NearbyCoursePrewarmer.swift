@@ -1,9 +1,12 @@
 import Foundation
 import CoreLocation
-import MapKit
 
-/// Background warmer that pulls nearby courses from MapKit and seeds the OSM cache
-/// for the top few candidates so a round can start instantly.
+/// Background warmer that pulls the nearest GPS-ready courses from OUR catalog
+/// and seeds the local geometry cache so a round can start instantly.
+///
+/// Database-only by design: course mode never touches MapKit/OSM/GolfCourseAPI —
+/// if the catalog is unreachable, warming silently does nothing and the round
+/// flow surfaces its own error at start time.
 ///
 /// Usage:
 ///   let warmer = NearbyCoursePrewarmer()
@@ -40,7 +43,10 @@ final class NearbyCoursePrewarmer: ObservableObject {
         warmedCount = 0
         task = Task(priority: .background) { [weak self] in
             guard let self else { return }
-            let candidates = await self.nearbyCandidates(at: location, radius: radiusMeters)
+            // Nearest gps_ready catalog courses only — same source as the Nearby list.
+            let candidates = await CourseCatalog.search(query: "", near: location,
+                                                        limit: self.maxCandidates * 2,
+                                                        onlyGeometry: true)
             if Task.isCancelled { return }
             for course in candidates.prefix(self.maxCandidates) {
                 if Task.isCancelled { break }
@@ -51,50 +57,13 @@ final class NearbyCoursePrewarmer: ObservableObject {
                     self.warmedCount += 1
                     continue
                 }
-                _ = await OSMGolfService.shared.enrichBestEffort(course)
+                if let geo = await CourseCatalog.geometry(for: course), geo.hasTrustedGeometry {
+                    OSMGolfService.shared.cacheMergedCourse(geo)
+                }
                 if Task.isCancelled { break }
                 self.warmedCount += 1
             }
             self.isWarming = false
-        }
-    }
-
-    // MARK: - Discovery
-
-    /// Issue an MKLocalSearch for "golf course" near the user. Returns lightweight
-    /// `GolfCourse` stubs (no geometry yet) ordered by distance.
-    private func nearbyCandidates(at coord: CLLocationCoordinate2D,
-                                   radius: Double) async -> [GolfCourse] {
-        let request = MKLocalSearch.Request()
-        request.naturalLanguageQuery = "golf course"
-        request.region = MKCoordinateRegion(center: coord,
-                                            latitudinalMeters: radius,
-                                            longitudinalMeters: radius)
-        guard let response = try? await MKLocalSearch(request: request).start() else {
-            return []
-        }
-        let user = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
-        let stubs = response.mapItems.compactMap { (item: MKMapItem) -> GolfCourse? in
-            guard let name = item.name else { return nil }
-            let c = item.placemark.coordinate
-            let sid = "\(name)-\(Int(c.latitude * 1000))-\(Int(c.longitude * 1000))"
-            return GolfCourse(
-                id: sid,
-                name: name,
-                city: item.placemark.locality ?? "",
-                state: item.placemark.administrativeArea ?? "",
-                country: item.placemark.countryCode ?? "US",
-                latitude: c.latitude,
-                longitude: c.longitude,
-                teeBoxes: [],
-                source: .mapKit,
-                cachedAt: Date()
-            )
-        }
-        return stubs.sorted { a, b in
-            let la = CLLocation(latitude: a.latitude ?? 0, longitude: a.longitude ?? 0)
-            let lb = CLLocation(latitude: b.latitude ?? 0, longitude: b.longitude ?? 0)
-            return user.distance(from: la) < user.distance(from: lb)
         }
     }
 }

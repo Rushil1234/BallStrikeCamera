@@ -59,6 +59,15 @@ struct TrueCarryInsightsView: View {
         avg(shots.map { $0.metrics.carryYards }) ?? 0
     }
 
+    /// Average of whichever distance the Carry/Total toggle selects; total
+    /// falls back to carry for shots recorded before rollout existed.
+    private func avgDistance(_ shots: [SavedShot]) -> Double {
+        switch dispersionMetric {
+        case .carry: return avgCarry(shots)
+        case .total: return avg(shots.map { $0.metrics.totalYards > 0 ? $0.metrics.totalYards : $0.metrics.carryYards }) ?? 0
+        }
+    }
+
     private func fmt(_ val: Double?, decimals: Int = 0) -> String {
         guard let v = val else { return "—" }
         return decimals > 0 ? String(format: "%.\(decimals)f", v) : "\(Int(v))"
@@ -111,16 +120,22 @@ struct TrueCarryInsightsView: View {
                 clubs = session.cachedClubs
                 if selectedClub == nil { selectedClub = availableClubs.first }
             }
-            Task {
-                guard let uid = session.currentUser?.id else { return }
-                async let s = try? await session.backend.loadShots(userId: uid)
-                async let c = try? await session.backend.loadClubs(userId: uid)
-                shots = (await s ?? []).filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
-                clubs = await c ?? []
-                if selectedClub == nil || !availableClubs.contains(selectedClub ?? "") {
-                    selectedClub = availableClubs.first
-                }
-            }
+            Task { await reloadData() }
+        }
+        // Deletions elsewhere (history, session detail) must recompute every stat here.
+        .onReceive(NotificationCenter.default.publisher(for: .tcDataChanged)) { _ in
+            Task { await reloadData() }
+        }
+    }
+
+    private func reloadData() async {
+        guard let uid = session.currentUser?.id else { return }
+        async let s = try? await session.backend.loadShots(userId: uid)
+        async let c = try? await session.backend.loadClubs(userId: uid)
+        shots = (await s ?? []).filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
+        clubs = await c ?? []
+        if selectedClub == nil || !availableClubs.contains(selectedClub ?? "") {
+            selectedClub = availableClubs.first
         }
     }
 
@@ -200,7 +215,7 @@ struct TrueCarryInsightsView: View {
         let entries: [(club: String, carry: Double, count: Int)] = availableClubs.compactMap { club in
             let s = shotsFor(club)
             guard s.count >= 3 else { return nil }
-            let carry = avgCarry(s)
+            let carry = avgDistance(s)
             guard carry > 0 else { return nil }
             return (club, carry, s.count)
         }
@@ -226,7 +241,7 @@ struct TrueCarryInsightsView: View {
                     .foregroundColor(TCTheme.textMuted)
                     .tracking(1.5)
                 Spacer()
-                Text("avg carry · 3+ shots")
+                Text(dispersionMetric == .carry ? "avg carry · 3+ shots" : "avg total · 3+ shots")
                     .font(.system(size: 10))
                     .foregroundColor(TCTheme.textUltraMuted)
             }
@@ -553,8 +568,8 @@ struct TrueCarryInsightsView: View {
                     .foregroundColor(TCTheme.textMuted)
                     .padding(.vertical, 8)
             } else {
-                TCTrendLine(values: carries, color: TCTheme.sage)
-                    .frame(height: 56)
+                TCTrendLine(values: carries, color: TCTheme.sage, axisUnit: "yd")
+                    .frame(height: 84)
             }
 
             HStack(spacing: 0) {

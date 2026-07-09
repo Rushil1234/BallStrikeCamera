@@ -171,6 +171,12 @@ struct TrueCarryAppShell: View {
         .onReceive(NotificationCenter.default.publisher(for: .tcOpenLiveSim)) { _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
         }
+        // QR sim pairing: published value re-emits on subscribe, so this fires even
+        // when the deep link arrived before this view existed (cold start / login).
+        .onReceive(DeepLinkRouter.shared.$pendingSimCode) { code in
+            guard code != nil else { return }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .tcResumeRound)) { _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
         }

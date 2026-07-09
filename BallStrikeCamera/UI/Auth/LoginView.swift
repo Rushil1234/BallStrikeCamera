@@ -61,6 +61,8 @@ struct LoginView: View {
             .font(.system(size: 30, weight: .medium, design: .serif))
             .tracking(-0.25)
             .foregroundColor(TCTheme.cream)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
             .frame(maxWidth: .infinity)
     }
 

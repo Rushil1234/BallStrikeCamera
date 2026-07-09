@@ -127,6 +127,11 @@ final class ShotPersistenceService {
         shot.visibility    = visibility
 
         try await backend.saveShot(shot)
+        await backend.logAnalyticsEvent("shot_saved", properties: [
+            "club": shot.clubName ?? "",
+            "carry": Int(shot.metrics.carryYards.rounded()),
+            "mode": mode.rawValue
+        ], sessionId: sessionId)
         // Mirror the composite to cloud storage so the replay image survives a reinstall and works
         // on other devices. Retry once on failure and record the outcome so it's observable (the
         // previous frame upload silently swallowed errors, which hid that uploads were being denied).
@@ -179,6 +184,9 @@ final class ShotPersistenceService {
         // Also remove media directory
         let mediaDir = AppStorageManager.shotFramesDir(userId: userId, shotId: id)
         try? FileManager.default.removeItem(at: mediaDir)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .tcDataChanged, object: nil)
+        }
     }
 }
 

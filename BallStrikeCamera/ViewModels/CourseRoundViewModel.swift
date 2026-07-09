@@ -290,6 +290,11 @@ final class CourseRoundViewModel: ObservableObject {
         location.requestPermission()
         location.startUpdating()
         await saveRoundOfflineSafe(round)
+        await backend.logAnalyticsEvent("round_started", properties: [
+            "course": round.courseName,
+            "tee": round.teeBoxName,
+            "holes": round.holes.count
+        ], sessionId: nil)
     }
 
     private static func defaultPar(for hole: Int) -> Int {
@@ -607,6 +612,11 @@ final class CourseRoundViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+        await backend.logAnalyticsEvent("round_completed", properties: [
+            "course": round.courseName,
+            "holes_scored": round.holes.filter { $0.score != nil }.count,
+            "shots": round.shotIds.count
+        ], sessionId: nil)
         // Share to the social feed (explicit choice, else the auto-share setting).
         await FeedAutoPoster.share(round: round, backend: backend,
                                    enabled: shareToFeed ?? FeedSharing.autoShareEnabled)

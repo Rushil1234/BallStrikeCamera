@@ -207,6 +207,14 @@ struct FeedView: View {
             let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
             unfinishedRound = all.first(where: { $0.endedAt == nil })
         }
+        // Deletions must recompute the feed + "Your Week" summary immediately.
+        .onReceive(NotificationCenter.default.publisher(for: .tcDataChanged)) { _ in
+            Task {
+                await vm.load()
+                let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
+                unfinishedRound = all.first(where: { $0.endedAt == nil })
+            }
+        }
         .sheet(isPresented: $showFriends, onDismiss: { Task { await vm.load() } }) {
             NavigationStack { FriendsView(userId: userId, backend: backend) }
                 .tcAppearance()

@@ -19,6 +19,11 @@ enum CaddieEngine {
         let carrySD: Double
         let lateralSD: Double
         let sampleCount: Int
+        /// Average TOTAL distance (carry + roll) when known — drives layup/advance picks,
+        /// where the ball running out matters as much as the carry.
+        var totalMean: Double? = nil
+
+        var effectiveYards: Double { totalMean ?? carryMean }
     }
 
     struct Suggestion {
@@ -31,10 +36,19 @@ enum CaddieEngine {
         let onGreenPercent: Int  // best club's estimated chance to hold the green
         let aimAdvice: String    // e.g. "aim 4y left"
         let windSummary: String  // e.g. "2 mph L→R"
+        /// True when no club holds the green — this is the smart-advance pick instead
+        /// (longest club that stays short of the trouble around the target).
+        var isLayup: Bool = false
+        var leavesYards: Int = 0
 
         /// One-line summary in the format the product spec asked for.
         var headline: String {
-            var s = "\(clubName) · \(typicalYards) yds · playing \(playingYards)"
+            var s: String
+            if isLayup {
+                s = "\(clubName) · ~\(typicalYards) yds · leaves \(leavesYards) in (playing \(playingYards))"
+            } else {
+                s = "\(clubName) · \(typicalYards) yds · playing \(playingYards)"
+            }
             var adj: [String] = []
             if slopeDelta != 0 { adj.append("slope \(slopeDelta > 0 ? "+" : "")\(slopeDelta)") }
             if windDelta  != 0 { adj.append("wind \(windDelta > 0 ? "+" : "")\(windDelta)") }
@@ -74,7 +88,34 @@ enum CaddieEngine {
             let p = max(0, pDist) * max(0, pLat)
             if best == nil || p > best!.1 { best = (c, p) }
         }
-        guard let (club, p) = best, p > 0.02 else { return nil }
+        // No green-light club → smart advance: the longest club (by TOTAL when known)
+        // that stays comfortably short of the target, i.e. closest to the center of the
+        // fairway/approach zone without running through it. Wind + slope are already in
+        // playingYards, so the pick inherits them.
+        guard let (club, p) = best, p > 0.02 else {
+            let candidates = clubs.filter { $0.sampleCount >= 3 }
+            let buffer = 12.0
+            let pick = candidates
+                .filter { $0.effectiveYards <= playingYards - buffer }
+                .max(by: { $0.effectiveYards < $1.effectiveYards })
+                ?? candidates.min(by: {
+                    abs($0.effectiveYards - playingYards) < abs($1.effectiveYards - playingYards)
+                })
+            guard let layup = pick else { return nil }
+            return Suggestion(
+                clubName: layup.name,
+                typicalYards: Int(layup.effectiveYards.rounded()),
+                playingYards: Int(playingYards.rounded()),
+                baseYards: baseYards,
+                slopeDelta: slopeDelta,
+                windDelta: windDelta,
+                onGreenPercent: 0,
+                aimAdvice: aimAdvice,
+                windSummary: windSummary,
+                isLayup: true,
+                leavesYards: max(0, Int((playingYards - layup.effectiveYards).rounded()))
+            )
+        }
 
         return Suggestion(
             clubName: club.name,
@@ -89,8 +130,10 @@ enum CaddieEngine {
         )
     }
 
-    /// Build a ClubStat from a set of (carry, lateral) samples.
-    static func stat(name: String, samples: [(carry: Double, lateral: Double)]) -> ClubStat? {
+    /// Build a ClubStat from a set of (carry, lateral) samples (+ optional total distances).
+    static func stat(name: String,
+                     samples: [(carry: Double, lateral: Double)],
+                     totals: [Double] = []) -> ClubStat? {
         guard samples.count >= 3 else { return nil }
         let carries = samples.map(\.carry)
         let laterals = samples.map(\.lateral)
@@ -98,8 +141,9 @@ enum CaddieEngine {
         let carrySD = standardDeviation(carries, mean: carryMean)
         let latMean = laterals.reduce(0, +) / Double(laterals.count)
         let latSD = standardDeviation(laterals, mean: latMean)
+        let totalMean = totals.isEmpty ? nil : totals.reduce(0, +) / Double(totals.count)
         return ClubStat(name: name, carryMean: carryMean, carrySD: carrySD,
-                        lateralSD: latSD, sampleCount: samples.count)
+                        lateralSD: latSD, sampleCount: samples.count, totalMean: totalMean)
     }
 
     private static func standardDeviation(_ xs: [Double], mean: Double) -> Double {

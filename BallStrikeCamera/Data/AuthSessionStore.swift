@@ -56,6 +56,18 @@ final class AuthSessionStore: ObservableObject {
         self._entitlementVM = Published(initialValue: EntitlementViewModel(backend: b))
         print("[TrueCarry] DeviceID: \(AuthSessionStore.deviceId)")
         Task { await restoreSession() }
+        // Deletions invalidate the prewarmed caches immediately, then refresh them —
+        // otherwise stale aggregates (a deleted best-carry, a removed round) keep
+        // seeding home/insights until the next full prewarm.
+        NotificationCenter.default.addObserver(forName: .tcDataChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.cachedShots = []
+                self.cachedFeedPosts = []
+                self.cachedHomeSummary = nil
+                await self.preloadData()
+            }
+        }
     }
 
     var isLoggedIn: Bool { currentUser != nil }
@@ -199,14 +211,14 @@ final class AuthSessionStore: ObservableObject {
             throw BackendError.notAuthenticated
         }
 
-        let redirectTo = "com.rushilkakkad.BallStrikeCamera://login-callback"
+        let redirectTo = "com.noahtobias.BallStrikeCamera://login-callback"
         guard let authorizeURL = supabase.oauthAuthorizeURL(provider: "google", redirectTo: redirectTo) else {
             throw BackendError.networkError("Could not build Google authorize URL.")
         }
 
         let (accessToken, refreshToken) = try await AuthBrowserSession.shared.run(
             authorizeURL: authorizeURL,
-            callbackScheme: "com.rushilkakkad.BallStrikeCamera"
+            callbackScheme: "com.noahtobias.BallStrikeCamera"
         )
 
         activateBackend(configuredBackend)

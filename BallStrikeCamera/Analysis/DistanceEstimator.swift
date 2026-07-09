@@ -94,15 +94,19 @@ struct DistanceEstimator {
 
         // Flight model path (trained ridge regression) — only trusted at full-shot speeds.
         if let fm = flightModel, ballSpeedMph >= flightModelMinSpeedMph {
-            let carry      = clamp(fm.predictCarry(ballSpeedMph: ballSpeedMph,
+            var carry      = clamp(fm.predictCarry(ballSpeedMph: ballSpeedMph,
                                                    vlaDegrees: clampedVLA,
                                                    idealCarryYards: idealCarryYards), 0, 450)
-            let rollout    = clamp(fm.predictRollout(ballSpeedMph: ballSpeedMph,
+            let rawRollout = clamp(fm.predictRollout(ballSpeedMph: ballSpeedMph,
                                                      vlaDegrees: clampedVLA,
                                                      idealCarryYards: idealCarryYards,
                                                      carryYards: carry,
                                                      backspinRpm: backspinRpm), 0, 150)
-            let total      = min(carry + rollout, 400, physicalMaxYards)
+            let total      = min(carry + rawRollout, 400, physicalMaxYards)
+            // The caps apply to TOTAL; re-derive the parts so carry + rollout always
+            // equals what we report (history was showing rollouts the cap had eaten).
+            if carry > total { carry = total }
+            let rollout    = total - carry
             let rollFrac   = carry > 0 ? rollout / carry : 0
             if total > 350 {
                 warnings.append("Total distance estimate >350 yd — verify calibration and FOV settings.")
@@ -134,7 +138,7 @@ struct DistanceEstimator {
             backspinRpm: assumedSpin, sidespinRpm: 0
         ).last?.downrangeYd ?? 0
         let usedIntegration = integrated > 1
-        let carry = clamp(usedIntegration ? integrated : idealCarryYards * correctionFactor, 0, 450)
+        var carry = clamp(usedIntegration ? integrated : idealCarryYards * correctionFactor, 0, 450)
 
         let baseRollout: Double
         let vlaBucket: String
@@ -181,6 +185,11 @@ struct DistanceEstimator {
             }
         }
         let total           = min(carry + rolloutYards, 400, physicalMaxYards)
+        // The caps apply to TOTAL; re-derive the parts so carry + rollout always equals
+        // what we report. Without this the kinetic-roll floor above could publish a
+        // rollout of hundreds of yards next to a capped total.
+        if carry > total { carry = total }
+        rolloutYards        = total - carry
 
         if total > 350 {
             warnings.append("Total distance estimate >350 yd — verify calibration and FOV settings.")

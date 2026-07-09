@@ -40,8 +40,11 @@ struct BallStrikeCameraApp: App {
                        let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                            .queryItems?.first(where: { $0.name == "code" })?.value,
                        (6...10).contains(code.count), code.allSatisfy(\.isNumber) {
-                        LiveSimService.pendingDeepLinkCode = code
-                        NotificationCenter.default.post(name: .tcOpenLiveSim, object: nil)
+                        // State, not a fire-once notification: @Published re-emits to
+                        // late subscribers, so the shell routes correctly no matter
+                        // whether the URL beat the views to the party (cold start) or
+                        // the tab content mounts lazily after this fires (warm scan).
+                        DeepLinkRouter.shared.pendingSimCode = code
                         return
                     }
                     NFCManager.shared.handleNFCURL(url)

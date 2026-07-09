@@ -963,14 +963,30 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
         var holePathForOverlay: [CLLocationCoordinate2D] = []
         if let green = effectiveGreen, let start = lineStart, !coordsEqual(start, green) {
-            holePathForOverlay = preferredHolePath(start: start, green: green)
+            // With the flag moved, the OSM hole path (which terminates at the green CENTER)
+            // would draw start → center → flag. The moved flag always owns the line: direct.
+            holePathForOverlay = (pinCoord != nil && customAimTarget == nil)
+                ? [start, green]
+                : preferredHolePath(start: start, green: green)
             if shouldRecenter {
                 // Frame from the PLAYER when they're on the hole (progressive follow: as the
                 // player advances, the view zooms toward the green with the player pinned near
                 // the bottom, same screen position the tee occupies pre-round). With no live
                 // fix, frame the full hole tee → green as before.
-                let frameStart = userCoord ?? teeCoord ?? (holePathForOverlay.first ?? start)
+                //
+                // A hole switch also frames tee → green: the player is often still walking
+                // over from the previous green then, and framing player → green left the new
+                // tee off-screen until a manual recenter. The follow takes over from the
+                // player's next GPS quantum.
+                let followUser: CLLocationCoordinate2D? =
+                    context.coordinator.isHoleSwitch(for: focusId) ? nil : userCoord
+                let frameStart = followUser ?? teeCoord ?? (holePathForOverlay.first ?? start)
                 let routeEnd   = holePathForOverlay.last  ?? green
+                // The overlay's aim line still starts at the player; the CAMERA path must
+                // start at frameStart or a player behind the tee drags the fit off the hole.
+                let cameraPath = followUser == nil
+                    ? preferredHolePath(start: frameStart, green: routeEnd)
+                    : holePathForOverlay
                 let heading    = Self.bearing(from: frameStart, to: routeEnd)
 
                 let kPad     = 20.0
@@ -980,9 +996,9 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 var minX = Double.infinity, maxX = -Double.infinity
                 var minY = Double.infinity, maxY = -Double.infinity
                 // Bounds: remaining route only when following the player (player + aim path +
-                // green); tee is included only when there's no live fix.
-                let boundsCoords = (userCoord == nil ? (teeCoord.map { [$0] } ?? []) : [])
-                    + holePathForOverlay + [routeEnd]
+                // green); tee is included whenever the framing starts from it.
+                let boundsCoords = (followUser == nil ? (teeCoord.map { [$0] } ?? []) : [])
+                    + cameraPath + [routeEnd]
                 for coord in boundsCoords {
                     let dn = (coord.latitude  - frameStart.latitude)  * kMPerDeg
                     let de = (coord.longitude - frameStart.longitude) * kMPerDeg * cosLat
@@ -991,10 +1007,6 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                     minX = min(minX, sx); maxX = max(maxX, sx)
                     minY = min(minY, sy); maxY = max(maxY, sy)
                 }
-                // Extra bottom padding so the tee isn't hidden behind the HUD.
-                // Cap high enough that even long par 5s fit the full hole.
-                let rawVert    = (maxY - minY) + kPad + max(Double(bottomUIInset) * 0.5, kPad)
-                let vertExtent = aimPoints.count >= 2 ? min(rawVert, 600.0) : rawVert
                 let horizExtent = max((maxX - minX) + 2 * kPad, kPad * 2)
                 let midX        = (minX + maxX) / 2.0
 
@@ -1005,31 +1017,41 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                     longitude: centerOnPath.longitude + midX * cos(h_rad) / (kMPerDeg * max(cosLatC, 1e-6))
                 )
 
-                // Build a virtual MKMapRect whose N-S dimension = vertExtent (along-hole) and
-                // E-W dimension = horizExtent (across-hole). setVisibleMapRect with the UI
-                // edge insets then gives MapKit's own altitude — no assumed ratio needed.
-                // Two setProgrammaticRegionChange calls are needed because setVisibleMapRect
-                // (animated:false) fires regionDidChangeAnimated synchronously, consuming the flag.
+                // Altitude by the design's own equation instead of the old edge-padded
+                // fit + 0.92 zoom-in + 600 m par-5 cap (the cap meant holes longer than
+                // ~570 m along-path could NEVER show their tee, and the multiplier ate
+                // the fit's margin on the rest — the recenter arrow only "fixed" it
+                // because mid-hole the remaining route is shorter). The layout wants
+                // the anchor (tee/player) at screen fraction 1−botF and the green at
+                // topF, i.e. the hole's along-path span fills the usable band exactly:
+                // full-screen vertical meters = span / usableF. Fit a zero-padding rect
+                // of that height and take MapKit's altitude — vertical screen meters
+                // at pitch 0 depend only on altitude, so the later heading rotation
+                // can't invalidate it, and there is no post-hoc correction to fail.
+                let spanMeters       = (maxY - minY) + 2 * kPad
+                let fullScreenMeters = spanMeters / usableF
                 let ptsPerMeter = MKMapPointsPerMeterAtLatitude(biasedCenter.latitude)
                 let centerPt    = MKMapPoint(biasedCenter)
                 let fittingRect = MKMapRect(
                     x: centerPt.x - (horizExtent / 2) * ptsPerMeter,
-                    y: centerPt.y - (vertExtent  / 2) * ptsPerMeter,
+                    y: centerPt.y - (fullScreenMeters / 2) * ptsPerMeter,
                     width:  horizExtent * ptsPerMeter,
-                    height: vertExtent  * ptsPerMeter
+                    height: fullScreenMeters * ptsPerMeter
                 )
-                let edgePad = UIEdgeInsets(top: topUIInset, left: 8,
-                                           bottom: bottomUIInset, right: 8)
+                // The PREVIOUS hole's cameraBoundary is still active here; with it in
+                // place setVisibleMapRect gets clamped and the altitude read below
+                // comes out wrong. Clear it first. (Two setProgrammaticRegionChange
+                // calls: setVisibleMapRect (animated:false) fires regionDidChange
+                // synchronously, consuming the flag.)
+                map.cameraBoundary = nil
                 context.coordinator.setProgrammaticRegionChange(true)
-                map.setVisibleMapRect(fittingRect, edgePadding: edgePad, animated: false)
+                map.setVisibleMapRect(fittingRect, edgePadding: .zero, animated: false)
                 // Let the player pan a bit beyond the hole itself (to check a bailout or the next
                 // tee) without being able to scroll away indefinitely — mirrors cameraZoomRange's
                 // "limited but not locked" zoom behavior, just for panning.
                 let panPad = 200.0 * ptsPerMeter
                 map.cameraBoundary = MKMapView.CameraBoundary(mapRect: fittingRect.insetBy(dx: -panPad, dy: -panPad))
-                // Par 5s zoom in slightly less to keep the full hole visible.
-                let altMultiplier = aimPoints.count >= 2 ? 0.93 : 0.92
-                let fittedAlt = max(map.camera.altitude * altMultiplier, 150.0)
+                let fittedAlt = max(map.camera.altitude, 150.0)
 
                 let cam = MKMapCamera(lookingAtCenter: biasedCenter,
                                       fromDistance: fittedAlt,
@@ -1049,6 +1071,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 let rect = MKMapRect(x: greenPt.x - padPts, y: greenPt.y - padPts,
                                      width: padPts * 2, height: padPts * 2)
                 let edgePad = UIEdgeInsets(top: topUIInset, left: 8, bottom: bottomUIInset, right: 8)
+                map.cameraBoundary = nil   // stale boundary from the previous hole clamps the fit
                 context.coordinator.setProgrammaticRegionChange(true)
                 map.setVisibleMapRect(rect, edgePadding: edgePad, animated: false)
                 let panPad = 200.0 * ptsPerMeter
@@ -1070,6 +1093,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             // neutral default. (Previously fell straight to San Francisco, ignoring the player.)
             let center = courseCoord ?? userCoord ?? rawUserCoord ?? CLLocationCoordinate2D(latitude: 37.785834, longitude: -122.406417)
             if shouldRecenter {
+                map.cameraBoundary = nil   // stale boundary from the previous hole clamps the fit
                 context.coordinator.setProgrammaticRegionChange(true)
                 let span = 650 / usableF
                 map.setRegion(
@@ -1178,6 +1202,14 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             map.addOverlay(HolePathPolyline(coordinates: &pts, count: pts.count), level: .aboveLabels)
             if userCoord == nil, let tee = teeCoord {
                 map.addAnnotation(TeeAnnotation(coordinate: tee))
+            }
+            // Yardage bubble on the direct line too (par 3s / within 240) — same label the
+            // aim segments carry, at the midpoint of the start→target line.
+            if let s = holePathForOverlay.first, let e = holePathForOverlay.last {
+                let yards = Int((MKMapPoint(s).distance(to: MKMapPoint(e)) * 1.09361).rounded())
+                if yards > 0 {
+                    map.addAnnotation(SegmentLabelAnnotation(coordinate: Self.midpoint(s, e), yardage: yards))
+                }
             }
         }
 
@@ -1374,6 +1406,13 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             }
         }
 
+        /// True when this render is framing a hole for the first time (hole switch or fresh
+        /// open) — the one case that must show the tee even if the player hasn't reached it
+        /// yet. Progressive-follow reframes and mid-hole recenter-arrow taps return false.
+        func isHoleSwitch(for focusId: String) -> Bool {
+            !hasInitializedRegion || focusId != lastFocusId
+        }
+
         func shouldRecenter(for focusId: String, recenterToken: Int, gpsKey: String) -> Bool {
             if !hasInitializedRegion || focusId != lastFocusId || recenterToken != lastRecenterToken {
                 return true
@@ -1392,12 +1431,19 @@ private struct SatelliteMapBackground: UIViewRepresentable {
             userAdjustedCamera = false
         }
 
+        private var lastProgrammaticChangeAt = Date.distantPast
+
         func setProgrammaticRegionChange(_ value: Bool) {
             isProgrammaticRegionChange = value
+            if value { lastProgrammaticChangeAt = Date() }
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
-            if isProgrammaticRegionChange {
+            // One animated setCamera can fire MULTIPLE regionDidChange callbacks; the boolean
+            // flag only absorbs the first. The trailing time window absorbs the rest — without
+            // it, hole switches were spuriously flagged as user pans (recenter arrow appearing
+            // the moment a hole loads).
+            if isProgrammaticRegionChange || Date().timeIntervalSince(lastProgrammaticChangeAt) < 1.0 {
                 isProgrammaticRegionChange = false
             } else {
                 // User manually panned/zoomed/rotated — stop auto-follow, show recenter button.
@@ -2032,6 +2078,9 @@ struct CourseModeGPSHoleView: View {
                                         aimAdvice: aimAdvice, windSummary: windSummary,
                                         clubs: stats) {
             caddieResult = s
+            if s.isLayup {
+                caddieMessage = "No club holds the green from \(Int(playing.rounded())) yds — smart advance instead."
+            }
         } else {
             caddieMessage = "Not a green-light shot — no club in your bag holds the green from \(Int(playing.rounded())) yds. Play for position."
         }
@@ -2042,12 +2091,18 @@ struct CourseModeGPSHoleView: View {
         let svc = ShotPersistenceService(userId: uid, backend: session.backend)
         let all = (try? await svc.loadShots(limit: 600)) ?? []
         var byClub: [String: [(carry: Double, lateral: Double)]] = [:]
+        var totalsByClub: [String: [Double]] = [:]
         for shot in all where !shot.isBadShot {
             guard let p = ShotDispersion.point(for: shot) else { continue }
             let key = shot.clubName ?? shot.clubId?.uuidString ?? "Unknown"
             byClub[key, default: []].append(p)
+            if shot.metrics.totalYards > 0 {
+                totalsByClub[key, default: []].append(shot.metrics.totalYards)
+            }
         }
-        return byClub.compactMap { CaddieEngine.stat(name: $0.key, samples: $0.value) }
+        return byClub.compactMap {
+            CaddieEngine.stat(name: $0.key, samples: $0.value, totals: totalsByClub[$0.key] ?? [])
+        }
     }
 
     // MARK: - Dispersion overlay (#7)
@@ -2697,10 +2752,10 @@ struct CourseModeGPSHoleView: View {
                         }
                         let yards = Self.metersBetween(coord, green) * 1.09361
                         if yards <= Self.kFlagWaypointBoundaryYds {
-                            // Dragged back inside the flag boundary → it stops being a waypoint
-                            // and becomes the flag again (flag and waypoint are never within 30y).
+                            // Dragged back inside the flag boundary → the waypoint dissolves.
+                            // The FLAG never moves from anything but its own drag: it stays
+                            // exactly where it was (home or a prior valid placement).
                             flagWaypoint = nil
-                            pinOverride = yards <= 5 ? nil : coord
                         } else {
                             // Re-run the merge/ordering rules: dragging it back past an existing
                             // waypoint must merge into that waypoint, never draw backwards lines.
@@ -2855,6 +2910,12 @@ struct CourseModeGPSHoleView: View {
                     .padding(.top, 2)
                     .padding(.horizontal, 16)
 
+                // Wind readout — tucked right under the par/yardage/HCP strip, centered.
+                if windEnabled {
+                    windPill
+                        .padding(.top, 3)
+                }
+
                 Spacer()
             }
             .ignoresSafeArea(edges: .bottom)
@@ -2883,17 +2944,6 @@ struct CourseModeGPSHoleView: View {
                 .padding(.bottom, 250)
                 .ignoresSafeArea(edges: .bottom)
 
-            // Wind readout — top-center banner while wind mode is on. Raised to sit close to the
-            // hole info strip, in line with the other top-row pills (slope pill, sidebars).
-            if windEnabled {
-                VStack {
-                    windPill
-                        .padding(.top, topSafeArea + 130)
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .ignoresSafeArea(edges: .bottom)
-            }
 
             // Hazard count badges — top-left, below the (lowered) top bar
             if !hazardCounts.filter({ $0.value > 0 }).isEmpty {
@@ -3889,10 +3939,10 @@ struct CourseModeGPSHoleView: View {
         HStack(spacing: 14) {
             // Avatar
             ZStack {
-                Circle().fill(TCTheme.goldGradient).frame(width: 40, height: 40)
-                Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1).frame(width: 40, height: 40)
+                Circle().fill(TCTheme.goldGradient).frame(width: 37, height: 37)
+                Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1).frame(width: 37, height: 37)
                 Text(userInitials)
-                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .font(.system(size: 13, weight: .heavy, design: .rounded))
                     .foregroundColor(TCTheme.deepGreen)
             }
 
@@ -3911,9 +3961,9 @@ struct CourseModeGPSHoleView: View {
             // Camera
             Button { openCamera() } label: {
                 Image(systemName: "camera.fill")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 41, height: 41)
                     .background(.white.opacity(0.12))
                     .clipShape(Circle())
                     .overlay(Circle().strokeBorder(.white.opacity(0.18), lineWidth: 1))
@@ -3929,7 +3979,7 @@ struct CourseModeGPSHoleView: View {
                         .font(.system(size: 11, weight: .heavy, design: .rounded))
                 }
                 .foregroundColor(TCTheme.deepGreen)
-                .frame(width: 76, height: 51)
+                .frame(width: 74, height: 47)
                 .background(TCTheme.goldGradient)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 .shadow(color: TCTheme.gold.opacity(0.4), radius: 6, y: 2)
@@ -3937,7 +3987,7 @@ struct CourseModeGPSHoleView: View {
             .buttonStyle(HUDPressStyle())
         }
         .padding(.horizontal, 18)
-        .padding(.top, 12)
+        .padding(.top, 9)
         .padding(.bottom, 160)
         .frame(maxWidth: .infinity)
         .background(
@@ -4383,52 +4433,28 @@ struct FinalRoundReviewView: View {
             TrueCarryBackground().ignoresSafeArea()
             VStack(spacing: 0) {
                 Text("Round Complete")
-                    .font(.system(size: 24, weight: .black, design: .rounded))
-                    .foregroundColor(.white)
+                    .font(.system(size: 26, weight: .semibold, design: .serif))
+                    .foregroundColor(TCTheme.textPrimary)
                     .padding(.top, 24)
-                Text("Tap any hole to fix its score before saving.")
+                Text("Tap any hole column to fix its score before saving.")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.55))
+                    .foregroundColor(TCTheme.textMuted)
                     .padding(.top, 4)
 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 6) {
-                        if let round = vm.activeRound {
-                            ForEach(Array(round.holes.enumerated()), id: \.element.holeNumber) { idx, hole in
-                                Button { editingHoleIndex = idx } label: {
-                                    HStack {
-                                        Text("Hole \(hole.holeNumber)")
-                                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                                            .foregroundColor(.white)
-                                        Text("Par \(hole.par)")
-                                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                            .foregroundColor(.white.opacity(0.5))
-                                        Spacer()
-                                        if let s = hole.score {
-                                            Text("\(s)")
-                                                .font(.system(size: 16, weight: .black, design: .rounded))
-                                                .foregroundColor(s < hole.par ? .green : (s == hole.par ? .white : .orange))
-                                        } else {
-                                            Text("—")
-                                                .font(.system(size: 16, weight: .black, design: .rounded))
-                                                .foregroundColor(.white.opacity(0.4))
-                                        }
-                                        Image(systemName: "chevron.right")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(.white.opacity(0.3))
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 11)
-                                    .background(Color.white.opacity(0.06))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
+                    if let round = vm.activeRound {
+                        VStack(spacing: 14) {
+                            let holes = Array(round.holes.enumerated())
+                            nineTable(title: "FRONT", holes: Array(holes.prefix(9)))
+                            if holes.count > 9 {
+                                nineTable(title: "BACK", holes: Array(holes.dropFirst(9)))
                             }
+                            totalsCard(round)
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.top, 16)
+                        .padding(.bottom, 12)
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 16)
-                    .padding(.bottom, 12)
                 }
 
                 VStack(spacing: 10) {
@@ -4475,6 +4501,143 @@ struct FinalRoundReviewView: View {
                 .tcAppearance()
             }
         }
+    }
+
+    // MARK: Scorecard tables
+
+    private struct HoleStats { var drops = 0; var fwBunkers = 0; var gsBunkers = 0 }
+
+    /// Drops come from logged penalty/moved shots; bunker visits from sand-lie shots, split
+    /// fairway vs greenside by distance to the green center (>45y = fairway bunker).
+    private func stats(for hole: RoundHole) -> HoleStats {
+        var st = HoleStats()
+        st.drops = hole.trackedShots.filter { $0.result == .penalty }.count
+        let sand = hole.trackedShots.filter { $0.lie == .sand }
+        let green = vm.selectedCourse?.holes
+            .first(where: { $0.number == hole.holeNumber })?.greenCenterCoordinate
+        for b in sand {
+            if let g = green {
+                let d = CLLocation(latitude: b.startCoordinate.latitude,
+                                   longitude: b.startCoordinate.longitude)
+                    .distance(from: CLLocation(latitude: g.latitude, longitude: g.longitude)) * 1.09361
+                if d > 45 { st.fwBunkers += 1 } else { st.gsBunkers += 1 }
+            } else {
+                st.gsBunkers += 1
+            }
+        }
+        return st
+    }
+
+    private func nineTable(title: String, holes: [(offset: Int, element: RoundHole)]) -> some View {
+        let allStats = holes.map { stats(for: $0.element) }
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                .foregroundColor(TCTheme.gold)
+                .tracking(1.4)
+            VStack(spacing: 0) {
+                gridRow(label: "Hole", values: holes.map { "\($0.element.holeNumber)" },
+                        total: nil, bold: true, tappable: holes.map(\.offset))
+                divider
+                gridRow(label: "Par", values: holes.map { "\($0.element.par)" },
+                        total: "\(holes.reduce(0) { $0 + $1.element.par })")
+                divider
+                gridRow(label: "Score",
+                        values: holes.map { $0.element.score.map(String.init) ?? "–" },
+                        total: "\(holes.compactMap { $0.element.score }.reduce(0, +))",
+                        bold: true, scores: holes.map { ($0.element.score, $0.element.par) },
+                        tappable: holes.map(\.offset))
+                divider
+                gridRow(label: "Putts",
+                        values: holes.map { $0.element.putts.map(String.init) ?? "–" },
+                        total: "\(holes.compactMap { $0.element.putts }.reduce(0, +))")
+                divider
+                gridRow(label: "Drops", values: allStats.map { $0.drops == 0 ? "·" : "\($0.drops)" },
+                        total: "\(allStats.reduce(0) { $0 + $1.drops })")
+                divider
+                gridRow(label: "FW Bkr", values: allStats.map { $0.fwBunkers == 0 ? "·" : "\($0.fwBunkers)" },
+                        total: "\(allStats.reduce(0) { $0 + $1.fwBunkers })")
+                divider
+                gridRow(label: "GS Bkr", values: allStats.map { $0.gsBunkers == 0 ? "·" : "\($0.gsBunkers)" },
+                        total: "\(allStats.reduce(0) { $0 + $1.gsBunkers })")
+            }
+            .padding(.vertical, 6)
+            .background(TCTheme.panel)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(TCTheme.border, lineWidth: 1))
+        }
+    }
+
+    private var divider: some View {
+        Rectangle().fill(TCTheme.border.opacity(0.6)).frame(height: 0.5)
+    }
+
+    private func gridRow(label: String,
+                         values: [String],
+                         total: String?,
+                         bold: Bool = false,
+                         scores: [(Int?, Int)]? = nil,
+                         tappable: [Int]? = nil) -> some View {
+        HStack(spacing: 0) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundColor(TCTheme.textMuted)
+                .frame(width: 46, alignment: .leading)
+                .padding(.leading, 8)
+            ForEach(values.indices, id: \.self) { i in
+                let color: Color = {
+                    if let scores, let s = scores[i].0 {
+                        return s < scores[i].1 ? TCTheme.sage : (s == scores[i].1 ? TCTheme.textPrimary : .orange)
+                    }
+                    return bold ? TCTheme.textPrimary : TCTheme.textSecondary
+                }()
+                Group {
+                    if let tappable {
+                        Button { editingHoleIndex = tappable[i] } label: {
+                            Text(values[i])
+                                .frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Text(values[i]).frame(maxWidth: .infinity)
+                    }
+                }
+                .font(.system(size: 12, weight: bold ? .heavy : .semibold, design: .rounded))
+                .foregroundColor(color)
+            }
+            Text(total ?? "")
+                .font(.system(size: 12, weight: .heavy, design: .rounded))
+                .foregroundColor(TCTheme.gold)
+                .frame(width: 34)
+        }
+        .padding(.vertical, 5)
+    }
+
+    private func totalsCard(_ round: CourseRound) -> some View {
+        let s = round.scoreSummary
+        let toPar = s.totalScore - s.totalPar
+        return HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TOTAL")
+                    .font(.system(size: 10, weight: .heavy, design: .rounded))
+                    .foregroundColor(TCTheme.textMuted).tracking(1.2)
+                Text("\(s.totalScore)")
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .foregroundColor(TCTheme.textPrimary)
+            }
+            Spacer()
+            Text(toPar == 0 ? "E" : (toPar > 0 ? "+\(toPar)" : "\(toPar)"))
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
+                .foregroundColor(toPar <= 0 ? TCTheme.sage : .orange)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(TCTheme.border, lineWidth: 1))
     }
 
     private struct EditingHole: Identifiable {

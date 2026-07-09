@@ -169,6 +169,11 @@ struct TrueCarryLogo: View {
                 .font(.system(size: size, weight: .medium, design: .serif))
                 .tracking(-0.25)
                 .foregroundColor(TCTheme.cream)
+                // Never wrap into "Tru e / Car ry" when a header squeezes us —
+                // shrink a little first, and refuse a second line outright.
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityLabel("True Carry")
     }

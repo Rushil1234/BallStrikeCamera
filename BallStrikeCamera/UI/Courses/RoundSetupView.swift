@@ -62,7 +62,7 @@ struct RoundSetupView: View {
                             Text(course.name)
                                 .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(TCTheme.textPrimary)
-                                .lineLimit(1)
+                                .lineLimit(2)
 
                             HStack(spacing: 4) {
                                 Image(systemName: "location.fill")

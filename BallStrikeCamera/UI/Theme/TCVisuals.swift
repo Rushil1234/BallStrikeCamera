@@ -505,8 +505,10 @@ struct TCRangeFinderDispersion: View {
     var body: some View {
         Canvas { ctx, size in
             let W = size.width, H = size.height
-            let lPad: CGFloat = 52   // carry labels on left
-            let rPad: CGFloat = 52
+            // Slim side gutters — the grid runs nearly edge-to-edge; carry labels are
+            // drawn INSIDE the plot along the left edge instead of in a gutter.
+            let lPad: CGFloat = 14
+            let rPad: CGFloat = 14
             let bPad: CGFloat = 32   // lateral labels on bottom
             let tPad: CGFloat = 10
 
@@ -562,9 +564,9 @@ struct TCRangeFinderDispersion: View {
                 if isMajor {
                     ctx.draw(
                         Text(String(Int(rawC)))
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(Color.white.opacity(0.90)),
-                        at: CGPoint(x: plotLeft - 8, y: yCG(rawC)), anchor: .trailing
+                        at: CGPoint(x: plotLeft + 6, y: yCG(rawC) - 8), anchor: .leading
                     )
                 }
             }

@@ -30,9 +30,12 @@ struct LiveSimCodeView: View {
             .disabled(!liveSimService.isConnectedToSim)
             .opacity(liveSimService.isConnectedToSim ? 1.0 : 0.4)
         }
-        // QR deep link (truecarry://livesim?code=…): autofill and connect.
-        .task { await liveSimService.consumeDeepLinkCode() }
-        .onReceive(NotificationCenter.default.publisher(for: .tcOpenLiveSim)) { _ in
+        // QR deep link (truecarry://livesim?code=…): autofill and connect. The
+        // router's published value re-emits on subscribe, covering both orders —
+        // this view mounting after the scan (cold start / navigation) and a
+        // scan landing while this view is already up.
+        .onReceive(DeepLinkRouter.shared.$pendingSimCode) { code in
+            guard code != nil else { return }
             Task { await liveSimService.consumeDeepLinkCode() }
         }
     }

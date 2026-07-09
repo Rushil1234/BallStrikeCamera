@@ -43,12 +43,19 @@ enum CourseCatalog {
         var hasGeometry: Bool { dataTier == "gps_ready" }
     }
 
-    /// Search the full 42k-course catalog for the search screen. Returns ALL matching courses
-    /// (with or without geometry) as lightweight stubs — so users always see a course exists,
-    /// even when we don't have its map yet.
-    static func search(query: String, near: CLLocationCoordinate2D?, limit: Int = 25) async -> [GolfCourse] {
-        guard let config = SupabaseConfig.load() else { return [] }
-        let matches = await runSearch(q: query, coordinate: near, onlyGeometry: false, limit: limit, config: config)
+    /// Search the full 42k-course catalog for the search screen. By default returns ALL
+    /// matching courses (with or without geometry) as lightweight stubs — so users always
+    /// see a course exists, even when we don't have its map yet. Pass `onlyGeometry: true`
+    /// for surfaces like the Nearby list that must only show courses with a GPS map.
+    static func search(query: String, near: CLLocationCoordinate2D?, limit: Int = 25, onlyGeometry: Bool = false) async -> [GolfCourse] {
+        await searchChecked(query: query, near: near, limit: limit, onlyGeometry: onlyGeometry) ?? []
+    }
+
+    /// Like `search`, but distinguishes "no matches" ([]) from "database unreachable"
+    /// (nil) so course mode can show a real error instead of third-party fallbacks.
+    static func searchChecked(query: String, near: CLLocationCoordinate2D?, limit: Int = 25, onlyGeometry: Bool = false) async -> [GolfCourse]? {
+        guard let config = SupabaseConfig.load() else { return nil }
+        guard let matches = await runSearch(q: query, coordinate: near, onlyGeometry: onlyGeometry, limit: limit, config: config) else { return nil }
         return matches.map { m in
             GolfCourse(
                 id: m.id, name: m.name,
@@ -66,7 +73,7 @@ enum CourseCatalog {
     static func geometry(for course: GolfCourse) async -> GolfCourse? {
         guard let config = SupabaseConfig.load() else { return nil }
         if isUUID(course.id), let g = await loadGeometry(courseId: course.id, config: config) { return g }
-        guard let match = await runSearch(q: course.name, coordinate: course.coordinate, onlyGeometry: true, limit: 1, config: config).first
+        guard let match = (await runSearch(q: course.name, coordinate: course.coordinate, onlyGeometry: true, limit: 1, config: config))?.first
         else { return nil }
         return await loadGeometry(courseId: match.id, config: config)
     }
@@ -77,11 +84,12 @@ enum CourseCatalog {
 
     // MARK: - Search RPC
 
+    /// nil = transport/server failure (backend unreachable); [] = genuinely no matches.
     private static func runSearch(q: String,
                                   coordinate: CLLocationCoordinate2D?,
                                   onlyGeometry: Bool,
                                   limit: Int,
-                                  config: SupabaseConfig) async -> [Match] {
+                                  config: SupabaseConfig) async -> [Match]? {
         let url = config.rpcBaseURL.appendingPathComponent("search_courses")
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -95,13 +103,13 @@ enum CourseCatalog {
 
         do {
             let (data, response) = try await URLSession.shared.data(for: req)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return [] }
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
             return (try? decoder.decode([Match].self, from: data)) ?? []
         } catch {
             #if DEBUG
             print("[CourseCatalog] search failed: \(error.localizedDescription)")
             #endif
-            return []
+            return nil
         }
     }
 

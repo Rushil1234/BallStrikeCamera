@@ -466,6 +466,9 @@ struct TCMilestoneBadge: View {
 struct TCTrendLine: View {
     var values: [Double] = []
     var color: Color = TCTheme.sage
+    /// When set, draws a y-axis: gridlines with value labels (e.g. "yd") so the trend
+    /// reads as real distances instead of an unscaled sparkline.
+    var axisUnit: String? = nil
 
     var body: some View {
         Canvas { ctx, size in
@@ -474,9 +477,28 @@ struct TCTrendLine: View {
             let minV = (values.min() ?? 0) * 0.94
             let maxV = (values.max() ?? 1) * 1.02
             let range = maxV - minV
+            let axisPad: CGFloat = axisUnit != nil ? 34 : 0
+            let plotW = w - axisPad
             let pts = values.enumerated().map { i, v -> CGPoint in
-                CGPoint(x: w * CGFloat(i) / CGFloat(values.count - 1),
+                CGPoint(x: axisPad + plotW * CGFloat(i) / CGFloat(values.count - 1),
                         y: h - h * CGFloat((v - minV) / range))
+            }
+            if axisUnit != nil {
+                // 3 gridlines: min / mid / max of the plotted window, labelled in yards.
+                for frac in [0.0, 0.5, 1.0] {
+                    let v = minV + range * frac
+                    let y = max(6, min(h - 6, h - h * CGFloat(frac)))
+                    var g = Path()
+                    g.move(to: CGPoint(x: axisPad, y: y))
+                    g.addLine(to: CGPoint(x: w, y: y))
+                    ctx.stroke(g, with: .color(TCTheme.border.opacity(0.7)), lineWidth: 0.5)
+                    ctx.draw(
+                        Text("\(Int(v.rounded()))")
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .foregroundColor(TCTheme.textMuted),
+                        at: CGPoint(x: axisPad - 5, y: y), anchor: .trailing
+                    )
+                }
             }
             // Area fill
             var area = Path()

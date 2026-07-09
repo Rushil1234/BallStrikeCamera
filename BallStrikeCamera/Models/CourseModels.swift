@@ -267,9 +267,35 @@ struct TeeBox: Codable, Identifiable {
     /// essentially always the shorter of a same-color pair); the other's rating/slope folds into
     /// womensRating/womensSlope, and any leftover gender-suffix text is stripped from its name.
     static func collapsingSameColorDuplicates(_ tees: [TeeBox]) -> [TeeBox] {
+        // Exact twins first: the scorecard merge sometimes wrote the SAME tee twice,
+        // one ALL CAPS and one not ("GOLD" + "Gold", identical yardage). Color-based
+        // grouping below can miss those when their color strings differ, so collapse
+        // them here — keep the twin with ratings, display the mixed-case name.
+        var twinIndex: [String: Int] = [:]
+        var deduped: [TeeBox] = []
+        for tee in tees {
+            let key = "\(tee.name.trimmingCharacters(in: .whitespaces).lowercased())|\(tee.totalYards)"
+            if let i = twinIndex[key] {
+                var keeper = deduped[i]
+                if keeper.rating == nil, tee.rating != nil {
+                    var promoted = tee
+                    if promoted.name == promoted.name.uppercased(),
+                       keeper.name != keeper.name.uppercased() { promoted.name = keeper.name }
+                    keeper = promoted
+                } else if keeper.name == keeper.name.uppercased(),
+                          tee.name != tee.name.uppercased() {
+                    keeper.name = tee.name
+                }
+                deduped[i] = keeper
+            } else {
+                twinIndex[key] = deduped.count
+                deduped.append(tee)
+            }
+        }
+
         var groups: [String: [TeeBox]] = [:]
         var order: [String] = []
-        for tee in tees {
+        for tee in deduped {
             let key = canonicalColor(tee.color)
             if groups[key] == nil { order.append(key) }
             groups[key, default: []].append(tee)

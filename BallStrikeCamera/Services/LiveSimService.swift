@@ -88,6 +88,24 @@ extension Notification.Name {
     /// Posted by the home-screen resume banner; the shell routes to the Play tab
     /// and PlayView opens the unfinished round.
     static let tcResumeRound = Notification.Name("tc.resumeRound")
+    /// Posted after any shot/round/session deletion so every screen showing derived
+    /// stats (feed summary, history, insights, home) reloads instead of serving stale
+    /// aggregates (e.g. a deleted 240yd best carry lingering in "Your Week").
+    static let tcDataChanged = Notification.Name("tc.dataChanged")
+}
+
+/// Deep-link state that must survive mount-order races. A fire-once
+/// notification is lost if its listener isn't mounted yet (cold start: the URL
+/// arrives before the tab shell exists; warm: lazily-mounted tab content
+/// subscribes after the post). A @Published value re-emits to every NEW
+/// subscriber, so each layer of the shell reacts whenever it appears — and the
+/// code survives an intervening login screen untouched.
+@MainActor
+final class DeepLinkRouter: ObservableObject {
+    static let shared = DeepLinkRouter()
+    /// Pairing code from truecarry://livesim?code=…; cleared when the sim
+    /// screen consumes it and starts connecting.
+    @Published var pendingSimCode: String?
 }
 
 @MainActor
@@ -106,12 +124,9 @@ final class LiveSimService: ObservableObject {
     private var shotSeq = 0
     private var pendingShots: [PendingShot] = []
 
-    /// Pairing code delivered via deep link, consumed by LiveSimCodeView.
-    static var pendingDeepLinkCode: String?
-
     func consumeDeepLinkCode() async {
-        guard let code = Self.pendingDeepLinkCode else { return }
-        Self.pendingDeepLinkCode = nil
+        guard let code = DeepLinkRouter.shared.pendingSimCode else { return }
+        DeepLinkRouter.shared.pendingSimCode = nil
         enteredCode = code
         await connect()
     }

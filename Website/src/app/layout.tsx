@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Instrument_Serif, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import WebAnalytics from "@/components/WebAnalytics";
 
 // Brand type stack (Brand Guidelines v1):
 // Instrument Serif = display, Manrope = body, JetBrains Mono = numerics.
@@ -57,6 +58,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body>
         <a href="#main-content" className="skip-link">Skip to main content</a>
+        <WebAnalytics />
         <div id="main-content">{children}</div>
       </body>
     </html>

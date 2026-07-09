@@ -573,7 +573,7 @@ enum FeedLeaderboardMetric: String, Codable, Hashable {
 
     var title: String {
         switch self {
-        case .longestDrive: return "Longest Drive"
+        case .longestDrive: return "Longest Carry"
         case .bestScore: return "Best Score"
         case .practiceShots: return "Practice Shots"
         }

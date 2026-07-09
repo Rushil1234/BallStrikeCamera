@@ -157,6 +157,18 @@ struct TrueCarryPlayView: View {
                 showUpgradeAlert = true
             }
         }
+        // QR sim pairing: published value re-emits on subscribe, so this fires even
+        // when this tab's content mounts lazily after the deep link arrived (and the
+        // code survives an intervening login screen — routing resumes right after).
+        .onReceive(DeepLinkRouter.shared.$pendingSimCode) { code in
+            guard code != nil else { return }
+            selectedMode = .sim
+            if session.entitlementVM.canPerform(.simMode).allowed {
+                showSim = true
+            } else {
+                showUpgradeAlert = true
+            }
+        }
         .onDisappear { prewarmer.cancel() }
     }
 
