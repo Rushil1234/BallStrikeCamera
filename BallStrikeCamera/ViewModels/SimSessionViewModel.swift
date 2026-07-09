@@ -199,9 +199,19 @@ final class SimSessionViewModel: ObservableObject {
     /// Generates a simulated shot, sends to OGS if connected, saves to active session.
     func addSimulatedShot() async -> SavedShot {
         let testShot = OpenGolfSimShot.testShot
-        // Rough carry estimate: ballSpeed × sin(2 × launchAngle) × 2.25
-        let launchRad = testShot.verticalLaunchAngle * .pi / 180
-        let estCarry  = testShot.ballSpeed * sin(2 * launchRad) * 2.25
+        // Carry from the SAME aero model the web sim integrates (drag + Magnus +
+        // spin decay, shared constants), so the app's readout matches what the
+        // sim renders. The old vacuum-ish formula said ~143 while the sim flew
+        // the identical ball data 200+.
+        let backspin = testShot.spinSpeed * 0.93
+        let sidespin = testShot.spinSpeed * 0.07
+        let estCarry = FlightArcModel.trajectory(
+            ballSpeedMph: testShot.ballSpeed,
+            vlaDeg: testShot.verticalLaunchAngle,
+            hlaDeg: testShot.horizontalLaunchAngle,
+            backspinRpm: backspin,
+            sidespinRpm: sidespin
+        ).last?.downrangeYd ?? testShot.ballSpeed * 1.6
 
         var metrics = SavedShotMetrics()
         metrics.carryYards     = estCarry

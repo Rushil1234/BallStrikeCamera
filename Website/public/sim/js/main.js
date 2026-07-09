@@ -1227,6 +1227,41 @@ function resolveShot() {
     return;
   }
 
+  // Gimme: anything at rest inside 3 feet of the cup is conceded — the hole
+  // closes at strokes + 1 (the pickup putt). An actually-holed shot never
+  // reaches here (sim.state === 'holed' returned above), so real makes score
+  // exactly as played.
+  if (!game.isRange && distToPin() <= 0.9144) {
+    game.strokes += 1;
+    const def = courseHoles[game.holeIdx];
+    const active = game.players[game.activePlayerIdx];
+    if (active) {
+      active.scores[game.holeIdx] = game.strokes;
+      active.holedOut = true;
+      active.ballPos = { ...game.ballPos };
+      active.strokes = game.strokes;
+    } else {
+      game.scores[game.holeIdx] = game.strokes;
+    }
+    SFX.holed();
+    const stillWaiting = game.players.length > 1 && game.players.some(p => !p || !p.holedOut);
+    if (stillWaiting) {
+      hud.toast(
+        `<span class="t-gold">GIMME — THAT'S GOOD</span>` +
+        `<span class="t-sub">${(active?.name ?? 'YOU').toUpperCase()} · ${game.strokes} STROKES · WAITING FOR OTHERS</span>`, 0);
+      game.state = 'WAITING_OTHERS';
+      pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
+      return;
+    }
+    hud.toast(
+      `<span class="t-gold">GIMME — ${scoreName(game.strokes, def.par)}</span>` +
+      `<span class="t-sub">INSIDE 3 FEET · HOLE ${def.id} · ${game.strokes} STROKES</span>`, 0);
+    game.state = 'HOLE_DONE';
+    game.doneTimer = 0;
+    pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
+    return;
+  }
+
   // normal rest
   game.lie = game.course.surfaceAt(game.ballPos.x, game.ballPos.z);
   const carry = sim.carryPos
