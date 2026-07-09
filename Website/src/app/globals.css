@@ -2429,19 +2429,12 @@ textarea:focus-visible, [tabindex]:focus-visible{
 .sim-players-names{ display:flex; gap:8px; padding:8px 18px 4px; flex-wrap:wrap; }
 .sim-players-names input{ flex:1; min-width:110px; max-width:160px; padding:8px 10px; border-radius:8px; border:1px solid rgba(236,228,210,.2); background:rgba(236,228,210,.05); color:#ece4d2; font-size:13px; }
 
-/* ---------- interactive sim demo (homepage) ---------- */
-.sim-demo{ position:relative; border-radius:16px; overflow:hidden; aspect-ratio:16/10; background:#0c130d; border:1px solid rgba(236,228,210,.12); }
-.sim-demo.live{ aspect-ratio:16/10; }
-.sim-demo-cover{ position:absolute; inset:0; width:100%; height:100%; border:0; padding:0; cursor:pointer; background:#0c130d; display:block; }
-.sim-demo-cover img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.82; transition:opacity .3s, transform .5s; }
-.sim-demo-cover:hover img{ opacity:1; transform:scale(1.03); }
-.sim-demo-badge{ position:absolute; top:14px; left:14px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#16201a; background:var(--carry-gold,#c9a86a); padding:5px 10px; border-radius:999px; font-weight:700; }
-.sim-demo-play{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); display:inline-flex; align-items:center; gap:10px; color:#16201a; background:rgba(236,228,210,.95); padding:13px 22px; border-radius:999px; font-weight:700; font-size:15px; box-shadow:0 8px 30px rgba(0,0,0,.4); transition:transform .25s, background .25s; }
-.sim-demo-cover:hover .sim-demo-play{ transform:translate(-50%,-50%) scale(1.06); background:#fff; }
-.sim-demo-frame{ position:absolute; inset:0; width:100%; height:100%; border:0; }
-.sim-demo-loading{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:rgba(236,228,210,.8); background:radial-gradient(ellipse at 50% 40%,#16241a,#0a120d); font-size:13px; letter-spacing:.1em; }
-.sim-demo-spinner{ width:34px; height:34px; border-radius:50%; border:2px solid rgba(201,168,106,.2); border-top-color:var(--carry-gold,#c9a86a); animation:sim-demo-spin .9s linear infinite; }
-@keyframes sim-demo-spin{ to{ transform:rotate(360deg); } }
-.sim-demo-hint{ position:absolute; bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:16px; padding:8px 16px; border-radius:999px; background:rgba(12,19,13,.72); backdrop-filter:blur(6px); font-size:12px; color:rgba(236,228,210,.85); pointer-events:none; }
-.sim-demo-hint b{ color:var(--carry-gold,#c9a86a); }
-@media (max-width:640px){ .sim-demo-hint span:last-child{ display:none; } }
+/* ---------- sim demo video (homepage) ---------- */
+.sim-demo{ position:relative; display:block; border-radius:18px; overflow:hidden; aspect-ratio:16/10; background:#0c130d; border:1px solid color-mix(in oklab,var(--carry-gold) 35%,transparent); box-shadow:0 30px 80px rgba(0,0,0,.45); transform:rotate(1.2deg); transition:transform .35s cubic-bezier(.2,.8,.2,1); }
+.sim-demo:hover{ transform:rotate(0deg) translateY(-6px); }
+.sim-demo-video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.sim-demo::after{ content:""; position:absolute; inset:0; background:linear-gradient(to top, rgba(7,14,9,.6), transparent 42%); pointer-events:none; }
+.sim-demo-badge{ position:absolute; top:14px; left:14px; z-index:2; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#16201a; background:var(--carry-gold,#c9a86a); padding:5px 11px; border-radius:999px; font-weight:700; }
+.sim-demo-play{ position:absolute; left:18px; bottom:16px; z-index:2; display:inline-flex; align-items:center; gap:8px; color:#ece4d2; font-weight:700; font-size:16px; text-shadow:0 2px 12px rgba(0,0,0,.6); transition:gap .25s; }
+.sim-demo:hover .sim-demo-play{ gap:12px; }
+.sim-demo-play svg{ background:rgba(236,228,210,.95); color:#16201a; border-radius:50%; padding:6px; box-shadow:0 4px 16px rgba(0,0,0,.4); }
