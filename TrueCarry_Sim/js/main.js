@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-8';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-8';
-import { RANGE, holeLength } from './holes.js?v=gspro-8';
-import { buildCourse } from './terrain.js?v=gspro-8';
-import { makeSky } from './sky.js?v=gspro-8';
-import { loadAssets } from './assets.js?v=gspro-8';
-import { HUD, toParStr } from './ui.js?v=gspro-8';
-import { SFX } from './audio.js?v=gspro-8';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-8';
-import { fetchSimCourses } from './courses.js?v=gspro-8';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-8';
-import { layoutIslandCourse } from './world.js?v=gspro-8';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-9';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-9';
+import { RANGE, holeLength } from './holes.js?v=gspro-9';
+import { buildCourse } from './terrain.js?v=gspro-9';
+import { makeSky } from './sky.js?v=gspro-9';
+import { loadAssets } from './assets.js?v=gspro-9';
+import { HUD, toParStr } from './ui.js?v=gspro-9';
+import { SFX } from './audio.js?v=gspro-9';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-9';
+import { fetchSimCourses } from './courses.js?v=gspro-9';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-9';
+import { layoutIslandCourse } from './world.js?v=gspro-9';
 
 // ---------- boot ----------
 
@@ -494,7 +494,18 @@ const game = {
 let rangeMarkers = null;
 let lastRangeShot = null;
 let rangeStats = { shots: 0, totalCarry: 0, bestCarry: 0, recent: [] };
-if (launchParams.has('debug')) window.__tc = { scene, game: () => game };
+if (launchParams.has('debug')) window.__tc = {
+  scene, game: () => game, CLUBS,
+  // Debug: drop the ball on the current green a few metres from the pin and
+  // enter the putting address state (auto-putter + green cam + heatmap).
+  toGreen(off = 6) {
+    const pin = game.course.pinPos;
+    game.ballPos = { x: pin.x + off, y: game.course.heightAt(pin.x + off, pin.z + off) + 0.02, z: pin.z + off };
+    game.lie = SURF.GREEN;
+    game.strokes = 2;
+    setupShot();
+  },
+};
 const holePickerCard = document.getElementById('hole-picker-card');
 const holePicker = document.getElementById('hole-picker');
 const holeGrid = document.getElementById('hole-grid');
@@ -2075,7 +2086,9 @@ function frame() {
       ring.material.opacity = 0.7 + 0.2 * Math.sin(game.time * 2.6);
     }
     if (game.course.greenGrid) {
-      game.course.greenGrid.visible = aiming && !!club().putter;
+      // Heatmap shows the whole time you're on the green with the putter —
+      // hidden only while the ball is actually rolling so it doesn't block it.
+      game.course.greenGrid.visible = !!club().putter && game.state !== 'FLIGHT' && game.state !== 'HOLE_DONE';
     }
 
     // ball + blob shadow
