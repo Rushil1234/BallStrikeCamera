@@ -25,7 +25,9 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://truecarry.golf";
+// Canonical domain is fixed to the real one so search engines index
+// truecarry.golf (not a vercel.app deployment URL or a stray env var).
+const SITE_URL = "https://truecarry.golf";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
