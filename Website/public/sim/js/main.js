@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-12';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-12';
-import { RANGE, holeLength } from './holes.js?v=gspro-12';
-import { buildCourse } from './terrain.js?v=gspro-12';
-import { makeSky } from './sky.js?v=gspro-12';
-import { loadAssets } from './assets.js?v=gspro-12';
-import { HUD, toParStr } from './ui.js?v=gspro-12';
-import { SFX } from './audio.js?v=gspro-12';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-12';
-import { fetchSimCourses } from './courses.js?v=gspro-12';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-12';
-import { layoutIslandCourse } from './world.js?v=gspro-12';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-13';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-13';
+import { RANGE, holeLength } from './holes.js?v=gspro-13';
+import { buildCourse } from './terrain.js?v=gspro-13';
+import { makeSky } from './sky.js?v=gspro-13';
+import { loadAssets } from './assets.js?v=gspro-13';
+import { HUD, toParStr } from './ui.js?v=gspro-13';
+import { SFX } from './audio.js?v=gspro-13';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-13';
+import { fetchSimCourses } from './courses.js?v=gspro-13';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-13';
+import { layoutIslandCourse } from './world.js?v=gspro-13';
 
 // ---------- boot ----------
 
@@ -385,7 +385,7 @@ scene.add(ring);
 
 // ---------- atmosphere presets (per-course, G to cycle) ----------
 const ATMOSPHERES = {
-  sunny:    { exposure: 1.0,  fog: [0xd2dee8, 430, 2600], sun: [0xfff1d8, 2.0],  hemi: 0.62, bg: 1.0,  env: 0.55,
+  sunny:    { exposure: 1.05, fog: [0xccdae8, 360, 2450], sun: [0xffeccb, 2.15], hemi: 0.72, bg: 1.0,  env: 0.6,
     sky: { zenith: 0x2461a8, horizon: 0x9cc4e8, sun: 0xfff4dc, cloudLit: 0xffffff, cloudDark: 0xc6d2de, cover: 0.4, sharp: 0.74, haze: 0xc4d8ea } },
   overcast: { exposure: 0.9,  fog: [0xb9c2c9, 290, 1800], sun: [0xdfe4e8, 1.1],  hemi: 1.0,  bg: 0.62, env: 0.3,
     sky: { zenith: 0x8b98a4, horizon: 0xb8c1c9, sun: 0xdfe6ea, cloudLit: 0xc8cfd6, cloudDark: 0x8792a0, cover: 0.86, sharp: 0.34, haze: 0xbcc4cc } },

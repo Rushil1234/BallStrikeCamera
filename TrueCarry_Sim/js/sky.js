@@ -113,13 +113,23 @@ export function makeSky(scene, renderer, assets) {
   scene.fog = new THREE.Fog(0xd2dee8, 430, 2600);
 
   const sunDir = assets.sunDir.clone();
+  // Force a low, raking sun regardless of where the HDRI's hotspot sits. Long,
+  // soft, directional shadows are the single biggest "photoreal golf sim" cue
+  // (GSPro / PGA 2K) — they model the terrain undulation and ground the trees.
+  {
+    const az = Math.atan2(sunDir.z, sunDir.x);
+    const el = 0.50;                     // ~29° above the horizon: long but playable shadows
+    const cy = Math.cos(el);
+    sunDir.set(Math.cos(az) * cy, Math.sin(el), Math.sin(az) * cy).normalize();
+  }
   const skyDome = makeSkyDome(scene, sunDir);
 
-  // small fill so foliage (non-PBR materials) isn't flat black in shade
-  const hemi = new THREE.HemisphereLight(0xbdd3e8, 0x44603a, 0.62);
+  // Sky fill so foliage (non-PBR materials) isn't flat black in shade. Lifted a
+  // touch to keep the low-sun shadow sides readable and softly blue, not muddy.
+  const hemi = new THREE.HemisphereLight(0xc2d6ea, 0x4a663e, 0.72);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff1d8, 2.0);
+  const sun = new THREE.DirectionalLight(0xffeccb, 2.15);
   sun.position.copy(sunDir).multiplyScalar(300);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
@@ -131,7 +141,7 @@ export function makeSky(scene, renderer, assets) {
   sun.shadow.camera.near = 20; sun.shadow.camera.far = 1400;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
-  sun.shadow.radius = 2.2;
+  sun.shadow.radius = 3.6;   // softer penumbra — real shadows aren't hard-edged
   scene.add(sun);
   scene.add(sun.target);
 
