@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-9';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-9';
-import { makeFbm, makeRng } from './noise.js?v=gspro-9';
-import { SURF } from './physics.js?v=gspro-9';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-10';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-10';
+import { makeFbm, makeRng } from './noise.js?v=gspro-10';
+import { SURF } from './physics.js?v=gspro-10';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -632,6 +632,10 @@ export function buildCourse(hole, assets) {
   const forest = visualZones.forest || null;
   const forestFloor = visualZones.forestFloor || null;
   const dunes = visualZones.dunes || null;
+  // Open coastal links (St Andrews) are essentially treeless — the scenery is
+  // the town skyline, gorse, dunes and the sea, not a forest. Gorse flora is the
+  // links tell; an explicit `treeless` flag can override either way.
+  const treeless = visualZones.treeless ?? (visualZones.flora === 'gorse');
   const bunkerDepthMult = visualZones.bunkerDepth || 1;
   const forestFloorStart = forestFloor?.start ?? 26;
   const rawCoastLandPts = isCoastal ? (hole.island?.coastline?.land || []) : [];
@@ -1536,7 +1540,7 @@ export function buildCourse(hole, assets) {
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];
-    const candidates = Math.floor((hasOcean ? 960 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
+    const candidates = treeless ? 0 : Math.floor((hasOcean ? 960 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
     const maxRandomTrees = hasOcean ? 245 : (forest ? 950 : 460);
     for (let i = 0; i < candidates && spots.length < maxRandomTrees; i++) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
@@ -1770,9 +1774,23 @@ export function buildCourse(hole, assets) {
     }
     // Point the ocean-dip toward the sea (coastal only)
     const oceanDir = hasOcean ? Math.atan2(0, 1) : null;
-    ridgeRing(baseR + 150, 128, 0, 12, 16, 2.4, 0x33502b, 0.35, 4, null);          // near treeline
-    ridgeRing(baseR + 620, 96, 0, 34, 60, 1.7, 0x3f5744, 0.62, 31, oceanDir);      // mid hills
-    ridgeRing(baseR + 1500, 80, 0, 70, 150, 1.1, 0x5a6f78, 0.82, 57, oceanDir);    // far mountains
+    if (treeless) {
+      // Flat coastal links (St Andrews): no hills, no mountains. A low, distant
+      // band of farmland/dunes melting into a big grey sky — the town buildings
+      // supply the only real skyline.
+      ridgeRing(baseR + 260, 112, 0, 4, 6, 2.1, 0x6d7856, 0.55, 4, oceanDir);       // low dune/links band
+      ridgeRing(baseR + 1000, 80, 0, 8, 10, 1.5, 0x8a9285, 0.8, 37, oceanDir);      // faint far shore, mostly haze
+    } else if (forest) {
+      // Rolling wooded country (Augusta): green pine ridges all the way out —
+      // never bare grey mountains. Lower and greener than the default massif.
+      ridgeRing(baseR + 150, 128, 0, 14, 22, 2.4, 0x2c4724, 0.30, 4, null);          // near pine wall
+      ridgeRing(baseR + 620, 96, 0, 30, 48, 1.7, 0x334a2c, 0.55, 31, null);          // mid wooded hills
+      ridgeRing(baseR + 1500, 80, 0, 46, 78, 1.1, 0x45583d, 0.80, 57, null);         // far wooded ridge (green)
+    } else {
+      ridgeRing(baseR + 150, 128, 0, 12, 16, 2.4, 0x33502b, 0.35, 4, null);          // near treeline
+      ridgeRing(baseR + 620, 96, 0, 34, 60, 1.7, 0x3f5744, 0.62, 31, oceanDir);      // mid hills
+      ridgeRing(baseR + 1500, 80, 0, 70, 150, 1.1, 0x5a6f78, 0.82, 57, oceanDir);    // far mountains
+    }
 
     if (hole.isRange && hole.rangeScenery?.mountains) {
       const mountainRng = makeRng(hole.seed * 421 + 9);
