@@ -25,7 +25,7 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://truecarry.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://truecarry.golf";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -51,12 +51,57 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
   },
+  alternates: {
+    canonical: "/",
+  },
+};
+
+// Structured data: search engines use this for rich results and the
+// knowledge panel. Organization + WebSite + the product (the app).
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${SITE_URL}/#org`,
+      name: "True Carry",
+      url: SITE_URL,
+      logo: `${SITE_URL}/favicon.svg`,
+      email: "rushil@truecarrygolf.com",
+      sameAs: [],
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${SITE_URL}/#website`,
+      url: SITE_URL,
+      name: "True Carry",
+      publisher: { "@id": `${SITE_URL}/#org` },
+    },
+    {
+      "@type": "SoftwareApplication",
+      name: "True Carry",
+      operatingSystem: "iOS",
+      applicationCategory: "SportsApplication",
+      description:
+        "Turn your iPhone into a tour-grade launch monitor — ball speed, launch angle, and carry distance on the range, in a simulator, or on the course, with no extra hardware.",
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+        description: "Free to start; Pro subscription for advanced analytics and the simulator.",
+      },
+    },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${manrope.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <a href="#main-content" className="skip-link">Skip to main content</a>
         <WebAnalytics />
         <div id="main-content">{children}</div>
