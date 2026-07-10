@@ -189,12 +189,20 @@ h1, h2, h3 {
 }
 .site-nav .nav a:hover,
 .site-nav .nav .l:hover { color: var(--cream); }
-/* Active section highlight (not on the pill buttons) */
+/* Active section highlight (not on the pill buttons). The underline is a single
+   pseudo-element that slides in on hover and sits solid when active, so moving
+   from tab to tab reads as one continuous highlight rather than a hard jump. */
 .site-nav .nav .l.active:not(.btn) { color: var(--gold-bright); }
-.site-nav .nav .l.active:not(.btn)::after {
+.site-nav .nav a:not(.btn)::after,
+.site-nav .nav .l:not(.btn)::after {
   content: ""; position: absolute; left: 0; right: 0; bottom: -7px; height: 2px;
   border-radius: 2px; background: var(--gold);
+  transform: scaleX(0); transform-origin: center; opacity: 0;
+  transition: transform 0.28s var(--ease), opacity 0.28s var(--ease);
 }
+.site-nav .nav a:not(.btn):hover::after,
+.site-nav .nav .l:not(.btn):hover::after { transform: scaleX(1); opacity: 0.55; }
+.site-nav .nav .l.active:not(.btn)::after { transform: scaleX(1); opacity: 1; }
 .site-nav .nav .btn {
   border: 1px solid color-mix(in oklab, var(--cream) 32%, transparent);
   padding: 9px 14px; border-radius: 2px; color: var(--cream);
@@ -695,9 +703,22 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
 .reveal { opacity: 0; transform: translateY(16px); transition: opacity 0.8s var(--ease), transform 0.8s var(--ease); }
 .reveal.in { opacity: 1; transform: none; }
 
+/* ---------- Route transition ----------
+   app/template.tsx remounts on every navigation, so this animation replays and
+   each page fades in as it arrives — a smooth tab-to-tab hand-off instead of a
+   hard cut. Opacity ONLY (no transform / will-change:transform): pages like
+   /play use position:fixed fullscreen layouts, and a transformed ancestor would
+   become their containing block and break them. Opacity is safe for that. */
+.route-fade { animation: routeFade 340ms var(--ease) both; }
+@keyframes routeFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .reveal { opacity: 1; transform: none; }
+  .route-fade { animation: none !important; }
 }
 
 /* ============================================================
