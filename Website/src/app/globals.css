@@ -1944,7 +1944,7 @@ code {
    ============================================================ */
 
 .round .h05{ background:var(--forest-darker, #0c1a10); overflow:hidden; }
-.round .h05 .sim-feature{ display:grid; grid-template-columns:0.95fr 1.05fr; gap:clamp(40px,6vw,80px); align-items:center; }
+.round .h05 .sim-feature{ display:grid; grid-template-columns:0.72fr 1.28fr; gap:clamp(40px,6vw,80px); align-items:center; }
 .round .h05 h2{ font-family:var(--display); font-weight:400; font-size:clamp(44px,7vw,96px); line-height:.9; letter-spacing:-.03em; margin:0 0 24px; }
 .round .h05 h2 .it{ font-style:italic; color:var(--carry-gold); }
 .round .h05 .deck{ font-family:var(--display); font-style:italic; font-size:clamp(20px,2.2vw,27px); line-height:1.4; max-width:30ch; color:color-mix(in oklab,var(--bone) 88%,transparent); margin:0; }
@@ -2430,7 +2430,7 @@ textarea:focus-visible, [tabindex]:focus-visible{
 .sim-players-names input{ flex:1; min-width:110px; max-width:160px; padding:8px 10px; border-radius:8px; border:1px solid rgba(236,228,210,.2); background:rgba(236,228,210,.05); color:#ece4d2; font-size:13px; }
 
 /* ---------- sim demo video (homepage) ---------- */
-.sim-demo{ position:relative; display:block; border-radius:18px; overflow:hidden; aspect-ratio:16/10; background:#0c130d; border:1px solid color-mix(in oklab,var(--carry-gold) 35%,transparent); box-shadow:0 30px 80px rgba(0,0,0,.45); transform:rotate(1.2deg); transition:transform .35s cubic-bezier(.2,.8,.2,1); }
+.sim-demo{ position:relative; display:block; border-radius:18px; overflow:hidden; aspect-ratio:16/11; background:#0c130d; border:1px solid color-mix(in oklab,var(--carry-gold) 35%,transparent); box-shadow:0 30px 80px rgba(0,0,0,.45); transform:rotate(1.2deg); transition:transform .35s cubic-bezier(.2,.8,.2,1); }
 .sim-demo:hover{ transform:rotate(0deg) translateY(-6px); }
 .sim-demo-video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
 .sim-demo::after{ content:""; position:absolute; inset:0; background:linear-gradient(to top, rgba(7,14,9,.6), transparent 42%); pointer-events:none; }
