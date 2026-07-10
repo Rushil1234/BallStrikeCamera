@@ -2008,14 +2008,14 @@ export function buildCourse(hole, assets) {
       }
       const span = Math.max(hMax - hMin, 0.05);
 
-      // Cool→warm elevation ramp, chosen to pop against green/tan grass (no
-      // grass-green mid-tones): deep blue (low) → cyan → yellow → orange → red (high).
+      // Elevation ramp for a green-book style overlay: low = cool blue, high =
+      // warm amber. Deliberately NO pure red (reads as "danger", not terrain) and
+      // no grass-green mid-tones (they would vanish into the turf).
       const RAMP = [
-        [0.00, new THREE.Color(0x2b5cff)],
-        [0.30, new THREE.Color(0x17c4dd)],
-        [0.52, new THREE.Color(0xf3e63a)],
-        [0.76, new THREE.Color(0xf5902e)],
-        [1.00, new THREE.Color(0xe62b2b)],
+        [0.00, new THREE.Color(0x3577d6)],  // low  — blue
+        [0.34, new THREE.Color(0x37bfb0)],  // teal
+        [0.62, new THREE.Color(0xe9dc5c)],  // soft yellow
+        [1.00, new THREE.Color(0xe89a3c)],  // high — amber
       ];
       const _rc = new THREE.Color();
       const ramp = (t) => {
@@ -2057,7 +2057,7 @@ export function buildCourse(hole, assets) {
         fgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
         fgeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
         const fill = new THREE.Mesh(fgeo, new THREE.MeshBasicMaterial({
-          vertexColors: true, transparent: true, opacity: 0.6,
+          vertexColors: true, transparent: true, opacity: 0.42,
           depthWrite: false, side: THREE.DoubleSide,
         }));
         fill.renderOrder = 2;

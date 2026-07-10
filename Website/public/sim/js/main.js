@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-8';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-8';
-import { RANGE, holeLength } from './holes.js?v=gspro-8';
-import { buildCourse } from './terrain.js?v=gspro-8';
-import { makeSky } from './sky.js?v=gspro-8';
-import { loadAssets } from './assets.js?v=gspro-8';
-import { HUD, toParStr } from './ui.js?v=gspro-8';
-import { SFX } from './audio.js?v=gspro-8';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-8';
-import { fetchSimCourses } from './courses.js?v=gspro-8';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-8';
-import { layoutIslandCourse } from './world.js?v=gspro-8';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-9';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-9';
+import { RANGE, holeLength } from './holes.js?v=gspro-9';
+import { buildCourse } from './terrain.js?v=gspro-9';
+import { makeSky } from './sky.js?v=gspro-9';
+import { loadAssets } from './assets.js?v=gspro-9';
+import { HUD, toParStr } from './ui.js?v=gspro-9';
+import { SFX } from './audio.js?v=gspro-9';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-9';
+import { fetchSimCourses } from './courses.js?v=gspro-9';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-9';
+import { layoutIslandCourse } from './world.js?v=gspro-9';
 
 // ---------- boot ----------
 
@@ -27,6 +27,9 @@ const launchParams = new URLSearchParams(location.search);
 const launchMode = launchParams.get('mode');
 const launchCourseId = launchParams.get('course') || launchParams.get('courseId') || 'pine-hollow';
 let urlLaunchHandled = false;
+// Live sim: only accept phone shots once a round/range has actually been started
+// by the player. Prevents a paired phone from firing into an idle/unchosen sim.
+let liveArmed = false;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 // Cap DPR: the post-fx chain at retina 2x quadruples fragment cost.
@@ -51,17 +54,16 @@ try {
 
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
-    samples: 4,
+    // 2x MSAA is plenty with the DPR cap; 4x was doubling the resolve cost for
+    // little visible gain and was a real hit on the shot-flight camera pans.
+    samples: 2,
     type: THREE.HalfFloatType,
   });
   composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
-  const sao = new SAOPass(scene, camera);
-  sao.params.saoIntensity = 0.012;
-  sao.params.saoScale = 64;
-  sao.params.saoKernelRadius = 18;
-  sao.params.saoBlur = true;
-  composer.addPass(sao);
+  // NOTE: dropped the SAO pass. At saoIntensity 0.012 it was all but invisible,
+  // yet a full-screen ambient-occlusion pass every frame was one of the biggest
+  // GPU costs — removing it smooths out the whole sim, especially during flight.
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.16, 0.35, 0.97);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -494,7 +496,18 @@ const game = {
 let rangeMarkers = null;
 let lastRangeShot = null;
 let rangeStats = { shots: 0, totalCarry: 0, bestCarry: 0, recent: [] };
-if (launchParams.has('debug')) window.__tc = { scene, game: () => game };
+if (launchParams.has('debug')) window.__tc = {
+  scene, game: () => game, CLUBS,
+  // Debug: drop the ball on the current green a few metres from the pin and
+  // enter the putting address state (auto-putter + green cam + heatmap).
+  toGreen(off = 6) {
+    const pin = game.course.pinPos;
+    game.ballPos = { x: pin.x + off, y: game.course.heightAt(pin.x + off, pin.z + off) + 0.02, z: pin.z + off };
+    game.lie = SURF.GREEN;
+    game.strokes = 2;
+    setupShot();
+  },
+};
 const holePickerCard = document.getElementById('hole-picker-card');
 const holePicker = document.getElementById('hole-picker');
 const holeGrid = document.getElementById('hole-grid');
@@ -591,12 +604,14 @@ function startCourseRound(courseId = activeCourse.courseId, holeIndex = 0) {
   hud.titleHide();
   const idx = Math.max(0, Math.min(Number(holeIndex) || 0, courseHoles.length - 1));
   startHole(idx);
+  liveArmed = true;
   notifyParent('SIM_LAUNCHED', { mode: 'course', courseId: activeCourse.courseId, courseName: activeCourse.courseName });
 }
 
 function startPracticeRange() {
   hud.titleHide();
   startRange();
+  liveArmed = true;
   notifyParent('SIM_LAUNCHED', { mode: 'range', courseId: 'range', courseName: 'Practice Range' });
 }
 
@@ -1224,41 +1239,6 @@ function resolveShot() {
     game.lie = game.course.surfaceAt(game.ballPos.x, game.ballPos.z);
     hud.toast('<span class="t-gold">OUT OF BOUNDS</span><span class="t-sub">+1 PENALTY · REPLAY FROM ORIGINAL SPOT</span>', 3000);
     setupShot();
-    return;
-  }
-
-  // Gimme: anything at rest inside 3 feet of the cup is conceded — the hole
-  // closes at strokes + 1 (the pickup putt). An actually-holed shot never
-  // reaches here (sim.state === 'holed' returned above), so real makes score
-  // exactly as played.
-  if (!game.isRange && distToPin() <= 0.9144) {
-    game.strokes += 1;
-    const def = courseHoles[game.holeIdx];
-    const active = game.players[game.activePlayerIdx];
-    if (active) {
-      active.scores[game.holeIdx] = game.strokes;
-      active.holedOut = true;
-      active.ballPos = { ...game.ballPos };
-      active.strokes = game.strokes;
-    } else {
-      game.scores[game.holeIdx] = game.strokes;
-    }
-    SFX.holed();
-    const stillWaiting = game.players.length > 1 && game.players.some(p => !p || !p.holedOut);
-    if (stillWaiting) {
-      hud.toast(
-        `<span class="t-gold">GIMME — THAT'S GOOD</span>` +
-        `<span class="t-sub">${(active?.name ?? 'YOU').toUpperCase()} · ${game.strokes} STROKES · WAITING FOR OTHERS</span>`, 0);
-      game.state = 'WAITING_OTHERS';
-      pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
-      return;
-    }
-    hud.toast(
-      `<span class="t-gold">GIMME — ${scoreName(game.strokes, def.par)}</span>` +
-      `<span class="t-sub">INSIDE 3 FEET · HOLE ${def.id} · ${game.strokes} STROKES</span>`, 0);
-    game.state = 'HOLE_DONE';
-    game.doneTimer = 0;
-    pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
     return;
   }
 
@@ -2110,7 +2090,9 @@ function frame() {
       ring.material.opacity = 0.7 + 0.2 * Math.sin(game.time * 2.6);
     }
     if (game.course.greenGrid) {
-      game.course.greenGrid.visible = aiming && !!club().putter;
+      // Heatmap shows the whole time you're on the green with the putter —
+      // hidden only while the ball is actually rolling so it doesn't block it.
+      game.course.greenGrid.visible = !!club().putter && game.state !== 'FLIGHT' && game.state !== 'HOLE_DONE';
     }
 
     // ball + blob shadow
@@ -2182,6 +2164,7 @@ window.addEventListener('message', (e) => {
   // Play page is ending the session (user exited on the laptop) — flag the
   // shared live state so a paired phone knows the round is over.
   if (e.data?.type === 'END_SESSION') {
+    liveArmed = false;
     if (liveCode) publishLiveState(liveCode, { sim_state: 'ENDED' });
     return;
   }
@@ -2311,6 +2294,9 @@ function showSwingPip(b64) {
     function (metrics) {
       livePhoneConnected = true; updateLiveBadge();
       if (liveWaiting) liveWaiting.classList.add('hidden');
+      // Ignore shots until the player has actually started a round/range and the
+      // ball is at address — never fire into an unchosen course or mid-flyover.
+      if (!liveArmed || !game.course) return;
       const ready = game.state === 'AIM' || game.state === 'METER_POWER'
         || game.state === 'METER_ACCURACY' || game.state === 'WAITING_OTHERS';
       if (ready) {

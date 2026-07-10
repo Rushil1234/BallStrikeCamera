@@ -27,6 +27,9 @@ const launchParams = new URLSearchParams(location.search);
 const launchMode = launchParams.get('mode');
 const launchCourseId = launchParams.get('course') || launchParams.get('courseId') || 'pine-hollow';
 let urlLaunchHandled = false;
+// Live sim: only accept phone shots once a round/range has actually been started
+// by the player. Prevents a paired phone from firing into an idle/unchosen sim.
+let liveArmed = false;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 // Cap DPR: the post-fx chain at retina 2x quadruples fragment cost.
@@ -51,17 +54,16 @@ try {
 
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
-    samples: 4,
+    // 2x MSAA is plenty with the DPR cap; 4x was doubling the resolve cost for
+    // little visible gain and was a real hit on the shot-flight camera pans.
+    samples: 2,
     type: THREE.HalfFloatType,
   });
   composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
-  const sao = new SAOPass(scene, camera);
-  sao.params.saoIntensity = 0.012;
-  sao.params.saoScale = 64;
-  sao.params.saoKernelRadius = 18;
-  sao.params.saoBlur = true;
-  composer.addPass(sao);
+  // NOTE: dropped the SAO pass. At saoIntensity 0.012 it was all but invisible,
+  // yet a full-screen ambient-occlusion pass every frame was one of the biggest
+  // GPU costs — removing it smooths out the whole sim, especially during flight.
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.16, 0.35, 0.97);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -602,12 +604,14 @@ function startCourseRound(courseId = activeCourse.courseId, holeIndex = 0) {
   hud.titleHide();
   const idx = Math.max(0, Math.min(Number(holeIndex) || 0, courseHoles.length - 1));
   startHole(idx);
+  liveArmed = true;
   notifyParent('SIM_LAUNCHED', { mode: 'course', courseId: activeCourse.courseId, courseName: activeCourse.courseName });
 }
 
 function startPracticeRange() {
   hud.titleHide();
   startRange();
+  liveArmed = true;
   notifyParent('SIM_LAUNCHED', { mode: 'range', courseId: 'range', courseName: 'Practice Range' });
 }
 
@@ -2160,6 +2164,7 @@ window.addEventListener('message', (e) => {
   // Play page is ending the session (user exited on the laptop) — flag the
   // shared live state so a paired phone knows the round is over.
   if (e.data?.type === 'END_SESSION') {
+    liveArmed = false;
     if (liveCode) publishLiveState(liveCode, { sim_state: 'ENDED' });
     return;
   }
@@ -2289,6 +2294,9 @@ function showSwingPip(b64) {
     function (metrics) {
       livePhoneConnected = true; updateLiveBadge();
       if (liveWaiting) liveWaiting.classList.add('hidden');
+      // Ignore shots until the player has actually started a round/range and the
+      // ball is at address — never fire into an unchosen course or mid-flyover.
+      if (!liveArmed || !game.course) return;
       const ready = game.state === 'AIM' || game.state === 'METER_POWER'
         || game.state === 'METER_ACCURACY' || game.state === 'WAITING_OTHERS';
       if (ready) {

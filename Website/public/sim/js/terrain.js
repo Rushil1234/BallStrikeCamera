@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-8';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-8';
-import { makeFbm, makeRng } from './noise.js?v=gspro-8';
-import { SURF } from './physics.js?v=gspro-8';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-9';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-9';
+import { makeFbm, makeRng } from './noise.js?v=gspro-9';
+import { SURF } from './physics.js?v=gspro-9';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -607,6 +607,14 @@ export function buildCourse(hole, assets) {
   const fbmDetail = makeFbm(hole.seed * 7 + 3, 3);
   const fbmGreen = makeFbm(hole.seed * 13 + 5, 3);
 
+  // Each green gets a consistent overall tilt (direction + magnitude derived
+  // deterministically from its position) so putts have a real, readable break
+  // rather than a table-flat surface. Amplitude ~1-2% — genuine but fair.
+  const gTiltAng = fbmGreen(hole.green.cx * 0.01 + 3, hole.green.cz * 0.01 - 7) * Math.PI * 2;
+  const gTiltMag = 0.005 + Math.abs(fbmGreen(hole.green.cx * 0.02 - 5, hole.green.cz * 0.02 + 9)) * 0.006;
+  const gTiltCos = Math.cos(gTiltAng) * gTiltMag;
+  const gTiltSin = Math.sin(gTiltAng) * gTiltMag;
+
   const path = hole.path;
   const tee = path[0];
   const fhw = hole.fairwayHalf;
@@ -722,6 +730,7 @@ export function buildCourse(hole, assets) {
     }
     h += fbmDetail(x * 0.05, z * 0.05) * 0.85 * (1 - fairMask);  // bumpy rough
     h += fairMask * 0.15;                                        // slight fairway crown
+    h += fairMask * fbmBase(x * 0.008 + 130, z * 0.008 - 90) * 0.8; // long, gentle fairway heave
     if (dunes) {
       // links mounding: 30-60m humps and hollows that run THROUGH fairways
       // (softened), the defining ground game of seaside golf
@@ -734,8 +743,11 @@ export function buildCourse(hole, assets) {
     const osmGreen = inFeaturePolys(osmGreens, x, z);
     if (gv < 3.2 || osmGreen) {
       const gm = osmGreen ? 1 : 1 - sstep(1.05, 2.6, gv);
-      const greenH = baseAt(hole.green.cx, hole.green.cz) + 0.4
-        + fbmGreen(x * 0.028, z * 0.028) * 0.13;
+      const gcx = hole.green.cx, gcz = hole.green.cz;
+      const tilt = (x - gcx) * gTiltCos + (z - gcz) * gTiltSin; // overall pitch
+      const swale = fbmGreen(x * 0.035 + 11, z * 0.035 - 4) * 0.11; // broad rolls
+      const micro = fbmGreen(x * 0.12, z * 0.12) * 0.03;           // fine texture
+      const greenH = baseAt(gcx, gcz) + 0.4 + tilt + swale + micro;
       h = lerp(h, greenH, gm);
     }
 
@@ -1976,85 +1988,124 @@ export function buildCourse(hole, assets) {
     flagGroup.position.set(pinPos.x, pinPos.y, pinPos.z);
     group.add(flagGroup);
 
-    // ---------- green-reading grid (slope colored: blue low → red high) ----------
+    // ---------- green-reading heatmap (filled elevation surface + fall-line arrows) ----------
     {
       const gdef = hole.green;
-      const R = Math.max(gdef.rx, gdef.rz) * 1.3;
-      const SUB = 0.6, STEP = 1.2;
-      const inside = (x, z) => ellipseVal(gdef, x, z) <= 1.3;
+      const R = Math.max(gdef.rx, gdef.rz) * 1.28;
+      const STEP = 0.7;                                    // heatmap cell size (m)
+      const inside = (x, z) => ellipseVal(gdef, x, z) <= 1.06;
+
+      // Height range across the green, for normalizing the color ramp.
       let hMin = Infinity, hMax = -Infinity;
-      for (let gx = -R; gx <= R; gx += SUB) {
-        for (let gz = -R; gz <= R; gz += SUB) {
+      for (let gx = -R; gx <= R; gx += STEP) {
+        for (let gz = -R; gz <= R; gz += STEP) {
           const x = gdef.cx + gx, z = gdef.cz + gz;
           if (!inside(x, z)) continue;
           const hh = heightAt(x, z);
-          hMin = Math.min(hMin, hh); hMax = Math.max(hMax, hh);
+          if (hh < hMin) hMin = hh;
+          if (hh > hMax) hMax = hh;
         }
       }
-      const span = Math.max(hMax - hMin, 0.01);
-      const lowC = new THREE.Color(0x58a7e8), highC = new THREE.Color(0xe8645f);
-      const cc = new THREE.Color();
-      const pos = [], col = [];
-      const pushPt = (x, z) => {
-        const hh = heightAt(x, z);
-        pos.push(x, hh + 0.035, z);
-        cc.copy(lowC).lerp(highC, (hh - hMin) / span);
-        col.push(cc.r, cc.g, cc.b);
-      };
-      const walk = (alongX) => {
-        for (let a = -R; a <= R; a += STEP) {
-          let prevIn = false;
-          for (let b = -R; b <= R; b += SUB) {
-            const x = gdef.cx + (alongX ? a : b);
-            const z = gdef.cz + (alongX ? b : a);
-            const isIn = inside(x, z);
-            if (isIn && prevIn) {
-              const px = gdef.cx + (alongX ? a : b - SUB);
-              const pz = gdef.cz + (alongX ? b - SUB : a);
-              pushPt(px, pz); pushPt(x, z);
-            }
-            prevIn = isIn;
+      const span = Math.max(hMax - hMin, 0.05);
+
+      // Elevation ramp for a green-book style overlay: low = cool blue, high =
+      // warm amber. Deliberately NO pure red (reads as "danger", not terrain) and
+      // no grass-green mid-tones (they would vanish into the turf).
+      const RAMP = [
+        [0.00, new THREE.Color(0x3577d6)],  // low  — blue
+        [0.34, new THREE.Color(0x37bfb0)],  // teal
+        [0.62, new THREE.Color(0xe9dc5c)],  // soft yellow
+        [1.00, new THREE.Color(0xe89a3c)],  // high — amber
+      ];
+      const _rc = new THREE.Color();
+      const ramp = (t) => {
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        for (let i = 1; i < RAMP.length; i++) {
+          if (t <= RAMP[i][0]) {
+            const a = RAMP[i - 1], b = RAMP[i];
+            const f = (t - a[0]) / ((b[0] - a[0]) || 1);
+            return _rc.copy(a[1]).lerp(b[1], f);
           }
         }
+        return _rc.copy(RAMP[RAMP.length - 1][1]);
       };
-      walk(true); walk(false);
-      // Fall-line chevrons: small downhill arrows every ~3m so the read is
-      // directional, not just a heat map.
+
+      const heatGroup = new THREE.Group();
+
+      // --- filled, translucent heatmap surface (triangulated grid) ---
+      const pos = [], col = [];
+      const steps = Math.ceil((2 * R) / STEP);
+      const push = (x, z, h) => {
+        pos.push(x, h + 0.06, z);
+        const c = ramp((h - hMin) / span);
+        col.push(c.r, c.g, c.b);
+      };
+      for (let ix = 0; ix < steps; ix++) {
+        for (let iz = 0; iz < steps; iz++) {
+          const x0 = gdef.cx - R + ix * STEP, z0 = gdef.cz - R + iz * STEP;
+          const x1 = x0 + STEP, z1 = z0 + STEP;
+          // Emit a quad only where all four corners lie on the green.
+          if (!(inside(x0, z0) && inside(x1, z0) && inside(x1, z1) && inside(x0, z1))) continue;
+          const c00 = heightAt(x0, z0), c10 = heightAt(x1, z0);
+          const c11 = heightAt(x1, z1), c01 = heightAt(x0, z1);
+          push(x0, z0, c00); push(x1, z0, c10); push(x1, z1, c11);
+          push(x0, z0, c00); push(x1, z1, c11); push(x0, z1, c01);
+        }
+      }
+      if (pos.length) {
+        const fgeo = new THREE.BufferGeometry();
+        fgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+        fgeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
+        const fill = new THREE.Mesh(fgeo, new THREE.MeshBasicMaterial({
+          vertexColors: true, transparent: true, opacity: 0.42,
+          depthWrite: false, side: THREE.DoubleSide,
+        }));
+        fill.renderOrder = 2;
+        heatGroup.add(fill);
+      }
+
+      // --- fall-line chevrons: brighter downhill arrows so the read is directional ---
+      const lpos = [], lcol = [];
+      const white = new THREE.Color(0xffffff);
       for (let gx = -R; gx <= R; gx += 3) {
         for (let gz = -R; gz <= R; gz += 3) {
           const x = gdef.cx + gx, z = gdef.cz + gz;
-          if (!inside(x, z)) continue;
+          if (ellipseVal(gdef, x, z) > 0.94) continue;      // keep arrows off the fringe
           const e2 = 0.6;
           const sx = heightAt(x + e2, z) - heightAt(x - e2, z);
           const sz = heightAt(x, z + e2) - heightAt(x, z - e2);
           const mag = Math.hypot(sx, sz);
-          if (mag < 0.012) continue;                 // dead flat: no arrow
-          const dx = -sx / mag, dz = -sz / mag;      // downhill
-          const len = Math.min(0.9, 0.35 + mag * 9);
+          if (mag < 0.006) continue;                        // dead flat: no arrow
+          const dx = -sx / mag, dz = -sz / mag;             // downhill direction
+          const len = Math.min(1.3, 0.55 + mag * 10);
           const hx = x + dx * len, hz = z + dz * len;
-          const hh0 = heightAt(x, z) + 0.05, hh1 = heightAt(hx, hz) + 0.05;
-          cc.copy(lowC).lerp(highC, (heightAt(x, z) - hMin) / span).lerp(new THREE.Color(0xffffff), 0.55);
-          // shaft
-          pos.push(x, hh0, z, hx, hh1, hz);
-          col.push(cc.r, cc.g, cc.b, cc.r, cc.g, cc.b);
-          // head barbs
+          const hh0 = heightAt(x, z) + 0.09, hh1 = heightAt(hx, hz) + 0.09;
+          _rc.copy(ramp((heightAt(x, z) - hMin) / span)).lerp(white, 0.62);
+          const cr = _rc.r, cg = _rc.g, cb = _rc.b;
+          lpos.push(x, hh0, z, hx, hh1, hz);
+          lcol.push(cr, cg, cb, cr, cg, cb);
           for (const side of [1, -1]) {
-            const bx2 = hx - dx * 0.28 + side * -dz * 0.18;
-            const bz2 = hz - dz * 0.28 + side * dx * 0.18;
-            pos.push(hx, hh1, hz, bx2, heightAt(bx2, bz2) + 0.05, bz2);
-            col.push(cc.r, cc.g, cc.b, cc.r, cc.g, cc.b);
+            const bx2 = hx - dx * 0.30 + side * -dz * 0.20;
+            const bz2 = hz - dz * 0.30 + side * dx * 0.20;
+            lpos.push(hx, hh1, hz, bx2, heightAt(bx2, bz2) + 0.06, bz2);
+            lcol.push(cr, cg, cb, cr, cg, cb);
           }
         }
       }
-      const ggeo = new THREE.BufferGeometry();
-      ggeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-      ggeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
-      const grid = new THREE.LineSegments(ggeo, new THREE.LineBasicMaterial({
-        vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false,
-      }));
-      grid.visible = false;
-      group.add(grid);
-      group.userData.greenGrid = grid;
+      if (lpos.length) {
+        const lgeo = new THREE.BufferGeometry();
+        lgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lpos), 3));
+        lgeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(lcol), 3));
+        const arrows = new THREE.LineSegments(lgeo, new THREE.LineBasicMaterial({
+          vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false,
+        }));
+        arrows.renderOrder = 3;
+        heatGroup.add(arrows);
+      }
+
+      heatGroup.visible = false;
+      group.add(heatGroup);
+      group.userData.greenGrid = heatGroup;
     }
 
     // ---------- OB stakes along the corridor ----------
