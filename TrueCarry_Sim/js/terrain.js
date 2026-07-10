@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-10';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-10';
-import { makeFbm, makeRng } from './noise.js?v=gspro-10';
-import { SURF } from './physics.js?v=gspro-10';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-11';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-11';
+import { makeFbm, makeRng } from './noise.js?v=gspro-11';
+import { SURF } from './physics.js?v=gspro-11';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -376,8 +376,15 @@ function treeKit(assets) {
     };
     return mat;
   };
+  // Foliage cards are lit with a self-illumination floor keyed off their own
+  // texture: pure Lambert renders every backlit / shadow-side leaf near-black
+  // (the "black tree silhouette" look). Feeding the diffuse map back in as a
+  // low-intensity emissive means leaves always keep their real green/brown, the
+  // way sun-through-canopy scattering reads in real life — while the Lambert
+  // term still adds directional highlights on the sunlit side.
   const canopyMat = (map, cut) => addSway(new THREE.MeshLambertMaterial({
     map, alphaTest: cut, side: THREE.DoubleSide, vertexColors: true,
+    emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.32,
   }));
   const depthMat = (map, cut) => new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking, map, alphaTest: cut,

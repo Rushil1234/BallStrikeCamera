@@ -1,16 +1,16 @@
-import { HOLES } from './holes.js?v=gspro-10';
-import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=gspro-10';
-import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=gspro-10';
-import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=gspro-10';
-import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=gspro-10';
-import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=gspro-10';
-import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=gspro-10';
-import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=gspro-10';
-import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=gspro-10';
-import { STANDREWS_PRIVATE_HOLES, STANDREWS_PRIVATE_WORLD } from './standrews-private.js?v=gspro-10';
-import { STANDREWS_OSM_BY_HOLE } from './standrews-osm.js?v=gspro-10';
-import { STANDREWS_ELEVATION } from './standrews-elevation.js?v=gspro-10';
-import { STANDREWS_WORLD_REALISM } from './standrews-world-data.js?v=gspro-10';
+import { HOLES } from './holes.js?v=gspro-11';
+import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=gspro-11';
+import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=gspro-11';
+import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=gspro-11';
+import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=gspro-11';
+import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=gspro-11';
+import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=gspro-11';
+import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=gspro-11';
+import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=gspro-11';
+import { STANDREWS_PRIVATE_HOLES, STANDREWS_PRIVATE_WORLD } from './standrews-private.js?v=gspro-11';
+import { STANDREWS_OSM_BY_HOLE } from './standrews-osm.js?v=gspro-11';
+import { STANDREWS_ELEVATION } from './standrews-elevation.js?v=gspro-11';
+import { STANDREWS_WORLD_REALISM } from './standrews-world-data.js?v=gspro-11';
 
 const PEBBLE_HOLES_WITH_OSM = PEBBLE_PRIVATE_HOLES.map((hole) => ({
   ...hole,
