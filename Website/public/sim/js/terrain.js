@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-11';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-11';
-import { makeFbm, makeRng } from './noise.js?v=gspro-11';
-import { SURF } from './physics.js?v=gspro-11';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-12';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-12';
+import { makeFbm, makeRng } from './noise.js?v=gspro-12';
+import { SURF } from './physics.js?v=gspro-12';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -1005,12 +1005,15 @@ export function buildCourse(hole, assets) {
     const colors = new Float32Array((nx + 1) * (nz + 1) * 3);
     const splats = new Float32Array((nx + 1) * (nz + 1) * 4);
 
+    // Turf palette is per-course overridable so each venue keeps its own
+    // signature (e.g. Augusta's hyper-vibrant emerald + white sand vs a links'
+    // muted fescue). Defaults reproduce the original parkland look.
     const C = {
-      fairA: new THREE.Color(0x568f3f), fairB: new THREE.Color(0x447c31),
-      firstCut: new THREE.Color(0x4c8237),
-      fringe: new THREE.Color(0x467c38),
-      greenA: new THREE.Color(0x67a64f), greenB: new THREE.Color(0x5d9b46),
-      tee: new THREE.Color(0x5c9d48),
+      fairA: new THREE.Color(visualZones.fairA ?? 0x568f3f), fairB: new THREE.Color(visualZones.fairB ?? 0x447c31),
+      firstCut: new THREE.Color(visualZones.firstCut ?? 0x4c8237),
+      fringe: new THREE.Color(visualZones.fringe ?? 0x467c38),
+      greenA: new THREE.Color(visualZones.greenA ?? 0x67a64f), greenB: new THREE.Color(visualZones.greenB ?? 0x5d9b46),
+      tee: new THREE.Color(visualZones.teeColor ?? 0x5c9d48),
       rough: new THREE.Color(visualZones.roughColor ?? 0x3b662e),
       deep: new THREE.Color(visualZones.deepColor ?? 0x2c4f22),
       sand: new THREE.Color(visualZones.sandColor ?? 0xd5c28c),
@@ -1594,13 +1597,19 @@ export function buildCourse(hole, assets) {
             [0.55, 0.8, 0.4], [2.4, 1.9, 0.3],
           ]
         : [
-            [2.7, 0.55, 1.15], [2.9, 0.4, 0.7], [2.3, 2.15, 2.25],
-            [2.7, 0.8, 0.5], [2.4, 0.5, 1.35],
+            // Augusta azaleas + dogwoods: hot pink, crimson, pure white, and
+            // magenta. Multipliers are pushed hard (and blue-biased) so the tint
+            // reads true pink over the green foliage card, not muddy orange.
+            [3.1, 0.5, 1.5], [3.0, 0.3, 0.85], [2.7, 2.55, 2.7],
+            [3.0, 0.6, 1.9], [2.6, 1.5, 2.0],
           ];
-      const maxPlaced = gorse ? 200 : 130;
-      const bandMax = gorse ? 60 : 46;
+      // Augusta's azaleas grow in big flowering banks against the tree line and
+      // behind greens, so parkland gets many more, larger clumps than the sparse
+      // links whin. Cluster seeds spawn a tight burst of blooms for that mass.
+      const maxPlaced = gorse ? 200 : 360;
+      const bandMax = gorse ? 60 : 54;
       let placed = 0;
-      for (let i = 0; i < 3200 && placed < maxPlaced; i++) {
+      for (let i = 0; i < 6000 && placed < maxPlaced; i++) {
         const x = minX + 14 + aRng() * (maxX - minX - 28);
         const z = minZ + 14 + aRng() * (maxZ - minZ - 28);
         const p = pathInfo(x, z);
@@ -1609,16 +1618,22 @@ export function buildCourse(hole, assets) {
           || inFeaturePolys(osmTees, x, z) || inFeaturePolys(osmBunkers, x, z)) continue;
         if (ellipseVal(hole.green, x, z) < 2.2) continue;
         if (hasWater && waterMask(x, z).m > 0.05) continue;
+        // A clump: one dominant colour, several blooms tightly grouped.
+        const clumpN = gorse ? 1 : (2 + Math.floor(aRng() * 4));
         const tint = palette[Math.floor(aRng() * palette.length)];
-        spots.push({
-          x, z, h: heightAt(x, z),
-          s: 0.15 + aRng() * 0.16,
-          ry: aRng() * Math.PI * 2,
-          tilt: 0,
-          kind: aRng() < 0.5 ? 2 : 3,
-          tint: [tint[0], tint[1], tint[2]],
-        });
-        placed++;
+        for (let c = 0; c < clumpN && placed < maxPlaced; c++) {
+          const ox = c === 0 ? 0 : (aRng() - 0.5) * 3.4;
+          const oz = c === 0 ? 0 : (aRng() - 0.5) * 3.4;
+          spots.push({
+            x: x + ox, z: z + oz, h: heightAt(x + ox, z + oz),
+            s: gorse ? (0.15 + aRng() * 0.16) : (0.26 + aRng() * 0.36),
+            ry: aRng() * Math.PI * 2,
+            tilt: 0,
+            kind: aRng() < 0.5 ? 2 : 3,
+            tint: [tint[0], tint[1], tint[2]],
+          });
+          placed++;
+        }
       }
     }
     if (hasOcean) {
