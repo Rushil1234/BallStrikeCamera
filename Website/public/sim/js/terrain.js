@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-14';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-14';
-import { makeFbm, makeRng } from './noise.js?v=gspro-14';
-import { SURF } from './physics.js?v=gspro-14';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-15';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-15';
+import { makeFbm, makeRng } from './noise.js?v=gspro-15';
+import { SURF } from './physics.js?v=gspro-15';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -247,30 +247,37 @@ function normalsUp(geo) {
 }
 
 // Southern loblolly pine: a tall bare pole with an irregular crown in the top
-// third only — the signature silhouette of Georgia parkland courses.
+// third only — the signature silhouette of Georgia parkland courses. The crown
+// is built as a billowing ellipsoidal cloud of drooping fronds rather than a
+// radial star of upward spikes, so it reads as a rounded 3D volume from the
+// tee instead of a sparse dark blob.
 function loblollyCanopy(seed, dense) {
   const rng = makeRng(seed);
-  const sprig = cardGeo(2.9, 4.4, PINE_SPRIG);
+  const sprig = cardGeo(3.2, 4.7, PINE_SPRIG);
   const cards = [];
-  for (let y = 9.8; y <= 14.2; y += (dense ? 0.42 : 0.6)) {
-    const t = (y - 9.8) / 4.4;
-    const n = Math.round((dense ? 10 : 8) - 3.5 * t);
-    const s = 1.35 - 0.5 * t;
-    for (let i = 0; i < n; i++) {
-      const yaw = (i / n) * Math.PI * 2 + rng() * 1.4;
-      const pitch = -(Math.PI / 2) + 0.5 + rng() * 0.32;
-      const rad = 0.25 + (1 - t) * 0.62 * rng();
-      cards.push(placed(
-        sprig,
-        Math.cos(yaw) * rad, y + (rng() - 0.5) * 0.45, Math.sin(yaw) * rad,
-        pitch, yaw, 0,
-        s * (0.9 + rng() * 0.35),
-      ));
-    }
+  const CY = 12.1;                 // crown centre height
+  const rH = 2.65, rV = 2.85;      // crown radii (horizontal / vertical)
+  const N = dense ? 82 : 60;
+  for (let i = 0; i < N; i++) {
+    // point on an ellipsoid shell (surface-biased for a full silhouette, with
+    // some interior fill so gaps don't punch through to sky)
+    const az = rng() * Math.PI * 2;
+    const el = Math.acos(1 - 2 * rng());        // uniform over the sphere
+    const shell = 0.62 + 0.4 * rng();
+    const se = Math.sin(el);
+    const px = se * Math.cos(az) * rH * shell;
+    const pz = se * Math.sin(az) * rH * shell;
+    const py = CY + Math.cos(el) * rV * shell;
+    // frond faces outward and droops down-and-out like real pine foliage
+    const yaw = az + (rng() - 0.5) * 0.9;
+    const pitch = -0.45 - rng() * 0.55;
+    const s = (1.15 - 0.35 * shell) * (0.82 + rng() * 0.42);
+    cards.push(placed(sprig, px, py, pz, pitch, yaw, (rng() - 0.5) * 0.6, s));
   }
-  cards.push(placed(sprig, 0, 14.35, 0, -0.1, rng() * Math.PI, 0, 0.9));
-  cards.push(placed(sprig, 0, 14.25, 0, -0.14, rng() * Math.PI + Math.PI / 2, 0, 0.82));
-  return normalsUp(mergeGeometries(cards));
+  // a conical peak so the crown tapers to a pine tip, not a round ball
+  cards.push(placed(sprig, 0, CY + rV + 0.35, 0, -0.2, rng() * Math.PI, 0, 0.95));
+  cards.push(placed(sprig, 0, CY + rV + 0.1, 0, -0.22, rng() * Math.PI + 1.2, 0, 0.88));
+  return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
 }
 
 function bakeCanopyAO(geo) {
@@ -294,22 +301,54 @@ function bakeCanopyAO(geo) {
 
 function pineCanopy(seed, dense) {
   const rng = makeRng(seed);
-  const sprig = cardGeo(2.2, 3.6, PINE_SPRIG);
+  const sprig = cardGeo(2.5, 3.9, PINE_SPRIG);
   const cards = [];
-  for (let y = 2.2; y <= 8.4; y += (dense ? 0.46 : 0.66)) {
-    const t = (y - 2.2) / 6.2;
-    const n = Math.round((dense ? 11 : 9) - 4 * t);
-    const s = 1.2 - 0.6 * t;
+  for (let y = 2.0; y <= 8.4; y += (dense ? 0.44 : 0.62)) {
+    const t = (y - 2.0) / 6.4;
+    const n = Math.round((dense ? 11 : 9) - 3.5 * t);
+    const s = 1.3 - 0.65 * t;
+    const ring = 0.2 + (1 - t) * 1.05;   // broad conic base tapering to a point
     for (let i = 0; i < n; i++) {
       const yaw = (i / n) * Math.PI * 2 + rng() * 1.2;
-      const pitch = -(Math.PI / 2) + 0.38 + rng() * 0.25;  // fan out, slight droop
-      const rad = (1 - t) * 0.4 * rng();                   // small outward spread → fuller ring
+      const pitch = -(Math.PI / 2) + 0.34 + rng() * 0.24;  // fan out, slight droop
+      const rad = ring * (0.45 + 0.6 * rng());
       cards.push(placed(sprig, Math.cos(yaw) * rad, y + (rng() - 0.5) * 0.3, Math.sin(yaw) * rad, pitch, yaw, 0, s * (0.85 + rng() * 0.3)));
     }
   }
   // upright crown
-  cards.push(placed(sprig, 0, 8.3, 0, -0.06, rng() * Math.PI, 0, 0.85));
-  cards.push(placed(sprig, 0, 8.3, 0, -0.06, rng() * Math.PI + Math.PI / 2, 0, 0.78));
+  cards.push(placed(sprig, 0, 8.4, 0, -0.06, rng() * Math.PI, 0, 0.9));
+  cards.push(placed(sprig, 0, 8.35, 0, -0.06, rng() * Math.PI + Math.PI / 2, 0, 0.82));
+  return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
+}
+
+// Flowering dogwood: a small tiered understory tree with flat horizontal
+// blossom layers. Wired via the parkland flora system and tinted white / pale
+// pink per instance — Augusta's dogwoods bank the tree line with the azaleas.
+function dogwoodCanopy(seed) {
+  const rng = makeRng(seed);
+  const a = cardGeo(3.0, 3.0, LEAF_RECT_A);
+  const b = cardGeo(2.8, 2.8, LEAF_RECT_B);
+  const cards = [];
+  const layers = [
+    { y: 3.9, r: 2.5, n: 9 },
+    { y: 4.8, r: 2.1, n: 8 },
+    { y: 5.5, r: 1.5, n: 6 },
+    { y: 6.0, r: 0.8, n: 4 },
+  ];
+  for (const L of layers) {
+    for (let i = 0; i < L.n; i++) {
+      const az = (i / L.n) * Math.PI * 2 + rng() * 0.9;
+      const r = L.r * (0.5 + 0.55 * rng());
+      cards.push(placed(
+        rng() < 0.5 ? a : b,
+        Math.cos(az) * r, L.y + (rng() - 0.5) * 0.4, Math.sin(az) * r,
+        (rng() - 0.72) * 0.5,          // near-flat, slight down-droop → tiered look
+        rng() * Math.PI * 2,
+        (rng() - 0.5) * 0.4,
+        0.72 + rng() * 0.42,
+      ));
+    }
+  }
   return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
 }
 
@@ -319,13 +358,14 @@ function leafCanopy(seed, dense) {
   const b = cardGeo(3.1, 3.3, LEAF_RECT_B);
   const cards = [];
   const CY = 5.4;
-  for (let i = 0; i < (dense ? 66 : 40); i++) {
+  for (let i = 0; i < (dense ? 70 : 44); i++) {
     const az = rng() * Math.PI * 2;
-    const elev = (rng() - 0.32) * 1.9;
-    const r = 0.7 + rng() * 1.9;
+    const elev = (rng() - 0.28) * 1.85;
+    // bias radius toward the shell so the crown reads as a full rounded dome
+    const r = 1.05 + Math.sqrt(rng()) * 1.75;
     const px = Math.cos(az) * Math.cos(elev) * r;
     const pz = Math.sin(az) * Math.cos(elev) * r;
-    const py = CY + Math.sin(elev) * r * 0.8;
+    const py = CY + Math.sin(elev) * r * 0.82;
     cards.push(placed(
       rng() < 0.5 ? a : b,
       px, py - 1.4, pz,
@@ -387,6 +427,13 @@ function treeKit(assets) {
     map, alphaTest: cut, side: THREE.DoubleSide, vertexColors: true,
     emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.32,
   }));
+  // Dogwood blossoms keep the self-illum floor idea, but with a flat pale-pink
+  // emissive instead of the green leaf-card emissiveMap — otherwise the green
+  // self-illum tints every blossom mint and no diffuse multiplier can whiten it.
+  const dogwoodMat = () => addSway(new THREE.MeshLambertMaterial({
+    map: t.leafCard, alphaTest: 0.4, side: THREE.DoubleSide, vertexColors: true,
+    emissive: 0xf6e6ec, emissiveIntensity: 0.24,
+  }));
   const depthMat = (map, cut) => new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking, map, alphaTest: cut,
   });
@@ -402,6 +449,8 @@ function treeKit(assets) {
       { geo: pineCanopy(19, true), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pine' },
       { geo: leafCanopy(57, true), mat: canopyMat(t.leafCard, 0.4), depth: depthMat(t.leafCard, 0.4), trunk: 'leaf' },
       { geo: loblollyCanopy(91, true), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pineTall' },
+      // 9: flowering dogwood (parkland flora only; tinted white/pink per instance)
+      { geo: dogwoodCanopy(43), mat: dogwoodMat(), depth: depthMat(t.leafCard, 0.4), trunk: 'leaf' },
     ],
     trunks: {
       pine: { geo: trunkGeo(0.07, 0.30, 8.6, 3), mat: new THREE.MeshLambertMaterial({ map: t.pineBark }) },
@@ -1080,17 +1129,49 @@ export function buildCourse(hole, assets) {
             tmp.copy(C.sand).multiplyScalar(1.07 - 0.32 * rim);
           }
         } else if (surf === SURF.GREEN || surf === SURF.TEE) {
-          const checker = (Math.floor(x / 2.4) + Math.floor(z / 2.4)) % 2 === 0;
-          tmp.copy(surf === SURF.TEE ? C.tee : (checker ? C.greenA : C.greenB));
+          if (surf === SURF.TEE) {
+            tmp.copy(C.tee);
+            // Lived-in tee box: faint darker divot scuffs from iron play.
+            const scuff = fbmDetail(x * 1.7 + 12, z * 1.7);
+            if (scuff > 0.36) tmp.multiplyScalar(1 - 0.09 * sstep(0.36, 0.58, scuff));
+          } else {
+            // Double-cut checkerboard mow: soft-edged bands in two perpendicular
+            // directions (lighter greenA vs darker greenB) plus a faint sheen so
+            // it reads as a manicured stripe pattern, not a hard tiled checker.
+            const gsx = sstep(-0.34, 0.34, Math.sin(x / 2.3 * Math.PI));
+            const gsz = sstep(-0.34, 0.34, Math.sin(z / 2.3 * Math.PI));
+            const checkT = gsx * gsz + (1 - gsx) * (1 - gsz);
+            tmp.copy(C.greenB).lerp(C.greenA, checkT);
+            tmp.multiplyScalar(1 + 0.035 * (checkT - 0.5) * 2);
+            // faint ball-mark speckle on the putting surface
+            const bm = fbmDetail(x * 2.1 + 41, z * 2.1);
+            if (bm > 0.52) tmp.multiplyScalar(1 - 0.05 * sstep(0.52, 0.72, bm));
+          }
           sg = 1; sw = 1;
         } else if (surf === SURF.FRINGE) {
-          tmp.copy(C.fringe); sg = 1; sw = 0.45;
+          // Fringe collar: pull slightly toward the green tone and carry a hint
+          // of tight-mow sheen so the green -> fringe -> fairway handoff blends
+          // instead of stepping.
+          const gv = ellipseVal(hole.green, x, z);
+          tmp.copy(C.fringe).lerp(C.greenB, 0.22 * (1 - sstep(1.0, 1.35, gv)));
+          sg = 1; sw = 0.55;
         } else if (surf === SURF.FAIRWAY) {
-          const stripe = Math.floor(p.along / 7) % 2 === 0;
-          tmp.copy(stripe ? C.fairA : C.fairB);
+          // Directional mowing stripes down the line of play: soft-edged
+          // light/dark bands (~6.5 m) with a subtle brightness sheen so they
+          // read crisply but naturally rather than as flat colour swaps.
+          const band = Math.sin(p.along / 6.5 * Math.PI);
+          const stripeT = sstep(-0.44, 0.44, band);
+          tmp.copy(C.fairB).lerp(C.fairA, stripeT);
+          tmp.multiplyScalar(1 + 0.05 * (stripeT - 0.5) * 2);
           sg = 1;
         } else if (p.dist < fhw + 3.5) {
-          tmp.copy(C.firstCut); sg = 0.55; sr = 0.45;
+          // First cut collar: blend the mown fairway tone (carrying a faint echo
+          // of the stripe) out toward the first-cut/rough colour across the band.
+          const ft = sstep(fhw - 1.0, fhw + 3.5, p.dist);
+          const band = Math.sin(p.along / 6.5 * Math.PI);
+          const stripeT = sstep(-0.44, 0.44, band);
+          tmp.copy(C.fairB).lerp(C.fairA, stripeT).lerp(C.firstCut, 0.5 + 0.5 * ft);
+          sg = lerp(0.85, 0.55, ft); sr = lerp(0.15, 0.45, ft);
         } else if (inMappedSand) {
           tmp.copy(C.beach); ss = 0.68; sr = 0.32;
         } else if (inMappedScrub) {
@@ -1131,14 +1212,22 @@ export function buildCourse(hole, assets) {
             // raised grass lip catching light around the bunker edge
             const lip = 1 - Math.abs(bv - 1.2) / 0.3;
             if (lip > 0) tmp.multiplyScalar(1 + 0.13 * lip);
+          } else if (bv >= 1.5 && bv < 3.2) {
+            // Soft AO: turf just outside the lip sits in the bunker's shadow,
+            // giving the hazard depth. Fades out over ~2 units.
+            tmp.multiplyScalar(1 - 0.10 * (1 - sstep(1.5, 3.2, bv)));
           }
         }
         // Manicured turf stays smooth; only rough gets real mottling — the
-        // uniform noise was making greens/fairways look blotchy.
+        // uniform noise was making greens/fairways look blotchy. A very
+        // large-scale octave adds gentle sun-and-shade patches to open turf.
         const mottle = (surf === SURF.GREEN || surf === SURF.TEE) ? 0.15
           : (surf === SURF.FAIRWAY || surf === SURF.FRINGE) ? 0.4 : 1.0;
+        const broad = (surf === SURF.GREEN || surf === SURF.TEE) ? 0
+          : fbmDetail(x * 0.0125 + 61, z * 0.0125) * 0.055;
         const vmod = 1 + (fbmDetail(x * 0.11 + 31, z * 0.11) * 0.07
-          + fbmDetail(x * 0.031 + 7, z * 0.031) * 0.045) * mottle;
+          + fbmDetail(x * 0.031 + 7, z * 0.031) * 0.045) * mottle
+          + broad * (surf === SURF.FAIRWAY ? 0.6 : 1.0);
         colors[vi * 3] = tmp.r * vmod;
         colors[vi * 3 + 1] = tmp.g * vmod;
         colors[vi * 3 + 2] = tmp.b * vmod;
@@ -1468,20 +1557,47 @@ export function buildCourse(hole, assets) {
 
     // ---------- 3D rough grass: instanced swaying tufts (GSPro step 2) ----------
     if (visualZones.grass3d !== false && !hole.isRange) {
-      // tuft geometry: 3 thin bent blades, vertex-color gradient base->tip
+      // tuft geometry: a fan of fine tapered blades with a mid-bend, so each
+      // reads as a curved leaf rather than a flat spike. Vertex colours run a
+      // base->tip gradient, with per-blade hue jitter (some blades drier/yellow)
+      // for a richer, less uniform clump. Kept cheap: ~7 blades, 2 tris each.
       const gPos = [], gCol = [], gIdx = [];
-      const baseC = new THREE.Color(0x40602c);
-      const tipC = new THREE.Color(0x86b055);
-      for (let bIdx = 0; bIdx < 5; bIdx++) {
-        const a = (bIdx / 5) * Math.PI * 2 + bIdx * 0.7;
+      const baseC = new THREE.Color(0x3a5827);
+      const tipLush = new THREE.Color(0x8fbb5c);
+      const tipDry = new THREE.Color(0xa8ad63);
+      const NB = 7;
+      const bTmp = new THREE.Color();
+      for (let bIdx = 0; bIdx < NB; bIdx++) {
+        const a = (bIdx / NB) * Math.PI * 2 + bIdx * 0.9;
         const ca = Math.cos(a), sa = Math.sin(a);
-        const rad = 0.02 + (bIdx % 2) * 0.03;      // fan out into a clump
-        const w = 0.02, hgt = 0.11 + (bIdx % 3) * 0.03, bend = 0.05;
+        const rad = 0.015 + (bIdx % 3) * 0.022;              // fan out into a clump
+        const tall = (bIdx % 4 === 0) ? 1.55 : 1.0;          // an occasional flag blade
+        const w = 0.016, hgt = (0.10 + (bIdx % 3) * 0.028) * tall;
+        const bend = 0.045 + (bIdx % 2) * 0.02;
+        const midH = hgt * 0.55, midW = w * 0.62;
         const bx = ca * rad, bz = sa * rad;
+        // mid + tip offsets carry the blade over into a gentle arc
+        const mx = bx + bend * 0.45 * ca, mz = bz + bend * 0.45 * sa;
+        const tx = bx + bend * ca, tz = bz + bend * sa;
         const o = gPos.length / 3;
-        gPos.push(bx - w * ca, 0, bz - w * sa,  bx + w * ca, 0, bz + w * sa,  bx + bend * ca, hgt, bz + bend * sa);
-        gCol.push(baseC.r, baseC.g, baseC.b,  baseC.r, baseC.g, baseC.b,  tipC.r, tipC.g, tipC.b);
-        gIdx.push(o, o + 1, o + 2);
+        gPos.push(
+          bx - w * ca, 0, bz - w * sa,           // 0 base L
+          bx + w * ca, 0, bz + w * sa,           // 1 base R
+          mx - midW * ca, midH, mz - midW * sa,  // 2 mid L
+          mx + midW * ca, midH, mz + midW * sa,  // 3 mid R
+          tx, hgt, tz,                            // 4 tip
+        );
+        // drier blades near the clump edge, lush ones central & tall
+        const dry = (bIdx % 4 === 0) ? 0.15 : (bIdx % 3) * 0.28;
+        bTmp.copy(tipLush).lerp(tipDry, dry);
+        gCol.push(
+          baseC.r, baseC.g, baseC.b,
+          baseC.r, baseC.g, baseC.b,
+          baseC.r * 1.12, baseC.g * 1.12, baseC.b * 1.1,
+          baseC.r * 1.12, baseC.g * 1.12, baseC.b * 1.1,
+          bTmp.r, bTmp.g, bTmp.b,
+        );
+        gIdx.push(o, o + 2, o + 1,  o + 1, o + 2, o + 3,  o + 2, o + 4, o + 3);
       }
       const tuftGeo = new THREE.BufferGeometry();
       tuftGeo.setAttribute('position', new THREE.Float32BufferAttribute(gPos, 3));
@@ -1542,10 +1658,19 @@ export function buildCourse(hole, assets) {
           const hh = cachedH(dx2, dz2);
           if (hh < waterLevel + 0.2) continue;
           q.setFromAxisAngle(up, gRng() * Math.PI * 2);
-          const sc = 0.7 + gRng() * 0.5;
-          m4.compose(new THREE.Vector3(dx2, hh, dz2), q, new THREE.Vector3(sc, sc * (0.85 + gRng() * 0.5), sc));
+          const sc = 0.7 + gRng() * 0.55;
+          m4.compose(new THREE.Vector3(dx2, hh, dz2), q, new THREE.Vector3(sc, sc * (0.8 + gRng() * 0.6), sc));
           mats.push(m4.clone());
-          cTmp.setHSL(0.25 + gRng() * 0.03, 0.42, 0.42 + gRng() * 0.12);
+          // Richer clump-to-clump variation: mostly green, but a fraction dry
+          // out toward hay-gold (deeper into the rough), and lightness varies
+          // so the rough never reads as one flat carpet.
+          const r1 = gRng();
+          if (r1 < 0.16) {
+            // dried hay tuft — warmer hue, lower saturation
+            cTmp.setHSL(0.16 + gRng() * 0.04, 0.34, 0.44 + gRng() * 0.12);
+          } else {
+            cTmp.setHSL(0.24 + gRng() * 0.05, 0.40 + gRng() * 0.14, 0.38 + gRng() * 0.16);
+          }
           cols.push(cTmp.clone());
         }
         }
@@ -1581,6 +1706,28 @@ export function buildCourse(hole, assets) {
       if (forest && p.dist > fhw + 95 && rng() < 0.45) continue; // wall hugs the corridor
       if (!forest && fbmDetail(x * 0.02 + 90, z * 0.02) < -0.12) continue; // clearings
       const pineShare = forest?.pineShare ?? (hasOcean ? 0.78 : 0.6);
+      // Per-instance foliage colour: one draw controls overall lightness, a
+      // second a warm<->cool bias. Correlating them (instead of three
+      // independent channels) breaks the flat green wall into a believable mix
+      // of lighter/deeper and warmer/cooler crowns while keeping green dominant.
+      const lv = 0.76 + rng() * 0.46;              // brightness 0.76..1.22
+      const warm = (rng() - 0.42) * 0.34;          // + warm/yellow, - cool/blue
+      let tint = forest
+        ? [lv * (1 + warm) * 0.98, lv * 1.18, lv * (1 - warm * 0.8) * 0.9]
+        : hasOcean
+          ? [lv * (1 + warm) * 0.74, lv * 0.9, lv * (1 - warm * 0.6) * 0.76]
+          : [lv * (1 + warm) * 1.0, lv * 1.02, lv * (1 - warm * 0.7) * 0.98];
+      // Distant trees soften into atmosphere: lift toward a pale, desaturated
+      // haze so the far treeline melts into the sky rather than popping.
+      const dTee = Math.hypot(x - tee.x, z - tee.z);
+      const haze = Math.min(0.55, Math.max(0, (dTee - 240) / 620));
+      if (haze > 0) {
+        tint = [
+          tint[0] + (1.22 - tint[0]) * haze,
+          tint[1] + (1.24 - tint[1]) * haze,
+          tint[2] + (1.3 - tint[2]) * haze,
+        ];
+      }
       spots.push({
         x, z, h: heightAt(x, z),
         s: forest
@@ -1591,18 +1738,23 @@ export function buildCourse(hole, assets) {
         kind: rng() < pineShare
           ? (forest ? (rng() < 0.5 ? 4 : 5) : (rng() < 0.5 ? 0 : 1))
           : (rng() < 0.5 ? 2 : 3),
-        tint: forest
-          ? [0.78 + rng() * 0.3, 0.95 + rng() * 0.33, 0.72 + rng() * 0.24]
-          : hasOcean
-            ? [0.62 + rng() * 0.22, 0.72 + rng() * 0.22, 0.60 + rng() * 0.18]
-            : [0.82 + rng() * 0.34, 0.84 + rng() * 0.34, 0.82 + rng() * 0.28],
+        tint,
       });
     }
+    const DOGWOOD = 9;
     if (visualZones.flora === 'azalea' || visualZones.flora === 'gorse') {
       // Flowering underplanting along the corridor edges (never in play):
       // azalea pinks/whites for parkland, whin-bush green-and-gold for links.
       const gorse = visualZones.flora === 'gorse';
       const aRng = makeRng(hole.seed * 97 + 13);
+      // Dogwood blossom tints: pure white to pale pink. The leaf card is
+      // green-dominant, so a true white needs the green multiplier held low
+      // while red+blue are pushed hard — otherwise green clamps first and the
+      // blossom reads mint, not white.
+      const dogwoodTints = [
+        [4.7, 2.2, 4.9], [4.9, 2.3, 4.6], [5.2, 2.0, 4.4], [4.6, 2.15, 5.1],
+      ];
+      let dogwoods = 0;
       // Foliage texture is green-heavy, so warm tones need strong multipliers.
       const palette = gorse
         ? [
@@ -1631,6 +1783,23 @@ export function buildCourse(hole, assets) {
           || inFeaturePolys(osmTees, x, z) || inFeaturePolys(osmBunkers, x, z)) continue;
         if (ellipseVal(hole.green, x, z) < 2.2) continue;
         if (hasWater && waterMask(x, z).m > 0.05) continue;
+        // Dogwoods: standing flowering trees scattered through the azalea banks
+        // along the tree line (parkland only). One per seed occasionally, sited
+        // toward the outer edge of the flowering band so they read as small
+        // trees in front of the pines, not in the azalea foreground.
+        if (!gorse && dogwoods < 54 && p.dist > fhw + 18 && aRng() < 0.2) {
+          spots.push({
+            x, z, h: heightAt(x, z),
+            s: 0.58 + aRng() * 0.36,
+            ry: aRng() * Math.PI * 2,
+            tilt: (aRng() - 0.5) * 0.06,
+            kind: DOGWOOD,
+            tint: dogwoodTints[Math.floor(aRng() * dogwoodTints.length)].slice(),
+          });
+          dogwoods++;
+          placed++;
+          continue;
+        }
         // A clump: one dominant colour, several blooms tightly grouped.
         const clumpN = gorse ? 1 : (2 + Math.floor(aRng() * 4));
         const tint = palette[Math.floor(aRng() * palette.length)];
@@ -1717,8 +1886,11 @@ export function buildCourse(hole, assets) {
       }
     }
 
-    // Corridor trees get the dense near-LOD canopy (where the camera lands)
+    // Corridor trees get the dense near-LOD canopy (where the camera lands).
+    // Dogwoods (kind 9) are already a bespoke near-LOD understory tree — leave
+    // them alone or the remap would turn them into dense pines.
     for (const t of spots) {
+      if (t.kind === 9) continue;
       if (pathInfo(t.x, t.z).dist < fhw + 40) {
         t.kind = t.kind <= 1 ? 6 : (t.kind <= 3 ? 7 : 8);
       }
@@ -1921,14 +2093,18 @@ export function buildCourse(hole, assets) {
     }
 
     // ---------- tree contact AO: soft shadow discs at every trunk base ----------
-    // (GSPro step 3a) grounds the card trees — without these they float.
+    // (GSPro step 3a) grounds the card trees — without these they float. The
+    // disc has a dark contact core fading to a long soft edge, and is stretched
+    // + offset along the sun-shadow direction so the pool reads as a real cast
+    // shadow raking away from each trunk rather than a flat symmetric blob.
     if (spots.length) {
       const aoCv = document.createElement('canvas');
       aoCv.width = aoCv.height = 64;
       const aoCtx = aoCv.getContext('2d');
-      const aoG = aoCtx.createRadialGradient(32, 32, 3, 32, 32, 31);
-      aoG.addColorStop(0, 'rgba(10,16,8,0.42)');
-      aoG.addColorStop(0.6, 'rgba(10,16,8,0.22)');
+      const aoG = aoCtx.createRadialGradient(32, 32, 2, 32, 32, 31);
+      aoG.addColorStop(0, 'rgba(8,14,6,0.5)');
+      aoG.addColorStop(0.35, 'rgba(9,15,7,0.32)');
+      aoG.addColorStop(0.7, 'rgba(10,16,8,0.13)');
       aoG.addColorStop(1, 'rgba(10,16,8,0)');
       aoCtx.fillStyle = aoG;
       aoCtx.fillRect(0, 0, 64, 64);
@@ -1938,17 +2114,32 @@ export function buildCourse(hole, assets) {
         new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false }),
         Math.min(spots.length, 1400),
       );
+      // Orient the ellipse's long axis along the ground-projected shadow.
+      const shx = -assets.sunDir.x, shz = -assets.sunDir.z;
+      const shLen = Math.hypot(shx, shz) || 1;
+      const sux = shx / shLen, suz = shz / shLen;
+      const phi = Math.atan2(-suz, sux);
+      const qa = new THREE.Quaternion()
+        .setFromAxisAngle(new THREE.Vector3(0, 1, 0), phi)
+        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
       const m4a = new THREE.Matrix4();
-      const qa = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+      const posA = new THREE.Vector3();
+      const scaleA = new THREE.Vector3();
       let na = 0;
       for (const t of spots) {
         if (na >= aoMesh.count) break;
-        const r = (t.kind <= 1 ? 2.6 : 3.4) * t.s;
-        m4a.compose(
-          new THREE.Vector3(t.x, heightAt(t.x, t.z) + 0.025 + (na % 7) * 0.002, t.z),
-          qa,
-          new THREE.Vector3(r, r, r),
+        // dogwoods (9) are small, tall pines (loblolly) throw a wider pool
+        const base = t.kind === 9 ? 1.7 : (t.kind === 0 || t.kind === 1 || t.kind === 6) ? 2.6 : 3.3;
+        const r = base * t.s;
+        const long = r * 1.4, short = r * 0.92;
+        const off = (long - r) * 0.8;
+        posA.set(
+          t.x + sux * off,
+          heightAt(t.x, t.z) + 0.025 + (na % 7) * 0.002,
+          t.z + suz * off,
         );
+        scaleA.set(long, short, 1);
+        m4a.compose(posA, qa, scaleA);
         aoMesh.setMatrixAt(na++, m4a);
       }
       aoMesh.count = na;
