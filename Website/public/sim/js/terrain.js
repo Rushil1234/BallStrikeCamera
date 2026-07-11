@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-15';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-15';
-import { makeFbm, makeRng } from './noise.js?v=gspro-15';
-import { SURF } from './physics.js?v=gspro-15';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-16';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-16';
+import { makeFbm, makeRng } from './noise.js?v=gspro-16';
+import { SURF } from './physics.js?v=gspro-16';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -956,6 +956,7 @@ export function buildCourse(hole, assets) {
   let updateFlag = () => {};
   let updateWater = () => {};
   const flatWaters = [];
+  const foamBands = [];
   let oceanMesh = null;
   let spots = [];
 
@@ -991,13 +992,20 @@ export function buildCourse(hole, assets) {
           textureHeight: 256,
           waterNormals: assets.waterN,
           sunDirection: assets.sunDir.clone(),
-          sunColor: 0xffffff,
-          waterColor: 0x1a4f6b,
-          distortionScale: 2.6,
+          // Warm sun so the glint reads as sparkling sunlight on the Pacific
+          // rather than a flat white sheen.
+          sunColor: 0xfff2d6,
+          // Deep cold Pacific teal-blue for the body colour (the scatter term).
+          waterColor: 0x0d3a52,
+          distortionScale: 3.6,
           fog: true,
         });
         ocean.rotation.x = -Math.PI / 2;
         ocean.position.set(icx, waterLevel - 0.02, icz);
+        // Finer wave normals: at size 1.0 the ripples tile every ~100 m, so a
+        // 26 km sea reads as one glassy sheet. Bumping `size` tightens the swell
+        // into believable ocean chop and gives the sun a broken, sparkling glint.
+        ocean.material.uniforms.size.value = 4.0;
         // Push the ocean's depth back so the tint plate above it always wins the
         // depth test — otherwise the two 26,000 m coplanar planes z-fight and the
         // whole sea flickers as the camera moves.
@@ -1006,11 +1014,28 @@ export function buildCourse(hole, assets) {
         ocean.material.polygonOffsetUnits = 3;
         group.add(ocean);
         oceanMesh = ocean;
-        // Deep-blue tint plate: keeps the Pacific reading blue instead of a
-        // silver sky mirror when viewed down the coast.
+        // Deep-blue tint plate with a depth gradient: rich near-shore water that
+        // lightens toward the horizon (aerial perspective). A radial vertex
+        // gradient centred on the headland reads as "deep by the cliffs, hazy far
+        // out" instead of one flat silver sky-mirror down the coast.
+        const tintGeo = new THREE.PlaneGeometry(26000, 26000, 24, 24);
+        {
+          const deep = new THREE.Color(0x0a3145);   // close, deep water
+          const far = new THREE.Color(0x1d5a7a);     // hazy distant water
+          const pos = tintGeo.attributes.position;
+          const tcol = new Float32Array(pos.count * 3);
+          const c = new THREE.Color();
+          for (let i = 0; i < pos.count; i++) {
+            // radial distance from plane centre (the headland), normalised
+            const r = Math.min(1, Math.hypot(pos.getX(i), pos.getY(i)) / 2200);
+            c.copy(deep).lerp(far, r);
+            tcol[i * 3] = c.r; tcol[i * 3 + 1] = c.g; tcol[i * 3 + 2] = c.b;
+          }
+          tintGeo.setAttribute('color', new THREE.BufferAttribute(tcol, 3));
+        }
         const oceanTint = new THREE.Mesh(
-          new THREE.PlaneGeometry(26000, 26000),
-          new THREE.MeshBasicMaterial({ color: 0x134a68, transparent: true, opacity: 0.58, depthWrite: false, fog: true }),
+          tintGeo,
+          new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false, fog: true }),
         );
         oceanTint.rotation.x = -Math.PI / 2;
         oceanTint.position.set(icx, waterLevel + 0.015, icz);
@@ -1081,7 +1106,11 @@ export function buildCourse(hole, assets) {
       bed: new THREE.Color(0x31464a),
       beach: new THREE.Color(0xb9ab82),
       scrub: new THREE.Color(0x626c51),
-      rock: new THREE.Color(0x51463a),
+      // Weathered grey granite — the Monterey coast is pale grey rock, not brown
+      // dirt. `wet` is the dark damp band right at the tideline where rock/sand
+      // is soaked, so the land doesn't end in a hard line against the sea.
+      rock: new THREE.Color(0x7c7568),
+      wet: new THREE.Color(0x2f3138),
     };
     const strawColor = new THREE.Color(forestFloor?.color ?? 0x8a6742);
     const _dryBank = new THREE.Color(0x7a7f45);
@@ -1118,15 +1147,27 @@ export function buildCourse(hole, assets) {
           tmp.copy(C.bed); sr = 1;
         } else if (surf === SURF.SAND) {
           ss = 1;
-          let bv = 9;
-          for (const b of hole.bunkers) bv = Math.min(bv, ellipseVal(b, x, z));
+          let bv = 9, bnr = null;
+          for (const b of hole.bunkers) {
+            const ev = ellipseVal(b, x, z);
+            if (ev < bv) { bv = ev; bnr = b; }
+          }
+          // Raked furrows: fine parallel lines running across the bunker, faded
+          // by a little noise so raked sand reads as texture, not hard stripes.
+          // Aligned to each bunker's long axis (rot) so the rake follows the dish.
+          const ra = bnr ? (bnr.rot || 0) : 0;
+          const ru = (x - (bnr ? bnr.cx : 0)) * Math.sin(ra) + (z - (bnr ? bnr.cz : 0)) * Math.cos(ra);
+          const rake = Math.sin(ru * 1.85);                 // ~3.4 m furrow pitch
+          const rakeAmt = 0.055 * (0.55 + 0.45 * fbmDetail(x * 0.35 + 3, z * 0.35));
           if (bv > 1.3) {
             // polygon sand beyond any fitted ellipse: neutral wash
             tmp.copy(C.sand).multiplyScalar(0.97);
           } else {
-            // sculpted dish: bright raked centre, shadowed ring under the lip
-            const rim = sstep(0.5, 1.0, Math.min(bv, 1));
-            tmp.copy(C.sand).multiplyScalar(1.07 - 0.32 * rim);
+            // sculpted dish: crisp bright raked centre, cleanly shadowed lip ring
+            const rim = sstep(0.42, 1.0, Math.min(bv, 1));
+            tmp.copy(C.sand).multiplyScalar(1.09 - 0.36 * rim);
+            // rake furrows strongest across the flat centre, fading under the lip
+            tmp.multiplyScalar(1 + rakeAmt * rake * (1 - 0.7 * rim));
           }
         } else if (surf === SURF.GREEN || surf === SURF.TEE) {
           if (surf === SURF.TEE) {
@@ -1177,7 +1218,15 @@ export function buildCourse(hole, assets) {
         } else if (inMappedScrub) {
           tmp.copy(C.scrub); sr = 1;
         } else if (hasOcean && coastDist < 30 && !inFeaturePolys(osmFairways, x, z) && !inFeaturePolys(osmGreens, x, z)) {
-          tmp.copy(C.rock).lerp(C.rough, sstep(2, 30, coastDist)); sr = 1;
+          // Coastal shore: grey granite/sand at the tideline grading up to rough.
+          // A broken mottle keeps the rock from reading as one flat swatch, and
+          // the first few metres darken into a wet, sea-soaked band so the coast
+          // dissolves into the water instead of ending on a hard brown line.
+          const rmot = fbmDetail(x * 0.09 + 3, z * 0.09) * 0.5 + 0.5;
+          tmp.copy(C.rock).multiplyScalar(0.82 + 0.32 * rmot).lerp(C.rough, sstep(4, 30, coastDist));
+          const wetT = 1 - sstep(0.0, 6.0, coastDist);
+          if (wetT > 0) tmp.lerp(C.wet, 0.7 * wetT);
+          sr = 1;
         } else {
           const t = sstep(fhw + 10, fhw + 45, p.dist);
           tmp.copy(C.rough).lerp(C.deep, t);
@@ -1286,52 +1335,76 @@ export function buildCourse(hole, assets) {
       // No separate cliff-wall mesh: the terrain now slopes smoothly into the
       // sea, so a vertical rock wall would just re-introduce the hard faceted
       // edge. Foam at the waterline + scattered rocks sell the shoreline instead.
-      const foamMat = new THREE.MeshBasicMaterial({
-        color: 0xf4fbff,
-        transparent: true,
-        opacity: 0.72,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      });
-      const foamNear = new THREE.Mesh(
-        ribbonGeometry(coastEdgePts, 8, waterLevel + 0.035),
-        foamMat,
-      );
-      const foamOffshore = new THREE.Mesh(
-        ribbonGeometry(offsetPolyline(coastEdgePts, 16, false), 5, waterLevel + 0.045),
-        foamMat.clone(),
-      );
-      foamOffshore.material.opacity = 0.38;
-      foamNear.renderOrder = 2; foamOffshore.renderOrder = 2;   // sit above the ocean tint
-      group.add(foamNear, foamOffshore);
+      // Layered surf: a bright, dense wash right at the rock, a mid swash band,
+      // and a faint outer ring where a spent wave slides back. The three bands
+      // gently pulse out of phase (see updateWater) so the tideline breathes
+      // instead of sitting as a static painted stripe.
+      const mkFoam = (pts, width, offset, y, opacity) => {
+        const m = new THREE.MeshBasicMaterial({
+          color: 0xf4fbff, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(
+          ribbonGeometry(offset ? offsetPolyline(pts, offset, false) : pts, width, y),
+          m,
+        );
+        mesh.renderOrder = 2;   // sit above the ocean tint
+        group.add(mesh);
+        foamBands.push({ mat: m, base: opacity, phase: offset * 0.4 });
+        return mesh;
+      };
+      mkFoam(coastEdgePts, 9, 0, waterLevel + 0.05, 0.6);     // dense wash on the rock
+      mkFoam(coastEdgePts, 5, 8, waterLevel + 0.045, 0.4);    // swash band
+      mkFoam(coastEdgePts, 3.5, 18, waterLevel + 0.04, 0.22); // spent outer ring
 
       const coastRng = makeRng(hole.seed * 101 + 19);
-      const rockGeo = new THREE.DodecahedronGeometry(1, 1);
-      const rockMat = new THREE.MeshStandardMaterial({ color: 0x34312a, roughness: 0.96, metalness: 0.02 });
-      const rockCount = Math.min(120, Math.max(36, coastEdgePts.length * 5));
+      // Bare icosahedron (no subdivision) gives sharp facets that read as
+      // fractured coastal granite rather than smooth beach pebbles.
+      const rockGeo = new THREE.IcosahedronGeometry(1, 0);
+      // Weathered granite; per-instance colour (below) spreads it across a
+      // warm-tan to cool wet-grey range so the rocks don't read as one clump.
+      const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.97, metalness: 0.02 });
+      const rockCount = Math.min(200, Math.max(60, coastEdgePts.length * 8));
       const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
       const rm = new THREE.Matrix4();
       const rq = new THREE.Quaternion();
       const re = new THREE.Euler();
       const rp = new THREE.Vector3();
       const rs = new THREE.Vector3();
+      const rc = new THREE.Color();
+      const graniteA = new THREE.Color(0x6f6a60);   // dry warm granite
+      const graniteB = new THREE.Color(0x3a3c40);   // dark cool wet grey
       for (let i = 0; i < rockCount; i++) {
         const idx = Math.floor(coastRng() * (coastEdgePts.length - 1));
         const a = coastEdgePts[idx];
         const b = coastEdgePts[idx + 1] || a;
         const t = coastRng();
         const n = coastlineOutsideNormal(coastEdgePts, idx, coastLandPts);
-        const x = lerp(a.x, b.x, t) + n.x * (12 + coastRng() * 42);
-        const z = lerp(a.z, b.z, t) + n.z * (12 + coastRng() * 42);
+        // Cluster most boulders in the wash zone right at the base of the cliff,
+        // with a few flung further out as sea stacks poking through the surf.
+        const stack = coastRng() < 0.2;
+        const off = stack ? 20 + coastRng() * 30 : 1 + coastRng() * 22;
+        const x = lerp(a.x, b.x, t) + n.x * off;
+        const z = lerp(a.z, b.z, t) + n.z * off;
         re.set(coastRng() * Math.PI, coastRng() * Math.PI, coastRng() * Math.PI);
         rq.setFromEuler(re);
-        rp.set(x, waterLevel + 0.1 + coastRng() * 1.4, z);
-        const s = 1.4 + coastRng() * 5.6;
-        rs.set(s * (0.8 + coastRng() * 0.7), s * (0.35 + coastRng() * 0.55), s * (0.8 + coastRng() * 0.7));
+        const s = (stack ? 2.2 : 1.1) + coastRng() * (stack ? 4.4 : 3.6);
+        // Seat rocks INTO the surface: centre sits below the tideline by a good
+        // fraction of the radius so they emerge from the water/beach rather than
+        // hovering. Sea stacks are the exception and stand proud.
+        const rise = stack ? 0.4 + coastRng() * 2.2 : -s * (0.45 + coastRng() * 0.45);
+        rp.set(x, waterLevel + rise, z);
+        // Stacks stand taller (less vertical squash) so they read as upright
+        // rock rather than flat discs floating on the far water.
+        const flat = stack ? (0.9 + coastRng() * 0.5) : (0.55 + coastRng() * 0.7);
+        rs.set(s * (0.8 + coastRng() * 0.8), s * flat, s * (0.8 + coastRng() * 0.8));
         rm.compose(rp, rq, rs);
         rocks.setMatrixAt(i, rm);
+        // Wetter (darker/cooler) low rocks, drier paler granite standing proud.
+        rc.copy(graniteB).lerp(graniteA, Math.min(1, Math.max(0, rise * 0.22 + 0.4 + coastRng() * 0.4)));
+        rocks.setColorAt(i, rc);
       }
       rocks.instanceMatrix.needsUpdate = true;
+      if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true;
       rocks.castShadow = true;
       rocks.receiveShadow = true;
       group.add(rocks);
@@ -1385,16 +1458,19 @@ export function buildCourse(hole, assets) {
         sz = wMaxZ - wMinZ + w.width * 2 + 20;
       }
       if (waters.length >= 1 || w.type === 'channel') {
-        // cheap non-reflective plate: dark, slightly glossy, no scene re-render
+        // Cheap non-reflective plate (no scene re-render): a glassy, near-still
+        // creek/pond that mirrors the sky and treeline via the env map. Calmer,
+        // finer ripples + a near-mirror finish read as clean dark Rae's-Creek
+        // water rather than a choppy pond.
         const flatNorm = assets.waterN.clone();
         flatNorm.wrapS = flatNorm.wrapT = THREE.RepeatWrapping;
-        flatNorm.repeat.set(sx / 18, sz / 18);
+        flatNorm.repeat.set(sx / 12, sz / 12);
         const flat = new THREE.Mesh(
           new THREE.PlaneGeometry(sx, sz),
           new THREE.MeshStandardMaterial({
-            color: new THREE.Color(visualZones.waterColor ?? 0x0e3526).multiplyScalar(0.7),
-            roughness: 0.14, metalness: 0.05, envMapIntensity: 0.7,
-            normalMap: flatNorm, normalScale: new THREE.Vector2(0.55, 0.55),
+            color: new THREE.Color(visualZones.waterColor ?? 0x0e3526).multiplyScalar(0.55),
+            roughness: 0.09, metalness: 0.0, envMapIntensity: 1.0,
+            normalMap: flatNorm, normalScale: new THREE.Vector2(0.32, 0.32),
           }),
         );
         flatWaters.push(flatNorm);
@@ -1480,6 +1556,100 @@ export function buildCourse(hole, assets) {
       bridgeGrp.position.set(b.x, 0, b.z);
       bridgeGrp.rotation.y = (b.rot || 0) + Math.PI / 2;   // deck runs ACROSS the burn
       group.add(bridgeGrp);
+    }
+
+    // ---------- tournament grandstands (config-driven, Augusta only) ----------
+    // Tiered spectator stands set behind a couple of greens. Fully instanced:
+    // one draw call for the stepped green structure, one for the speckled crowd,
+    // one for the white top rail — a few dozen to a few hundred boxes across all
+    // stands, no per-object meshes and no shadow casting. Each stand renders only
+    // if its anchor falls inside this hole's bounds (same guard as the bridges).
+    {
+      const stands = (visualZones.grandstands || []).filter(
+        (s) => Number.isFinite(s.x) && Number.isFinite(s.z)
+          && s.x >= minX && s.x <= maxX && s.z >= minZ && s.z <= maxZ
+          // Augusta's routing packs 15/16/17 greens together, so a stand set
+          // behind one green can fall inside a neighbour's bounds near its tee.
+          // Only draw a stand on the hole whose green it actually sits behind.
+          && Math.hypot(s.x - hole.green.cx, s.z - hole.green.cz) < 75,
+      );
+      if (stands.length) {
+        // Collect step + crowd + rail instances across every visible stand.
+        const stepT = [];    // {x,y,z,rot,w,h,d, tone}
+        const crowdT = [];   // {x,y,z,rot,w,h,d, col}
+        const railT = [];    // {x,y,z,rot,w,h,d}
+        const crowdPal = [
+          0xe8ded0, 0xd9c9b2, 0xc7d2dc, 0xb7c3cf, 0xd6bfa6,
+          0xcfd6cf, 0xe3d6c2, 0xbfc9b8, 0xd0c4d2, 0xe0e0da,
+        ];
+        const rot2 = (lx, lz, cos, sin) => ({ x: lx * cos + lz * sin, z: -lx * sin + lz * cos });
+        for (const s of stands) {
+          const T = Math.max(4, Math.min(12, s.tiers || 8));
+          const w = s.w || 32;
+          const rise = 0.58;                 // per-row rise
+          const d = 1.5;                      // per-row tread depth
+          const totalDepth = T * d;
+          const cos = Math.cos(s.rot || 0), sin = Math.sin(s.rot || 0);
+          const g0 = heightAt(s.x, s.z) - 0.05;
+          const cols = Math.max(6, Math.round(w / 2.1));
+          const seatW = w / cols;
+          for (let i = 0; i < T; i++) {
+            const lz = -totalDepth / 2 + (i + 0.5) * d;      // front (near green) -> back
+            const hgt = (i + 1) * rise;                       // stepped wedge to ground
+            const wp = rot2(0, lz, cos, sin);
+            stepT.push({
+              x: s.x + wp.x, y: g0 + hgt / 2, z: s.z + wp.z, rot: s.rot || 0,
+              w, h: hgt, d, tone: 0.9 + 0.06 * (i / T),
+            });
+            // Packed gallery on each tread: short seat blocks across the width.
+            for (let j = 0; j < cols; j++) {
+              const lx = -w / 2 + (j + 0.5) * seatW;
+              const cp = rot2(lx, lz, cos, sin);
+              const col = crowdPal[(i * 7 + j * 3) % crowdPal.length];
+              crowdT.push({
+                x: s.x + cp.x, y: g0 + hgt + 0.26, z: s.z + cp.z, rot: s.rot || 0,
+                w: seatW * 0.92, h: 0.5, d: d * 0.62, col,
+              });
+            }
+          }
+          // White top rail behind the back row.
+          const rz = -totalDepth / 2 + (T - 0.1) * d;
+          const rp = rot2(0, rz, cos, sin);
+          railT.push({
+            x: s.x + rp.x, y: g0 + T * rise + 0.24, z: s.z + rp.z, rot: s.rot || 0,
+            w: w + 0.4, h: 0.22, d: 0.22,
+          });
+        }
+        const unit = new THREE.BoxGeometry(1, 1, 1);
+        const m4 = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const up = new THREE.Vector3(0, 1, 0);
+        const col = new THREE.Color();
+        const placeInst = (arr, baseColor, colorPerInst) => {
+          const mat = new THREE.MeshLambertMaterial(baseColor != null ? { color: baseColor } : {});
+          const im = new THREE.InstancedMesh(unit, mat, arr.length);
+          arr.forEach((it, i) => {
+            q.setFromAxisAngle(up, it.rot);
+            m4.compose(new THREE.Vector3(it.x, it.y, it.z), q, new THREE.Vector3(it.w, it.h, it.d));
+            im.setMatrixAt(i, m4);
+            if (colorPerInst) {
+              col.set(it.col ?? 0xffffff).multiplyScalar(it.tone ?? 1);
+              im.setColorAt(i, col);
+            }
+          });
+          im.instanceMatrix.needsUpdate = true;
+          if (im.instanceColor) im.instanceColor.needsUpdate = true;
+          im.castShadow = false;
+          im.receiveShadow = false;
+          group.add(im);
+        };
+        // Dark green scaffold structure (per-instance tone for depth).
+        placeInst(stepT, 0x24402a, true);
+        // Speckled crowd.
+        placeInst(crowdT, null, true);
+        // White rail.
+        placeInst(railT, 0xf2efe6, false);
+      }
     }
 
     // ---------- town edge: real building footprints + boundary walls ----------
@@ -2180,6 +2350,11 @@ export function buildCourse(hole, assets) {
       if (oceanMesh) oceanMesh.material.uniforms.time.value = t * 0.35;
       for (const w of waters) w.material.uniforms.time.value = t * 0.5;
       for (const fn of flatWaters) { fn.offset.x = t * 0.008; fn.offset.y = t * 0.011; }
+      // Surf breathes: each foam band swells and fades on a slow ~7 s swell,
+      // offset by band so the wash and the retreating ring never peak together.
+      for (const fb of foamBands) {
+        fb.mat.opacity = fb.base * (0.62 + 0.38 * Math.sin(t * 0.9 + fb.phase));
+      }
       const sh = terrain.material.userData.shader;
       if (sh) {
         sh.uniforms.uTime.value = t;
@@ -2352,14 +2527,20 @@ export function buildCourse(hole, assets) {
       group.userData.greenGrid = heatGroup;
     }
 
-    // ---------- OB stakes along the corridor ----------
+    // ---------- OB stakes / gallery rope line along the corridor ----------
+    // Parkland venues (visualZones.galleryFence) get a clean white gallery
+    // rope-and-post line — short posts at a tighter spacing joined by a low
+    // rope strand — instead of the plain OB stakes used on the links courses.
+    // Cheap: one instanced draw call for posts, one LineSegments for the rope.
     {
+      const gallery = !!visualZones.galleryFence;
+      const step = gallery ? 7 : 24;      // post spacing (m)
       const stakes = [];
       let L = 0;
       for (let i = 1; i < path.length; i++) {
         L += Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z);
       }
-      for (let s = 0; s <= L; s += 24) {
+      for (let s = 0; s <= L; s += step) {
         const p = pointAtAlong(s);
         const p2 = pointAtAlong(Math.min(s + 2, L));
         let tx = p2.x - p.x, tz = p2.z - p.z;
@@ -2368,29 +2549,57 @@ export function buildCourse(hole, assets) {
         for (const side of [-1, 1]) {
           const sx = p.x + -tz * side * (obDist - 2);
           const sz = p.z + tx * side * (obDist - 2);
-          if (hasWater && waterMask(sx, sz).m > 0.05) continue;
-          stakes.push({ x: sx, z: sz, h: heightAt(sx, sz) });
+          if (hasWater && waterMask(sx, sz).m > 0.05) { stakes.push(null); continue; }
+          stakes.push({ x: sx, z: sz, h: heightAt(sx, sz), side });
         }
       }
-      if (stakes.length) {
-        const sgeo = new THREE.CylinderGeometry(0.045, 0.045, 1.15, 6);
-        const smat = new THREE.MeshLambertMaterial({ color: 0xf5f2e8 });
-        const im = new THREE.InstancedMesh(sgeo, smat, stakes.length);
+      const real = stakes.filter(Boolean);
+      if (real.length) {
+        const postH = gallery ? 0.72 : 1.15;
+        const sgeo = new THREE.CylinderGeometry(gallery ? 0.035 : 0.045, gallery ? 0.035 : 0.045, postH, 6);
+        const smat = new THREE.MeshLambertMaterial({ color: gallery ? 0xf6f4ec : 0xf5f2e8 });
+        const im = new THREE.InstancedMesh(sgeo, smat, real.length);
         const sm4 = new THREE.Matrix4();
-        stakes.forEach((st, i) => {
-          sm4.makeTranslation(st.x, st.h + 0.55, st.z);
+        real.forEach((st, i) => {
+          sm4.makeTranslation(st.x, st.h + postH / 2, st.z);
           im.setMatrixAt(i, sm4);
         });
         im.instanceMatrix.needsUpdate = true;
-        im.castShadow = true;
+        im.castShadow = !gallery;         // tiny gallery posts don't cast shadow
         group.add(im);
+
+        if (gallery) {
+          // Slack white rope joining consecutive posts on each side. `stakes`
+          // holds interleaved [-1,+1] entries (nulls where a post fell in water),
+          // so pair up neighbours that share a side and both exist.
+          const ropeY = 0.42;
+          const rp = [];
+          for (let i = 0; i + 2 < stakes.length; i++) {
+            const a = stakes[i], b = stakes[i + 2];
+            if (!a || !b || a.side !== b.side) continue;
+            const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+            const sag = 0.12;
+            const my = (heightAt(mx, mz) + ropeY) - sag;   // slight sag at mid-span
+            rp.push(a.x, a.h + ropeY, a.z, mx, my, mz);
+            rp.push(mx, my, mz, b.x, b.h + ropeY, b.z);
+          }
+          if (rp.length) {
+            const rgeo = new THREE.BufferGeometry();
+            rgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rp), 3));
+            const rope = new THREE.LineSegments(rgeo, new THREE.LineBasicMaterial({ color: 0xf6f4ec }));
+            group.add(rope);
+          }
+        }
       }
     }
 
-    const teeMarkMat = new THREE.MeshBasicMaterial({ color: 0xe8e3d2 });
+    // Tournament tee markers: low rounded blocks (optionally coloured per
+    // course, e.g. Augusta's members' green markers) instead of plain spheres.
+    const teeMarkMat = new THREE.MeshLambertMaterial({ color: visualZones.teeMarkColor ?? 0xe8e3d2 });
     for (const side of [-1, 1]) {
-      const mark = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), teeMarkMat);
-      mark.position.set(tee.x + side * 2.2, teeH + 0.1, tee.z);
+      const mark = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.16, 12), teeMarkMat);
+      mark.position.set(tee.x + side * 2.2, teeH + 0.08, tee.z);
+      mark.castShadow = true;
       group.add(mark);
     }
 

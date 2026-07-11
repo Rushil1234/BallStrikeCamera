@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-15';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-15';
-import { makeFbm, makeRng } from './noise.js?v=gspro-15';
-import { SURF } from './physics.js?v=gspro-15';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-16';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-16';
+import { makeFbm, makeRng } from './noise.js?v=gspro-16';
+import { SURF } from './physics.js?v=gspro-16';
 
 const VISUAL = typeof document !== 'undefined';
 
