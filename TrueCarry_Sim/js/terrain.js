@@ -1118,15 +1118,27 @@ export function buildCourse(hole, assets) {
           tmp.copy(C.bed); sr = 1;
         } else if (surf === SURF.SAND) {
           ss = 1;
-          let bv = 9;
-          for (const b of hole.bunkers) bv = Math.min(bv, ellipseVal(b, x, z));
+          let bv = 9, bnr = null;
+          for (const b of hole.bunkers) {
+            const ev = ellipseVal(b, x, z);
+            if (ev < bv) { bv = ev; bnr = b; }
+          }
+          // Raked furrows: fine parallel lines running across the bunker, faded
+          // by a little noise so raked sand reads as texture, not hard stripes.
+          // Aligned to each bunker's long axis (rot) so the rake follows the dish.
+          const ra = bnr ? (bnr.rot || 0) : 0;
+          const ru = (x - (bnr ? bnr.cx : 0)) * Math.sin(ra) + (z - (bnr ? bnr.cz : 0)) * Math.cos(ra);
+          const rake = Math.sin(ru * 1.85);                 // ~3.4 m furrow pitch
+          const rakeAmt = 0.055 * (0.55 + 0.45 * fbmDetail(x * 0.35 + 3, z * 0.35));
           if (bv > 1.3) {
             // polygon sand beyond any fitted ellipse: neutral wash
             tmp.copy(C.sand).multiplyScalar(0.97);
           } else {
-            // sculpted dish: bright raked centre, shadowed ring under the lip
-            const rim = sstep(0.5, 1.0, Math.min(bv, 1));
-            tmp.copy(C.sand).multiplyScalar(1.07 - 0.32 * rim);
+            // sculpted dish: crisp bright raked centre, cleanly shadowed lip ring
+            const rim = sstep(0.42, 1.0, Math.min(bv, 1));
+            tmp.copy(C.sand).multiplyScalar(1.09 - 0.36 * rim);
+            // rake furrows strongest across the flat centre, fading under the lip
+            tmp.multiplyScalar(1 + rakeAmt * rake * (1 - 0.7 * rim));
           }
         } else if (surf === SURF.GREEN || surf === SURF.TEE) {
           if (surf === SURF.TEE) {
@@ -1480,6 +1492,100 @@ export function buildCourse(hole, assets) {
       bridgeGrp.position.set(b.x, 0, b.z);
       bridgeGrp.rotation.y = (b.rot || 0) + Math.PI / 2;   // deck runs ACROSS the burn
       group.add(bridgeGrp);
+    }
+
+    // ---------- tournament grandstands (config-driven, Augusta only) ----------
+    // Tiered spectator stands set behind a couple of greens. Fully instanced:
+    // one draw call for the stepped green structure, one for the speckled crowd,
+    // one for the white top rail — a few dozen to a few hundred boxes across all
+    // stands, no per-object meshes and no shadow casting. Each stand renders only
+    // if its anchor falls inside this hole's bounds (same guard as the bridges).
+    {
+      const stands = (visualZones.grandstands || []).filter(
+        (s) => Number.isFinite(s.x) && Number.isFinite(s.z)
+          && s.x >= minX && s.x <= maxX && s.z >= minZ && s.z <= maxZ
+          // Augusta's routing packs 15/16/17 greens together, so a stand set
+          // behind one green can fall inside a neighbour's bounds near its tee.
+          // Only draw a stand on the hole whose green it actually sits behind.
+          && Math.hypot(s.x - hole.green.cx, s.z - hole.green.cz) < 75,
+      );
+      if (stands.length) {
+        // Collect step + crowd + rail instances across every visible stand.
+        const stepT = [];    // {x,y,z,rot,w,h,d, tone}
+        const crowdT = [];   // {x,y,z,rot,w,h,d, col}
+        const railT = [];    // {x,y,z,rot,w,h,d}
+        const crowdPal = [
+          0xe8ded0, 0xd9c9b2, 0xc7d2dc, 0xb7c3cf, 0xd6bfa6,
+          0xcfd6cf, 0xe3d6c2, 0xbfc9b8, 0xd0c4d2, 0xe0e0da,
+        ];
+        const rot2 = (lx, lz, cos, sin) => ({ x: lx * cos + lz * sin, z: -lx * sin + lz * cos });
+        for (const s of stands) {
+          const T = Math.max(4, Math.min(12, s.tiers || 8));
+          const w = s.w || 32;
+          const rise = 0.58;                 // per-row rise
+          const d = 1.5;                      // per-row tread depth
+          const totalDepth = T * d;
+          const cos = Math.cos(s.rot || 0), sin = Math.sin(s.rot || 0);
+          const g0 = heightAt(s.x, s.z) - 0.05;
+          const cols = Math.max(6, Math.round(w / 2.1));
+          const seatW = w / cols;
+          for (let i = 0; i < T; i++) {
+            const lz = -totalDepth / 2 + (i + 0.5) * d;      // front (near green) -> back
+            const hgt = (i + 1) * rise;                       // stepped wedge to ground
+            const wp = rot2(0, lz, cos, sin);
+            stepT.push({
+              x: s.x + wp.x, y: g0 + hgt / 2, z: s.z + wp.z, rot: s.rot || 0,
+              w, h: hgt, d, tone: 0.9 + 0.06 * (i / T),
+            });
+            // Packed gallery on each tread: short seat blocks across the width.
+            for (let j = 0; j < cols; j++) {
+              const lx = -w / 2 + (j + 0.5) * seatW;
+              const cp = rot2(lx, lz, cos, sin);
+              const col = crowdPal[(i * 7 + j * 3) % crowdPal.length];
+              crowdT.push({
+                x: s.x + cp.x, y: g0 + hgt + 0.26, z: s.z + cp.z, rot: s.rot || 0,
+                w: seatW * 0.92, h: 0.5, d: d * 0.62, col,
+              });
+            }
+          }
+          // White top rail behind the back row.
+          const rz = -totalDepth / 2 + (T - 0.1) * d;
+          const rp = rot2(0, rz, cos, sin);
+          railT.push({
+            x: s.x + rp.x, y: g0 + T * rise + 0.24, z: s.z + rp.z, rot: s.rot || 0,
+            w: w + 0.4, h: 0.22, d: 0.22,
+          });
+        }
+        const unit = new THREE.BoxGeometry(1, 1, 1);
+        const m4 = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const up = new THREE.Vector3(0, 1, 0);
+        const col = new THREE.Color();
+        const placeInst = (arr, baseColor, colorPerInst) => {
+          const mat = new THREE.MeshLambertMaterial(baseColor != null ? { color: baseColor } : {});
+          const im = new THREE.InstancedMesh(unit, mat, arr.length);
+          arr.forEach((it, i) => {
+            q.setFromAxisAngle(up, it.rot);
+            m4.compose(new THREE.Vector3(it.x, it.y, it.z), q, new THREE.Vector3(it.w, it.h, it.d));
+            im.setMatrixAt(i, m4);
+            if (colorPerInst) {
+              col.set(it.col ?? 0xffffff).multiplyScalar(it.tone ?? 1);
+              im.setColorAt(i, col);
+            }
+          });
+          im.instanceMatrix.needsUpdate = true;
+          if (im.instanceColor) im.instanceColor.needsUpdate = true;
+          im.castShadow = false;
+          im.receiveShadow = false;
+          group.add(im);
+        };
+        // Dark green scaffold structure (per-instance tone for depth).
+        placeInst(stepT, 0x24402a, true);
+        // Speckled crowd.
+        placeInst(crowdT, null, true);
+        // White rail.
+        placeInst(railT, 0xf2efe6, false);
+      }
     }
 
     // ---------- town edge: real building footprints + boundary walls ----------
@@ -2352,14 +2458,20 @@ export function buildCourse(hole, assets) {
       group.userData.greenGrid = heatGroup;
     }
 
-    // ---------- OB stakes along the corridor ----------
+    // ---------- OB stakes / gallery rope line along the corridor ----------
+    // Parkland venues (visualZones.galleryFence) get a clean white gallery
+    // rope-and-post line — short posts at a tighter spacing joined by a low
+    // rope strand — instead of the plain OB stakes used on the links courses.
+    // Cheap: one instanced draw call for posts, one LineSegments for the rope.
     {
+      const gallery = !!visualZones.galleryFence;
+      const step = gallery ? 7 : 24;      // post spacing (m)
       const stakes = [];
       let L = 0;
       for (let i = 1; i < path.length; i++) {
         L += Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z);
       }
-      for (let s = 0; s <= L; s += 24) {
+      for (let s = 0; s <= L; s += step) {
         const p = pointAtAlong(s);
         const p2 = pointAtAlong(Math.min(s + 2, L));
         let tx = p2.x - p.x, tz = p2.z - p.z;
@@ -2368,29 +2480,57 @@ export function buildCourse(hole, assets) {
         for (const side of [-1, 1]) {
           const sx = p.x + -tz * side * (obDist - 2);
           const sz = p.z + tx * side * (obDist - 2);
-          if (hasWater && waterMask(sx, sz).m > 0.05) continue;
-          stakes.push({ x: sx, z: sz, h: heightAt(sx, sz) });
+          if (hasWater && waterMask(sx, sz).m > 0.05) { stakes.push(null); continue; }
+          stakes.push({ x: sx, z: sz, h: heightAt(sx, sz), side });
         }
       }
-      if (stakes.length) {
-        const sgeo = new THREE.CylinderGeometry(0.045, 0.045, 1.15, 6);
-        const smat = new THREE.MeshLambertMaterial({ color: 0xf5f2e8 });
-        const im = new THREE.InstancedMesh(sgeo, smat, stakes.length);
+      const real = stakes.filter(Boolean);
+      if (real.length) {
+        const postH = gallery ? 0.72 : 1.15;
+        const sgeo = new THREE.CylinderGeometry(gallery ? 0.035 : 0.045, gallery ? 0.035 : 0.045, postH, 6);
+        const smat = new THREE.MeshLambertMaterial({ color: gallery ? 0xf6f4ec : 0xf5f2e8 });
+        const im = new THREE.InstancedMesh(sgeo, smat, real.length);
         const sm4 = new THREE.Matrix4();
-        stakes.forEach((st, i) => {
-          sm4.makeTranslation(st.x, st.h + 0.55, st.z);
+        real.forEach((st, i) => {
+          sm4.makeTranslation(st.x, st.h + postH / 2, st.z);
           im.setMatrixAt(i, sm4);
         });
         im.instanceMatrix.needsUpdate = true;
-        im.castShadow = true;
+        im.castShadow = !gallery;         // tiny gallery posts don't cast shadow
         group.add(im);
+
+        if (gallery) {
+          // Slack white rope joining consecutive posts on each side. `stakes`
+          // holds interleaved [-1,+1] entries (nulls where a post fell in water),
+          // so pair up neighbours that share a side and both exist.
+          const ropeY = 0.42;
+          const rp = [];
+          for (let i = 0; i + 2 < stakes.length; i++) {
+            const a = stakes[i], b = stakes[i + 2];
+            if (!a || !b || a.side !== b.side) continue;
+            const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+            const sag = 0.12;
+            const my = (heightAt(mx, mz) + ropeY) - sag;   // slight sag at mid-span
+            rp.push(a.x, a.h + ropeY, a.z, mx, my, mz);
+            rp.push(mx, my, mz, b.x, b.h + ropeY, b.z);
+          }
+          if (rp.length) {
+            const rgeo = new THREE.BufferGeometry();
+            rgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rp), 3));
+            const rope = new THREE.LineSegments(rgeo, new THREE.LineBasicMaterial({ color: 0xf6f4ec }));
+            group.add(rope);
+          }
+        }
       }
     }
 
-    const teeMarkMat = new THREE.MeshBasicMaterial({ color: 0xe8e3d2 });
+    // Tournament tee markers: low rounded blocks (optionally coloured per
+    // course, e.g. Augusta's members' green markers) instead of plain spheres.
+    const teeMarkMat = new THREE.MeshLambertMaterial({ color: visualZones.teeMarkColor ?? 0xe8e3d2 });
     for (const side of [-1, 1]) {
-      const mark = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), teeMarkMat);
-      mark.position.set(tee.x + side * 2.2, teeH + 0.1, tee.z);
+      const mark = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.16, 12), teeMarkMat);
+      mark.position.set(tee.x + side * 2.2, teeH + 0.08, tee.z);
+      mark.castShadow = true;
       group.add(mark);
     }
 
