@@ -96,6 +96,19 @@ export const LOCAL_COURSES = [
           { x: 54.59, z: -508, rot: Math.PI / 2, span: 13 }, // Hogan Bridge — 12th green
           { x: -150, z: -240, rot: -0.9, span: 9 },          // Nelson Bridge — 13th
         ],
+        // Members' green tee markers.
+        teeMarkColor: 0x2f6b3a,
+        // Clean white gallery rope-and-post line down the corridors instead of
+        // the links OB stakes.
+        galleryFence: true,
+        // Tiered spectator grandstands set behind a few greens — Augusta's
+        // amphitheatre cue. Each renders only on the hole it sits inside.
+        // rot = atan2(approachDirX, approachDirZ) so the seating faces the green.
+        grandstands: [
+          { x: 321, z: 317, rot: 0.60, w: 34, tiers: 8 },   // behind 18th green (HOLLY)
+          { x: -271, z: 63, rot: -0.44, w: 44, tiers: 9 },  // 16th amphitheatre (REDBUD)
+          { x: -202, z: -33, rot: -1.28, w: 30, tiers: 7 }, // behind 15th green (FIRETHORN)
+        ],
       },
     },
     local: true,
