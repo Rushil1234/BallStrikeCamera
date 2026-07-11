@@ -386,11 +386,11 @@ scene.add(ring);
 // ---------- atmosphere presets (per-course, G to cycle) ----------
 const ATMOSPHERES = {
   sunny:    { exposure: 1.05, fog: [0xccdae8, 360, 2450], sun: [0xffeccb, 2.15], hemi: 0.72, bg: 1.0,  env: 0.6,
-    sky: { zenith: 0x2461a8, horizon: 0x9cc4e8, sun: 0xfff4dc, cloudLit: 0xffffff, cloudDark: 0xc6d2de, cover: 0.4, sharp: 0.74, haze: 0xc4d8ea } },
+    sky: { zenith: 0x1f5aa6, horizon: 0x9cc4e8, sun: 0xfff4dc, cloudLit: 0xffffff, cloudDark: 0xaebfd0, cover: 0.4, sharp: 0.74, haze: 0xc4d8ea } },
   overcast: { exposure: 0.9,  fog: [0xb9c2c9, 290, 1800], sun: [0xdfe4e8, 1.1],  hemi: 1.0,  bg: 0.62, env: 0.3,
     sky: { zenith: 0x8b98a4, horizon: 0xb8c1c9, sun: 0xdfe6ea, cloudLit: 0xc8cfd6, cloudDark: 0x8792a0, cover: 0.86, sharp: 0.34, haze: 0xbcc4cc } },
   golden:   { exposure: 1.06, fog: [0xe6d5ba, 380, 2300], sun: [0xffd9a0, 1.75], hemi: 0.5,  bg: 0.92, env: 0.5,
-    sky: { zenith: 0x355a92, horizon: 0xf0c98e, sun: 0xffe1a8, cloudLit: 0xfff0d2, cloudDark: 0xc0a084, cover: 0.48, sharp: 0.66, haze: 0xefce9a } },
+    sky: { zenith: 0x2f5390, horizon: 0xf0c98e, sun: 0xffe1a8, cloudLit: 0xfff0d2, cloudDark: 0xb89577, cover: 0.48, sharp: 0.66, haze: 0xefce9a } },
 };
 const _skyVariants = { sunny: null };
 function skyVariant(name) {
