@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-13';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-13';
-import { makeFbm, makeRng } from './noise.js?v=gspro-13';
-import { SURF } from './physics.js?v=gspro-13';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-14';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-14';
+import { makeFbm, makeRng } from './noise.js?v=gspro-14';
+import { SURF } from './physics.js?v=gspro-14';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -250,16 +250,16 @@ function normalsUp(geo) {
 // third only — the signature silhouette of Georgia parkland courses.
 function loblollyCanopy(seed, dense) {
   const rng = makeRng(seed);
-  const sprig = cardGeo(2.7, 4.2, PINE_SPRIG);
+  const sprig = cardGeo(2.9, 4.4, PINE_SPRIG);
   const cards = [];
-  for (let y = 10.2; y <= 14.0; y += (dense ? 0.48 : 0.72)) {
-    const t = (y - 10.2) / 3.8;
-    const n = Math.round((dense ? 7.5 : 5.5) - 2.4 * t);
-    const s = 1.3 - 0.5 * t;
+  for (let y = 9.8; y <= 14.2; y += (dense ? 0.42 : 0.6)) {
+    const t = (y - 9.8) / 4.4;
+    const n = Math.round((dense ? 10 : 8) - 3.5 * t);
+    const s = 1.35 - 0.5 * t;
     for (let i = 0; i < n; i++) {
       const yaw = (i / n) * Math.PI * 2 + rng() * 1.4;
       const pitch = -(Math.PI / 2) + 0.5 + rng() * 0.32;
-      const rad = 0.25 + (1 - t) * 0.55 * rng();
+      const rad = 0.25 + (1 - t) * 0.62 * rng();
       cards.push(placed(
         sprig,
         Math.cos(yaw) * rad, y + (rng() - 0.5) * 0.45, Math.sin(yaw) * rad,
@@ -268,8 +268,8 @@ function loblollyCanopy(seed, dense) {
       ));
     }
   }
-  cards.push(placed(sprig, 0, 14.15, 0, -0.1, rng() * Math.PI, 0, 0.85));
-  cards.push(placed(sprig, 0, 14.05, 0, -0.14, rng() * Math.PI + Math.PI / 2, 0, 0.78));
+  cards.push(placed(sprig, 0, 14.35, 0, -0.1, rng() * Math.PI, 0, 0.9));
+  cards.push(placed(sprig, 0, 14.25, 0, -0.14, rng() * Math.PI + Math.PI / 2, 0, 0.82));
   return normalsUp(mergeGeometries(cards));
 }
 
@@ -294,31 +294,32 @@ function bakeCanopyAO(geo) {
 
 function pineCanopy(seed, dense) {
   const rng = makeRng(seed);
-  const sprig = cardGeo(1.9, 3.2, PINE_SPRIG);
+  const sprig = cardGeo(2.2, 3.6, PINE_SPRIG);
   const cards = [];
-  for (let y = 2.4; y <= 8.2; y += (dense ? 0.6 : 0.92)) {
-    const t = (y - 2.4) / 5.8;
-    const n = Math.round((dense ? 8 : 6) - 3 * t);
-    const s = 1.15 - 0.62 * t;
+  for (let y = 2.2; y <= 8.4; y += (dense ? 0.46 : 0.66)) {
+    const t = (y - 2.2) / 6.2;
+    const n = Math.round((dense ? 11 : 9) - 4 * t);
+    const s = 1.2 - 0.6 * t;
     for (let i = 0; i < n; i++) {
       const yaw = (i / n) * Math.PI * 2 + rng() * 1.2;
       const pitch = -(Math.PI / 2) + 0.38 + rng() * 0.25;  // fan out, slight droop
-      cards.push(placed(sprig, 0, y + (rng() - 0.5) * 0.3, 0, pitch, yaw, 0, s * (0.85 + rng() * 0.3)));
+      const rad = (1 - t) * 0.4 * rng();                   // small outward spread → fuller ring
+      cards.push(placed(sprig, Math.cos(yaw) * rad, y + (rng() - 0.5) * 0.3, Math.sin(yaw) * rad, pitch, yaw, 0, s * (0.85 + rng() * 0.3)));
     }
   }
   // upright crown
-  cards.push(placed(sprig, 0, 8.0, 0, -0.06, rng() * Math.PI, 0, 0.8));
-  cards.push(placed(sprig, 0, 8.0, 0, -0.06, rng() * Math.PI + Math.PI / 2, 0, 0.72));
+  cards.push(placed(sprig, 0, 8.3, 0, -0.06, rng() * Math.PI, 0, 0.85));
+  cards.push(placed(sprig, 0, 8.3, 0, -0.06, rng() * Math.PI + Math.PI / 2, 0, 0.78));
   return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
 }
 
 function leafCanopy(seed, dense) {
   const rng = makeRng(seed);
-  const a = cardGeo(3.1, 3.1, LEAF_RECT_A);
-  const b = cardGeo(2.8, 3.0, LEAF_RECT_B);
+  const a = cardGeo(3.4, 3.4, LEAF_RECT_A);
+  const b = cardGeo(3.1, 3.3, LEAF_RECT_B);
   const cards = [];
-  const CY = 5.2;
-  for (let i = 0; i < (dense ? 48 : 26); i++) {
+  const CY = 5.4;
+  for (let i = 0; i < (dense ? 66 : 40); i++) {
     const az = rng() * Math.PI * 2;
     const elev = (rng() - 0.32) * 1.9;
     const r = 0.7 + rng() * 1.9;
@@ -933,8 +934,12 @@ export function buildCourse(hole, assets) {
         // A vast, reflective ocean stretching to the horizon — the course sits
         // on a coastal headland, not a tidy little island pond.
         const ocean = new Water(new THREE.PlaneGeometry(26000, 26000), {
-          textureWidth: 512,
-          textureHeight: 512,
+          // 256 reflection: this plane re-renders the whole scene every frame,
+          // so it was the single biggest cost on the coastal course. Distant
+          // rippled water doesn't need a sharp mirror — 256 is plenty and cuts
+          // the per-frame reflection cost to a quarter.
+          textureWidth: 256,
+          textureHeight: 256,
           waterNormals: assets.waterN,
           sunDirection: assets.sunDir.clone(),
           sunColor: 0xffffff,
@@ -944,6 +949,12 @@ export function buildCourse(hole, assets) {
         });
         ocean.rotation.x = -Math.PI / 2;
         ocean.position.set(icx, waterLevel - 0.02, icz);
+        // Push the ocean's depth back so the tint plate above it always wins the
+        // depth test — otherwise the two 26,000 m coplanar planes z-fight and the
+        // whole sea flickers as the camera moves.
+        ocean.material.polygonOffset = true;
+        ocean.material.polygonOffsetFactor = 3;
+        ocean.material.polygonOffsetUnits = 3;
         group.add(ocean);
         oceanMesh = ocean;
         // Deep-blue tint plate: keeps the Pacific reading blue instead of a
@@ -953,7 +964,8 @@ export function buildCourse(hole, assets) {
           new THREE.MeshBasicMaterial({ color: 0x134a68, transparent: true, opacity: 0.58, depthWrite: false, fog: true }),
         );
         oceanTint.rotation.x = -Math.PI / 2;
-        oceanTint.position.set(icx, waterLevel + 0.01, icz);
+        oceanTint.position.set(icx, waterLevel + 0.015, icz);
+        oceanTint.renderOrder = 1;
         group.add(oceanTint);
       } else if (hole.island.profile === 'coastal') {
         // Inland real-data course: forested land to the horizon, no sea.
@@ -1201,6 +1213,7 @@ export function buildCourse(hole, assets) {
         foamMat.clone(),
       );
       foamOffshore.material.opacity = 0.38;
+      foamNear.renderOrder = 2; foamOffshore.renderOrder = 2;   // sit above the ocean tint
       group.add(foamNear, foamOffshore);
 
       const coastRng = makeRng(hole.seed * 101 + 19);
@@ -1302,13 +1315,13 @@ export function buildCourse(hole, assets) {
         continue;
       }
       const water = new Water(new THREE.PlaneGeometry(sx, sz), {
-        textureWidth: 256,
-        textureHeight: 256,
+        textureWidth: 384,
+        textureHeight: 384,
         waterNormals: assets.waterN,
         sunDirection: assets.sunDir.clone(),
         sunColor: 0xffffff,
         waterColor: visualZones.waterColor ?? 0x0e3526,
-        distortionScale: 2.6,
+        distortionScale: 2.2,
         fog: true,
       });
       water.rotation.x = -Math.PI / 2;

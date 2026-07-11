@@ -3,7 +3,7 @@
 // All CC0 from Poly Haven, water normals from three.js examples (MIT).
 
 import * as THREE from 'three';
-import { RGBELoader } from 'three/addons/loaders/RGBELoader.js?v=gspro-13';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js?v=gspro-14';
 
 function loadTex(loader, url, { srgb = false, aniso = 8 } = {}) {
   return new Promise((resolve, reject) => {

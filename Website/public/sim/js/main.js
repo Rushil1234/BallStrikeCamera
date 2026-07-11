@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-13';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-13';
-import { RANGE, holeLength } from './holes.js?v=gspro-13';
-import { buildCourse } from './terrain.js?v=gspro-13';
-import { makeSky } from './sky.js?v=gspro-13';
-import { loadAssets } from './assets.js?v=gspro-13';
-import { HUD, toParStr } from './ui.js?v=gspro-13';
-import { SFX } from './audio.js?v=gspro-13';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-13';
-import { fetchSimCourses } from './courses.js?v=gspro-13';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-13';
-import { layoutIslandCourse } from './world.js?v=gspro-13';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-14';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-14';
+import { RANGE, holeLength } from './holes.js?v=gspro-14';
+import { buildCourse } from './terrain.js?v=gspro-14';
+import { makeSky } from './sky.js?v=gspro-14';
+import { loadAssets } from './assets.js?v=gspro-14';
+import { HUD, toParStr } from './ui.js?v=gspro-14';
+import { SFX } from './audio.js?v=gspro-14';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-14';
+import { fetchSimCourses } from './courses.js?v=gspro-14';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-14';
+import { layoutIslandCourse } from './world.js?v=gspro-14';
 
 // ---------- boot ----------
 
