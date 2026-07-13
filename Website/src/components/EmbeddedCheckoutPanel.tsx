@@ -13,14 +13,16 @@ const DEFAULT_CHECKOUT_URL = process.env.NEXT_PUBLIC_CREATE_CHECKOUT_FUNCTION_UR
 
 interface EmbeddedCheckoutPanelProps {
   onClose: () => void;
-  /** Which plan to check out (basic | pro | atlas). Defaults to pro. */
+  /** Which plan to check out (pro | atlas). Defaults to pro. */
   tier?: string;
+  /** Annual commitment (yearly) or month to month. Defaults to yearly. */
+  billingInterval?: "yearly" | "monthly";
   /** Optional pre-resolved token. If absent, the panel resolves/handles auth itself. */
   accessToken?: string | null;
   checkoutUrl?: string;
 }
 
-export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", accessToken = null, checkoutUrl }: EmbeddedCheckoutPanelProps) {
+export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", billingInterval = "yearly", accessToken = null, checkoutUrl }: EmbeddedCheckoutPanelProps) {
   const url = checkoutUrl ?? DEFAULT_CHECKOUT_URL ?? "";
   const [token, setToken] = useState<string | null>(accessToken);
   const [checkingSession, setCheckingSession] = useState(!accessToken);
@@ -73,7 +75,7 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", accessTok
         if (data.session) {
           setToken(data.session.access_token);
         } else {
-          setAuthMsg("Account created — check your email to confirm, then sign in here to finish checkout.");
+          setAuthMsg("Account created, check your email to confirm, then sign in here to finish checkout.");
           setMode("signin");
         }
       }
@@ -103,7 +105,7 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", accessTok
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ tier, billingInterval: "monthly", uiMode: "embedded" }),
+      body: JSON.stringify({ tier, billingInterval, uiMode: "embedded" }),
     });
 
     const json = await res.json().catch(() => ({}));
@@ -112,7 +114,7 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", accessTok
     }
     if (!json.clientSecret) throw new Error("Checkout did not return a client secret.");
     return json.clientSecret as string;
-  }, [token, url, tier]);
+  }, [token, url, tier, billingInterval]);
 
   useEffect(() => {
     if (!token) return;
@@ -159,7 +161,7 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", accessTok
         ) : complete ? (
           <div className="checkout-config">
             <h3>You&apos;re all set.</h3>
-            <p>Stripe confirmed your subscription. Premium unlocks as soon as the webhook syncs — usually seconds.</p>
+            <p>Stripe confirmed your subscription. Premium unlocks as soon as the webhook syncs, usually seconds.</p>
             <button className="checkout-retry" type="button" onClick={onClose}>
               Done
             </button>

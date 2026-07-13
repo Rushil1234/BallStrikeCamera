@@ -169,7 +169,7 @@ h1, h2, h3 {
   padding: 0 clamp(20px, 4vw, 64px);
 }
 .site-nav .brand {
-  display: inline-flex; align-items: center; gap: 14px;
+  display: inline-flex; align-items: center; gap: 2px;
   text-decoration: none; color: var(--cream);
 }
 .site-nav .brand img { width: 52px; height: 52px; object-fit: contain; margin: -10px 0; }
@@ -1449,6 +1449,9 @@ code {
 .round .app-demo-hint{ margin-top:28px; font-family:var(--r-mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--carry-gold); }
 .round .app-demo .app-demo-phone{ display:flex; justify-content:center; }
 .round .app-demo .app-demo-phone .phone{ margin:0; }
+/* Solo: no copy, just the live phone demo, centred and enlarged. */
+.round .app-demo.app-demo-solo{ grid-template-columns:1fr; justify-items:center; }
+.round .app-demo.app-demo-solo .app-demo-phone .phone{ transform:scale(1.12); transform-origin:center; }
 @media (max-width:880px){
   .round .app-demo{ grid-template-columns:1fr; gap:44px; }
   .round .app-demo .app-demo-phone{ order:-1; }
@@ -1460,7 +1463,16 @@ code {
 .round .plans-head h2 .it{ font-style:italic; color:var(--carry-gold); }
 .round .plans-head p{ font-family:var(--r-sans); font-size:clamp(16px,1.7vw,20px); line-height:1.55; color:color-mix(in oklab,var(--bone) 76%,transparent); max-width:48ch; margin:0 auto; }
 .round .plans-head p .it{ color:var(--carry-gold); }
-.round .plans{ display:grid; grid-template-columns:repeat(4,1fr); border-top:1px solid color-mix(in oklab,var(--bone) 20%,transparent); }
+/* Billing interval slider (yearly / monthly). */
+.round .billing-toggle{ position:relative; display:flex; width:max-content; margin:0 auto clamp(30px,4vw,46px); padding:4px; border-radius:999px; border:1px solid color-mix(in oklab,var(--bone) 18%,transparent); background:color-mix(in oklab,var(--bone) 6%,transparent); }
+.round .billing-opt{ position:relative; z-index:1; flex:1 1 0; min-width:150px; display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:11px 22px; border:none; background:none; cursor:pointer; font-family:var(--r-mono); font-size:11.5px; letter-spacing:.16em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 60%,transparent); transition:color .25s var(--ease); }
+.round .billing-opt.on{ color:var(--ink); }
+.round .billing-save{ font-size:9px; letter-spacing:.08em; padding:2px 7px; border-radius:999px; background:color-mix(in oklab,var(--carry-gold) 28%,transparent); color:var(--carry-gold); }
+.round .billing-opt.on .billing-save{ background:color-mix(in oklab,var(--ink) 14%,transparent); color:var(--ink); }
+.round .billing-slide{ position:absolute; top:4px; bottom:4px; left:4px; width:calc(50% - 4px); border-radius:999px; background:var(--bone); z-index:0; transition:transform .28s var(--ease); }
+.round .billing-slide.monthly{ transform:translateX(100%); }
+.round .plan-sub{ font-family:var(--r-mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 44%,transparent); margin:3px 0 0; min-height:14px; }
+.round .plans{ display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid color-mix(in oklab,var(--bone) 20%,transparent); }
 .round .plan{ display:flex; flex-direction:column; padding:34px 26px; border-right:1px solid color-mix(in oklab,var(--bone) 14%,transparent); position:relative; }
 .round .plan:last-child{ border-right:none; }
 .round .plan.featured{ background:color-mix(in oklab,var(--carry-gold) 8%,transparent); padding-top:50px; }
@@ -1966,6 +1978,9 @@ code {
 
 .round .h05{ background:var(--forest-darker, #0c1a10); overflow:hidden; }
 .round .h05 .sim-feature{ display:grid; grid-template-columns:0.72fr 1.28fr; gap:clamp(40px,6vw,80px); align-items:center; }
+/* Solo: no copy, just the live browser-sim demo, centred. */
+.round .h05 .sim-feature.sim-feature-solo{ grid-template-columns:1fr; justify-items:center; }
+.round .h05 .sim-feature-solo .sim-demo{ width:100%; max-width:1040px; }
 .round .h05 h2{ font-family:var(--display); font-weight:400; font-size:clamp(44px,7vw,96px); line-height:.9; letter-spacing:-.03em; margin:0 0 24px; }
 .round .h05 h2 .it{ font-style:italic; color:var(--carry-gold); }
 .round .h05 .deck{ font-family:var(--display); font-style:italic; font-size:clamp(20px,2.2vw,27px); line-height:1.4; max-width:30ch; color:color-mix(in oklab,var(--bone) 88%,transparent); margin:0; }

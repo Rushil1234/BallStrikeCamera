@@ -29,7 +29,7 @@ export default function PrivacyPage() {
           <p>
             <strong>Camera frames.</strong> The camera captures used to measure your shots are
             processed on your iPhone. Replay frame bursts are stored on your device. A single
-            composite image per shot may sync to your account so replays work across devices —
+            composite image per shot may sync to your account so replays work across devices , 
             it is visible only to you and, if you share a shot, to the people you share it with.
           </p>
           <p>
@@ -70,14 +70,14 @@ export default function PrivacyPage() {
           Wherever you live, we honor these rights for everyone:
         </p>
         <ul>
-          <li><strong>Access &amp; portability</strong> — download a complete JSON export of your data, self-serve, from <a href="/account">your account</a>.</li>
-          <li><strong>Deletion</strong> — delete your account and all associated data (sessions, shots, bag, billing profile) from <a href="/account">your account</a>, effective immediately. Backups age out within 30 days.</li>
-          <li><strong>Correction</strong> — edit your profile and bag directly in the app or the locker.</li>
-          <li><strong>No sale of personal data</strong> — we don&apos;t sell it or share it for cross-context advertising.</li>
+          <li><strong>Access &amp; portability</strong>, download a complete JSON export of your data, self-serve, from <a href="/account">your account</a>.</li>
+          <li><strong>Deletion</strong>, delete your account and all associated data (sessions, shots, bag, billing profile) from <a href="/account">your account</a>, effective immediately. Backups age out within 30 days.</li>
+          <li><strong>Correction</strong>, edit your profile and bag directly in the app or the locker.</li>
+          <li><strong>No sale of personal data</strong>, we don&apos;t sell it or share it for cross-context advertising.</li>
         </ul>
         <p>
           Questions or requests we haven&apos;t automated yet: email{" "}
-          <a href="mailto:rushil@truecarrygolf.com">rushil@truecarrygolf.com</a> — we respond within 30 days.
+          <a href="mailto:rushil@truecarrygolf.com">rushil@truecarrygolf.com</a>, we respond within 30 days.
         </p>
       </section>
       <SiteFooter />

@@ -5,7 +5,7 @@ import SiteFooter from "@/components/SiteFooter";
 export const metadata = {
   title: "Support",
   description:
-    "Get help with True Carry — setup, pairing, billing, and account questions. Email our team and we'll get back to you.",
+    "Get help with True Carry, setup, pairing, billing, and account questions. Email our team and we'll get back to you.",
 };
 
 const SUPPORT_EMAIL = "Rushil@truecarrygolf.com";
@@ -28,7 +28,7 @@ export default function SupportPage() {
         <div className="prose">
           <p>
             Need a hand with True Carry? Whether it&rsquo;s setup, pairing your phone to a
-            simulator, billing, or anything else — we&rsquo;re happy to help.
+            simulator, billing, or anything else, we&rsquo;re happy to help.
           </p>
           <p>
             Email us at{" "}

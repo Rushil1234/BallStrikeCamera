@@ -243,7 +243,7 @@ export default function AccountPage() {
                   Cancel subscription
                 </button>
                 <span className="account-renewal-note">
-                  Your plan renews automatically until you cancel. Cancel anytime — you keep
+                  Your plan renews automatically until you cancel. Cancel anytime, you keep
                   access through the end of the paid period, no fees.
                 </span>
               </>
@@ -264,7 +264,7 @@ export default function AccountPage() {
             <h2 id="privacy-rights-h">Privacy &amp; your data</h2>
             <p className="account-privacy-copy">
               Your data belongs to you. Export everything we hold, or delete your account
-              and all of it — no email required, effective immediately.
+              and all of it, no email required, effective immediately.
             </p>
             <div className="account-privacy-actions">
               <button className="btn btn-outline" onClick={handleExportData} disabled={exporting}>
@@ -306,7 +306,7 @@ export default function AccountPage() {
 }
 
 function makeInviteCode() {
-  // 12 hex chars (~48 bits) — matches the iOS generator.
+  // 12 hex chars (~48 bits), matches the iOS generator.
   const bytes = crypto.getRandomValues(new Uint8Array(6));
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
@@ -365,10 +365,10 @@ function ReferralCard({ userId }: { userId: string }) {
       </div>
       <p className="referral-copy">
         Share your invite code. When a friend joins True Carry and enters it in the app,
-        you <strong>both</strong> get 14 days of Pro — free.
+        you <strong>both</strong> get 14 days of Pro, free.
       </p>
       <div className="referral-code-row">
-        <code className="referral-code">{loading ? "…" : code ?? "—"}</code>
+        <code className="referral-code">{loading ? "…" : code ?? ", "}</code>
         <button type="button" className="device-remove" onClick={copy} disabled={!code}>
           {copied ? "Copied" : "Copy code"}
         </button>
@@ -458,8 +458,8 @@ function LockerDashboard({
       {premium && (
         <section className="account-kpis">
           <MetricCard label="Saved shots" value={dashboard.totals.shots} detail="Camera captures synced from iOS" />
-          <MetricCard label="Avg carry" value={dashboard.totals.avgCarry ?? "—"} suffix={dashboard.totals.avgCarry ? "yd" : ""} detail="Recent tracked shots" />
-          <MetricCard label="Best carry" value={dashboard.totals.bestCarry ?? "—"} suffix={dashboard.totals.bestCarry ? "yd" : ""} detail="Best synced carry number" />
+          <MetricCard label="Avg carry" value={dashboard.totals.avgCarry ?? ", "} suffix={dashboard.totals.avgCarry ? "yd" : ""} detail="Recent tracked shots" />
+          <MetricCard label="Best carry" value={dashboard.totals.bestCarry ?? ", "} suffix={dashboard.totals.bestCarry ? "yd" : ""} detail="Best synced carry number" />
           <MetricCard label="Rounds" value={dashboard.totals.courseRounds} detail="Course mode scorecards" />
         </section>
       )}
@@ -709,7 +709,7 @@ function BagPanel({ clubs, userId, onChanged }: { clubs: AccountClub[]; userId: 
           )}
         </div>
       ) : (
-        !adding && <EmptyState title="No clubs yet" body="Add your clubs here or build your bag in the iOS app — they stay in sync." />
+        !adding && <EmptyState title="No clubs yet" body="Add your clubs here or build your bag in the iOS app, they stay in sync." />
       )}
     </div>
   );

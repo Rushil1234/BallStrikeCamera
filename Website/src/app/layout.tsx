@@ -32,14 +32,14 @@ const SITE_URL = "https://truecarry.golf";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "True Carry — The Camera Launch Monitor",
-    template: "%s — True Carry",
+    default: "True Carry: The Camera Launch Monitor",
+    template: "%s, True Carry",
   },
   description:
-    "True Carry turns your iPhone into a tour-grade launch monitor. Measure ball speed, launch angle, and carry distance on the range, in a simulator, or on the course — no extra hardware.",
+    "True Carry turns your iPhone into a tour-grade launch monitor. Measure ball speed, launch angle, and carry distance on the range, in a simulator, or on the course, no extra hardware.",
   keywords: ["golf launch monitor", "camera launch monitor", "ball speed", "carry distance", "golf app", "True Carry"],
   openGraph: {
-    title: "True Carry — The Camera Launch Monitor",
+    title: "True Carry: The Camera Launch Monitor",
     description: "Tour-grade ball data from the iPhone in your pocket. Track every shot, know every yard.",
     url: SITE_URL,
     siteName: "True Carry",
@@ -47,7 +47,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "True Carry — The Camera Launch Monitor",
+    title: "True Carry: The Camera Launch Monitor",
     description: "Tour-grade ball data from the iPhone in your pocket.",
   },
   icons: {
@@ -85,7 +85,7 @@ const jsonLd = {
       operatingSystem: "iOS",
       applicationCategory: "SportsApplication",
       description:
-        "Turn your iPhone into a tour-grade launch monitor — ball speed, launch angle, and carry distance on the range, in a simulator, or on the course, with no extra hardware.",
+        "Turn your iPhone into a tour-grade launch monitor, ball speed, launch angle, and carry distance on the range, in a simulator, or on the course, with no extra hardware.",
       offers: {
         "@type": "Offer",
         price: "0",

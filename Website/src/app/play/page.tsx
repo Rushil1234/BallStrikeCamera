@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 
 function makeCode() {
-  // Cryptographically-random pairing code — Math.random() is predictable and
+  // Cryptographically-random pairing code, Math.random() is predictable and
   // must not be used for a value that gates access to a live session channel.
   // 9 digits (~30 bits): stage 2 of the pairing hardening; the iOS app has
   // accepted 6-10 digit codes since the 2026-07-01 build (stage 1).
@@ -61,7 +61,7 @@ export default function PlayPage() {
         setConnected(true);
       }
       if (e.data?.type === "APP_DISCONNECTED") {
-        // The phone left the live session — drop the link and return to the
+        // The phone left the live session, drop the link and return to the
         // (now re-locked) selector so the user can pair again.
         setConnected(false);
         setStage("select");
@@ -105,7 +105,7 @@ export default function PlayPage() {
     }, window.location.origin);
   }, [activeCourse, simReady, stage, connected, players, names]);
 
-  // Safety net: never sit on the launch screen without a paired phone — the
+  // Safety net: never sit on the launch screen without a paired phone, the
   // round can't start, so fall back to the (gated) selector instead of hanging.
   useEffect(() => {
     if (stage === "launching" && !connected) setStage("select");
@@ -124,7 +124,7 @@ export default function PlayPage() {
 
   function selectCourse(course: CourseOption) {
     if (course.disabled) return;
-    // Require a paired phone before a round can start — pick is locked until then.
+    // Require a paired phone before a round can start, pick is locked until then.
     if (!connected) return;
     setActiveCourse(course);
     setStage("launching");
@@ -147,7 +147,7 @@ export default function PlayPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard may be blocked in some embedded browsers — ignore
+      // clipboard may be blocked in some embedded browsers, ignore
     }
   }
 
@@ -159,7 +159,7 @@ export default function PlayPage() {
     window.history.replaceState({}, "", url.toString());
   }
 
-  // Exiting a live round ends the session for the paired phone too — so confirm
+  // Exiting a live round ends the session for the paired phone too, so confirm
   // it clearly when connected, and signal the sim/phone on the way out.
   function requestExit() {
     if (connected) setShowEndConfirm(true);
@@ -168,7 +168,7 @@ export default function PlayPage() {
 
   // Switch mode/course mid-session WITHOUT ending the phone pairing: the sim iframe
   // stays loaded and connected; the selector re-opens and picking a mode just posts a
-  // fresh START_SIM / START_RANGE to the same runtime. Clearing activeCourse matters —
+  // fresh START_SIM / START_RANGE to the same runtime. Clearing activeCourse matters , 
   // otherwise the auto-start effect would relaunch the old mode instantly.
   function switchMode() {
     setActiveCourse(null);
@@ -198,9 +198,9 @@ export default function PlayPage() {
 
   return (
     <div className="sim-host" ref={hostRef}>
-      {/* Slim top bar — always visible */}
+      {/* Slim top bar, always visible */}
       <div className="sim-bar">
-        {/* Home link only on the menu — during a session the way out is End session. */}
+        {/* Home link only on the menu, during a session the way out is End session. */}
         {stage === "select" ? (
           <a className="sim-back" href="/">← True <span className="it">Carry.</span></a>
         ) : (
@@ -226,7 +226,7 @@ export default function PlayPage() {
         )}
       </div>
 
-      {/* Sim iframe — always loaded so Supabase connection is live */}
+      {/* Sim iframe, always loaded so Supabase connection is live */}
       <div className="sim-iframe-wrap" style={{ opacity: stage === "playing" ? 1 : 0, pointerEvents: stage === "playing" ? "auto" : "none" }}>
         {src && (
           <iframe
@@ -256,12 +256,12 @@ export default function PlayPage() {
           <div className={`sim-launch-shell${connected ? " is-connected" : " is-locked"}`}>
             <section className="sim-launch-copy" aria-label="Play True Carry">
               <p className={`sim-select-kicker${connected ? "" : " waiting"}`}>
-                {connected ? "● Phone connected" : "Step 1 — pair your iPhone"}
+                {connected ? "● Phone connected" : "Step 1, pair your iPhone"}
               </p>
               <h1 className="sim-select-title">Choose how you want to play.</h1>
               <p className="sim-select-body">
                 {connected
-                  ? "Your phone is paired — pick a mode and every shot you hit feeds straight into the sim."
+                  ? "Your phone is paired, pick a mode and every shot you hit feeds straight into the sim."
                   : "Connect your iPhone with the code on the right to unlock the range and courses. The picks below stay locked until you're paired."}
               </p>
               <div className="sim-status-row">
@@ -338,7 +338,7 @@ export default function PlayPage() {
               <h2 className="sim-pairing-title">{connected ? "You're connected" : "Connect your iPhone"}</h2>
               <p className="sim-pairing-sub">
                 {connected
-                  ? "Pick a mode on the left and start hitting — your shots show up here live."
+                  ? "Pick a mode on the left and start hitting, your shots show up here live."
                   : "Open the TrueCarry app → Sim → Live Sim, then enter this code to unlock play."}
               </p>
               {!connected && qrUrl && (

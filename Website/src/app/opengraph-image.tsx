@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 // Dynamic social-share card (1200×630). Rendered once at build; used for
 // Open Graph + Twitter previews across the site.
 export const runtime = "edge";
-export const alt = "True Carry — the camera launch monitor";
+export const alt = "True Carry: the camera launch monitor";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -32,7 +32,7 @@ export default function OGImage() {
           <span style={{ color: "#c9a86a", fontStyle: "italic" }}>Carry.</span>
         </div>
         <div style={{ fontSize: 40, color: "rgba(236,228,210,0.82)", maxWidth: 820, lineHeight: 1.25 }}>
-          Tour-grade ball speed, launch, and carry — from the iPhone in your pocket. No extra hardware.
+          Tour-grade ball speed, launch, and carry, from the iPhone in your pocket. No extra hardware.
         </div>
         <div style={{ marginTop: 40, fontSize: 30, color: "rgba(236,228,210,0.55)", fontFamily: "monospace" }}>
           truecarry.golf

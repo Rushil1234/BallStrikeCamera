@@ -5,7 +5,7 @@ import SiteNav from "@/components/SiteNav";
 import SiteFooter from "@/components/SiteFooter";
 
 export const metadata: Metadata = {
-  title: "TrueCarry Bridge — Connect to GSPro or OpenGolfSim",
+  title: "TrueCarry Bridge, Connect to GSPro or OpenGolfSim",
   description:
     "One command sets up the TrueCarry Bridge so your iPhone can send shots to GSPro or OpenGolfSim over Bluetooth. No install, no warnings.",
 };
@@ -16,7 +16,7 @@ const WIN_CMD = "irm https://truecarry.vercel.app/downloads/install.ps1 | iex";
 const FAQ = [
   {
     q: "Why a command instead of an app I double-click?",
-    a: "macOS and Windows block downloaded apps from unidentified developers — that's the \"could not verify\" warning. Running this command avoids that entirely: nothing is downloaded as a blocked file, so it just runs. It's the same approach used by tools like Homebrew.",
+    a: "macOS and Windows block downloaded apps from unidentified developers, that's the \"could not verify\" warning. Running this command avoids that entirely: nothing is downloaded as a blocked file, so it just runs. It's the same approach used by tools like Homebrew.",
   },
   {
     q: "Is this safe? What does it do?",
@@ -24,7 +24,7 @@ const FAQ = [
   },
   {
     q: "Does this require Wi-Fi?",
-    a: "No — the bridge talks to your iPhone over Bluetooth LE. Your computer just needs GSPro or OpenGolfSim running.",
+    a: "No, the bridge talks to your iPhone over Bluetooth LE. Your computer just needs GSPro or OpenGolfSim running.",
   },
   {
     q: "Does it work with both GSPro and OpenGolfSim?",
@@ -91,12 +91,12 @@ export default function BridgePage() {
           <p style={{ fontSize: 16, color: "var(--muted)", lineHeight: 1.65, maxWidth: 500, margin: "0 auto" }}>
             The TrueCarry Bridge relays shots from the app on your iPhone to{" "}
             <strong style={{ color: "var(--text)" }}>GSPro</strong> or{" "}
-            <strong style={{ color: "var(--text)" }}>OpenGolfSim</strong> over Bluetooth — no Wi-Fi,
+            <strong style={{ color: "var(--text)" }}>OpenGolfSim</strong> over Bluetooth, no Wi-Fi,
             no install, and no &ldquo;unverified developer&rdquo; warnings.
           </p>
         </div>
 
-        {/* Mac — notarized download */}
+        {/* Mac, notarized download */}
         <div
           style={{
             backgroundColor: "var(--surface)",
@@ -110,7 +110,7 @@ export default function BridgePage() {
             <h2 style={{ fontSize: 18, fontWeight: 700, color: "var(--cream)" }}>On your Mac</h2>
           </div>
           <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.6, marginBottom: 16 }}>
-            Signed &amp; notarized by Apple — no warnings, no Python needed. Download, open the disk
+            Signed &amp; notarized by Apple, no warnings, no Python needed. Download, open the disk
             image, and drag <strong style={{ color: "var(--text)" }}>TrueCarry Bridge</strong> into your
             Applications folder. A golf icon ⛳︎ then appears in your menu bar when you launch it.
           </p>
@@ -156,7 +156,7 @@ export default function BridgePage() {
             ⛳︎ What happens when you open it
           </p>
           <p style={{ fontSize: 13, color: "var(--muted)", lineHeight: 1.65 }}>
-            No window will pop up — that&rsquo;s normal. TrueCarry Bridge runs quietly in the
+            No window will pop up, that&rsquo;s normal. TrueCarry Bridge runs quietly in the
             background. Look for the <strong style={{ color: "var(--text)" }}>⛳︎ TrueCarry icon in
             your menu bar</strong> (top-right of the screen, near the clock and Wi-Fi). You&rsquo;ll
             also get a notification confirming it&rsquo;s running. Click that menu-bar icon any time
@@ -189,7 +189,7 @@ export default function BridgePage() {
           </h2>
           <Step n="1" text="Make sure GSPro or OpenGolfSim is open on this computer." />
           <Step n="2" text="On your iPhone: open True Carry → Sim Mode → tap Bluetooth." />
-          <Step n="3" text="It connects automatically — swing away." />
+          <Step n="3" text="It connects automatically, swing away." />
 
           <Link
             href="/connect"

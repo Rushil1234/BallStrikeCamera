@@ -49,7 +49,7 @@ export default function TermsPage() {
           <h2>Warranty & liability</h2>
           <p>
             The service is provided “as is” without warranties. To the extent permitted by law,
-            our liability is limited to the amount you paid in the last 12 months. Play safely —
+            our liability is limited to the amount you paid in the last 12 months. Play safely , 
             you are responsible for your swing space.
           </p>
           <h2>Changes</h2>

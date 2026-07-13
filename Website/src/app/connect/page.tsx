@@ -113,7 +113,7 @@ export default function ConnectPage() {
           </h1>
           <p style={{ fontSize: 15, color: "var(--muted)", lineHeight: 1.65, maxWidth: 460, margin: "0 auto" }}>
             Keep this page open on the <strong style={{ color: "var(--text)" }}>same computer</strong> that&rsquo;s
-            running the TrueCarry Bridge. It updates automatically — no refresh needed.
+            running the TrueCarry Bridge. It updates automatically, no refresh needed.
           </p>
         </div>
 
@@ -138,7 +138,7 @@ export default function ConnectPage() {
               reachable === true
                 ? "TrueCarry Bridge is up."
                 : reachable === false
-                ? "Can't reach the bridge — start it, then keep its window open."
+                ? "Can't reach the bridge, start it, then keep its window open."
                 : "Checking…"
             }
           />
@@ -152,7 +152,7 @@ export default function ConnectPage() {
                 ? `${status.sim} found${status.port ? ` (port ${status.port})` : ""}.`
                 : reachable === true
                 ? "Start GSPro or OpenGolfSim on this computer."
-                : "—"
+                : ", "
             }
           />
           <Divider />
@@ -162,10 +162,10 @@ export default function ConnectPage() {
             title="iPhone connected"
             detail={
               status?.ready
-                ? "True Carry is paired over Bluetooth — shots will forward automatically."
+                ? "True Carry is paired over Bluetooth, shots will forward automatically."
                 : status?.simFound
                 ? "Open True Carry → Sim Mode → Bluetooth on your iPhone."
-                : "—"
+                : ", "
             }
           />
         </div>
@@ -207,21 +207,21 @@ function BannerCard({ phase, simName, shots }: { phase: Phase; simName: string; 
       color: "#D8A24A",
       bg: "rgba(216,162,74,0.10)",
       icon: "🟠",
-      title: "Bridge running — no simulator yet",
+      title: "Bridge running, no simulator yet",
       sub: "Open GSPro or OpenGolfSim, then it'll be detected automatically.",
     },
     "no-phone": {
       color: "#D8A24A",
       bg: "rgba(216,162,74,0.10)",
       icon: "🔵",
-      title: `${simName} ready — waiting for your iPhone`,
+      title: `${simName} ready, waiting for your iPhone`,
       sub: "Open True Carry → Sim Mode → Bluetooth on your iPhone.",
     },
     ready: {
       color: "#3FB68B",
       bg: "rgba(63,182,139,0.12)",
       icon: "✅",
-      title: "Connected — you're ready to play!",
+      title: "Connected, you're ready to play!",
       sub: `Shots from True Carry are forwarding to ${simName}. Go ahead and start your round.`,
     },
   };

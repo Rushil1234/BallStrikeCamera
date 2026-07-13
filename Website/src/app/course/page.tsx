@@ -31,7 +31,7 @@ export default function CoursePage() {
           <h1 className="course-title">Play real courses in True Carry</h1>
           <p className="course-desc">
             Full 18-hole courses mapped from real GPS, elevation, and satellite data.
-            No launcher needed — just click and play.
+            No launcher needed, just click and play.
           </p>
         </div>
 

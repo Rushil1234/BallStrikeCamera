@@ -5,7 +5,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      // Private, transactional, or session pages — no SEO value, keep them out
+      // Private, transactional, or session pages, no SEO value, keep them out
       // of the index (they're also excluded from the sitemap).
       disallow: [
         "/account", "/login", "/reset-password", "/auth/",

@@ -6,7 +6,7 @@ import ClubCards from "@/components/ClubCards";
 export const metadata: Metadata = {
   title: "Store",
   description:
-    "NFC club cards, stands, and gear for True Carry — the camera launch monitor. Tag every club in your bag and let your gapping build itself.",
+    "NFC club cards, stands, and gear for True Carry: the camera launch monitor. Tag every club in your bag and let your gapping build itself.",
 };
 
 type Product = {
@@ -22,7 +22,7 @@ type Product = {
 const PRODUCTS: Product[] = [
   {
     id: "full-bag",
-    name: "Club Cards — Full Bag",
+    name: "Club Cards, Full Bag",
     price: "$29",
     tag: "Fourteen NFC cards. One for every club you carry.",
     art: "14",
@@ -31,7 +31,7 @@ const PRODUCTS: Product[] = [
   },
   {
     id: "short-game",
-    name: "Club Cards — Short Game",
+    name: "Club Cards, Short Game",
     price: "$15",
     tag: "Wedges and putter. Where the scoring happens.",
     art: "6",
@@ -99,7 +99,7 @@ export default function StorePage() {
                   ) : (
                     <a
                       className="product-cta ghost"
-                      href={`mailto:rushil@truecarrygolf.com?subject=Notify%20me%20—%20${encodeURIComponent(p.name)}`}
+                      href={`mailto:rushil@truecarrygolf.com?subject=Notify%20me%20about%20${encodeURIComponent(p.name)}`}
                     >
                       Notify me
                     </a>
@@ -112,7 +112,7 @@ export default function StorePage() {
 
         <div className="store-note">
           <p>
-            Club cards pair with the True Carry app — free to start, no reader hardware needed.
+            Club cards pair with the True Carry app, free to start, no reader hardware needed.
             Tap a card on your phone and the next shot is tagged to that club.
           </p>
           <a href="/play" className="store-sim-link">While you wait, play a round in the sim →</a>
