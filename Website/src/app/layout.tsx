@@ -51,7 +51,9 @@ export const metadata: Metadata = {
     description: "Tour-grade ball data from the iPhone in your pocket.",
   },
   icons: {
-    icon: "/favicon.svg",
+    icon: [{ url: "/truecarry-header-logo.png", type: "image/png" }],
+    shortcut: "/truecarry-header-logo.png",
+    apple: "/truecarry-header-logo.png",
   },
   alternates: {
     canonical: "/",
