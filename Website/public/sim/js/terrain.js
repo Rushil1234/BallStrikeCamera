@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-17';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-17';
-import { makeFbm, makeRng } from './noise.js?v=gspro-17';
-import { SURF } from './physics.js?v=gspro-17';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-18';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-18';
+import { makeFbm, makeRng } from './noise.js?v=gspro-18';
+import { SURF } from './physics.js?v=gspro-18';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -1457,59 +1457,29 @@ export function buildCourse(hole, assets) {
         sx = wMaxX - wMinX + w.width * 2 + 20;
         sz = wMaxZ - wMinZ + w.width * 2 + 20;
       }
-      if (waters.length >= 1 || w.type === 'channel') {
-        // Cheap non-reflective plate (no scene re-render): a glassy, near-still
-        // creek/pond that mirrors the sky and treeline via the env map. Calmer,
-        // finer ripples + a near-mirror finish read as clean dark Rae's-Creek
-        // water rather than a choppy pond.
-        const flatNorm = assets.waterN.clone();
-        flatNorm.wrapS = flatNorm.wrapT = THREE.RepeatWrapping;
-        flatNorm.repeat.set(sx / 12, sz / 12);
-        const flat = new THREE.Mesh(
-          new THREE.PlaneGeometry(sx, sz),
-          new THREE.MeshStandardMaterial({
-            color: new THREE.Color(visualZones.waterColor ?? 0x0e3526).multiplyScalar(0.55),
-            roughness: 0.09, metalness: 0.0, envMapIntensity: 1.0,
-            normalMap: flatNorm, normalScale: new THREE.Vector2(0.32, 0.32),
-          }),
-        );
-        flatWaters.push(flatNorm);
-        flat.rotation.x = -Math.PI / 2;
-        flat.position.set(cx, waterLevel, cz);
-        group.add(flat);
-        continue;
-      }
-      const water = new Water(new THREE.PlaneGeometry(sx, sz), {
-        textureWidth: 384,
-        textureHeight: 384,
-        waterNormals: assets.waterN,
-        sunDirection: assets.sunDir.clone(),
-        sunColor: 0xffffff,
-        waterColor: visualZones.waterColor ?? 0x0e3526,
-        distortionScale: 2.2,
-        fog: true,
-      });
-      water.rotation.x = -Math.PI / 2;
-      water.position.set(cx, waterLevel, cz);
-      group.add(water);
-      waters.push(water);
-      if (visualZones.waterColor != null) {
-        // The reflective shader reads silver from tee height; a translucent
-        // tint plate keeps ponds/creeks reading as deep water.
-        const tint = new THREE.Mesh(
-          new THREE.PlaneGeometry(sx, sz),
-          new THREE.MeshBasicMaterial({
-            color: visualZones.waterColor,
-            transparent: true,
-            opacity: 0.45,
-            depthWrite: false,
-            fog: true,
-          }),
-        );
-        tint.rotation.x = -Math.PI / 2;
-        tint.position.set(cx, waterLevel + 0.03, cz);
-        group.add(tint);
-      }
+      // All inland water (ponds AND creeks) uses one calm glassy plate. The
+      // reflective `Water` mirror was fine on the vast open ocean but on a small
+      // pond it z-fought the shoreline (jagged white edges) and threw a harsh
+      // full-scene mirror the ball vanished under. A dark, lightly-rippled
+      // env-map plate reads as clean, still pond water and never glitches.
+      const flatNorm = assets.waterN.clone();
+      flatNorm.wrapS = flatNorm.wrapT = THREE.RepeatWrapping;
+      flatNorm.repeat.set(sx / 12, sz / 12);
+      const flat = new THREE.Mesh(
+        new THREE.PlaneGeometry(sx, sz),
+        new THREE.MeshStandardMaterial({
+          color: new THREE.Color(visualZones.waterColor ?? 0x0e3526).multiplyScalar(0.6),
+          roughness: 0.16, metalness: 0.0, envMapIntensity: 0.85,
+          normalMap: flatNorm, normalScale: new THREE.Vector2(0.3, 0.3),
+          // Push the plate's depth back so the shoreline terrain always wins the
+          // depth test — no more shimmering z-fight where water meets grass.
+          polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2,
+        }),
+      );
+      flatWaters.push(flatNorm);
+      flat.rotation.x = -Math.PI / 2;
+      flat.position.set(cx, waterLevel - 0.04, cz);   // sit just under the shoreline
+      group.add(flat);
     }
     // (combined animation hook assigned after trees/birds are built)
 
@@ -1666,8 +1636,10 @@ export function buildCourse(hole, assets) {
       if (blds.length) {
         const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
         const roofGeo = new THREE.CylinderGeometry(0.02, 0.72, 1, 4, 1);
-        const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-        const roofMat = new THREE.MeshLambertMaterial({ color: 0x4a4742 });
+        // Emissive floor so the town doesn't collapse to a black silhouette when
+        // backlit by the low sun under the grey links sky.
+        const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x33302a, emissiveIntensity: 0.6 });
+        const roofMat = new THREE.MeshLambertMaterial({ color: 0x6a6560, emissive: 0x1f1c18 });
         const bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, blds.length);
         const roofs = new THREE.InstancedMesh(roofGeo, roofMat, blds.length);
         const facades = [0x8f8271, 0x7d7264, 0x97887a, 0x857a6c, 0x6e655a];
@@ -1708,7 +1680,7 @@ export function buildCourse(hole, assets) {
       if (segs.length) {
         const wallMesh = new THREE.InstancedMesh(
           new THREE.BoxGeometry(1, 1, 1),
-          new THREE.MeshLambertMaterial({ color: 0x6d675c }),
+          new THREE.MeshLambertMaterial({ color: 0x9a9184, emissive: 0x2a2824, emissiveIntensity: 0.7 }),
           segs.length,
         );
         const m4 = new THREE.Matrix4();
@@ -1877,9 +1849,11 @@ export function buildCourse(hole, assets) {
         if (Math.hypot(rx - tee.x, rz - tee.z) < 14) continue;
         if (hasWater && waterMask(rx, rz).m > 0.05) continue;
         const s = Math.max(0.85, Math.min(2.3, rh / 14));   // real canopy height -> scale
-        const lv = 0.78 + rng() * 0.42;
-        const warm = (rng() - 0.42) * 0.32;
-        let tint = [lv * (1 + warm) * 0.98, lv * 1.18, lv * (1 - warm * 0.8) * 0.9];
+        const lv = 0.8 + rng() * 0.4;
+        // Spring-Masters Augusta is lush green — keep the per-tree variation but
+        // bias cool/green so trees don't read autumn-brown.
+        const warm = (rng() - 0.62) * 0.2;
+        let tint = [lv * (1 + warm) * 0.94, lv * 1.24, lv * (1 - warm * 0.7) * 0.92];
         const dTee = Math.hypot(rx - tee.x, rz - tee.z);
         const haze = Math.min(0.55, Math.max(0, (dTee - 240) / 620));
         if (haze > 0) tint = [tint[0] + (1.22 - tint[0]) * haze, tint[1] + (1.24 - tint[1]) * haze, tint[2] + (1.3 - tint[2]) * haze];
@@ -1975,14 +1949,14 @@ export function buildCourse(hole, assets) {
       // Augusta's azaleas grow in big flowering banks against the tree line and
       // behind greens, so parkland gets many more, larger clumps than the sparse
       // links whin. Cluster seeds spawn a tight burst of blooms for that mass.
-      const maxPlaced = gorse ? 200 : 360;
+      const maxPlaced = gorse ? 200 : 720;
       const bandMax = gorse ? 60 : 54;
       let placed = 0;
       for (let i = 0; i < 6000 && placed < maxPlaced; i++) {
         const x = minX + 14 + aRng() * (maxX - minX - 28);
         const z = minZ + 14 + aRng() * (maxZ - minZ - 28);
         const p = pathInfo(x, z);
-        if (p.dist < fhw + 8 || p.dist > fhw + bandMax) continue;
+        if (p.dist < fhw + 3 || p.dist > fhw + bandMax) continue;
         if (inFeaturePolys(osmFairways, x, z) || inFeaturePolys(osmGreens, x, z)
           || inFeaturePolys(osmTees, x, z) || inFeaturePolys(osmBunkers, x, z)) continue;
         if (ellipseVal(hole.green, x, z) < 2.2) continue;
@@ -2004,15 +1978,17 @@ export function buildCourse(hole, assets) {
           placed++;
           continue;
         }
-        // A clump: one dominant colour, several blooms tightly grouped.
-        const clumpN = gorse ? 1 : (2 + Math.floor(aRng() * 4));
+        // A clump: one dominant colour, several blooms tightly grouped. Parkland
+        // (Augusta) gets big, dense flowering banks so they read clearly against
+        // the dense real treeline.
+        const clumpN = gorse ? 1 : (4 + Math.floor(aRng() * 5));
         const tint = palette[Math.floor(aRng() * palette.length)];
         for (let c = 0; c < clumpN && placed < maxPlaced; c++) {
-          const ox = c === 0 ? 0 : (aRng() - 0.5) * 3.4;
-          const oz = c === 0 ? 0 : (aRng() - 0.5) * 3.4;
+          const ox = c === 0 ? 0 : (aRng() - 0.5) * 4.4;
+          const oz = c === 0 ? 0 : (aRng() - 0.5) * 4.4;
           spots.push({
             x: x + ox, z: z + oz, h: heightAt(x + ox, z + oz),
-            s: gorse ? (0.15 + aRng() * 0.16) : (0.26 + aRng() * 0.36),
+            s: gorse ? (0.15 + aRng() * 0.16) : (0.36 + aRng() * 0.46),
             ry: aRng() * Math.PI * 2,
             tilt: 0,
             kind: aRng() < 0.5 ? 2 : 3,

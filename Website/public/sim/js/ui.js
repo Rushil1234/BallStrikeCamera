@@ -1,7 +1,7 @@
 // HUD: telemetry panels, 3-click swing meter, toasts, scorecard,
 // and the top-down minimap (drawn straight from the hole definition).
 
-import { fmtYards } from './clubs.js?v=gspro-17';
+import { fmtYards } from './clubs.js?v=gspro-18';
 
 const $ = (id) => document.getElementById(id);
 
