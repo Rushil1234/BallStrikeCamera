@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-19';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-19';
-import { makeFbm, makeRng } from './noise.js?v=gspro-19';
-import { SURF } from './physics.js?v=gspro-19';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-20';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-20';
+import { makeFbm, makeRng } from './noise.js?v=gspro-20';
+import { SURF } from './physics.js?v=gspro-20';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -2006,6 +2006,38 @@ export function buildCourse(hole, assets) {
             tint: [tint[0], tint[1], tint[2]],
           });
           placed++;
+        }
+      }
+      // Greenside beds: Augusta's signature masses of azalea + dogwood hugging
+      // the green complex. Ring the green just off the putting surface so every
+      // approach frames a wall of bloom behind the flag.
+      if (!gorse) {
+        const gdef = hole.green;
+        const gRng = makeRng(hole.seed * 53 + 29);
+        const gcos = Math.cos(gdef.rot || 0), gsin = Math.sin(gdef.rot || 0);
+        let gp = 0;
+        for (let a = 0; a < Math.PI * 2 && gp < 96; a += 0.15) {
+          const rr = Math.sqrt(1.32 + gRng() * 0.75);      // just outside the green edge
+          const lx = Math.cos(a) * gdef.rx * rr, lz = Math.sin(a) * gdef.rz * rr;
+          const wx = gdef.cx + lx * gcos - lz * gsin;
+          const wz = gdef.cz + lx * gsin + lz * gcos;
+          if (wx < minX + 6 || wx > maxX - 6 || wz < minZ + 6 || wz > maxZ - 6) continue;
+          if (inFeaturePolys(osmFairways, wx, wz) || inFeaturePolys(osmTees, wx, wz) || inFeaturePolys(osmBunkers, wx, wz)) continue;
+          if (hasWater && waterMask(wx, wz).m > 0.05) continue;
+          const dw = gRng() < 0.24;
+          const tint = dw ? dogwoodTints[Math.floor(gRng() * dogwoodTints.length)] : palette[Math.floor(gRng() * palette.length)];
+          const clumpN = 3 + Math.floor(gRng() * 4);
+          for (let c = 0; c < clumpN && gp < 96; c++) {
+            const ox = (gRng() - 0.5) * 3.2, oz = (gRng() - 0.5) * 3.2;
+            spots.push({
+              x: wx + ox, z: wz + oz, h: heightAt(wx + ox, wz + oz),
+              s: dw ? (0.5 + gRng() * 0.3) : (0.36 + gRng() * 0.42),
+              ry: gRng() * Math.PI * 2, tilt: 0,
+              kind: dw ? DOGWOOD : (gRng() < 0.5 ? 2 : 3),
+              tint: [tint[0], tint[1], tint[2]],
+            });
+            gp++;
+          }
         }
       }
     }
