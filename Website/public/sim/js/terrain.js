@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-18';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-18';
-import { makeFbm, makeRng } from './noise.js?v=gspro-18';
-import { SURF } from './physics.js?v=gspro-18';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-19';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-19';
+import { makeFbm, makeRng } from './noise.js?v=gspro-19';
+import { SURF } from './physics.js?v=gspro-19';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -988,8 +988,8 @@ export function buildCourse(hole, assets) {
           // so it was the single biggest cost on the coastal course. Distant
           // rippled water doesn't need a sharp mirror — 256 is plenty and cuts
           // the per-frame reflection cost to a quarter.
-          textureWidth: 256,
-          textureHeight: 256,
+          textureWidth: 160,
+          textureHeight: 160,
           waterNormals: assets.waterN,
           sunDirection: assets.sunDir.clone(),
           // Warm sun so the glint reads as sparkling sunlight on the Pacific
@@ -1012,6 +1012,17 @@ export function buildCourse(hole, assets) {
         ocean.material.polygonOffset = true;
         ocean.material.polygonOffsetFactor = 3;
         ocean.material.polygonOffsetUnits = 3;
+        // BIGGEST coastal cost: the Water reflector re-renders the ENTIRE scene
+        // (every tree, rock, the lot) into its mirror texture every frame. Render
+        // it only every 2nd frame instead — ocean chop drifts slowly enough that
+        // a 30fps reflection is invisible, and it halves the reflection pass.
+        {
+          const _reflect = ocean.onBeforeRender;
+          let _f = 0;
+          ocean.onBeforeRender = function (renderer, sc, cam, geo, mat, grp) {
+            if ((_f++ & 1) === 0) _reflect.call(this, renderer, sc, cam, geo, mat, grp);
+          };
+        }
         group.add(ocean);
         oceanMesh = ocean;
         // Deep-blue tint plate with a depth gradient: rich near-shore water that
@@ -1363,7 +1374,7 @@ export function buildCourse(hole, assets) {
       // Weathered granite; per-instance colour (below) spreads it across a
       // warm-tan to cool wet-grey range so the rocks don't read as one clump.
       const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.97, metalness: 0.02 });
-      const rockCount = Math.min(200, Math.max(60, coastEdgePts.length * 8));
+      const rockCount = Math.min(110, Math.max(50, coastEdgePts.length * 5));
       const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
       const rm = new THREE.Matrix4();
       const rq = new THREE.Quaternion();
@@ -1866,8 +1877,8 @@ export function buildCourse(hole, assets) {
       }
     }
 
-    const candidates = (treeless || realTrees) ? 0 : Math.floor((hasOcean ? 960 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
-    const maxRandomTrees = hasOcean ? 245 : (forest ? 950 : 460);
+    const candidates = (treeless || realTrees) ? 0 : Math.floor((hasOcean ? 700 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
+    const maxRandomTrees = hasOcean ? 160 : (forest ? 950 : 460);
     for (let i = 0; i < candidates && spots.length < maxRandomTrees; i++) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
       const z = minZ + 14 + rng() * (maxZ - minZ - 28);
@@ -2000,7 +2011,7 @@ export function buildCourse(hole, assets) {
     }
     if (hasOcean) {
       const coastTreeRng = makeRng(hole.seed * 211 + 5);
-      const maxCoastalTrees = Math.min(120, 42 + (hole.id === 7 || hole.id === 8 || hole.id === 17 || hole.id === 18 ? 34 : 0));
+      const maxCoastalTrees = Math.min(80, 30 + (hole.id === 7 || hole.id === 8 || hole.id === 17 || hole.id === 18 ? 24 : 0));
       let made = 0;
       for (let i = 0; i < coastEdgePts.length * 7 && made < maxCoastalTrees && spots.length < 560; i++) {
         const idx = Math.floor(coastTreeRng() * (coastEdgePts.length - 1));
