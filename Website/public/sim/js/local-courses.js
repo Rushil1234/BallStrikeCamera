@@ -1,16 +1,17 @@
-import { HOLES } from './holes.js?v=gspro-16';
-import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=gspro-16';
-import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=gspro-16';
-import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=gspro-16';
-import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=gspro-16';
-import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=gspro-16';
-import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=gspro-16';
-import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=gspro-16';
-import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=gspro-16';
-import { STANDREWS_PRIVATE_HOLES, STANDREWS_PRIVATE_WORLD } from './standrews-private.js?v=gspro-16';
-import { STANDREWS_OSM_BY_HOLE } from './standrews-osm.js?v=gspro-16';
-import { STANDREWS_ELEVATION } from './standrews-elevation.js?v=gspro-16';
-import { STANDREWS_WORLD_REALISM } from './standrews-world-data.js?v=gspro-16';
+import { HOLES } from './holes.js?v=gspro-17';
+import { PEBBLE_PRIVATE_HOLES, PEBBLE_PRIVATE_WORLD } from './pebble-private.js?v=gspro-17';
+import { PEBBLE_OSM_BY_HOLE, PEBBLE_OSM_WORLD } from './pebble-osm.js?v=gspro-17';
+import { PEBBLE_ELEVATION } from './pebble-elevation.js?v=gspro-17';
+import { PEBBLE_WORLD_REALISM } from './pebble-world-data.js?v=gspro-17';
+import { AUGUSTA_PRIVATE_HOLES, AUGUSTA_PRIVATE_WORLD } from './augusta-private.js?v=gspro-17';
+import { AUGUSTA_OSM_BY_HOLE } from './augusta-osm.js?v=gspro-17';
+import { AUGUSTA_ELEVATION } from './augusta-elevation.js?v=gspro-17';
+import { AUGUSTA_WORLD_REALISM } from './augusta-world-data.js?v=gspro-17';
+import { AUGUSTA_TREES } from './augusta-trees.js?v=gspro-17';
+import { STANDREWS_PRIVATE_HOLES, STANDREWS_PRIVATE_WORLD } from './standrews-private.js?v=gspro-17';
+import { STANDREWS_OSM_BY_HOLE } from './standrews-osm.js?v=gspro-17';
+import { STANDREWS_ELEVATION } from './standrews-elevation.js?v=gspro-17';
+import { STANDREWS_WORLD_REALISM } from './standrews-world-data.js?v=gspro-17';
 
 const PEBBLE_HOLES_WITH_OSM = PEBBLE_PRIVATE_HOLES.map((hole) => ({
   ...hole,
@@ -90,6 +91,9 @@ export const LOCAL_COURSES = [
         roughColor: 0x46812d, deepColor: 0x396c26,
         sandColor: 0xf3eede,
         waterColor: 0x123a2b,
+        // Real treelines: ~25k tree positions + canopy heights measured from
+        // USGS 3DEP LiDAR (public domain) — the actual trees, not a scatter.
+        realTrees: AUGUSTA_TREES,
         // Amen Corner's stone bridges over Rae's Creek — Augusta's most
         // recognisable furniture. Each renders only on the holes it sits in.
         bridges: [

@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-16';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-16';
-import { makeFbm, makeRng } from './noise.js?v=gspro-16';
-import { SURF } from './physics.js?v=gspro-16';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-17';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-17';
+import { makeFbm, makeRng } from './noise.js?v=gspro-17';
+import { SURF } from './physics.js?v=gspro-17';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -1858,7 +1858,41 @@ export function buildCourse(hole, assets) {
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];
-    const candidates = treeless ? 0 : Math.floor((hasOcean ? 960 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
+
+    // Real tree placement from LiDAR (see augusta-trees.js). When a course ships
+    // measured canopy positions, plant trees exactly where they stand — real
+    // treelines from the USGS 3DEP point cloud — instead of a plausible scatter.
+    const realTrees = visualZones.realTrees || null;
+    if (realTrees && realTrees.length) {
+      const rMax = 2600;                              // per-hole render cap
+      const pineShare = forest?.pineShare ?? 0.85;
+      for (let i = 0; i < realTrees.length && spots.length < rMax; i++) {
+        const rx = realTrees[i][0], rz = realTrees[i][1], rh = realTrees[i][2];
+        if (rx < minX + 6 || rx > maxX - 6 || rz < minZ + 6 || rz > maxZ - 6) continue;
+        const p = pathInfo(rx, rz);
+        if (p.dist < fhw + 4) continue;               // never on the fairway itself
+        if (inFeaturePolys(osmFairways, rx, rz) || inFeaturePolys(osmGreens, rx, rz)
+          || inFeaturePolys(osmTees, rx, rz) || inFeaturePolys(osmBunkers, rx, rz)) continue;
+        if (ellipseVal(hole.green, rx, rz) < 2.4) continue;
+        if (Math.hypot(rx - tee.x, rz - tee.z) < 14) continue;
+        if (hasWater && waterMask(rx, rz).m > 0.05) continue;
+        const s = Math.max(0.85, Math.min(2.3, rh / 14));   // real canopy height -> scale
+        const lv = 0.78 + rng() * 0.42;
+        const warm = (rng() - 0.42) * 0.32;
+        let tint = [lv * (1 + warm) * 0.98, lv * 1.18, lv * (1 - warm * 0.8) * 0.9];
+        const dTee = Math.hypot(rx - tee.x, rz - tee.z);
+        const haze = Math.min(0.55, Math.max(0, (dTee - 240) / 620));
+        if (haze > 0) tint = [tint[0] + (1.22 - tint[0]) * haze, tint[1] + (1.24 - tint[1]) * haze, tint[2] + (1.3 - tint[2]) * haze];
+        spots.push({
+          x: rx, z: rz, h: heightAt(rx, rz), s,
+          ry: rng() * Math.PI * 2, tilt: (rng() - 0.5) * 0.06,
+          kind: rng() < pineShare ? (rng() < 0.5 ? 4 : 5) : (rng() < 0.5 ? 2 : 3),
+          tint,
+        });
+      }
+    }
+
+    const candidates = (treeless || realTrees) ? 0 : Math.floor((hasOcean ? 960 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
     const maxRandomTrees = hasOcean ? 245 : (forest ? 950 : 460);
     for (let i = 0; i < candidates && spots.length < maxRandomTrees; i++) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
