@@ -343,7 +343,9 @@ final class LiveParityTestRunner {
                 let r = Int(bytes[i]); let g = Int(bytes[i + 1]); let b = Int(bytes[i + 2])
                 let brightness = (r + g + b) / 3
                 let spread = max(r, max(g, b)) - min(r, min(g, b))
-                bright[row * cols + col] = brightness >= 125 && spread <= 72
+                // White criterion, plus the lime range-ball signature (collapsed blue).
+                bright[row * cols + col] = (brightness >= 125 && spread <= 72)
+                    || (brightness >= 130 && g - b >= 110 && r < g && r * 2 > g)
             }
         }
         var visited = [Bool](repeating: false, count: cols * rows)

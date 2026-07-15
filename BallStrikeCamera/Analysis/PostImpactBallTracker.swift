@@ -1338,8 +1338,14 @@ final class PostImpactBallTracker {
                 let b = Int(bytes[i + 2])
                 let brightness = (r + g + b) / 3
                 let spread = max(r, max(g, b)) - min(r, min(g, b))
-                var qualifies = brightness >= config.brightnessThreshold
-                    && spread <= config.maxChannelSpread
+                // Lime range ball: fails the spread cap (saturated yellow-green) but its
+                // BLUE channel collapses — b/g ≈ 0.18 vs turf's 0.60 (measured on
+                // shot_20260712_081756_933). Frames here are darkened, so the brightness
+                // floor is relative to the configured threshold, not an absolute.
+                let isLime = g - b >= 110 && r < g && r * 2 > g
+                var qualifies = (brightness >= config.brightnessThreshold
+                    && spread <= config.maxChannelSpread)
+                    || (isLime && brightness >= config.brightnessThreshold - 25)
                 // Static-glare suppression: a pixel must be brighter than its own pre-impact
                 // baseline to count — turf glare is bright in BOTH, the moving ball only now.
                 if qualifies, let base = baseline {
@@ -2498,6 +2504,7 @@ final class V2Engine {
         var vplane = [UInt8](repeating: 0, count: W * H)
         var splane = [UInt8](repeating: 0, count: W * H)
         var luma = [Float](repeating: 0, count: W * H)
+        var lime = [Bool](repeating: false, count: W * H)  // collapsed-blue lime-ball signature
         var hist = [Int](repeating: 0, count: 181)         // turf-hue histogram (s>=60, v>=60)
 
         for p in 0..<(W * H) {
@@ -2518,6 +2525,10 @@ final class V2Engine {
             vplane[p] = UInt8(vv)
             splane[p] = UInt8(ss)
             luma[p] = Float(r + g + b) / 3.0
+            // Lime range ball: hue sits only ~25-30 steps from turf, so the hue-distance
+            // channel below is blind to it — but its blue channel collapses (b/g 0.18 vs
+            // turf 0.60, measured) while staying bright. Mark it directly.
+            lime[p] = g - b >= 110 && r < g && r * 2 > g && (r + g + b) / 3 >= 130
             if ss >= 60 && vv >= 60 { hist[Int(h180)] += 1 }
         }
         // median turf hue from the histogram
@@ -2531,6 +2542,7 @@ final class V2Engine {
         for p in 0..<(W * H) {
             if vplane[p] < 60 { dh[p] = 0; continue }
             if splane[p] < 40 { dh[p] = 255; continue }
+            if lime[p] { dh[p] = 255; continue }
             let d0 = abs(Int(hplane[p]) - turf)
             let d = min(d0, 180 - d0)
             dh[p] = UInt8(min(255, d * 4))

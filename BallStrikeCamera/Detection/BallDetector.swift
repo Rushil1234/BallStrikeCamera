@@ -99,14 +99,26 @@ final class BallDetector {
 
                 if brightness > maxBrightnessSeen { maxBrightnessSeen = brightness }
 
-                // White balls tend to be bright with modest channel spread.
+                // White balls tend to be bright with modest channel spread. Lime range
+                // balls fail that spread test (measured (202,230,42), spread 188) but
+                // their BLUE channel collapses — b/g 0.18 vs turf's 0.60 — which neither
+                // turf nor white ever does. The white specular core and the lime body
+                // cluster together, so the minimum-pixel gate is met easily.
+                // r < g is load-bearing: golden sunlit grass reads (240,189,4) — red ABOVE
+                // green — while the lime ball is green-dominant (207,227,2 measured).
+                let isLime = g - b >= 110 && r < g && r * 2 > g
                 if brightness >= configuration.brightnessThreshold {
-                    if spread <= configuration.maxChannelSpread {
+                    if spread <= configuration.maxChannelSpread || isLime {
                         brightX.append(x)
                         brightY.append(y)
                     } else {
                         brightIgnoringSpread += 1
                     }
+                } else if brightness >= 130, isLime {
+                    // Lime body in softer light sits under the white threshold but far
+                    // above turf brightness (~100-120), and turf never passes the blue gate.
+                    brightX.append(x)
+                    brightY.append(y)
                 }
             }
         }
@@ -288,9 +300,15 @@ final class BallDetector {
                 let b = Int(row[idx]), g = Int(row[idx + 1]), r = Int(row[idx + 2])
                 let brightness = (r + g + b) / 3
                 let spread = max(r, max(g, b)) - min(r, min(g, b))
-                if brightness >= coreBrightness && spread <= configuration.maxChannelSpread {
+                // Same lime signature as the detection scan: collapsed blue channel.
+                // r < g is load-bearing: golden sunlit grass reads (240,189,4) — red ABOVE
+                // green — while the lime ball is green-dominant (207,227,2 measured).
+                let isLime = g - b >= 110 && r < g && r * 2 > g
+                if brightness >= coreBrightness && (spread <= configuration.maxChannelSpread || isLime) {
                     mask[y * winW + x] = 2
-                } else if brightness >= rimBrightness && spread <= rimSpread {
+                } else if brightness >= 130 && isLime {
+                    mask[y * winW + x] = 2
+                } else if brightness >= rimBrightness && (spread <= rimSpread || isLime) {
                     mask[y * winW + x] = 1
                 }
             }
