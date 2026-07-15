@@ -102,6 +102,11 @@ final class LessonLibrary: ObservableObject {
         }
     }
 
+    /// Main-path units: universal skills every golfer walks through, in intake order.
+    var coreTracks: [LessonTrack] { orderedTracks.filter { $0.kind == "core" } }
+    /// Off-path problem-fix tracks, opened from their own cards.
+    var fixTracks: [LessonTrack] { curriculum.tracks.filter { $0.kind == "fix" } }
+
     func status(of lesson: Lesson) -> LessonStatus {
         if let p = progress[lesson.id], p.status == .completed || p.status == .mastered {
             return p.status

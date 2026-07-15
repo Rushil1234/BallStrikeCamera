@@ -3155,7 +3155,7 @@ struct CourseModeGPSHoleView: View {
         }
         .sheet(isPresented: $showCaddie) {
             caddieSheet
-                .presentationDetents([.height(380), .medium])
+                .presentationDetents([.medium, .large])
                 .tcAppearance()
         }
         .confirmationDialog(
@@ -3789,8 +3789,12 @@ struct CourseModeGPSHoleView: View {
                             .foregroundColor(TCTheme.textMuted)
                         Spacer()
                     } else if let s = caddieResult {
-                        caddieResultCard(s)
-                        Spacer()
+                        // Scrolls so the layered card (odds + swing note + tightest pick) is
+                        // never clipped at the medium detent.
+                        ScrollView(showsIndicators: false) {
+                            caddieResultCard(s)
+                                .padding(.bottom, 24)
+                        }
                     } else {
                         Spacer()
                         VStack(spacing: 12) {
@@ -3848,6 +3852,15 @@ struct CourseModeGPSHoleView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(TCTheme.textSecondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !s.swingNote.isEmpty {
+                Text(s.swingNote)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(TCTheme.sage)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             // Adjustment chips
@@ -3912,10 +3925,19 @@ struct CourseModeGPSHoleView: View {
 
     private func caddieTightestBlurb(_ t: CaddieEngine.TightestPick) -> String {
         let base = "Your most repeatable club at this number — carries \(t.typicalYards)y within about ±\(t.spreadYards)y."
-        if t.greenHits == 0 {
-            return base + " But none of its \(t.greenSamples) tracked shots would have finished on the green."
+        if t.greenHits > 0 {
+            return base + " \(t.greenHits) of \(t.greenSamples) tracked shots would have finished on the green."
         }
-        return base + " \(t.greenHits) of \(t.greenSamples) tracked shots would have finished on the green."
+        if t.reached == 0 {
+            return base + " But it hasn't shown the carry — none of its \(t.greenSamples) tracked shots reached this green."
+        }
+        if t.longMisses > t.shortMisses {
+            return base + " But none finished on the green — its misses run past the back."
+        }
+        if t.shortMisses > t.longMisses {
+            return base + " But none finished on the green — it usually comes up just short."
+        }
+        return base + " But none of its \(t.greenSamples) tracked shots would have finished on the green."
     }
 
     private func caddieStat(_ label: String, _ value: String) -> some View {

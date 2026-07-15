@@ -86,6 +86,9 @@ struct LessonTrack: Codable, Identifiable {
     var focusAreas: [FocusArea]
     /// Minimum skill level the track assumes (newcomers get foundations first regardless).
     var lessons: [Lesson]
+    /// "core" = on the main path (universal skills) · "fix" = off-path, opened from the
+    /// Fix My Game cards (personal problems like a slice or hook).
+    var kind: String = "core"
 }
 
 struct Lesson: Codable, Identifiable {
@@ -414,5 +417,19 @@ extension QuizQuestion {
         answers      = try c.decode([String].self, forKey: .answers)
         correctIndex = try c.decode(Int.self, forKey: .correctIndex)
         why          = try c.decodeIfPresent(String.self, forKey: .why) ?? ""
+    }
+}
+
+extension LessonTrack {
+    private enum K: String, CodingKey { case id, title, subtitle, icon, focusAreas, lessons, kind }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        id         = try c.decode(String.self, forKey: .id)
+        title      = try c.decode(String.self, forKey: .title)
+        subtitle   = try c.decodeIfPresent(String.self, forKey: .subtitle) ?? ""
+        icon       = try c.decodeIfPresent(String.self, forKey: .icon) ?? "figure.golf"
+        focusAreas = try c.decodeIfPresent([FocusArea].self, forKey: .focusAreas) ?? []
+        lessons    = try c.decode([Lesson].self, forKey: .lessons)
+        kind       = try c.decodeIfPresent(String.self, forKey: .kind) ?? "core"
     }
 }

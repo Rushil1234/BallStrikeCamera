@@ -15,6 +15,7 @@ struct LessonsHomeView: View {
     @State private var practiceTrack: LessonTrack?
     @State private var completedUnitTitle: String?
     @State private var selectedRead: CoachSuggestion?
+    @State private var fixTrackSheet: LessonTrack?
 
     private var isPro: Bool { !session.entitlementVM.isFreeTier }
 
@@ -156,6 +157,13 @@ struct LessonsHomeView: View {
             CoachReadDetailView(read: read, shots: recentShots) { lessonId in
                 selectedRead = nil
                 if let lesson = library.lesson(lessonId) { activeLesson = lesson }
+            }
+            .tcAppearance()
+        }
+        .sheet(item: $fixTrackSheet) { track in
+            FixTrackSheet(track: track) { lesson in
+                fixTrackSheet = nil
+                activeLesson = lesson
             }
             .tcAppearance()
         }
@@ -539,13 +547,104 @@ struct LessonsHomeView: View {
 
     private var roadmapSection: some View {
         VStack(spacing: 18) {
-            ForEach(Array(library.orderedTracks.enumerated()), id: \.element.id) { unitIndex, track in
+            ForEach(Array(library.coreTracks.enumerated()), id: \.element.id) { unitIndex, track in
                 VStack(spacing: 0) {
                     unitBanner(track, number: unitIndex + 1)
                     roadPath(track)
                 }
+                if unitIndex == 0 { fixTracksSection }
             }
         }
+    }
+
+    // MARK: Fix My Game (off-path, personal problem tracks — clickable cards)
+
+    /// Which fix track the player's OWN data points at (measured ball curve first,
+    /// then camera faults) — that card wears the RECOMMENDED badge.
+    private var recommendedFixId: String? {
+        let recent = recentShots.suffix(30).filter { !$0.isBadShot && $0.metrics.ballSpeedMph > 0 }
+        if recent.count >= 5 {
+            let axis = recent.map { $0.metrics.spinAxisDegrees }.reduce(0, +) / Double(recent.count)
+            if axis > 4 { return "slice" }
+            if axis < -4 { return "hook" }
+        }
+        let faults = library.playerModel.persistentFaults
+        if faults.contains("steep_delivery") { return "slice" }
+        if faults.contains("shallow_delivery") { return "hook" }
+        return nil
+    }
+
+    @ViewBuilder
+    private var fixTracksSection: some View {
+        let fixes = library.fixTracks
+        if !fixes.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("FIX MY GAME")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundColor(TCTheme.textMuted)
+                    .tracking(1.6)
+                Text("Side quests — jump in whenever your ball flight asks for one.")
+                    .font(.system(size: 13))
+                    .foregroundColor(TCTheme.textUltraMuted)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(fixes) { track in
+                            fixCard(track)
+                        }
+                    }
+                }
+            }
+            .padding(.vertical, 6)
+        }
+    }
+
+    private func fixCard(_ track: LessonTrack) -> some View {
+        let done = track.lessons.filter {
+            let st = library.status(of: $0); return st == .completed || st == .mastered
+        }.count
+        let recommended = track.id == recommendedFixId
+        return Button {
+            if requirePro() { fixTrackSheet = track }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: track.icon)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                    Spacer()
+                    if recommended {
+                        Text("FOR YOU")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundColor(Color(red: 0.55, green: 0.25, blue: 0.1))
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Capsule().fill(Color.white))
+                    }
+                }
+                Spacer(minLength: 2)
+                Text(track.title)
+                    .font(.system(size: 17, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.leading)
+                Text("\(done)/\(track.lessons.count) lessons")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            .padding(14)
+            .frame(width: 170, height: 120, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: track.id == "slice"
+                            ? [Color(red: 0.90, green: 0.45, blue: 0.20), Color(red: 0.70, green: 0.28, blue: 0.12)]
+                            : [Color(red: 0.55, green: 0.35, blue: 0.85), Color(red: 0.38, green: 0.22, blue: 0.65)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing))
+            )
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(recommended ? Color.white.opacity(0.8) : Color.white.opacity(0.15),
+                              lineWidth: recommended ? 2 : 1))
+            .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
+        }
+        .buttonStyle(.plain)
     }
 
     private func unitBanner(_ track: LessonTrack, number: Int) -> some View {
@@ -559,11 +658,11 @@ struct LessonsHomeView: View {
                     .foregroundColor(.white.opacity(0.85))
                     .tracking(1.5)
                 Text(track.title)
-                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .font(.system(size: 22, weight: .black, design: .rounded))
                     .foregroundColor(.white)
                 Text(track.subtitle)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.85))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.88))
             }
             Spacer()
             ZStack {
@@ -580,11 +679,24 @@ struct LessonsHomeView: View {
         }
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(trackCompleted(track)
-                      ? LinearGradient(colors: [Color(red: 0.30, green: 0.55, blue: 0.28), Color(red: 0.20, green: 0.42, blue: 0.20)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                      : LinearGradient(colors: [Color(red: 0.72, green: 0.55, blue: 0.18), Color(red: 0.55, green: 0.40, blue: 0.12)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                      ? LinearGradient(colors: [Color(red: 0.30, green: 0.60, blue: 0.30), Color(red: 0.18, green: 0.44, blue: 0.22)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                      : unitGradient(number))
         )
+        .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
+    }
+
+    /// Each unit gets its own vivid identity color, Duolingo-section style.
+    private func unitGradient(_ number: Int) -> LinearGradient {
+        let palettes: [[Color]] = [
+            [Color(red: 0.85, green: 0.62, blue: 0.15), Color(red: 0.65, green: 0.44, blue: 0.10)],  // gold
+            [Color(red: 0.18, green: 0.60, blue: 0.72), Color(red: 0.10, green: 0.42, blue: 0.55)],  // teal
+            [Color(red: 0.80, green: 0.35, blue: 0.45), Color(red: 0.60, green: 0.22, blue: 0.34)],  // rose
+            [Color(red: 0.45, green: 0.50, blue: 0.85), Color(red: 0.30, green: 0.33, blue: 0.65)],  // indigo
+        ]
+        let p = palettes[(number - 1) % palettes.count]
+        return LinearGradient(colors: p, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     /// The winding node path: fixed row height so the dotted connector is a simple
@@ -709,10 +821,10 @@ struct LessonsHomeView: View {
                     }
                 }
                 Text(label)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(state == .locked ? TCTheme.textUltraMuted : TCTheme.textPrimary)
                     .lineLimit(1)
-                    .frame(maxWidth: 130)
+                    .frame(maxWidth: 140)
             }
         }
         .buttonStyle(.plain)
@@ -1098,5 +1210,67 @@ struct CoachReadDetailView: View {
 
     private func fmt(_ v: Double, _ kind: SwingMetricKind) -> String {
         kind == .tempoRatio ? String(format: "%.1f", v) : "\(Int(v))\(kind.unit)"
+    }
+}
+
+// MARK: - Fix track sheet (off-path lesson list)
+
+struct FixTrackSheet: View {
+    let track: LessonTrack
+    let onOpen: (Lesson) -> Void
+    @ObservedObject private var library = LessonLibrary.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                TrueCarryBackground().ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text(track.subtitle)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(TCTheme.textSecondary)
+                        ForEach(track.lessons) { lesson in
+                            let status = library.status(of: lesson)
+                            let locked = status == .locked
+                            let done = status == .completed || status == .mastered
+                            Button { if !locked { onOpen(lesson) } } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: done ? "checkmark.circle.fill" : (locked ? "lock.fill" : lesson.icon))
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundColor(done ? TCTheme.sage : (locked ? TCTheme.textUltraMuted : TCTheme.gold))
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(lesson.title)
+                                            .font(.system(size: 17, weight: .bold))
+                                            .foregroundColor(locked ? TCTheme.textUltraMuted : TCTheme.textPrimary)
+                                        Text("\(lesson.subtitle) · \(lesson.minutes) min")
+                                            .font(.system(size: 13))
+                                            .foregroundColor(TCTheme.textMuted)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(TCTheme.textUltraMuted)
+                                }
+                                .tcCard(padding: 14)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(locked)
+                        }
+                        Spacer(minLength: 40)
+                    }
+                    .padding(.horizontal, TCTheme.hPad)
+                    .padding(.top, 12)
+                }
+            }
+            .navigationTitle(track.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }.foregroundColor(TCTheme.sage)
+                }
+            }
+        }
     }
 }

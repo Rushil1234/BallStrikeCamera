@@ -121,6 +121,7 @@ struct LessonPlayerView: View {
     }
 
     private func advance() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         library.completeStep(step, in: lesson)
         if isLast {
             if let record = sessionRecord {
@@ -260,7 +261,7 @@ struct LessonPlayerView: View {
             ForEach(step.quiz) { q in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(q.question)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundColor(TCTheme.textPrimary)
                     ForEach(Array(q.answers.enumerated()), id: \.offset) { idx, answer in
                         let picked = quizSelections[q.question] == idx
@@ -268,7 +269,7 @@ struct LessonPlayerView: View {
                         Button { quizSelections[q.question] = idx } label: {
                             HStack {
                                 Text(answer)
-                                    .font(.system(size: 14, weight: .semibold))
+                                    .font(.system(size: 16, weight: .semibold))
                                     .foregroundColor(TCTheme.textPrimary)
                                 Spacer()
                                 if picked {

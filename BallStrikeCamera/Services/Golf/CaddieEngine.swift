@@ -10,11 +10,15 @@ import Foundation
 /// have finished on this green — carried at least to the front edge, didn't roll past the back,
 /// and stayed inside the green's width. That empirical rate is blended with a Normal-model
 /// estimate (mean = the golfer's average carry, sd = their spread), weighted toward the real
-/// results as the sample grows. The blend keeps small samples honest without letting a club whose
-/// *average* merely sits near the number outrank one that has actually held the green. A second
-/// "tightest grouping" pick surfaces the most repeatable club at this yardage when it differs
-/// from the best-odds pick. If nothing clears a small threshold the shot isn't a green-light —
-/// the engine falls back to a smart-advance (layup) pick, or nil if there's no data at all.
+/// results as the sample grows, and the model share is further gated by demonstrated reach — a
+/// club that has never carried the distance can't outrank one that has, no matter how close its
+/// average sits. The blend keeps small samples honest without letting a club whose *average*
+/// merely sits near the number outrank one that has actually held the green. The pick ships with
+/// a caddie-style swing note (full swing / stock / take a little off, e.g. "hit 7 iron about
+/// 148y"), and a second "tightest grouping" pick surfaces the most repeatable club at this
+/// yardage when it differs from the best-odds pick. If nothing clears a small threshold the shot
+/// isn't a green-light — the engine falls back to a smart-advance (layup) pick, or nil if there's
+/// no data at all.
 enum CaddieEngine {
 
     struct ShotSample {
@@ -46,6 +50,9 @@ enum CaddieEngine {
         let spreadYards: Int    // ± one-sd carry spread
         let greenHits: Int      // tracked shots that would have finished on this green
         let greenSamples: Int
+        let reached: Int        // shots that carried at least to the front edge
+        let shortMisses: Int    // shots that finished short of the front
+        let longMisses: Int     // shots that finished past the back
     }
 
     struct Suggestion {
@@ -62,6 +69,8 @@ enum CaddieEngine {
         /// club, `greenHits` would have finished on this green.
         var greenHits: Int = 0
         var greenSamples: Int = 0
+        /// Caddie-style swing advice for the pick, e.g. "Take a little off — land it about 148y."
+        var swingNote: String = ""
         /// Most repeatable club at this yardage, when it isn't the best-odds pick.
         var tightest: TightestPick? = nil
         /// True when no club holds the green — this is the smart-advance pick instead
@@ -110,7 +119,11 @@ enum CaddieEngine {
         struct Ranked {
             let stat: ClubStat
             let score: Double
-            let hits: Int
+            let hits: Int         // finished on the green
+            let reached: Int      // carried at least to the front edge — proved the distance
+            let cleared: Int      // carried past the back — flew the green
+            let shortMisses: Int  // finished short of the front
+            let longMisses: Int   // finished past the back
         }
         var ranked: [Ranked] = []
         for c in clubs where c.sampleCount >= 3 {
@@ -122,17 +135,30 @@ enum CaddieEngine {
             let pLat  = phi(halfWidth / latSD) - phi(-halfWidth / latSD)
             let model = max(0, pDist) * max(0, pLat)
 
-            // Demonstrated results: carried to the front, didn't run off the back, stayed inside
-            // the width. A shot with no measured total is judged on carry alone.
-            let hits = c.shots.filter { s in
-                s.carry >= front && (s.total ?? s.carry) <= back && abs(s.lateral) <= halfWidth
-            }.count
-            let empirical = Double(hits) / Double(c.sampleCount)
+            // Demonstrated results. A hit carried to the front, didn't run off the back, and
+            // stayed inside the width; a shot with no measured total is judged on carry alone.
+            var hits = 0, reached = 0, cleared = 0, short = 0, long = 0
+            for s in c.shots {
+                let finish = s.total ?? s.carry
+                if s.carry >= front { reached += 1 }
+                if s.carry > back { cleared += 1 }
+                if finish < front { short += 1 }
+                if s.carry > back || finish > back { long += 1 }
+                if s.carry >= front && finish <= back && abs(s.lateral) <= halfWidth { hits += 1 }
+            }
+            let n = Double(c.sampleCount)
+            let empirical = Double(hits) / n
 
             // Lean on real results as the sample grows; the Normal model fills in thin history.
-            let w = Double(c.sampleCount) / (Double(c.sampleCount) + 6)
-            let score = w * empirical + (1 - w) * model
-            ranked.append(Ranked(stat: c, score: score, hits: hits))
+            let w = n / (n + 6)
+            // A club that has never carried this far shouldn't ride its bell curve onto the
+            // green: the model share is credited by demonstrated reach, with full credit once
+            // about a quarter of its shots have gotten there. Flying the green counts as reach —
+            // clearing it proves the distance, and the depth window already punishes going long.
+            let reachCred = min(1, (Double(reached) + 0.5) / (0.25 * n + 0.5))
+            let score = w * empirical + (1 - w) * model * reachCred
+            ranked.append(Ranked(stat: c, score: score, hits: hits, reached: reached,
+                                 cleared: cleared, shortMisses: short, longMisses: long))
         }
 
         let best = ranked.max(by: { $0.score < $1.score })
@@ -166,10 +192,12 @@ enum CaddieEngine {
             )
         }
 
-        // Consistency layer: among clubs whose average carry sits at this number, the one with
+        // Consistency layer: among clubs whose average carry sits near this number, the one with
         // the smallest combined spread — a different answer than "best odds" when a steady club
-        // keeps missing the green in the same spot.
-        let window = max(halfDepth, 10)
+        // keeps missing the green in the same spot. The window runs a touch past the green edges
+        // so a steady club that consistently finishes just short/long still gets named (with an
+        // honest note about why it isn't the pick).
+        let window = max(halfDepth, 10) + 5
         let tightest: TightestPick? = ranked
             .filter { abs($0.stat.carryMean - playingYards) <= window }
             .min(by: { spread($0.stat) < spread($1.stat) })
@@ -180,7 +208,10 @@ enum CaddieEngine {
                     typicalYards: Int(t.stat.carryMean.rounded()),
                     spreadYards: Int(max(t.stat.carrySD, 4).rounded()),
                     greenHits: t.hits,
-                    greenSamples: t.stat.sampleCount
+                    greenSamples: t.stat.sampleCount,
+                    reached: t.reached,
+                    shortMisses: t.shortMisses,
+                    longMisses: t.longMisses
                 )
             }
 
@@ -196,8 +227,32 @@ enum CaddieEngine {
             windSummary: windSummary,
             greenHits: best.hits,
             greenSamples: best.stat.sampleCount,
+            swingNote: swingNote(for: best.stat, reached: best.reached, cleared: best.cleared,
+                                 playingYards: playingYards),
             tightest: tightest
         )
+    }
+
+    /// Caddie-style sentence for the pick: full swing, stock swing, or take something off —
+    /// grounded in what the club has actually shown at this distance.
+    private static func swingNote(for c: ClubStat, reached: Int, cleared: Int,
+                                  playingYards: Double) -> String {
+        let playing = Int(playingYards.rounded())
+        let stock = Int(c.carryMean.rounded())
+        let delta = c.carryMean - playingYards
+        if delta >= 6 {
+            if cleared > 0 {
+                return "Take a little off — you've flown this distance \(cleared) time\(cleared == 1 ? "" : "s"). Hit \(c.name) about \(playing)y, not your stock \(stock)y."
+            }
+            return "Take a little off — hit \(c.name) about \(playing)y instead of your stock \(stock)y."
+        }
+        if delta <= -6 {
+            guard reached > 0 else {
+                return "A reach — none of your tracked \(c.name) shots have carried this far. Favor the safe side."
+            }
+            return "Needs your good one — you've carried it this far \(reached) of \(c.sampleCount) times. Commit to a full swing."
+        }
+        return "Stock number — a normal \(c.name) swing covers this."
     }
 
     private static func spread(_ c: ClubStat) -> Double {
