@@ -2400,6 +2400,14 @@ struct V2FrameObservation {
     let isFlight: Bool
 }
 
+/// One per-frame clubhead sighting from V2's GBT club scorer (approach window only).
+struct V2ClubObservation {
+    let frameIndex: Int
+    let cxNorm: Double
+    let cyNorm: Double
+    let confidence: Double
+}
+
 struct V2Output {
     var ballSpeedMph: Double?
     var clubSpeedMph: Double?
@@ -2413,6 +2421,11 @@ struct V2Output {
     /// even when metrics are withheld: the track is useful to the review/3D pipeline
     /// regardless of whether a speed could be fit.
     var frameObservations: [V2FrameObservation] = []
+    /// GBT-scored clubhead sightings across the approach window (impact-6 … impact+1).
+    /// The EnsembleBFS club tracker is precise when it fires (4.2px median vs labels) but
+    /// covered only 29% of labeled approach frames; these fill the coverage gap that was
+    /// starving club path/speed fits.
+    var clubObservations: [V2ClubObservation] = []
 }
 
 final class V2Engine {
@@ -2851,6 +2864,7 @@ final class V2Engine {
         var clubPts: [(t: Double, x: Double, y: Double)] = []
         var restRadii: [Double] = []
         var frameObs: [V2FrameObservation] = []
+        var clubObs: [V2ClubObservation] = []
 
         for f in frames.sorted(by: { $0.frameIndex < $1.frameIndex }) {
             let fi = f.frameIndex
@@ -2872,6 +2886,11 @@ final class V2Engine {
                     prevClub = CGPoint(x: bestC.1.cx, y: bestC.1.cy)
                     if fi <= impact, fi >= impact - 6 {
                         clubPts.append((t, bestC.1.cx, bestC.1.cy))
+                    }
+                    if fi >= impact - 6 {
+                        clubObs.append(V2ClubObservation(
+                            frameIndex: fi, cxNorm: bestC.1.cx / Double(W),
+                            cyNorm: bestC.1.cy / Double(H), confidence: bestC.0))
                     }
                 }
             }
@@ -2993,7 +3012,8 @@ final class V2Engine {
             return V2Output(ballSpeedMph: nil, clubSpeedMph: nil, vlaDegrees: nil,
                             confident: false, flightPointCount: pts.count,
                             notes: notes + ["withheld: <2 usable flight points [flight: \(raw.isEmpty ? "none" : raw) → usable \(pts.count), rLock \(String(format: "%.1f", rLockSub))]"],
-                            impactFrameIndex: impact, frameObservations: frameObs)
+                            impactFrameIndex: impact, frameObservations: frameObs,
+                            clubObservations: clubObs)
         }
 
         func lineFit(_ P: [FlightPt]) -> (vx: Double, vy: Double, x0: Double, y0: Double, t0: Double, chiMax: Double) {
@@ -3037,7 +3057,8 @@ final class V2Engine {
             return V2Output(ballSpeedMph: nil, clubSpeedMph: nil, vlaDegrees: nil,
                             confident: false, flightPointCount: pts.count,
                             notes: notes + [String(format: "withheld: implausible physics %.1f m/s", vPhysMps)],
-                            impactFrameIndex: impact, frameObservations: frameObs)
+                            impactFrameIndex: impact, frameObservations: frameObs,
+                            clubObservations: clubObs)
         }
 
         // contact instant: closest approach of the flight line to the lock
@@ -3099,7 +3120,8 @@ final class V2Engine {
         return V2Output(ballSpeedMph: ballMph, clubSpeedMph: clubMph,
                         vlaDegrees: vla, confident: confident,
                         flightPointCount: pts.count, notes: notes,
-                        impactFrameIndex: impact, frameObservations: frameObs)
+                        impactFrameIndex: impact, frameObservations: frameObs,
+                        clubObservations: clubObs)
     }
 
     // MARK: Subpixel + rescue helpers

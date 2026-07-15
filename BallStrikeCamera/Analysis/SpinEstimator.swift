@@ -19,7 +19,7 @@ struct SpinEstimator {
         smashFactor: Double? = nil
     ) -> SpinEstimate {
         var warnings: [String] = [
-            "Backspin is ESTIMATED from a VLA/speed/smash piecewise model. Not measured.",
+            "Backspin is ESTIMATED from a speed/VLA model fit to TopTracer range data. Not measured.",
             "Sidespin is ESTIMATED from HLA/path angle difference. Not measured."
         ]
 
@@ -38,27 +38,7 @@ struct SpinEstimator {
             warnings.append("VLA unavailable — backspin estimate uses default VLA=15°.")
         }
 
-        let baseSpin = piecewiseBackspin(vla: vla)
-
-        let smashAdj: Double
-        if let smash = smashFactor, smash > 0 {
-            smashAdj = min(max(1.0 + (1.30 - smash) * 0.35, 0.75), 1.25)
-        } else {
-            smashAdj = 1.0
-        }
-
-        let speedAdj: Double
-        if vla < 20.0 {
-            speedAdj = min(max(1.0 - (ballSpeedMph - 70.0) * 0.003, 0.75), 1.15)
-        } else {
-            speedAdj = min(max(1.0 - (ballSpeedMph - 80.0) * 0.0015, 0.85), 1.15)
-        }
-
-        let backspinRpm = min(max(baseSpin * smashAdj * speedAdj, 1200), 11500)
-
-        if smashAdj < 0.95 {
-            warnings.append(String(format: "Backspin reduced by smash factor %.2f (adj=%.2f).", smashFactor ?? 0, smashAdj))
-        }
+        let backspinRpm = min(max(Self.fittedBackspin(ballSpeedMph: ballSpeedMph, vla: vla), 1200), 11500)
 
         let sidespinRpmSigned: Double?
         let spinAxisDegreesSigned: Double?
@@ -99,21 +79,17 @@ struct SpinEstimator {
         )
     }
 
-    private func piecewiseBackspin(vla: Double) -> Double {
-        let table: [(Double, Double)] = [
-            (0,  1800), (5,  2200), (10, 2600), (15, 3200), (20, 4200),
-            (30, 5800), (40, 7200), (50, 8700), (60, 10500), (65, 11200)
-        ]
-        if vla <= table.first!.0 { return table.first!.1 }
-        if vla >= table.last!.0  { return table.last!.1 }
-        for i in 0..<(table.count - 1) {
-            let (v0, s0) = table[i]
-            let (v1, s1) = table[i + 1]
-            if vla >= v0 && vla <= v1 {
-                let t = (vla - v0) / (v1 - v0)
-                return s0 + t * (s1 - s0)
-            }
-        }
-        return 4200
+    /// Ridge fit on 116 TopTracer-measured spins (swingsync-2026-07-12, range balls, full
+    /// bag; 5-fold CV MAE 1045 rpm vs 1264 for the old hand-written table). Features
+    /// standardized as (x−μ)/σ; trained via tools — retrain with
+    /// scratchpad/train_flight_model.py's sibling when new labeled sessions land.
+    private static func fittedBackspin(ballSpeedMph bs: Double, vla: Double) -> Double {
+        let x: [Double]  = [vla, bs, vla * bs, vla * vla]
+        let w: [Double]  = [1613.938, 391.840, -440.579, -545.295]
+        let mu: [Double] = [17.284, 98.544, 1623.959, 340.809]
+        let sd: [Double] = [6.486, 23.693, 456.117, 291.919]
+        var spin = 2810.33
+        for i in 0..<4 { spin += w[i] * (x[i] - mu[i]) / sd[i] }
+        return spin
     }
 }

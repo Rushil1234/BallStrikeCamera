@@ -182,11 +182,45 @@ struct ShotMetricsCalculator {
         if isPuttShot {
             clubObservations = []
         } else {
+            let ebfs = clubTracker.track(analysis: analysis,
+                                         ballSpeedMph: ballLaunch.ballSpeedMph,
+                                         ballDepthM: ballDepthM)
+                .filter { $0.frameIndex < analysis.detectedImpactFrameIndex }
+            // V2's GBT club sightings fill the frames EnsembleBFS skipped: EBFS is precise
+            // when it fires (4.2px median vs the 758 hand labels) but covered only 29% of
+            // labeled approach frames, starving every club path/speed fit down to 1-2
+            // points. EBFS keeps priority where both exist (it carries bbox/leading edge).
+            var union = ebfs
+            if let v2 = analysis.v2Output {
+                let have = Set(ebfs.map(\.frameIndex))
+                let frameByIdx = Dictionary(uniqueKeysWithValues: analysis.frames.map { ($0.frameIndex, $0) })
+                for c in v2.clubObservations
+                where !have.contains(c.frameIndex) && c.frameIndex < analysis.detectedImpactFrameIndex {
+                    guard let f = frameByIdx[c.frameIndex] else { continue }
+                    union.append(ClubObservation(
+                        frameIndex: c.frameIndex,
+                        timestamp: f.timestamp,
+                        relativeTime: f.relativeTime,
+                        centerX: CGFloat(c.cxNorm),
+                        centerY: CGFloat(c.cyNorm),
+                        leadingEdgeX: CGFloat(c.cxNorm),
+                        leadingEdgeY: CGFloat(c.cyNorm),
+                        clubBoundingBox: nil,
+                        confidence: c.confidence,
+                        searchROI: nil,
+                        ballExclusionCenterX: nil,
+                        ballExclusionCenterY: nil,
+                        ballExclusionDiameter: nil,
+                        debugReason: "v2_club_gbt",
+                        detectionMode: "v2_gbt",
+                        ballExclusionWasApplied: false,
+                        frameDifferenceWasUsed: false
+                    ))
+                }
+                union.sort { $0.frameIndex < $1.frameIndex }
+            }
             clubObservations = enforceClubMonotonicity(
-                clubTracker.track(analysis: analysis,
-                                  ballSpeedMph: ballLaunch.ballSpeedMph,
-                                  ballDepthM: ballDepthM)
-                    .filter { $0.frameIndex < analysis.detectedImpactFrameIndex },
+                union,
                 impactFrameIndex: analysis.detectedImpactFrameIndex,
                 ballCenterX: analysis.initialBallCenter?.x ?? analysis.lockedBallRect?.midX
             )
