@@ -39,6 +39,13 @@ final class SupabaseBackendService: AppBackend {
         if accessToken == nil, refreshToken != nil {
             try? await refreshSession()
         }
+        // A locally-expired token is a guaranteed 403 — the exp claim already says so,
+        // so refresh BEFORE the request instead of burning a round-trip (and an ERROR
+        // log line on every cold launch) to be told by the server.
+        if let token = accessToken, refreshToken != nil,
+           let expiry = Self.tokenExpiry(token), expiry <= Date().addingTimeInterval(60) {
+            try? await refreshSession()
+        }
         guard let token = accessToken else { return nil }
 
         if let user = try await fetchCurrentUser(accessToken: token) {
@@ -1080,9 +1087,29 @@ final class SupabaseBackendService: AppBackend {
         return req
     }
 
+    /// exp claim of a JWT (unix seconds), or nil when unreadable.
+    private static func tokenExpiry(_ token: String) -> Date? {
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var payload = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while payload.count % 4 != 0 { payload += "=" }
+        guard let data = Data(base64Encoded: payload),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = obj["exp"] as? TimeInterval else { return nil }
+        return Date(timeIntervalSince1970: exp)
+    }
+
     private func performAuthorizedRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
         var req = request
         if req.value(forHTTPHeaderField: "Authorization") == nil, refreshToken != nil {
+            try? await refreshSession()
+        }
+        // Same proactive refresh as currentUser(): don't send a token the exp claim
+        // already proves dead. The reactive 401/403 retry below stays as the safety net.
+        if let token = accessToken, refreshToken != nil,
+           let expiry = Self.tokenExpiry(token), expiry <= Date().addingTimeInterval(60) {
             try? await refreshSession()
         }
         if let token = accessToken {
