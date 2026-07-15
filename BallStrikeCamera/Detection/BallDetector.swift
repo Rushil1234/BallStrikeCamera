@@ -72,6 +72,7 @@ final class BallDetector {
         // Diagnostics only — doesn't affect detection, just explains *why* count stayed low.
         var maxBrightnessSeen = 0
         var brightIgnoringSpread = 0   // brightness passed, but spread (saturation) did not
+        var limePixelCount = 0         // pixels admitted via the lime range-ball signature
         var sampledPixels = 0
 
         // Collect qualifying sample points instead of folding them into one running bbox —
@@ -109,6 +110,7 @@ final class BallDetector {
                 let isLime = g - b >= 110 && r < g && r * 2 > g
                 if brightness >= configuration.brightnessThreshold {
                     if spread <= configuration.maxChannelSpread || isLime {
+                        if isLime && spread > configuration.maxChannelSpread { limePixelCount += 1 }
                         brightX.append(x)
                         brightY.append(y)
                     } else {
@@ -117,6 +119,7 @@ final class BallDetector {
                 } else if brightness >= 130, isLime {
                     // Lime body in softer light sits under the white threshold but far
                     // above turf brightness (~100-120), and turf never passes the blue gate.
+                    limePixelCount += 1
                     brightX.append(x)
                     brightY.append(y)
                 }
@@ -135,7 +138,7 @@ final class BallDetector {
                              configuration.brightnessThreshold, configuration.maxChannelSpread,
                              configuration.minimumBrightPixels))
             }
-            print("[BD] max=\(maxBrightnessSeen) w=\(brightX.count) c=\(brightIgnoringSpread)")
+            print("[BD] max=\(maxBrightnessSeen) w=\(brightX.count) c=\(brightIgnoringSpread) l=\(limePixelCount)")
         }
 
         guard brightX.count >= configuration.minimumBrightPixels else {

@@ -118,7 +118,12 @@ final class ImpactDetector {
                 let bright = (r + g + b) / 3
                 let spread = max(r, max(g, b)) - min(r, min(g, b))
                 totalCount += 1
-                if bright >= configuration.brightnessThreshold && spread <= configuration.maxChannelSpread {
+                // Ball-pixel census: white (bright, low spread) OR lime range ball
+                // (green-dominant, collapsed blue — same signature as BallDetector).
+                // Without the lime path the baseline was ~zero for lime balls and the
+                // departure trigger could never fire: lock succeeded, capture never did.
+                let isLime = g - b >= 110 && r < g && r * 2 > g && bright >= 130
+                if (bright >= configuration.brightnessThreshold && spread <= configuration.maxChannelSpread) || isLime {
                     whiteCount += 1
                 }
             }
