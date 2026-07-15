@@ -209,9 +209,11 @@ struct ShotMetricsCalculator {
         if !isPutterMode,
            UserDefaults.standard.object(forKey: "tc_v2_metrics") as? Bool ?? true,
            V2Engine.isAvailable,
-           let v2 = V2Engine.run(frames: analysis.frames,
-                                 lockedBallRect: analysis.lockedBallRect,
-                                 impactHint: analysis.fallbackImpactFrameIndex) {
+           // The V2-primary track already ran the engine once per shot — reuse its result
+           // instead of repeating the most expensive stage of the whole analysis.
+           let v2 = analysis.v2Output ?? V2Engine.run(frames: analysis.frames,
+                                                      lockedBallRect: analysis.lockedBallRect,
+                                                      impactHint: analysis.fallbackImpactFrameIndex) {
             // Wall-clock visibility: V2's per-frame image work is the slowest stage of the
             // whole pipeline and ~20× slower in unoptimized builds — a multi-second number
             // here means the build is -Onone, not that the tracker is broken.

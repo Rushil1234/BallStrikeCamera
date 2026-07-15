@@ -119,6 +119,9 @@ struct ShotAnalysisResult {
     let lockedImpactROI: CGRect?
     let createdAt: Date
     let metrics: ShotMetricsResult?
+    /// Cached V2 engine result when the V2-primary track produced this analysis — lets the
+    /// metrics calculator reuse it instead of re-running the whole per-frame image pipeline.
+    let v2Output: V2Output?
 
     init(
         frames: [AnalyzedShotFrame],
@@ -131,7 +134,8 @@ struct ShotAnalysisResult {
         impactDetectionReason: String = "fallback_not_run",
         initialBallCenter: CGPoint? = nil,
         movementThresholdNorm: CGFloat = 0,
-        metrics: ShotMetricsResult? = nil
+        metrics: ShotMetricsResult? = nil,
+        v2Output: V2Output? = nil
     ) {
         self.frames = frames
         self.impactFrameIndex = impactFrameIndex
@@ -144,5 +148,6 @@ struct ShotAnalysisResult {
         self.lockedImpactROI = lockedImpactROI
         self.createdAt = createdAt
         self.metrics = metrics
+        self.v2Output = v2Output
     }
 }

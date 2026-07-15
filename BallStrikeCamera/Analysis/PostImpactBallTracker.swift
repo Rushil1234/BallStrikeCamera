@@ -2387,6 +2387,19 @@ private extension CGRect {
 // learned heads whose outputs are clamped to what the pixels physically allow.
 // Models: Resources/Models/tc_v2_models.json (retrain via tools/experimental + THURSDAY.md).
 
+/// One per-frame ball sighting from V2's sequential tracker — the label-trained detector's
+/// view of where the ball is, in normalized coordinates (diameter normalized by frame WIDTH,
+/// matching the legacy convention).
+struct V2FrameObservation {
+    let frameIndex: Int
+    let cxNorm: Double
+    let cyNorm: Double
+    let diaNorm: Double
+    let confidence: Double
+    /// true = airborne sighting (>= 1 lock radius from the rest position)
+    let isFlight: Bool
+}
+
 struct V2Output {
     var ballSpeedMph: Double?
     var clubSpeedMph: Double?
@@ -2394,6 +2407,12 @@ struct V2Output {
     var confident: Bool
     var flightPointCount: Int
     var notes: [String]
+    /// V2's own impact frame (ball-motion detected, launch-cone gated).
+    var impactFrameIndex: Int = 0
+    /// The full per-frame track — rest sightings pre-impact, flight sightings post. Present
+    /// even when metrics are withheld: the track is useful to the review/3D pipeline
+    /// regardless of whether a speed could be fit.
+    var frameObservations: [V2FrameObservation] = []
 }
 
 final class V2Engine {
@@ -2782,15 +2801,26 @@ final class V2Engine {
         outer: for fi in idxSorted where fi >= max(0, impactHint - 8) && fi <= impactHint + 9 {
             guard let pl = planeByIdx[fi] else { continue }
             let (bright, _, _) = maskFrom(pl, motion: motion(for: pl), prevLuma: nil)
+            // A launched ball cannot ALSO be at rest: if a BALL-LIKE blob still sits at the
+            // lock this frame, nothing has launched yet — the "new forward blob" is the
+            // arriving CLUBHEAD (measured: fired impact 6 frames early on slow shots, and
+            // the junk flight point then direction-locked the real launch out of the track).
+            // Strictly ball-like on purpose: post-departure glare residue and the merged
+            // ball+club blob read bigger/less round and must NOT hold impact detection open
+            // on fast shots.
+            let ballStillAtLock = bright.contains {
+                $0.circ >= 0.7 && $0.r >= r0 * 0.6 && $0.r <= r0 * 1.6
+                    && hypot($0.cx - lock.x, $0.cy - lock.y) <= r0 * 1.5
+            }
+            if ballStillAtLock { continue }
             for b in bright where b.r >= 2.5 && b.r <= 22 && b.circ >= 0.55 && b.area >= 15 && !b.border {
                 let vx = b.cx - lock.x
                 if vx * -1 <= 0 { continue }        // forward is -x
-                // Launch cone: a just-struck ball leaves from LOCK HEIGHT — within a few
-                // ball-widths vertically, opening at most ~45° with forward distance. A
-                // flickering treeline glint at the top edge (y=9 vs lock y≈104) fired this
-                // 6 frames early; no launched ball can be 16 radii above the lock while
-                // only 4 radii forward.
-                if abs(b.cy - lock.y) > max(r0 * 8, abs(vx)) { continue }
+                // Launch cone: a just-struck ball leaves from LOCK HEIGHT. Vertical headroom
+                // must cover a high wedge flying nearly straight up-frame (measured Δy=63px
+                // at Δx=3 on a labeled lob) while still rejecting the treeline glint at the
+                // top edge (Δy=95 at Δx=45).
+                if abs(b.cy - lock.y) > max(r0 * 12, 1.75 * abs(vx)) { continue }
                 if hypot(vx, b.cy - lock.y) >= r0 * 1.5,
                    !staticForward.contains(where: {
                        hypot($0.x - b.cx, $0.y - b.cy) <= max(4, max($0.r, b.r))
@@ -2820,6 +2850,7 @@ final class V2Engine {
         var flight: [FlightPt] = []
         var clubPts: [(t: Double, x: Double, y: Double)] = []
         var restRadii: [Double] = []
+        var frameObs: [V2FrameObservation] = []
 
         for f in frames.sorted(by: { $0.frameIndex < $1.frameIndex }) {
             let fi = f.frameIndex
@@ -2852,7 +2883,11 @@ final class V2Engine {
                         && hypot($0.cx - lock.x, $0.cy - lock.y) <= r0 * 2.2
                 }
                 if let rest = cands.max(by: { $0.circ < $1.circ }) {
-                    restRadii.append(subpixelRadius(pl, cx: rest.cx, cy: rest.cy, rHint: rest.r))
+                    let (rx, ry, rr) = subpixelCenter(pl, cx: rest.cx, cy: rest.cy, rHint: rest.r)
+                    restRadii.append(rr)
+                    frameObs.append(V2FrameObservation(
+                        frameIndex: fi, cxNorm: rx / Double(W), cyNorm: ry / Double(H),
+                        diaNorm: 2 * rr / Double(W), confidence: 0.9, isFlight: false))
                 }
                 continue
             }
@@ -2893,11 +2928,14 @@ final class V2Engine {
                 let p = 1.0 / (1.0 + exp(-max(-30, min(30, z))))
                 if p >= models.ball_scorer.threshold { cands.append((p, b)) }
             }
-            var chosen = cands.max(by: { $0.0 < $1.0 })?.1
+            let chosenScored = cands.max(by: { $0.0 < $1.0 })
+            var chosen = chosenScored?.1
+            var chosenProb = chosenScored?.0 ?? 0.6   // rescue picks carry moderate confidence
             if chosen == nil, !exited, rescuesLeft > 0, let p = pred {
                 if let rb = rescueAt(pl, x: p.x, y: p.y, rHint: r0) {
                     rescuesLeft -= 1
                     chosen = rb
+                    chosenProb = 0.6
                 }
             }
             if let c = chosen {
@@ -2909,6 +2947,15 @@ final class V2Engine {
                     flightPoints += 1
                     let (sx, sy, sr) = subpixelCenter(pl, cx: c.cx, cy: c.cy, rHint: c.r)
                     flight.append(FlightPt(t: t, x: sx, y: sy, r: sr, fi: fi))
+                    frameObs.append(V2FrameObservation(
+                        frameIndex: fi, cxNorm: sx / Double(W), cyNorm: sy / Double(H),
+                        diaNorm: 2 * sr / Double(W), confidence: chosenProb, isFlight: true))
+                } else {
+                    // Post-impact but still within a lock radius: a slow roll-away or the
+                    // impact-merge frame — a real sighting either way, marked non-flight.
+                    frameObs.append(V2FrameObservation(
+                        frameIndex: fi, cxNorm: c.cx / Double(W), cyNorm: c.cy / Double(H),
+                        diaNorm: 2 * c.r / Double(W), confidence: min(chosenProb, 0.7), isFlight: false))
                 }
                 missesInFlight = 0
                 if let lt = lastT, t > lt, let lp = lastPos {
@@ -2945,7 +2992,8 @@ final class V2Engine {
             let raw = flight.map { String(format: "f%d(r%.1f)", $0.fi, $0.r) }.joined(separator: " ")
             return V2Output(ballSpeedMph: nil, clubSpeedMph: nil, vlaDegrees: nil,
                             confident: false, flightPointCount: pts.count,
-                            notes: notes + ["withheld: <2 usable flight points [flight: \(raw.isEmpty ? "none" : raw) → usable \(pts.count), rLock \(String(format: "%.1f", rLockSub))]"])
+                            notes: notes + ["withheld: <2 usable flight points [flight: \(raw.isEmpty ? "none" : raw) → usable \(pts.count), rLock \(String(format: "%.1f", rLockSub))]"],
+                            impactFrameIndex: impact, frameObservations: frameObs)
         }
 
         func lineFit(_ P: [FlightPt]) -> (vx: Double, vy: Double, x0: Double, y0: Double, t0: Double, chiMax: Double) {
@@ -2988,7 +3036,8 @@ final class V2Engine {
         guard vPhysMps >= 3.0 && vPhysMps <= 105.0 else {
             return V2Output(ballSpeedMph: nil, clubSpeedMph: nil, vlaDegrees: nil,
                             confident: false, flightPointCount: pts.count,
-                            notes: notes + [String(format: "withheld: implausible physics %.1f m/s", vPhysMps)])
+                            notes: notes + [String(format: "withheld: implausible physics %.1f m/s", vPhysMps)],
+                            impactFrameIndex: impact, frameObservations: frameObs)
         }
 
         // contact instant: closest approach of the flight line to the lock
@@ -3049,10 +3098,13 @@ final class V2Engine {
 
         return V2Output(ballSpeedMph: ballMph, clubSpeedMph: clubMph,
                         vlaDegrees: vla, confident: confident,
-                        flightPointCount: pts.count, notes: notes)
+                        flightPointCount: pts.count, notes: notes,
+                        impactFrameIndex: impact, frameObservations: frameObs)
     }
 
     // MARK: Subpixel + rescue helpers
+    // (see V2PrimaryTrack at end of file for the integration that makes this engine the
+    // app's primary per-frame ball track)
 
     private static func subpixelCenter(_ pl: Planes, cx: Double, cy: Double, rHint: Double) -> (Double, Double, Double) {
         let W = pl.W, H = pl.H
@@ -3180,5 +3232,138 @@ final class V2Engine {
             }
         }
         return [v[0] / a[0][0], v[1] / a[1][1], v[2] / a[2][2]]
+    }
+}
+
+// MARK: - V2-primary track integration
+//
+// Promotes V2's label-trained per-frame track (97.4% ball detection on the 2126-label
+// archive vs 86% for the legacy rule scanner) to be THE ball track the app displays and
+// measures from. The legacy scanner remains the putter path and the fallback when V2 is
+// unavailable or finds no flight. ONE shared entry point for the live pipeline and the
+// replay harness — they must never diverge again.
+enum V2PrimaryTrack {
+
+    struct Result {
+        let observations: [Int: ShotBallObservation]
+        let impactFrameIndex: Int
+        let v2: V2Output?
+        let active: Bool
+    }
+
+    static func run(prelimFrames: [AnalyzedShotFrame],
+                    legacyObservations: [Int: ShotBallObservation],
+                    lockedBallRect: CGRect?,
+                    legacyImpactIndex: Int,
+                    impactHint: Int,
+                    isPutterMode: Bool) -> Result {
+        // Putter shots keep the legacy tracker: V2's scorer and heads were trained on full
+        // swings and its physics gates start at 3 m/s. tc_v2_metrics is the shared kill
+        // switch for the whole V2 engine.
+        guard !isPutterMode,
+              UserDefaults.standard.object(forKey: "tc_v2_metrics") as? Bool ?? true,
+              V2Engine.isAvailable,
+              let v2 = V2Engine.run(frames: prelimFrames,
+                                    lockedBallRect: lockedBallRect,
+                                    impactHint: impactHint),
+              v2.frameObservations.contains(where: { $0.isFlight }) else {
+            return Result(observations: legacyObservations,
+                          impactFrameIndex: legacyImpactIndex, v2: nil, active: false)
+        }
+
+        let byIdx = Dictionary(uniqueKeysWithValues: prelimFrames.map { ($0.frameIndex, $0) })
+        // diaNorm is width-normalized (legacy convention); bbox height wants height-normalized.
+        let aspect: CGFloat = {
+            guard let img = prelimFrames.first?.originalFrame.image.size, img.height > 0 else { return 16.0 / 9.0 }
+            return img.width / img.height
+        }()
+
+        var merged: [Int: ShotBallObservation] = [:]
+        for o in v2.frameObservations {
+            guard let f = byIdx[o.frameIndex] else { continue }
+            // Rescue-sourced picks measured 1 match vs 13 wrong on the labeled archive —
+            // they stay internal to V2's own fit but never enter the displayed track.
+            if o.isFlight, o.confidence <= 0.61 { continue }
+            merged[o.frameIndex] = ShotBallObservation(
+                frameIndex: o.frameIndex,
+                timestamp: f.timestamp,
+                relativeTime: f.relativeTime,
+                centerX: CGFloat(o.cxNorm),
+                centerY: CGFloat(o.cyNorm),
+                diameter: CGFloat(o.diaNorm),
+                candidateDiameter: CGFloat(o.diaNorm),
+                finalDiameter: CGFloat(o.diaNorm),
+                confidence: o.confidence,
+                wasInterpolated: false,
+                debugReason: o.isFlight ? "v2_flight" : "v2_rest",
+                diameterDebugReason: "v2_subpixel",
+                bboxHeightNorm: CGFloat(o.diaNorm) * aspect
+            )
+        }
+
+        // Legacy fills only frames V2 has no opinion on, and only where it AGREES with V2's
+        // geometry: pre-impact picks must sit at V2's rest position. Post-impact legacy hits
+        // are NOT adopted — the sweep showed their failure mode (glare junk) is concentrated
+        // exactly on the frames V2 skips, and a wrong point is worse than a miss.
+        let rests = v2.frameObservations.filter { !$0.isFlight && $0.frameIndex <= v2.impactFrameIndex }
+        if !rests.isEmpty {
+            let mx = median(rests.map(\.cxNorm))
+            let my = median(rests.map(\.cyNorm))
+            let md = median(rests.map(\.diaNorm))
+            // Includes the impact frame itself: V2 defines impact as the frame BEFORE the
+            // first moved blob, so the ball is still at rest there — excluding it cost ~64
+            // labeled matches across the archive (one boundary frame per shot) while saving
+            // far fewer boundary errors.
+            for (idx, obs) in legacyObservations where merged[idx] == nil && idx <= v2.impactFrameIndex {
+                guard let x = obs.centerX, let y = obs.centerY else { continue }
+                if hypot(Double(x) - mx, Double(y) - my) <= md * 1.5 {
+                    merged[idx] = obs
+                }
+            }
+        }
+
+        // Late-flight continuation: V2's sequential tracker exits after 2 misses, but on
+        // slow shots the legacy tracker keeps following the visible ball for many more
+        // frames (measured: whole slow-roll tails lost). Adopt legacy POST hits after V2's
+        // last flight frame — but only when they continue V2's own geometry: monotone
+        // progress along the lock→last-flight direction, inside the same perpendicular
+        // cone the legacy path gate uses, and ball-plausible in size.
+        let flights = v2.frameObservations.filter(\.isFlight).sorted { $0.frameIndex < $1.frameIndex }
+        if let lastFlight = flights.last, !rests.isEmpty {
+            let lx = median(rests.map(\.cxNorm)), ly = median(rests.map(\.cyNorm))
+            let md = median(rests.map(\.diaNorm))
+            let dx0 = lastFlight.cxNorm - lx, dy0 = lastFlight.cyNorm - ly
+            let len = max(hypot(dx0, dy0), 1e-6)
+            let ux = dx0 / len, uy = dy0 / len
+            var lastProgress = len
+            for idx in legacyObservations.keys.sorted() where idx > lastFlight.frameIndex {
+                guard merged[idx] == nil, let obs = legacyObservations[idx],
+                      let x = obs.centerX, let y = obs.centerY,
+                      let d = obs.finalDiameter ?? obs.diameter else { continue }
+                let px = Double(x) - lx, py = Double(y) - ly
+                let progress = px * ux + py * uy
+                let perp = abs(px * uy - py * ux)
+                guard progress > lastProgress - 0.012,
+                      perp <= max(0.06, 0.35 * progress),
+                      (0.4...2.5).contains(Double(d) / md) else { continue }
+                lastProgress = max(lastProgress, progress)
+                merged[idx] = obs
+            }
+        }
+
+        // Keep legacy MISS records (nil center) for frames with no sighting at all — they
+        // carry the per-frame failure reason into the review overlay and replay JSON.
+        for (idx, obs) in legacyObservations where merged[idx] == nil && obs.centerX == nil {
+            merged[idx] = obs
+        }
+
+        return Result(observations: merged, impactFrameIndex: v2.impactFrameIndex,
+                      v2: v2, active: true)
+    }
+
+    private static func median(_ v: [Double]) -> Double {
+        guard !v.isEmpty else { return 0 }
+        let s = v.sorted()
+        return s[s.count / 2]
     }
 }

@@ -1145,6 +1145,24 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             for info in trackingResult.debugInfos   { debugInfoMap[info.frameIndex]   = info }
         }
 
+        // Step 2.5 — V2-primary track: when the label-trained detector produces a usable
+        // track, its per-frame sightings REPLACE the legacy observations (97.4% vs 86% on
+        // the labeled archive). Legacy stays for putter mode and as the no-V2 fallback.
+        let v2Primary = V2PrimaryTrack.run(
+            prelimFrames: prelimFrames,
+            legacyObservations: observationMap,
+            lockedBallRect: lockedBallRect,
+            legacyImpactIndex: effectiveImpactIndex,
+            impactHint: impactIndex,
+            isPutterMode: isPutterMode
+        )
+        if v2Primary.active {
+            observationMap = v2Primary.observations
+            effectiveImpactIndex = v2Primary.impactFrameIndex
+            impactDetectionReason = "v2_ball_motion"
+            print("[V2Primary] track active — \(v2Primary.observations.values.filter { $0.centerX != nil }.count) sightings, impact f\(effectiveImpactIndex)")
+        }
+
         // Step 3 — Merge into final frames
         let finalFrames: [AnalyzedShotFrame] = prelimFrames.map { frame in
             AnalyzedShotFrame(
@@ -1200,7 +1218,8 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             detectedImpactFrameIndex: effectiveImpactIndex,
             impactDetectionReason: impactDetectionReason,
             initialBallCenter: initialBallCenter,
-            movementThresholdNorm: movementThresholdNorm
+            movementThresholdNorm: movementThresholdNorm,
+            v2Output: v2Primary.v2
         )
 
         // Experimental: physically-calibrated metrics from the measured 58"x32" ground footprint.
@@ -1266,7 +1285,8 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             impactDetectionReason: impactDetectionReason,
             initialBallCenter: initialBallCenter,
             movementThresholdNorm: movementThresholdNorm,
-            metrics: metrics
+            metrics: metrics,
+            v2Output: v2Primary.v2
         )
         return .result(result)
     }

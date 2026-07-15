@@ -102,6 +102,23 @@ final class LiveParityTestRunner {
             for info in trackingResult.debugInfos { debugInfoMap[info.frameIndex] = info }
         }
 
+        // V2-primary track — the SAME shared integration the live pipeline runs, so the
+        // sweep measures exactly what ships.
+        let v2Primary = V2PrimaryTrack.run(
+            prelimFrames: prelimFrames,
+            legacyObservations: observationMap,
+            lockedBallRect: lockedBallRect,
+            legacyImpactIndex: effectiveImpactIndex,
+            impactHint: impactIndex,
+            isPutterMode: isPutterMode
+        )
+        if v2Primary.active {
+            observationMap = v2Primary.observations
+            effectiveImpactIndex = v2Primary.impactFrameIndex
+            impactDetectionReason = "v2_ball_motion"
+            print("[V2Primary] track active — \(v2Primary.observations.values.filter { $0.centerX != nil }.count) sightings, impact f\(effectiveImpactIndex)")
+        }
+
         let finalFrames: [AnalyzedShotFrame] = prelimFrames.map { frame in
             AnalyzedShotFrame(
                 frameIndex: frame.frameIndex,
@@ -125,7 +142,8 @@ final class LiveParityTestRunner {
             detectedImpactFrameIndex: effectiveImpactIndex,
             impactDetectionReason: impactDetectionReason,
             initialBallCenter: initialBallCenter,
-            movementThresholdNorm: movementThresholdNorm
+            movementThresholdNorm: movementThresholdNorm,
+            v2Output: v2Primary.v2
         )
 
         let metrics = ShotMetricsCalculator().calculate(for: baseResult, isPutterMode: isPutterMode)
