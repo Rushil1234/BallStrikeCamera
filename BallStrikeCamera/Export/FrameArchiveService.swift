@@ -27,7 +27,8 @@ final class FrameArchiveService {
 
     /// Persist a shot's raw frames as PNGs + a timestamps.json in a per-shot folder. Non-blocking:
     /// the encode/write happens on a utility queue so the capture path is never stalled.
-    func archive(frames: [CapturedFrame], impactIndex: Int?) {
+    func archive(frames: [CapturedFrame], impactIndex: Int?,
+                 lockedBallRect: CGRect? = nil, lockedImpactROI: CGRect? = nil) {
         guard isEnabled, !frames.isEmpty, let root = archiveDir else { return }
         // Snapshot (image, timestamp) off the capture path — UIImage is safe to read across threads.
         let snapshot: [(Int, UIImage, TimeInterval)] = frames.enumerated().map { ($0.offset, $0.element.image, $0.element.timestamp) }
@@ -42,8 +43,8 @@ final class FrameArchiveService {
             }
             var timestamps: [[String: Any]] = []
             for (idx, image, t) in snapshot {
-                let name = String(format: "frame_%03d.png", idx)
-                if let data = image.pngData() {
+                let name = String(format: "frame_%03d.jpg", idx)
+                if let data = image.jpegData(compressionQuality: 0.9) {
                     try? data.write(to: shotDir.appendingPathComponent(name))
                 }
                 timestamps.append(["frame_index": idx, "timestamp": t])
@@ -57,6 +58,20 @@ final class FrameArchiveService {
             if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted]) {
                 try? d.write(to: shotDir.appendingPathComponent("timestamps.json"))
             }
+            // metadata.json carries the live pipeline's lock state so the offline tester
+            // (BallTrackingTester) can replay the shot through the EXACT same analysis the
+            // device ran — the tracker is anchored to this rect, so without it a replay
+            // has to re-derive the lock and parity is approximate.
+            var extra: [String: Any] = ["impact_frame_index": impactIndex as Any]
+            if let r = lockedBallRect {
+                extra["locked_ball_rect"] = ["x": r.minX, "y": r.minY, "width": r.width, "height": r.height]
+            }
+            if let r = lockedImpactROI {
+                extra["locked_impact_roi"] = ["x": r.minX, "y": r.minY, "width": r.width, "height": r.height]
+            }
+            if let d = try? JSONSerialization.data(withJSONObject: extra, options: [.prettyPrinted]) {
+                try? d.write(to: shotDir.appendingPathComponent("metadata.json"))
+            }
             print("[FrameArchive] saved \(snapshot.count) frames → \(shotDir.lastPathComponent)")
         }
     }
@@ -65,9 +80,17 @@ final class FrameArchiveService {
 
     /// Number of archived shots currently on disk.
     func shotCount() -> Int {
+        shotFolders().count
+    }
+
+    /// Per-shot folder URLs on disk, oldest first. Folder names are the capture timestamp,
+    /// so lexicographic order is chronological order.
+    func shotFolders() -> [URL] {
         guard let root = archiveDir,
-              let items = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return 0 }
-        return items.filter { $0.hasDirectoryPath && $0.lastPathComponent.hasPrefix("shot_") }.count
+              let items = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return [] }
+        return items
+            .filter { $0.hasDirectoryPath && $0.lastPathComponent.hasPrefix("shot_") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
     /// Total bytes used by the archive (for a human-readable size in the UI).

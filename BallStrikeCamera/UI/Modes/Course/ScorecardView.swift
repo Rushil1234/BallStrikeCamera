@@ -2,7 +2,6 @@ import SwiftUI
 
 struct ScorecardView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var showRoundSummary = false
 
     let round: CourseRound
     var backButtonTitle: String = "Back to Hole"
@@ -52,13 +51,8 @@ struct ScorecardView: View {
                             .padding(.horizontal, TCTheme.hPad)
 
                         // Action buttons
-                        VStack(spacing: 10) {
-                            TCPrimaryGoldButton(title: backButtonTitle, icon: "arrow.left") {
-                                dismiss()
-                            }
-                            TCOutlineButton(title: "Round Summary", color: TCTheme.sage) {
-                                showRoundSummary = true
-                            }
+                        TCPrimaryGoldButton(title: backButtonTitle, icon: "arrow.left") {
+                            dismiss()
                         }
                         .padding(.horizontal, TCTheme.hPad)
 
@@ -70,11 +64,6 @@ struct ScorecardView: View {
             }
         }
         .navigationBarHidden(true)
-        .alert("Round Summary", isPresented: $showRoundSummary) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(roundSummaryText)
-        }
     }
 
     // MARK: - Header Bar
@@ -125,10 +114,11 @@ struct ScorecardView: View {
                 .frame(width: 28, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
+                // Full course name, wrapping to as many rows as it needs — never truncated.
                 Text(round.courseName)
                     .font(.system(size: 16, weight: .bold))
                     .foregroundColor(TCTheme.textPrimary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("\(round.teeBoxName) Tees  ·  \(formattedDate(round.startedAt))")
                     .font(.system(size: 12))
                     .foregroundColor(TCTheme.textMuted)
@@ -255,29 +245,37 @@ struct ScorecardView: View {
     /// Traditional scorecard markings around the score:
     /// ace (1) → gold-filled star · eagle (≤−2) → two circles · birdie (−1) → one
     /// circle · par → plain · bogey (+1) → one square · double+ (≥+2) → two squares.
-    /// No fills except the ace.
+    /// Marks + numbers grade green (good) → red (bad); tints stay dark for the cream card.
     @ViewBuilder
     private func scoreMark(score s: Int, par: Int) -> some View {
         let diff = s - par
-        let stroke = Color(white: 0.22)
+        // Quiet tints — the shapes carry the meaning: light green birdie / darker green
+        // eagle, light red bogey / deeper red double+. Numbers stay ink.
+        let stroke: Color = {
+            if diff <= -2 { return Color(red: 0.10, green: 0.45, blue: 0.22).opacity(0.8) }  // eagle+: darker green
+            if diff == -1 { return Color(red: 0.38, green: 0.64, blue: 0.38).opacity(0.8) }  // birdie: light green
+            if diff == 0  { return Color(white: 0.22) }                                       // par: neutral
+            if diff == 1  { return Color(red: 0.82, green: 0.48, blue: 0.44).opacity(0.85) } // bogey: light red
+            return Color(red: 0.70, green: 0.24, blue: 0.20).opacity(0.85)                   // double+: deeper red
+        }()
         ZStack {
             if s == 1 {
                 Image(systemName: "star.fill")
                     .font(.system(size: 30))
                     .foregroundColor(Color(red: 0.86, green: 0.68, blue: 0.13))
             } else if diff <= -2 {
-                Circle().stroke(stroke, lineWidth: 1.3).frame(width: 27, height: 27)
-                Circle().stroke(stroke, lineWidth: 1.3).frame(width: 21, height: 21)
+                Circle().stroke(stroke, lineWidth: 1.4).frame(width: 27, height: 27)
+                Circle().stroke(stroke, lineWidth: 1.4).frame(width: 21, height: 21)
             } else if diff == -1 {
-                Circle().stroke(stroke, lineWidth: 1.3).frame(width: 24, height: 24)
+                Circle().stroke(stroke, lineWidth: 1.4).frame(width: 24, height: 24)
             } else if diff == 1 {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .stroke(stroke, lineWidth: 1.3).frame(width: 24, height: 24)
+                    .stroke(stroke, lineWidth: 1.4).frame(width: 24, height: 24)
             } else if diff >= 2 {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .stroke(stroke, lineWidth: 1.3).frame(width: 27, height: 27)
+                    .stroke(stroke, lineWidth: 1.4).frame(width: 27, height: 27)
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .stroke(stroke, lineWidth: 1.3).frame(width: 21, height: 21)
+                    .stroke(stroke, lineWidth: 1.4).frame(width: 21, height: 21)
             }
             Text("\(s)")
                 .font(.system(size: 16, weight: .bold))

@@ -18,10 +18,12 @@ struct ShotSummaryPanelView: View {
             // Carry (primary) and Total, same size and parallel — labels aligned on one row,
             // numbers aligned on the next.
             HStack(alignment: .top, spacing: 12) {
-                metricColumn(label: "Carry", value: carryText, valueColor: .green,
-                             labelColor: .green.opacity(0.85))
-                metricColumn(label: "Total", value: totalText, valueColor: .white,
-                             labelColor: .white.opacity(0.55))
+                metricColumn(label: "Carry", value: carryText,
+                             valueColor: Color(red: 0.20, green: 0.48, blue: 0.20),
+                             labelColor: Color(red: 0.20, green: 0.48, blue: 0.20).opacity(0.85))
+                metricColumn(label: "Total", value: totalText,
+                             valueColor: ShotResultView.ink,
+                             labelColor: ShotResultView.ink.opacity(0.55))
             }
 
             // Lower area: composite of the last shot, fit to size (empty until the first shot).
@@ -40,8 +42,12 @@ struct ShotSummaryPanelView: View {
         }
         .padding(8)
         .padding(.leading, isLefty ? 18 : 0)   // clear the screen corner in lefty
-        .background(Color(white: 0.12))
+        .background(ShotResultView.panelBG)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(ShotResultView.ink.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var totalText: String {
@@ -66,7 +72,7 @@ struct ShotSummaryPanelView: View {
                     .lineLimit(1).minimumScaleFactor(0.5)
                 Text("yd")
                     .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white.opacity(0.55))
+                    .foregroundColor(ShotResultView.ink.opacity(0.55))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -253,6 +253,7 @@ final class CourseRoundViewModel: ObservableObject {
                           ?? max(round.holes.count - 1, 0)
         location.requestPermission()
         location.startUpdating()
+        location.beginRoundBackgroundUpdates()
     }
 
     func startRound(course: GolfCourse, teeBox: TeeBox, gender: Gender = .male) async {
@@ -289,6 +290,7 @@ final class CourseRoundViewModel: ObservableObject {
         currentHoleIndex = 0
         location.requestPermission()
         location.startUpdating()
+        location.beginRoundBackgroundUpdates()
         await saveRoundOfflineSafe(round)
         await backend.logAnalyticsEvent("round_started", properties: [
             "course": round.courseName,
@@ -328,21 +330,30 @@ final class CourseRoundViewModel: ObservableObject {
         return round.holes[currentHoleIndex].trackedShots
     }
 
-    /// Append a tracked shot to the current hole and persist.
+    /// Append a tracked shot to a hole and persist. `holeNumber` defaults to the current
+    /// hole, but callers closing an EARLIER hole's shot (score entered after walking to the
+    /// next tee) must pass the hole the shot belongs to — appending to whatever hole the
+    /// player is standing on put approach shots (and their club pins) on the wrong hole.
     @discardableResult
     func appendTrackedShot(start: Coordinate,
                             end: Coordinate,
                             club: ShotClub?,
                             lie: ShotLie,
                             result: ShotResult,
-                            linkedSavedShotId: UUID? = nil) async -> TrackedShot? {
+                            linkedSavedShotId: UUID? = nil,
+                            holeNumber: Int? = nil) async -> TrackedShot? {
         guard var round = activeRound,
               currentHoleIndex < round.holes.count else { return nil }
-        let holeNumber = round.holes[currentHoleIndex].holeNumber
+        let targetIndex: Int
+        if let holeNumber, let idx = round.holes.firstIndex(where: { $0.holeNumber == holeNumber }) {
+            targetIndex = idx
+        } else {
+            targetIndex = currentHoleIndex
+        }
         var shot = TrackedShot(
             roundId: round.id,
-            holeNumber: holeNumber,
-            shotIndex: round.holes[currentHoleIndex].trackedShots.count + 1,
+            holeNumber: round.holes[targetIndex].holeNumber,
+            shotIndex: round.holes[targetIndex].trackedShots.count + 1,
             userId: userId,
             startCoordinate: start,
             endCoordinate: end,
@@ -352,7 +363,7 @@ final class CourseRoundViewModel: ObservableObject {
             linkedSavedShotId: linkedSavedShotId
         )
         shot.recomputeDistance()
-        round.holes[currentHoleIndex].trackedShots.append(shot)
+        round.holes[targetIndex].trackedShots.append(shot)
         activeRound = round
         await saveRoundOfflineSafe(round)
         return shot
@@ -381,7 +392,8 @@ final class CourseRoundViewModel: ObservableObject {
                 end: here,
                 club: pending.club,
                 lie: .unknown,
-                result: movedOrDropped ? .penalty : .inPlay
+                result: movedOrDropped ? .penalty : .inPlay,
+                holeNumber: holeNum
             )
         }
 
@@ -416,7 +428,8 @@ final class CourseRoundViewModel: ObservableObject {
             end: green,
             club: pending.club,
             lie: .unknown,
-            result: .inPlay
+            result: .inPlay,
+            holeNumber: holeNumber
         )
     }
 
@@ -591,6 +604,7 @@ final class CourseRoundViewModel: ObservableObject {
         guard let round = activeRound else { return }
         try? await backend.deleteCourseRound(roundId: round.id, userId: userId)
         activeRound = nil
+        location.endRoundBackgroundUpdates()
     }
 
     /// `shareToFeed`: nil follows the user's auto-share setting; true/false is an explicit
@@ -621,6 +635,7 @@ final class CourseRoundViewModel: ObservableObject {
         await FeedAutoPoster.share(round: round, backend: backend,
                                    enabled: shareToFeed ?? FeedSharing.autoShareEnabled)
         activeRound = nil
+        location.endRoundBackgroundUpdates()
     }
 
     // MARK: - Distance helper

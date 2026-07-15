@@ -36,6 +36,11 @@ struct ShotResultView: View {
     @State private var animationStartDate: Date? = nil
     @State private var animationFinished: Bool   = false
     @State private var showReplay: Bool          = false
+    // Range/sim flow: results auto-return to the hitting screen 3s after the flight
+    // animation lands. Any interaction (screen tap, replay) cancels the timer so the
+    // screen never yanks away mid-read. Course mode keeps its save-on-tap flow.
+    @State private var autoReturnCancelled       = false
+    @State private var autoReturnWorkItem: DispatchWorkItem? = nil
     @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
 
     // Course-mode save state
@@ -44,11 +49,16 @@ struct ShotResultView: View {
 
     private var m: ShotMetricsResult? { analysis.metrics }
 
+    // Bright/light colorway for the whole hit-a-shot pipeline (setup → results → replay).
+    static let pageBG   = Color(red: 0.94, green: 0.95, blue: 0.91)   // warm off-white
+    static let panelBG  = Color(red: 0.98, green: 0.985, blue: 0.965) // raised card
+    static let ink      = Color(red: 0.11, green: 0.15, blue: 0.11)   // primary dark ink
+
     static let airborneColor = Color(red: 0.02, green: 0.16, blue: 0.42)
     static let rolloutColor  = Color(red: 0.02, green: 0.34, blue: 0.14)
-    static let totalColor    = Color(red: 0.62, green: 1.00, blue: 0.48)
-    static let metricValueColor = Color.white
-    static let metricLabelColor = Color.white.opacity(0.85)
+    static let totalColor    = Color(red: 0.13, green: 0.52, blue: 0.21)
+    static let metricValueColor = ink
+    static let metricLabelColor = ink.opacity(0.58)
 
     init(analysis: ShotAnalysisResult,
          context: ShotContext? = nil,
@@ -74,10 +84,12 @@ struct ShotResultView: View {
         let rollYd = max(0, total - carry)
         let roll   = min(max(rollYd / 20.0 * 1.20, 0.6), 3.0)
         // Roll-only (putt / chip with no carry): no flight phase — animate the roll directly.
-        guard carry > 0.2,
-              let spd = m?.ballLaunch.ballSpeedMph,
+        guard carry > 0.2 else { return (0.0, roll) }
+        // Carry without launch data (speed/VLA missing or zero) must still FLY — a zero flight
+        // duration snapped fp to 1 and the page opened on the final result with no ball flight.
+        guard let spd = m?.ballLaunch.ballSpeedMph,
               let vla = m?.ballLaunch.vlaDegrees,
-              spd > 0, vla > 0 else { return (0.0, roll) }
+              spd > 0, vla > 0 else { return (3.0, roll) }
         let speedMps = spd * 0.44704
         let vertVel  = speedMps * sin(vla * .pi / 180.0)
         let hang     = max(0.8, min(7.0, 2.0 * vertVel / 9.81))
@@ -155,7 +167,7 @@ struct ShotResultView: View {
                             .frame(maxWidth: .infinity)
                             .layoutPriority(1)
 
-                            Rectangle().fill(Color.white.opacity(0.22)).frame(width: 1)
+                            Rectangle().fill(Self.ink.opacity(0.22)).frame(width: 1)
 
                             // Right: satellite landing map (course) or abstract top-down grid (range)
                             if context?.sourceMode == .course, let ctx = context {
@@ -180,12 +192,19 @@ struct ShotResultView: View {
                 isPutterShot ? AnyView(puttMetricsBar) : AnyView(metricsBar)
             }
         }
-        .background(Color(white: 0.06).ignoresSafeArea())
+        .background(Self.pageBG.ignoresSafeArea())
         .tcAppearance()
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .contentShape(Rectangle())
-        .onTapGesture { guard animationFinished else { return }; openReplay() }
+        .onTapGesture {
+            guard animationFinished else { return }
+            if context?.sourceMode == .course {
+                openReplay()
+            } else {
+                cancelAutoReturn()   // reading the numbers — don't yank the screen away
+            }
+        }
         .onAppear { startAnimation() }
         .fullScreenCover(isPresented: $showReplay) {
             ShotTrackingReviewView(
@@ -281,7 +300,7 @@ struct ShotResultView: View {
                 .padding(.bottom, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(white: 0.06).ignoresSafeArea())
+        .background(Self.pageBG.ignoresSafeArea())
         .tcAppearance()
         .statusBarHidden(true)
     }
@@ -306,7 +325,7 @@ struct ShotResultView: View {
     }
 
     private var divider: some View {
-        Rectangle().fill(Color.white.opacity(0.24)).frame(width: 1, height: 32)
+        Rectangle().fill(Self.ink.opacity(0.24)).frame(width: 1, height: 32)
     }
 
     /// Persist the shot, then hand it back so the course screen can animate the flight.
@@ -363,7 +382,26 @@ struct ShotResultView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + total) {
             guard !animationFinished else { return }
             animationFinished = true
+            scheduleAutoReturn()
         }
+    }
+
+    /// 3 seconds after the result lands, hand control back to the hitting screen —
+    /// the replay lives behind a button now instead of being the forced next step.
+    private func scheduleAutoReturn() {
+        guard context?.sourceMode != .course else { return }   // course keeps save-on-tap
+        autoReturnWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            guard !autoReturnCancelled, !showReplay else { return }
+            onDone()
+        }
+        autoReturnWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: work)
+    }
+
+    private func cancelAutoReturn() {
+        autoReturnCancelled = true
+        autoReturnWorkItem?.cancel()
     }
 
     private func skipToEnd() {
@@ -371,7 +409,7 @@ struct ShotResultView: View {
         animationFinished  = true
     }
 
-    private func openReplay() { showReplay = true }
+    private func openReplay() { cancelAutoReturn(); showReplay = true }
 
     // MARK: - Course Context Panel (right side for course mode)
 
@@ -407,7 +445,7 @@ struct ShotResultView: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
 
-            Divider().background(Color.white.opacity(0.26))
+            Divider().background(Self.ink.opacity(0.26))
 
             // Carry to par remaining
             VStack(spacing: 8) {
@@ -462,44 +500,71 @@ struct ShotResultView: View {
             Button(doneLabel) { onDone() }
                 .font(.system(size: 14, weight: .semibold)).foregroundColor(.blue)
             Spacer()
-            Text("Shot Result").font(.system(size: 15, weight: .semibold)).foregroundColor(.white)
+            Text("Shot Result").font(.system(size: 15, weight: .semibold)).foregroundColor(Self.ink)
             Spacer()
             if !animationFinished {
                 Button("Skip ›") { skipToEnd() }
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white.opacity(0.92))
+                    .foregroundColor(Self.ink.opacity(0.85))
                     .padding(.horizontal, 10).padding(.vertical, 5)
-                    .background(Color.white.opacity(0.24))
+                    .background(Self.ink.opacity(0.10))
                     .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
             }
             Button("GO BACK TO HITTING") { onDone() }
                 .font(.system(size: 12, weight: .bold))
                 .foregroundColor(.white)
                 .padding(.horizontal, 10).padding(.vertical, 5)
-                .background(Color.white.opacity(0.15)).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .background(Color(red: 0.30, green: 0.55, blue: 0.28)).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
-        .background(Color(white: 0.10))
+        .background(Self.panelBG)
+        .overlay(Rectangle().fill(Self.ink.opacity(0.10)).frame(height: 1), alignment: .bottom)
     }
 
     // MARK: - Tap Prompt (Part I: displayed inside left animation)
 
     private var tapPromptOverlay: some View {
-        let finishedLabel = context?.sourceMode == .course
-            ? "Tap to save & view flight"
-            : "Tap to view frame replay"
         return Group {
             if animationFinished {
-                Text(finishedLabel)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.85))
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    .background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                if context?.sourceMode == .course {
+                    Text("Tap to save & view flight")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Self.ink.opacity(0.85))
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                        .transition(.opacity.combined(with: .scale(scale: 0.93)))
+                } else {
+                    HStack(spacing: 10) {
+                        Button(action: openReplay) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "film")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("Frame Replay")
+                                    .font(.system(size: 13, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16).padding(.vertical, 9)
+                            .background(Color(red: 0.30, green: 0.55, blue: 0.28))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        Button(action: { cancelAutoReturn(); onDone() }) {
+                            Text("Done")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Self.ink.opacity(0.85))
+                                .padding(.horizontal, 16).padding(.vertical, 9)
+                                .background(Self.panelBG)
+                                .clipShape(Capsule())
+                                .overlay(Capsule().strokeBorder(Self.ink.opacity(0.18), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
                     .transition(.opacity.combined(with: .scale(scale: 0.93)))
+                }
             } else {
                 Text("Shot in flight…")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.30))
+                    .foregroundColor(Self.ink.opacity(0.40))
                     .padding(.horizontal, 14).padding(.vertical, 7)
                     .transition(.opacity)
             }
@@ -522,8 +587,9 @@ struct ShotResultView: View {
             metricRow("Total",   yds(m?.distance.totalYards))
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
-        .background(Color.black.opacity(0.82))
+        .background(Self.panelBG.opacity(0.94))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Self.ink.opacity(0.12), lineWidth: 1))
     }
 
     private func metricRow(_ label: String, _ value: String) -> some View {
@@ -550,7 +616,8 @@ struct ShotResultView: View {
             metricCard("VLA",        vlaDeg(m?.ballLaunch.vlaDegrees))
         }
         .padding(.vertical, 8)
-        .background(Color.black)
+        .background(Self.panelBG)
+        .overlay(Rectangle().fill(Self.ink.opacity(0.10)).frame(height: 1), alignment: .top)
     }
 
     // MARK: - Putt Metrics Bar (Distance/Face/Path, no Carry — nothing carries on a putt)
@@ -565,7 +632,8 @@ struct ShotResultView: View {
             metricCard("Club Path",  m?.clubPath.clubPathDisplay ?? "--")
         }
         .padding(.vertical, 8)
-        .background(Color.black)
+        .background(Self.panelBG)
+        .overlay(Rectangle().fill(Self.ink.opacity(0.10)).frame(height: 1), alignment: .top)
     }
 
     private func distanceFt(_ yards: Double?) -> String {
@@ -645,7 +713,7 @@ struct ShotResultView: View {
         let ballXFlight = carryYd * fp
 
         // Background
-        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.06)))
+        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Self.pageBG))
 
         // Part B: horizontal height gridlines + y-axis labels in feet
         var tickFt = 0.0
@@ -656,11 +724,11 @@ struct ShotResultView: View {
                 var h = Path()
                 h.move(to: CGPoint(x: leftPad, y: tickY))
                 h.addLine(to: CGPoint(x: size.width - rightPad, y: tickY))
-                ctx.stroke(h, with: .color(Color.white.opacity(0.22)), lineWidth: 1)
+                ctx.stroke(h, with: .color(Self.ink.opacity(0.22)), lineWidth: 1)
             }
             let lbl = tickFt == 0 ? "0" : String(format: "%.0f ft", tickFt)
             ctx.draw(Text(lbl).font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.78)),
+                        .foregroundColor(Self.ink.opacity(0.78)),
                      at: CGPoint(x: leftPad - 4, y: tickY), anchor: .trailing)
             tickFt += tickFtInt
         }
@@ -668,7 +736,7 @@ struct ShotResultView: View {
         // Ground line
         var gnd = Path()
         gnd.move(to: CGPoint(x: 0, y: groundY)); gnd.addLine(to: CGPoint(x: size.width, y: groundY))
-        ctx.stroke(gnd, with: .color(Color.white.opacity(0.28)), lineWidth: 1.5)
+        ctx.stroke(gnd, with: .color(Self.ink.opacity(0.28)), lineWidth: 1.5)
 
         // Part B: x-axis yard labels
         let stepYd: Double = totalYd <= 75 ? 25 : (totalYd <= 150 ? 50 : 100)
@@ -677,9 +745,9 @@ struct ShotResultView: View {
             let tx = sx(tickYd)
             var tick = Path()
             tick.move(to: CGPoint(x: tx, y: groundY - 4)); tick.addLine(to: CGPoint(x: tx, y: groundY + 4))
-            ctx.stroke(tick, with: .color(Color.white.opacity(0.18)), lineWidth: 1)
+            ctx.stroke(tick, with: .color(Self.ink.opacity(0.18)), lineWidth: 1)
             ctx.draw(Text("\(Int(tickYd))").font(.system(size: 9, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.28)),
+                        .foregroundColor(Self.ink.opacity(0.28)),
                      at: CGPoint(x: tx, y: groundY + 14), anchor: .center)
             tickYd += stepYd
         }
@@ -688,7 +756,7 @@ struct ShotResultView: View {
         var tee = Path()
         tee.move(to: CGPoint(x: teeX - 6, y: groundY - 8)); tee.addLine(to: CGPoint(x: teeX + 6, y: groundY - 8))
         tee.move(to: CGPoint(x: teeX, y: groundY - 8));     tee.addLine(to: CGPoint(x: teeX, y: groundY))
-        ctx.stroke(tee, with: .color(Color.white.opacity(0.65)),
+        ctx.stroke(tee, with: .color(Self.ink.opacity(0.65)),
                    style: StrokeStyle(lineWidth: 2, lineCap: .round))
 
         // Max height label (Part B: top-left, always visible)
@@ -913,7 +981,7 @@ struct ShotResultView: View {
         func py(_ dn: Double) -> CGFloat  { originY - CGFloat(dn / maxDown) * plotH }
 
         // Background
-        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.08)))
+        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Self.panelBG))
 
         // Part F: distance arc grid
         let dnStep: Double = maxDown <= 100 ? 25 : (maxDown <= 200 ? 50 : 100)
@@ -932,11 +1000,11 @@ struct ShotResultView: View {
                 if arcFirst { arcPath.move(to: CGPoint(x: cx, y: cy)); arcFirst = false }
                 else { arcPath.addLine(to: CGPoint(x: cx, y: cy)) }
             }
-            ctx.stroke(arcPath, with: .color(Color.white.opacity(0.24)),
+            ctx.stroke(arcPath, with: .color(Self.ink.opacity(0.24)),
                        style: StrokeStyle(lineWidth: 0.75, dash: [3, 5]))
             // Distance label at top of arc (off=0)
             ctx.draw(Text("\(Int(arcD))").font(.system(size: 7, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.32)),
+                        .foregroundColor(Self.ink.opacity(0.32)),
                      at: CGPoint(x: originX + 4, y: py(arcD)), anchor: .leading)
             arcD += dnStep
         }
@@ -950,11 +1018,11 @@ struct ShotResultView: View {
                 guard lx > padH && lx < size.width - padH else { continue }
                 var vl = Path()
                 vl.move(to: CGPoint(x: lx, y: padTop)); vl.addLine(to: CGPoint(x: lx, y: originY))
-                ctx.stroke(vl, with: .color(Color.white.opacity(0.07)),
+                ctx.stroke(vl, with: .color(Self.ink.opacity(0.07)),
                            style: StrokeStyle(lineWidth: 0.75, dash: [3, 5]))
                 let dir = sign < 0 ? "\(Int(latOff))L" : "\(Int(latOff))R"
                 ctx.draw(Text(dir).font(.system(size: 6, design: .monospaced))
-                            .foregroundColor(Color.white.opacity(0.30)),
+                            .foregroundColor(Self.ink.opacity(0.30)),
                          at: CGPoint(x: lx, y: originY - 4), anchor: .bottom)
             }
             latOff += latStep
@@ -964,15 +1032,15 @@ struct ShotResultView: View {
         var cLine = Path()
         cLine.move(to: CGPoint(x: originX, y: originY))
         cLine.addLine(to: CGPoint(x: originX, y: padTop))
-        ctx.stroke(cLine, with: .color(Color.white.opacity(0.22)),
+        ctx.stroke(cLine, with: .color(Self.ink.opacity(0.22)),
                    style: StrokeStyle(lineWidth: 1.2, dash: [5, 7]))
         ctx.draw(Text("0").font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(Color.white.opacity(0.78)),
+                    .foregroundColor(Self.ink.opacity(0.78)),
                  at: CGPoint(x: originX, y: padTop + 4), anchor: .top)
 
         // Origin dot
         ctx.fill(Path(ellipseIn: CGRect(x: originX-4, y: originY-4, width: 8, height: 8)),
-                 with: .color(.white))
+                 with: .color(Self.ink))
 
         // Monotonic path sampling: p = 0...1 (fraction of totalYd downrange)
         func pathPt(_ p: Double) -> CGPoint {
@@ -989,7 +1057,7 @@ struct ShotResultView: View {
             let pt = pathPt(Double(i) / Double(guideSteps))
             if guideFirst { guide.move(to: pt); guideFirst = false } else { guide.addLine(to: pt) }
         }
-        ctx.stroke(guide, with: .color(Color.white.opacity(0.22)),
+        ctx.stroke(guide, with: .color(Self.ink.opacity(0.22)),
                    style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
 
         // Airborne path (cyan) — progressive
@@ -1038,14 +1106,14 @@ struct ShotResultView: View {
                      with: .color(Self.totalColor))
             var drop = Path()
             drop.move(to: tp); drop.addLine(to: CGPoint(x: tp.x, y: originY))
-            ctx.stroke(drop, with: .color(Color.white.opacity(0.15)),
+            ctx.stroke(drop, with: .color(Self.ink.opacity(0.15)),
                        style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
         }
 
         // Scale indicator
         ctx.draw(Text(String(format: "±%.0f", maxOff))
                     .font(.system(size: 6, design: .monospaced))
-                    .foregroundColor(Color.white.opacity(0.22)),
+                    .foregroundColor(Self.ink.opacity(0.22)),
                  at: CGPoint(x: size.width - 3, y: padTop + 3), anchor: .topTrailing)
     }
 
@@ -1114,7 +1182,7 @@ struct ShotResultView: View {
         func px(_ offFt: Double) -> CGFloat { originX + CGFloat(offFt / maxOff) * (plotW / 2) }
         func py(_ downFt: Double) -> CGFloat { originY - CGFloat(downFt / maxDown) * plotH }
 
-        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.06)))
+        ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Self.pageBG))
 
         // Forward distance rings, every "nice" foot step.
         let downStep: Double = maxDown <= 12 ? 1 : (maxDown <= 36 ? 3 : (maxDown <= 60 ? 6 : 10))
@@ -1122,9 +1190,9 @@ struct ShotResultView: View {
         while downFt <= maxDown + 0.01 {
             let y = py(downFt)
             var h = Path(); h.move(to: CGPoint(x: padH, y: y)); h.addLine(to: CGPoint(x: size.width - padH, y: y))
-            ctx.stroke(h, with: .color(Color.white.opacity(0.22)), lineWidth: 0.75)
+            ctx.stroke(h, with: .color(Self.ink.opacity(0.22)), lineWidth: 0.75)
             ctx.draw(Text(String(format: "%.0f ft", downFt)).font(.system(size: 8, design: .monospaced))
-                        .foregroundColor(Color.white.opacity(0.34)),
+                        .foregroundColor(Self.ink.opacity(0.34)),
                      at: CGPoint(x: padH + 3, y: y), anchor: .leading)
             downFt += downStep
         }
@@ -1138,11 +1206,11 @@ struct ShotResultView: View {
                 guard x > padH && x < size.width - padH else { continue }
                 let isZero = offFt == 0
                 var v = Path(); v.move(to: CGPoint(x: x, y: padTop)); v.addLine(to: CGPoint(x: x, y: originY))
-                ctx.stroke(v, with: .color(isZero ? Color.white.opacity(0.55) : Color.white.opacity(0.24)),
+                ctx.stroke(v, with: .color(isZero ? Self.ink.opacity(0.55) : Self.ink.opacity(0.24)),
                            style: StrokeStyle(lineWidth: isZero ? 2.0 : 0.75))
                 let label = isZero ? "0°" : (sign < 0 ? "\(Int(offFt))in L" : "\(Int(offFt))in R")
                 ctx.draw(Text(label).font(.system(size: isZero ? 9 : 7, weight: isZero ? .bold : .regular, design: .monospaced))
-                            .foregroundColor(isZero ? Color.white.opacity(0.92) : Color.white.opacity(0.32)),
+                            .foregroundColor(isZero ? Self.ink.opacity(0.92) : Self.ink.opacity(0.32)),
                          at: CGPoint(x: x, y: originY + 4), anchor: .top)
             }
             offFt += offStep
@@ -1150,7 +1218,7 @@ struct ShotResultView: View {
 
         // Origin (ball start)
         ctx.fill(Path(ellipseIn: CGRect(x: originX - 5, y: originY - 5, width: 10, height: 10)),
-                 with: .color(.white))
+                 with: .color(Self.ink))
 
         func pathPt(_ p: Double) -> CGPoint {
             CGPoint(x: px(puttOffsetFt(p, totalFt: totalFt)), y: py(p * totalFt))
@@ -1163,7 +1231,7 @@ struct ShotResultView: View {
             let pt = pathPt(Double(i) / Double(guideSteps))
             if guideFirst { guide.move(to: pt); guideFirst = false } else { guide.addLine(to: pt) }
         }
-        ctx.stroke(guide, with: .color(Color.white.opacity(0.24)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
+        ctx.stroke(guide, with: .color(Self.ink.opacity(0.24)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
 
         if rp > 0.001 {
             let maxStep = max(1, Int(Double(guideSteps) * rp))
@@ -1187,7 +1255,7 @@ struct ShotResultView: View {
         if rp >= 1.0 {
             ctx.draw(Text(puttSummaryText)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.88)),
+                        .foregroundColor(Self.ink.opacity(0.88)),
                      at: CGPoint(x: size.width / 2, y: padTop - 6), anchor: .top)
         }
     }

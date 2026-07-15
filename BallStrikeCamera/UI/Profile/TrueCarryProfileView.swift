@@ -28,7 +28,11 @@ struct TrueCarryProfileView: View {
 
     // Real-time Google Drive dev-mode uploader (developer testing tool)
     @AppStorage(GoogleDriveUploadService.enabledKey) private var driveDevMode = false
+    #if DEBUG
+    @State private var showBallTrackingTester = false
+    #endif
     @StateObject private var driveAuth = GoogleDriveAuthService.shared
+    @StateObject private var driveUploader = GoogleDriveUploadService.shared
     @State private var isConnectingDrive = false
     @State private var driveConnectError: String?
 
@@ -92,6 +96,11 @@ struct TrueCarryProfileView: View {
             }
         }
         .navigationBarHidden(true)
+        #if DEBUG
+        .fullScreenCover(isPresented: $showBallTrackingTester) {
+            BallTrackingTestView(onDismiss: { showBallTrackingTester = false })
+        }
+        #endif
         .sheet(item: $route) { r in
             NavigationStack {
                 switch r {
@@ -451,6 +460,18 @@ struct TrueCarryProfileView: View {
 
                 rowDivider
 
+                #if DEBUG
+                // Offline live-parity replay: loads archived/exported shots and runs the EXACT
+                // production pipeline with per-frame overlays (ball track, club, metrics).
+                Button { showBallTrackingTester = true } label: {
+                    settingRow(icon: "scope", title: "Ball Tracking Tester",
+                               value: "replay saved shots")
+                }
+                .buttonStyle(.plain)
+
+                rowDivider
+                #endif
+
                 let _ = archiveRefresh   // recompute count/size when bumped
                 settingRow(icon: "internaldrive.fill", title: "Archived Shots",
                            value: "\(FrameArchiveService.shared.shotCount()) · \(archiveSizeString)",
@@ -463,6 +484,21 @@ struct TrueCarryProfileView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(FrameArchiveService.shared.shotCount() == 0)
+
+                rowDivider
+
+                // Bulk-send the whole local archive to Drive, one zip per shot. Resumable:
+                // already-uploaded shots are skipped, so a re-tap continues where it stopped.
+                Button { driveUploader.uploadArchive() } label: {
+                    settingRow(icon: "icloud.and.arrow.up",
+                               title: "Upload Archive to Drive",
+                               value: archiveUploadStatusString,
+                               showChevron: false)
+                }
+                .buttonStyle(.plain)
+                .disabled(!driveAuth.isSignedIn
+                          || driveUploader.archiveUpload?.isRunning == true
+                          || driveUploader.pendingArchiveCount() == 0)
 
                 rowDivider
 
@@ -581,6 +617,19 @@ struct TrueCarryProfileView: View {
         let f = ByteCountFormatter()
         f.countStyle = .file
         return f.string(fromByteCount: bytes)
+    }
+
+    private var archiveUploadStatusString: String {
+        if let st = driveUploader.archiveUpload {
+            if st.isRunning { return "uploading \(st.done + st.failed + 1)/\(st.total)…" }
+            if st.total == 0 { return "nothing new to upload" }
+            return st.failed == 0
+                ? "done — \(st.done) uploaded"
+                : "\(st.done) uploaded · \(st.failed) failed (tap to retry)"
+        }
+        guard driveAuth.isSignedIn else { return "connect Drive below first" }
+        let pending = driveUploader.pendingArchiveCount()
+        return pending == 0 ? "all shots uploaded" : "\(pending) shots pending"
     }
 
     private func exportAllFrames() {

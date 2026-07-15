@@ -1,0 +1,753 @@
+{
+  "version": 1,
+  "tracks": [
+    {
+      "id": "foundations",
+      "title": "Foundations",
+      "subtitle": "From zero to your first real shots",
+      "icon": "figure.golf",
+      "focusAreas": [
+        "start_zero",
+        "checkup"
+      ],
+      "lessons": [
+        {
+          "id": "foundations.clubs",
+          "title": "Know Your Clubs",
+          "subtitle": "What's in the bag and what each one does",
+          "icon": "bag.fill",
+          "minutes": 7,
+          "prerequisites": [],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "clubs.video",
+              "kind": "video",
+              "title": "Watch: a tour of the bag",
+              "videoId": "coach.clubs.v1",
+              "body": "A 2-minute walk through every club type and when you'd pull it. The full written guide follows."
+            },
+            {
+              "id": "clubs.read",
+              "kind": "explainer",
+              "title": "The bag, club by club",
+              "body": "Every club trades distance for control. Lower numbers = longer shafts, less loft, more distance, harder to hit. Higher numbers and wedges = shorter, more loft, more control.",
+              "points": [
+                "DRIVER \u2014 the longest club, hit off a tee. Biggest head, least loft (~10\u00b0). Distance king, accuracy diva.",
+                "WOODS (3W, 5W) \u2014 long shots from the tee or fairway. Easier than driver, still plenty of distance.",
+                "HYBRIDS \u2014 wood-shaped rescue clubs that replace hard-to-hit long irons (3i/4i). Very forgiving.",
+                "IRONS (5\u20139) \u2014 the scoring workhorses. 5-iron goes far and low; 9-iron goes short and high. One club \u2248 10\u201312 yards of gap.",
+                "WEDGES (PW, GW, SW, LW) \u2014 50\u2013130 yards and everything around the green. The sand wedge is built to splash out of bunkers.",
+                "PUTTER \u2014 the flat one. You'll use it more than any other club in the bag.",
+                "Starting out? You only need: driver OR 3-wood, a hybrid, 7-iron, 9-iron, sand wedge, putter."
+              ]
+            },
+            {
+              "id": "clubs.quiz",
+              "kind": "quiz",
+              "title": "Quick check",
+              "quiz": [
+                {
+                  "question": "Which goes FARTHER: a 5-iron or a 9-iron?",
+                  "answers": [
+                    "5-iron",
+                    "9-iron",
+                    "Same"
+                  ],
+                  "correctIndex": 0,
+                  "why": "Lower number = longer shaft + less loft = more distance."
+                },
+                {
+                  "question": "Which club is built for bunkers?",
+                  "answers": [
+                    "Driver",
+                    "Sand wedge",
+                    "Putter"
+                  ],
+                  "correctIndex": 1,
+                  "why": "The sand wedge's wide sole slides through sand instead of digging."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "foundations.grip",
+          "title": "Hold the Club",
+          "subtitle": "Grip is 80% of your ball flight",
+          "icon": "hand.raised.fill",
+          "minutes": 8,
+          "prerequisites": [
+            "foundations.clubs"
+          ],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "grip.why",
+              "kind": "explainer",
+              "title": "Why grip comes first",
+              "body": "Your hands are the only part of you touching the club. The grip controls the club face, and the face controls where the ball starts and curves. Get this right now and every later lesson gets easier.",
+              "points": [
+                "The club face sends the ball; your grip steers the face",
+                "A neutral grip lets your body swing free without hand corrections",
+                "Learn one grip and keep it \u2014 consistency beats perfection"
+              ]
+            },
+            {
+              "id": "grip.model",
+              "kind": "model3D",
+              "title": "The neutral grip, in 3D",
+              "body": "Rotate the model. Work through each checkpoint on your own club.",
+              "asset3D": "grip_interlock",
+              "checkpoints": [
+                "Lead hand: club in the fingers, not the palm",
+                "See 2 knuckles of your lead hand looking down",
+                "Trail hand: lifeline covers the lead thumb",
+                "Pinky interlocks or overlaps the lead index finger",
+                "Pressure 4/10 \u2014 hold a bird, don't crush it"
+              ]
+            },
+            {
+              "id": "grip.check",
+              "kind": "check3D",
+              "title": "Show me your grip",
+              "body": "Hold your grip up in front of the camera. We'll check hand stacking with on-device hand tracking \u2014 or step through the checklist yourself.",
+              "checkpoints": [
+                "Hands touching, no gap between them",
+                "Two lead-hand knuckles visible",
+                "Trail palm faces the target",
+                "Thumbs pointing mostly down the shaft"
+              ]
+            },
+            {
+              "id": "grip.quiz",
+              "kind": "quiz",
+              "title": "Quick check",
+              "quiz": [
+                {
+                  "question": "Where should the club sit in your lead hand?",
+                  "answers": [
+                    "Across the palm",
+                    "In the fingers",
+                    "Doesn't matter"
+                  ],
+                  "correctIndex": 1,
+                  "why": "Fingers let the wrists hinge; palms lock them up."
+                },
+                {
+                  "question": "How many lead-hand knuckles should you see at address?",
+                  "answers": [
+                    "None",
+                    "Two",
+                    "All four"
+                  ],
+                  "correctIndex": 1,
+                  "why": "Two knuckles = neutral. More = strong (hook bias), fewer = weak (slice bias)."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "foundations.setup",
+          "title": "Setup & Posture",
+          "subtitle": "Athletic posture, every time",
+          "icon": "figure.stand",
+          "minutes": 10,
+          "prerequisites": [
+            "foundations.grip"
+          ],
+          "focusMetrics": [
+            "spine_tilt_address"
+          ],
+          "steps": [
+            {
+              "id": "setup.why",
+              "kind": "explainer",
+              "title": "Posture powers the swing",
+              "body": "A golf swing is a rotation around your spine. Set the spine angle at address and keep it \u2014 most contact problems are posture problems in disguise.",
+              "points": [
+                "DISTANCE TO BALL: arms hang straight down from your shoulders, then grip \u2014 if you're reaching or cramped, step in or out. Longer club = stand farther away, ball more forward.",
+                "Feet shoulder-width; ball position center for short irons, one ball forward per longer club, off the lead heel for driver",
+                "Hinge from the hips (~30\u201340\u00b0), soft knees \u2014 butt back, chest over the ball",
+                "More bend for wedges (shortest shafts), tallest posture for driver"
+              ]
+            },
+            {
+              "id": "setup.model",
+              "kind": "model3D",
+              "title": "Address position, in 3D",
+              "body": "Match each checkpoint in a mirror or the camera.",
+              "asset3D": "address_posture",
+              "checkpoints": [
+                "Spine tilted ~35\u00b0 from vertical",
+                "Weight mid-foot, 50/50",
+                "Knees flexed, not squatting",
+                "Chin up off your chest"
+              ]
+            },
+            {
+              "id": "setup.capture",
+              "kind": "swingCapture",
+              "title": "Hold your address",
+              "body": "Set up the phone face-on, take your address, and hold still for 3 seconds. We'll measure your spine tilt.",
+              "swingCount": 1
+            },
+            {
+              "id": "setup.quiz",
+              "kind": "quiz",
+              "title": "Quick check",
+              "quiz": [
+                {
+                  "question": "Where do you hinge from at address?",
+                  "answers": [
+                    "The knees",
+                    "The hips",
+                    "The shoulders"
+                  ],
+                  "correctIndex": 1,
+                  "why": "Hip hinge keeps the spine straight and the arms free."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "foundations.alignment",
+          "title": "Aim & Alignment",
+          "subtitle": "Train tracks: body left, face at the target",
+          "icon": "scope",
+          "minutes": 6,
+          "prerequisites": [
+            "foundations.setup"
+          ],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "aim.why",
+              "kind": "explainer",
+              "title": "Aim is a system, not a glance",
+              "body": "The club face aims AT the target. Your feet, hips and shoulders aim PARALLEL-LEFT of it (right-handers) \u2014 like train tracks. Most 'slices' start as alignment errors.",
+              "points": [
+                "Pick an intermediate spot 2 feet ahead of the ball on your line",
+                "Set the face to the spot FIRST, then build your stance",
+                "Lay a club on the ground along your toes to practice"
+              ]
+            },
+            {
+              "id": "aim.model",
+              "kind": "model3D",
+              "title": "Train tracks, in 3D",
+              "asset3D": "alignment_tracks",
+              "checkpoints": [
+                "Face aims at the target",
+                "Toe line parallel-left",
+                "Shoulders match the toe line"
+              ]
+            },
+            {
+              "id": "aim.quiz",
+              "kind": "quiz",
+              "title": "Quick check",
+              "quiz": [
+                {
+                  "question": "Where should your feet aim?",
+                  "answers": [
+                    "At the target",
+                    "Parallel-left of the target",
+                    "Right of the target"
+                  ],
+                  "correctIndex": 1,
+                  "why": "Body parallel-left, face at the target \u2014 train tracks."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "foundations.takeaway",
+          "title": "The Takeaway",
+          "subtitle": "First 3 feet set up everything",
+          "icon": "arrow.turn.up.right",
+          "minutes": 12,
+          "prerequisites": [
+            "foundations.alignment"
+          ],
+          "focusMetrics": [
+            "takeaway_path",
+            "head_sway"
+          ],
+          "steps": [
+            {
+              "id": "tk.why",
+              "kind": "explainer",
+              "title": "One piece back",
+              "body": "Hands, arms and chest move away together \u2014 the 'one-piece takeaway'. No wrist flick, no sway. When the club head passes your trail foot it should still be outside your hands.",
+              "points": [
+                "Turn your chest \u2014 don't lift with the hands",
+                "Head stays centered while the body coils",
+                "Slow is smooth; you're building a pattern, not speed"
+              ]
+            },
+            {
+              "id": "tk.video",
+              "kind": "video",
+              "title": "Watch: the one-piece takeaway",
+              "videoId": "coach.takeaway.v1",
+              "body": "A 90-second demonstration. (Video drops in soon \u2014 the key positions are illustrated until then.)"
+            },
+            {
+              "id": "tk.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 takeaways \u2014 down the line",
+              "body": "Set the tripod 6 FEET BEHIND you on the target line, camera at hand height, looking at the target. In the Studio, tap the title pill to switch to Down the Line. Swing back to hip height and stop \u2014 you'll get an on-plane / inside / outside verdict on every rep.",
+              "swingCount": 3
+            }
+          ]
+        },
+        {
+          "id": "foundations.halfswing",
+          "title": "Half Swings (L-to-L)",
+          "subtitle": "The engine of the full swing",
+          "icon": "arrow.left.arrow.right",
+          "minutes": 15,
+          "prerequisites": [
+            "foundations.takeaway"
+          ],
+          "focusMetrics": [
+            "tempo_ratio",
+            "head_sway"
+          ],
+          "steps": [
+            {
+              "id": "l2l.why",
+              "kind": "explainer",
+              "title": "The L-to-L drill",
+              "body": "Swing to hip height with wrists hinged into an 'L', swing through to a mirrored 'L' on the other side. This is the whole golf swing in miniature \u2014 tempo, release and balance live here.",
+              "points": [
+                "Lead arm parallel to the ground, club pointing up: that's your L",
+                "Finish in a mirrored L, weight on the lead foot",
+                "Count 'one-and-two': back on 'one-and', through on 'two'"
+              ]
+            },
+            {
+              "id": "l2l.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 L-to-L swings",
+              "body": "Smooth and balanced beats fast. We'll score your tempo and head stability.",
+              "swingCount": 3
+            }
+          ]
+        },
+        {
+          "id": "foundations.fullswing",
+          "title": "The Full Swing",
+          "subtitle": "Put it all together \u2014 no ball yet",
+          "icon": "figure.golf",
+          "minutes": 15,
+          "prerequisites": [
+            "foundations.halfswing"
+          ],
+          "focusMetrics": [
+            "tempo_ratio",
+            "head_sway",
+            "hip_slide",
+            "finish_balance"
+          ],
+          "steps": [
+            {
+              "id": "full.why",
+              "kind": "explainer",
+              "title": "Stretch the L-to-L",
+              "body": "A full swing is your half swing with more turn \u2014 not more effort. Coil the shoulders to 90\u00b0, let the wrists hinge fully, and swing through to a full, balanced finish you can hold for 3 seconds.",
+              "points": [
+                "Backswing is a coil, not a lift",
+                "Start down with the lower body, not the hands",
+                "Hold the finish: chest at the target, trail toe down"
+              ]
+            },
+            {
+              "id": "full.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 full swings",
+              "body": "Practice swings, no ball. This is your first full Swing Score.",
+              "swingCount": 3
+            }
+          ]
+        },
+        {
+          "id": "foundations.firstcontact",
+          "title": "First Contact",
+          "subtitle": "Graduate to Range mode",
+          "icon": "flag.checkered",
+          "minutes": 20,
+          "prerequisites": [
+            "foundations.fullswing"
+          ],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "fc.brief",
+              "kind": "explainer",
+              "title": "Time to hit a ball",
+              "body": "Set up TrueCarry's launch monitor (landscape, tripod, behind the ball) exactly like a Range session \u2014 this app measures your ball flight while everything you've built here powers the swing.",
+              "points": [
+                "Start with an 8-iron and half swings",
+                "Brush the grass \u2014 the loft does the lifting",
+                "Expect mishits: contact is a skill that arrives with reps"
+              ]
+            },
+            {
+              "id": "fc.range",
+              "kind": "explainer",
+              "title": "Your guided Range session",
+              "body": "Open Play \u2192 Range and hit 10 shots. Your carry, ball speed and dispersion land in Insights automatically \u2014 and your swing scores from this track give the numbers context. Welcome to the game.",
+              "points": [
+                "10 shots, any club",
+                "Ignore distance today \u2014 watch contact and balance",
+                "Come back here after: the Slice/Hook and Contact tracks read your ball data"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "slice",
+      "title": "Fix My Slice",
+      "subtitle": "Kill the left-to-right banana ball",
+      "icon": "arrow.up.right",
+      "focusAreas": [
+        "slice"
+      ],
+      "lessons": [
+        {
+          "id": "slice.diagnose",
+          "title": "Why You Slice",
+          "subtitle": "Face open to path \u2014 here's what that means",
+          "icon": "questionmark.circle",
+          "minutes": 6,
+          "prerequisites": [],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "sl.why",
+              "kind": "explainer",
+              "title": "The slice equation",
+              "body": "A slice = club face open to the swing path at impact. Usually the path swings out-to-in ('over the top') AND the face hangs open. We attack the face first (grip), then the path (transition).",
+              "points": [
+                "Face open \u2192 ball curves right (RH)",
+                "Out-to-in path makes the curve worse and starts it left",
+                "Range mode's spin axis + HLA numbers confirm your pattern with real ball data"
+              ]
+            },
+            {
+              "id": "sl.quiz",
+              "kind": "quiz",
+              "title": "Quick check",
+              "quiz": [
+                {
+                  "question": "What makes the ball curve right for a right-hander?",
+                  "answers": [
+                    "Face closed to path",
+                    "Face open to path",
+                    "Swinging too hard"
+                  ],
+                  "correctIndex": 1,
+                  "why": "Curve comes from the face-to-path gap \u2014 open face = right spin."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "slice.grip",
+          "title": "Strengthen the Grip",
+          "subtitle": "Close the face without thinking",
+          "icon": "hand.raised.fill",
+          "minutes": 8,
+          "prerequisites": [
+            "slice.diagnose"
+          ],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "slg.model",
+              "kind": "model3D",
+              "title": "Neutral vs strong grip, in 3D",
+              "asset3D": "grip_strong",
+              "checkpoints": [
+                "Rotate lead hand until you see 3 knuckles",
+                "Trail hand rotates with it \u2014 palms stay facing",
+                "Face still square at address"
+              ]
+            },
+            {
+              "id": "slg.check",
+              "kind": "check3D",
+              "title": "Show me the stronger grip",
+              "checkpoints": [
+                "Three lead-hand knuckles visible",
+                "Trail palm slightly under the grip",
+                "Same 4/10 pressure"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "slice.path",
+          "title": "Fix the Path",
+          "subtitle": "Stop coming over the top",
+          "icon": "arrow.down.right.circle",
+          "minutes": 15,
+          "prerequisites": [
+            "slice.grip"
+          ],
+          "focusMetrics": [
+            "tempo_ratio",
+            "delivery_plane"
+          ],
+          "steps": [
+            {
+              "id": "slp.why",
+              "kind": "explainer",
+              "title": "Transition, not effort",
+              "body": "Over-the-top happens when the shoulders start the downswing. The fix: from the top, feel the lead hip bump toward the target FIRST while your back stays to the target a beat longer.",
+              "points": [
+                "'Bump then turn' \u2014 lower body leads",
+                "Feel the club drop behind you before it swings out",
+                "A smoother tempo gives the drop time to happen"
+              ]
+            },
+            {
+              "id": "slp.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 transition swings \u2014 down the line",
+              "body": "Tripod 6 feet behind you on the target line, Studio set to Down the Line. Full practice swings \u2014 Coach calls Club On Plane / Steep / Shallow at delivery on each one.",
+              "swingCount": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hook",
+      "title": "Fix My Hook",
+      "subtitle": "Tame the hard right-to-left dive",
+      "icon": "arrow.up.left",
+      "focusAreas": [
+        "hook"
+      ],
+      "lessons": [
+        {
+          "id": "hook.diagnose",
+          "title": "Why You Hook",
+          "subtitle": "Face closed to path",
+          "icon": "questionmark.circle",
+          "minutes": 6,
+          "prerequisites": [],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "hk.why",
+              "kind": "explainer",
+              "title": "The hook equation",
+              "body": "A hook = face closed to path, usually a too-strong grip plus an in-to-out path with flippy hands. We neutralize the grip and quiet the hands with body rotation.",
+              "points": [
+                "Check: do you see 4 knuckles at address? That's too strong",
+                "Body stalls \u2192 hands flip \u2192 snap hook",
+                "Keep the chest turning through impact"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hook.release",
+          "title": "Quiet Hands, Turning Body",
+          "subtitle": "Rotate through, don't flip",
+          "icon": "arrow.triangle.2.circlepath",
+          "minutes": 12,
+          "prerequisites": [
+            "hook.diagnose"
+          ],
+          "focusMetrics": [
+            "tempo_ratio",
+            "finish_balance"
+          ],
+          "steps": [
+            {
+              "id": "hkr.why",
+              "kind": "explainer",
+              "title": "The body release",
+              "body": "Feel your chest and hips keep rotating to the finish while the hands stay passive. The club face stays square to your body instead of snapping shut.",
+              "points": [
+                "Finish with your chest at the target",
+                "Grip pressure stays constant \u2014 flips come from squeezing",
+                "Hold the finish 3 seconds"
+              ]
+            },
+            {
+              "id": "hkr.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 rotation swings",
+              "swingCount": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contact",
+      "title": "Pure Contact",
+      "subtitle": "Stop topping and chunking it",
+      "icon": "circle.dotted",
+      "focusAreas": [
+        "contact"
+      ],
+      "lessons": [
+        {
+          "id": "contact.lowpoint",
+          "title": "Low-Point Control",
+          "subtitle": "Ball first, then turf",
+          "icon": "arrow.down.to.line",
+          "minutes": 12,
+          "prerequisites": [],
+          "focusMetrics": [
+            "head_sway",
+            "hip_slide"
+          ],
+          "steps": [
+            {
+              "id": "lp.why",
+              "kind": "explainer",
+              "title": "Where the swing bottoms out",
+              "body": "Fat and thin shots are the same mistake: the swing's low point wandering behind the ball. The low point follows your head and pressure \u2014 keep the head centered and finish with weight left, and the bottom moves to the ball.",
+              "points": [
+                "Head centered over the ball through the strike",
+                "Weight finishes 90% on the lead foot",
+                "Feel like you're brushing grass just past the ball"
+              ]
+            },
+            {
+              "id": "lp.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 swings",
+              "body": "We'll track head sway and hip slide \u2014 the two low-point killers.",
+              "swingCount": 3
+            }
+          ]
+        },
+        {
+          "id": "contact.balance",
+          "title": "Strike It In Balance",
+          "subtitle": "Finish like a statue",
+          "icon": "figure.stand",
+          "minutes": 10,
+          "prerequisites": [
+            "contact.lowpoint"
+          ],
+          "focusMetrics": [
+            "finish_balance",
+            "tempo_ratio"
+          ],
+          "steps": [
+            {
+              "id": "bal.why",
+              "kind": "explainer",
+              "title": "Balance is a contact skill",
+              "body": "If you can't hold your finish, you were never in control at impact. Swing at 80% and hold every finish for a full 3 seconds.",
+              "points": [
+                "80% effort, 100% balance",
+                "Trail toe down, laces at the target",
+                "If you stumble, the swing was too fast \u2014 not too slow"
+              ]
+            },
+            {
+              "id": "bal.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 held finishes",
+              "swingCount": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tempo",
+      "title": "Tempo & Sequence",
+      "subtitle": "Smooth is fast",
+      "icon": "metronome",
+      "focusAreas": [
+        "tempo",
+        "distance"
+      ],
+      "lessons": [
+        {
+          "id": "tempo.ratio",
+          "title": "The 3:1 Ratio",
+          "subtitle": "Tour tempo, measured live",
+          "icon": "metronome",
+          "minutes": 12,
+          "prerequisites": [],
+          "focusMetrics": [
+            "tempo_ratio"
+          ],
+          "steps": [
+            {
+              "id": "tr.why",
+              "kind": "explainer",
+              "title": "Backswing 3, downswing 1",
+              "body": "Nearly every great player's backswing takes ~3x as long as their downswing. Your camera measures yours to the frame at 240fps \u2014 most amateurs are 2:1 (snatchy) or 4.5:1 (slow drift then lunge).",
+              "points": [
+                "Think 'low and slow' back, 'unwind' down",
+                "Speed belongs at the ball, not at takeaway",
+                "The number matters less than repeating it"
+              ]
+            },
+            {
+              "id": "tr.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 swings for tempo",
+              "body": "Full practice swings at your normal effort. Target band: 2.6\u20133.4 : 1.",
+              "swingCount": 3
+            }
+          ]
+        },
+        {
+          "id": "tempo.sequence",
+          "title": "The Kinematic Sequence",
+          "subtitle": "Hips \u2192 torso \u2192 arms \u2192 club",
+          "icon": "arrow.triangle.2.circlepath",
+          "minutes": 12,
+          "prerequisites": [
+            "tempo.ratio"
+          ],
+          "focusMetrics": [
+            "tempo_ratio",
+            "hip_slide",
+            "finish_balance"
+          ],
+          "steps": [
+            {
+              "id": "seq.why",
+              "kind": "explainer",
+              "title": "Power flows from the ground up",
+              "body": "Distance isn't arm speed \u2014 it's sequence. The hips fire first and each segment slings the next like a whip. If your arms win the race, you lose the lag and the speed.",
+              "points": [
+                "From the top: hip bump starts everything",
+                "Chest stays closed a beat longer",
+                "The club arrives last and fastest"
+              ]
+            },
+            {
+              "id": "seq.capture",
+              "kind": "swingCapture",
+              "title": "Record 3 sequenced swings",
+              "swingCount": 3
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

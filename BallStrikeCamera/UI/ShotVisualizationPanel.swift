@@ -104,7 +104,15 @@ private struct PreviewCrop {
 }
 
 private enum PreviewTargetLayout {
-    static let centerXRatio: CGFloat = 0.45
+    // 0.65: the ball placement sits toward the TRAILING side of the camera buffer
+    // (on-screen travel is right→left for both hands — the buffer rotates with the hand
+    // lock), so the post-impact flight still crosses ~0.65 of the frame (~6 tracked
+    // flight frames at driver speeds, ~0.1 frame-widths/frame @240fps) while leaving
+    // ~0.35 of the frame trailing the ball so the approaching clubhead is captured for
+    // club-path/face estimation. Was 0.72 — that left so little trailing room the club
+    // barely appeared pre-impact; before that 0.45. The preview still shows the circle
+    // centered — previewCrop pans the buffer, the capture itself is untouched.
+    static let centerXRatio: CGFloat = 0.65
     static let centerYRatio: CGFloat = 0.50
     static let radiusRatio: CGFloat  = 0.43
     static let sourceAspect: CGFloat = 16.0 / 9.0

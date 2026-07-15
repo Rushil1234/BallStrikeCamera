@@ -57,6 +57,7 @@ struct PastSessionsView: View {
                     filterBar
                     summaryStrip
                     handicapCard   // always visible so Scores & Handicap is discoverable pre-rounds
+                    coachSwingsSection   // lessons + analyzed swings from TrueCarry Coach
                     content
                     Spacer(minLength: 140)
                 }
@@ -486,6 +487,37 @@ struct PastSessionsView: View {
                 }
             }
             .tcCard()
+        }
+    }
+
+    // MARK: Coach swings (lesson history + analyzed swing videos)
+
+    @ViewBuilder
+    private var coachSwingsSection: some View {
+        let library = LessonLibrary.shared
+        let recent = Array(library.swings.filter(\.analyzed).suffix(3).reversed())
+        if !recent.isEmpty || !library.lessonSessions.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    Text("COACH")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(TCTheme.textMuted)
+                        .tracking(1.4)
+                        .fixedSize()
+                    Rectangle().fill(TCTheme.border).frame(height: 1)
+                    Text("\(library.completedLessonCount) lesson\(library.completedLessonCount == 1 ? "" : "s") · \(library.swings.filter(\.analyzed).count) swing\(library.swings.filter(\.analyzed).count == 1 ? "" : "s")")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(TCTheme.textUltraMuted)
+                        .fixedSize()
+                }
+                ForEach(recent) { swing in
+                    NavigationLink { SwingReplayView(swing: swing) } label: {
+                        SwingRowView(swing: swing)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, TCTheme.hPad)
         }
     }
 

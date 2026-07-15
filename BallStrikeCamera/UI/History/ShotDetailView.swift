@@ -59,12 +59,6 @@ struct ShotDetailView: View {
         showShare = true
     }
 
-    /// Local replay frame directory for this shot (replay frames are device-local only).
-    private var localFramesDir: URL? {
-        guard let uid = session.currentUser?.id else { return nil }
-        return AppStorageManager.shotFramesDir(userId: uid, shotId: shot.id)
-    }
-
     /// Ensures the composite image exists on disk (downloading from cloud if this device
     /// doesn't have it), then points the view at the local file.
     private func resolveComposite() async {
@@ -81,9 +75,11 @@ struct ShotDetailView: View {
         VStack(alignment: .leading, spacing: 12) {
             TCSectionHeader(title: "Replay")
             Group {
-                if let dir = localFramesDir, ReplayPlayerView.framesExist(in: dir) {
-                    ReplayPlayerView(framesDir: dir)
-                } else if let comp = resolvedComposite {
+                // Always the composite JPEG — never the frame-scrubber replay. The composite is
+                // what every shot persists (cheap, cloud-synced); the 41 raw frames exist only
+                // for model training and shouldn't be a history-view dependency.
+                if let comp = resolvedComposite {
+                    // Full-width, tall enough that the club and ball trail actually read.
                     AsyncImage(url: comp) { phase in
                         switch phase {
                         case .success(let img):
@@ -92,7 +88,8 @@ struct ShotDetailView: View {
                             replayPlaceholder
                         }
                     }
-                    .frame(height: 220)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 320)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 } else if !compositeResolved {
                     // Fetching the composite from cloud for this device.

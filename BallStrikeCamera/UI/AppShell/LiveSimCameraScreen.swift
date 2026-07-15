@@ -40,8 +40,15 @@ struct LiveSimCameraScreen: View {
         .overlay(alignment: .top) {
             if simVM.isMultiPlayer { whoseTurnPill.padding(.top, 60) }
         }
-        .onChange(of: camera.showShotResult) { isShowing in
-            guard isShowing, let analysis = camera.latestShotAnalysis,
+        // Fires when analysis completes with a real result. showShotResult can NOT be the
+        // trigger: the analyzing cover flips it true at capture time, before metrics exist —
+        // onChange fired once against a nil latestShotAnalysis and never again when the
+        // result landed (the flag was already true), so real shots showed on the phone but
+        // never reached the sim. isAnalyzingShot goes true → false exactly once per shot,
+        // strictly after latestShotAnalysis is assigned.
+        .onChange(of: camera.isAnalyzingShot) { isAnalyzing in
+            guard !isAnalyzing, camera.showShotResult,
+                  let analysis = camera.latestShotAnalysis,
                   let metrics = analysis.metrics else { return }
 
             let savedMetrics = SavedShotMetrics(metrics)
@@ -94,6 +101,7 @@ struct LiveSimCameraScreen: View {
         .onDisappear {
             OrientationManager.shared.unlockAllButUpsideDown()
             camera.stop()
+            GoogleDriveUploadService.shared.autoOffloadIfNeeded()
         }
         .confirmationDialog("Select Club", isPresented: $showClubPicker, titleVisibility: .visible) {
             ForEach(clubs) { club in

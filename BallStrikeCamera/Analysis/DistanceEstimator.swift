@@ -40,11 +40,21 @@ struct DistanceEstimator {
                 method: "unavailable", warnings: warnings)
         }
         guard let vlaDegrees, vlaDegrees.isFinite else {
-            // No VLA, but the ball measurably moved — a moving ball always travels SOMEWHERE.
-            // Report the kinetic ground-roll distance (d = v²/2μg) as a minimum total rather
-            // than nothing at all.
+            // No VLA, but the ball measurably moved. For SLOW balls (chip/putt regime) the
+            // kinetic ground-roll distance (d = v²/2μg) is a meaningful minimum total. For
+            // full-swing speeds the formula is nonsense — it printed "1299 yd" from a
+            // 118 mph read — because a fast ball is airborne, not rolling; there, honesty
+            // is "unavailable".
             let speedMps = ballSpeedMph / 2.23694
             let rollYards = ((speedMps * speedMps) / (2.0 * rollingResistance * 9.80665)) * 1.09361
+            guard ballSpeedMph <= 40, rollYards <= 120 else {
+                warnings.append(String(format: "VLA unavailable at full-swing speed (%.1f mph) — distance withheld.", ballSpeedMph))
+                return DistanceEstimate(
+                    idealCarryYards: nil, carryCorrectionFactor: carryCorrectionFactor,
+                    carryYards: nil, rolloutYards: nil, totalYards: nil,
+                    rolloutFraction: nil, vlaBucket: "no_vla",
+                    method: "unavailable_no_vla", warnings: warnings)
+            }
             warnings.append(String(format: "VLA unavailable — total is a minimum ground-roll estimate (%.0f yd from %.1f mph).",
                                    rollYards, ballSpeedMph))
             return DistanceEstimate(

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "quick_tempo",
+    "title": "Quick Tempo",
+    "explanation": "Your downswing starts before the backswing finishes \u2014 the classic snatch. Rushed transitions throw the club off line and cost you the lag that creates speed.",
+    "drill": "Count 'one-and-two' out loud: back on 'one-and', through on 'two'. Swing at 80% until the count feels boring.",
+    "lessonId": "tempo.ratio",
+    "videoId": "coach.tempo.v1",
+    "metric": "tempo_ratio",
+    "direction": "below"
+  },
+  {
+    "id": "slow_drift",
+    "title": "Backswing Drift",
+    "explanation": "Your backswing drifts so slowly that the downswing becomes a lunge to catch up. Great tempo is rhythmic, not slow.",
+    "drill": "Swing to a metronome feel: brisk 'ONE-two' with no pause at the top. Let the club rebound naturally.",
+    "lessonId": "tempo.ratio",
+    "videoId": "coach.tempo.v1",
+    "metric": "tempo_ratio",
+    "direction": "above"
+  },
+  {
+    "id": "sway",
+    "title": "Head Sway",
+    "explanation": "Your head slides sideways during the swing instead of staying centered. The swing's low point follows your head \u2014 sway is the #1 cause of fat and thin contact.",
+    "drill": "Practice with your lead temple almost touching a wall or alignment stick. Turn around your spine; don't slide along it.",
+    "lessonId": "contact.lowpoint",
+    "videoId": "coach.sway.v1",
+    "metric": "head_sway",
+    "direction": "above"
+  },
+  {
+    "id": "hip_slide",
+    "title": "Hip Slide",
+    "explanation": "Your hips slide laterally instead of rotating. Sliding stalls the body, dumps the club behind you, and forces the hands to save the strike.",
+    "drill": "Set a chair just outside your lead hip. Turn to the finish without bumping it \u2014 rotate, don't slide.",
+    "lessonId": "contact.lowpoint",
+    "videoId": "coach.hipslide.v1",
+    "metric": "hip_slide",
+    "direction": "above"
+  },
+  {
+    "id": "slouched_setup",
+    "title": "Slouched Setup",
+    "explanation": "Not enough forward tilt at address \u2014 standing too upright forces a flat, armsy swing and inconsistent contact.",
+    "drill": "Hip-hinge drill: club along your spine, hinge forward until your chest points at the ball, soft knees.",
+    "lessonId": "foundations.setup",
+    "videoId": "coach.setup.v1",
+    "metric": "spine_tilt_address",
+    "direction": "below"
+  },
+  {
+    "id": "hunched_setup",
+    "title": "Hunched Setup",
+    "explanation": "Too much forward bend at address \u2014 a hunched spine can't rotate, so the swing lifts and chops.",
+    "drill": "Stand tall, hinge from the hips only until your arms hang straight down under your shoulders. That's your tilt.",
+    "lessonId": "foundations.setup",
+    "videoId": "coach.setup.v1",
+    "metric": "spine_tilt_address",
+    "direction": "above"
+  },
+  {
+    "id": "bent_lead_arm",
+    "title": "Collapsing Lead Arm",
+    "explanation": "Your lead arm folds at the top, shrinking your arc \u2014 that's width and speed left on the table, and an extra moving part to time on the way down.",
+    "drill": "L-to-L swings feeling the lead arm stay long (soft, not rigid). Width back = speed through.",
+    "lessonId": "foundations.halfswing",
+    "videoId": "coach.leadarm.v1",
+    "metric": "lead_arm_top",
+    "direction": "above"
+  },
+  {
+    "id": "off_balance",
+    "title": "Off-Balance Finish",
+    "explanation": "You can't hold your finish \u2014 which means you weren't in control at impact either. Balance problems usually trace back to swinging beyond your tempo.",
+    "drill": "Every practice swing ends in a 3-second statue: weight on the lead foot, trail toe down, chest at the target.",
+    "lessonId": "contact.balance",
+    "videoId": "coach.balance.v1",
+    "metric": "finish_balance",
+    "direction": "above"
+  },
+  {
+    "id": "steep_delivery",
+    "title": "Club Steep at Delivery",
+    "explanation": "Coming down, your hands are outside the plane they started on \u2014 the over-the-top move that produces pulls and slices.",
+    "drill": "From the top, feel the club head drop BEHIND you before anything turns. Pump drill: top \u2192 drop \u2192 stop, three times, then swing.",
+    "lessonId": "slice.path",
+    "videoId": "coach.otc.v1",
+    "metric": "delivery_plane",
+    "direction": "above"
+  },
+  {
+    "id": "shallow_delivery",
+    "title": "Club Stuck Inside",
+    "explanation": "The club drops too far under the plane coming down \u2014 'stuck' \u2014 forcing flippy hands and blocks or snap hooks.",
+    "drill": "Feel your chest keep turning through the shot so the club can swing OUT to the ball instead of getting trapped behind you.",
+    "lessonId": "hook.release",
+    "videoId": "coach.stuck.v1",
+    "metric": "delivery_plane",
+    "direction": "below"
+  },
+  {
+    "id": "inside_takeaway",
+    "title": "Inside Takeaway",
+    "explanation": "Your hands pull inside the plane line in the first three feet, which usually forces a steep re-route at the top.",
+    "drill": "One-piece takeaway: chest turns the club back with the hands staying in front of you until the club passes your trail foot.",
+    "lessonId": "foundations.takeaway",
+    "videoId": "coach.takeaway.v1",
+    "metric": "takeaway_path",
+    "direction": "below"
+  },
+  {
+    "id": "early_extension",
+    "title": "Early Extension",
+    "explanation": "Your hips thrust toward the ball on the downswing, standing you up out of your posture \u2014 contact and start line go with it.",
+    "drill": "Practice with your rear against a wall or chair: keep it touching from the top through impact.",
+    "lessonId": "contact.balance",
+    "videoId": "coach.earlyext.v1",
+    "metric": "early_extension",
+    "direction": "above"
+  }
+]

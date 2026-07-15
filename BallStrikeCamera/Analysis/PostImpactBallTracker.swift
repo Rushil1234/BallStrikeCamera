@@ -22,6 +22,13 @@ final class PostImpactBallTracker {
         var maskBgDelta: Int = 15
         var smoothingEnabled: Bool = true
         var smoothingWindowSize: Int = 5
+        // Baseline-difference mask (post-impact only): a pixel belongs to the ball when it is
+        // this much brighter than that pixel's own pre-impact median. Percentile thresholds
+        // bleed into bright background (glare) and inflate the radius; against the per-pixel
+        // baseline the moving ball is the only thing that stands out, so the component bbox
+        // hugs the true disc. Lower than glareBaselineMinDelta (35) on purpose — the disc's
+        // dimmer rim still clears ~20 while scan-level suppression wants a stronger signal.
+        var maskBaselineDelta: Int = 22
     }
 
     struct ImpactDetectionConfiguration {
@@ -74,8 +81,18 @@ final class PostImpactBallTracker {
         // Forward-biased oriented ROI (matches Python asymmetric post-impact search)
         var postFwdScale: CGFloat = 10.0            // ball-widths forward along launch direction
         var postBwdScale: CGFloat = 1.2             // ball-widths backward
-        var postVertScaleUntracked: CGFloat = 1.5   // ball-widths lateral when no prior post-hit
-        var postVertScaleTracked: CGFloat = 2.5     // ball-widths lateral once tracking started
+        // Frame drops are routine (July 12: 92% of shots, gaps up to 4 periods between stored
+        // frames) — between two STORED frames a driven ball can cross most of the frame, so a
+        // ball-width-scaled forward extent silently strands the ball outside the ROI and the
+        // club gets tracked instead (observed on the Simulate Shot sample). The forward search
+        // always reaches the frame edge along the launch direction; 1.5 normalized covers any
+        // center/direction inside the unit square before corner clamping.
+        var postFwdMinNormExtent: CGFloat = 1.5
+        // 4.0 untracked (was 2.5, was 1.5): the first post-impact frame has no track yet, and
+        // with dropped frames a rising drive is several ball-widths above the seed's horizontal
+        // band by the first stored post frame (12.5ms gap @ VLA 15° ≈ 5 ball-widths of climb).
+        var postVertScaleUntracked: CGFloat = 4.0   // ball-widths lateral when no prior post-hit
+        var postVertScaleTracked: CGFloat = 3.0     // ball-widths lateral once tracking started
         // 0° = ball goes right (+x). Sign-based so it follows the hand-aware direction:
         // righty (sign −1) → 180°, lefty (sign +1, buffer rotated) → 0°. Config is built fresh
         // per shot, so it picks up the current hand.
@@ -103,6 +120,18 @@ final class PostImpactBallTracker {
         // accepted candidate (so tracking never goes blind).
         var chosenDiameterRatioMin: CGFloat = 0.55
         var chosenDiameterRatioMax: CGFloat = 1.9
+        // At locked 1/8000-class shutters the white ball is decisively the brightest object
+        // in the darkened analysis frames (measured 134-174 mean brightness across sessions,
+        // vs 96-116 for club, grass glare, and noise specks). Nearest-to-previous alone chose
+        // a dim px=18 speck beside the seed over the real ball three ball-widths downrange —
+        // when any candidate reaches this tier, only tier members compete on distance.
+        var brightBallTierMinBrightness: Int = 125
+        // The tier is also RELATIVE: only candidates within this many brightness levels of
+        // the frame's brightest accepted candidate compete on distance. A flat 125 floor let
+        // a br=131 clubface into the tier one frame after impact, where nearest-to-seed beat
+        // the br=159 ball — the ball IS the brightest ball-sized object in the frame, so
+        // anything decisively dimmer than the best candidate is not the ball.
+        var brightBallTierBandwidth: Int = 12
         // Per-shot candidate table: one line per analyzed frame listing every blob considered
         // (center, size, brightness, pixel count, accept/reject reason, chosen marker).
         // Bounded at ~41-101 lines/shot — cheap enough to leave on while tuning.
@@ -113,7 +142,10 @@ final class PostImpactBallTracker {
         // blob further than this many locked-diameters from the lock center is the club, not
         // the ball. (Previously the anchor drifted to whatever was chosen last frame, so one
         // bad pick walked the track onto the club permanently.)
-        var preAnchorMaxDriftDiameters: CGFloat = 1.2
+        // 0.5 diameters ≈ one ball radius: the live lock jitters by ~0.01 normalized, while
+        // glare-session noise specks sat 0.086 away and passed the old 1.2 allowance — those
+        // fake "movements" dragged the detected impact 11 frames early.
+        var preAnchorMaxDriftDiameters: CGFloat = 0.5
         // Post-impact the ball only moves AWAY from the impact point (along launchDir once
         // locked). A chosen blob whose progress regresses more than this is the club swinging
         // back through — reject it and let prediction/rescue or a miss handle the frame.
@@ -123,6 +155,25 @@ final class PostImpactBallTracker {
         // static junk blob sat nearest the edge (observed: ball exits at x=0.059, next frame a
         // dim blob at (0.012,0.775) gets tracked motionless for the rest of the capture).
         var edgeTerminationMarginNorm: CGFloat = 0.06
+        // Post-launch picks must sit on the launch line: reject when the perpendicular offset
+        // exceeds this fraction of the pick's downrange progress (0.35 ≈ 19° off-line) or the
+        // absolute floor. The club's follow-through crosses the flight corridor on a different
+        // line — this is what stops it stealing the track between ball exit and termination.
+        var pathResidualFractionOfProgress: CGFloat = 0.35
+        var pathResidualFloorNorm: CGFloat = 0.05
+
+        // Static-glare suppression: post-impact scans ignore pixels that were ALREADY bright
+        // before impact. Sunlit turf floods the absolute brightness gates — the July 12 range
+        // session measured ~10k qualifying pixels per frame against a ~50-150 px ball, and the
+        // tracker chased turf glare on most of 100 shots. The per-pixel MEDIAN luma of the
+        // pre-impact frames is a map of that static glare (median over ≥5 samples is robust to
+        // the club or an early-launching ball sweeping through), and everything the strike set
+        // in motion reads brighter than its own pre-impact baseline. Pre-impact and impact-frame
+        // scans stay unsuppressed — the stationary ball IS baseline-bright by definition. A
+        // frame whose suppressed scan finds nothing falls back to the unsuppressed scan, so
+        // this can only ever remove clutter, never a previously-findable ball.
+        var staticGlareSuppressionEnabled: Bool = true
+        var glareBaselineMinDelta: Int = 35
 
         // First-pass putter tuning — not yet validated against real slow-roll footage, expect to
         // adjust these two numbers after testing on-device.
@@ -247,13 +298,24 @@ final class PostImpactBallTracker {
         let preConfig = makeScanConfig(pre: true)
         let postConfig = makeScanConfig(pre: false)
 
+        // Per-pixel static-glare map from the pre-impact frames (see Configuration docs).
+        // Built once per shot; both tracking passes and the launch-chain scan share it.
+        let glareBaseline = cfg.staticGlareSuppressionEnabled
+            ? Self.buildGlareBaseline(pixelData: pixelData, frames: frames,
+                                      beforeFrameIndex: fallbackImpactFrameIndex - 1)
+            : nil
+        if glareBaseline != nil {
+            dbg("[PostImpactBallTracker] static-glare baseline built from pre-impact frames")
+        }
+
         let firstPass = runTrackingPass(
             frames: frames,
             pixelData: pixelData,
             impactFrameIndex: fallbackImpactFrameIndex,
             lockedBallRect: lockedBallRect,
             preConfig: preConfig,
-            postConfig: postConfig
+            postConfig: postConfig,
+            glareBaseline: glareBaseline
         )
 
         var impactResult = detectImpact(
@@ -289,7 +351,8 @@ final class PostImpactBallTracker {
                 impactFrameIndex: impactResult.detectedImpactFrameIndex,
                 lockedBallRect: lockedBallRect,
                 preConfig: preConfig,
-                postConfig: postConfig
+                postConfig: postConfig,
+                glareBaseline: glareBaseline
             )
         } else {
             finalPass = firstPass
@@ -310,6 +373,19 @@ final class PostImpactBallTracker {
             initialBallCenter: impactResult.initialBallCenter,
             movementThresholdNorm: impactResult.movementThresholdNorm
         )
+
+        // Always-on one-liner: the per-frame table above is opt-in, but "did tracking actually
+        // follow the ball" must be visible in every session log — a discarded shot with
+        // post=0 tracked frames explains itself.
+        let impactIdx = result.detectedImpactFrameIndex
+        let preObs  = result.observations.filter { $0.frameIndex < impactIdx }
+        let postObs = result.observations.filter { $0.frameIndex > impactIdx }
+        let preTracked  = preObs.filter { $0.centerX != nil }.count
+        let postTracked = postObs.filter { $0.centerX != nil }.count
+        let lockHeld = preObs.filter { $0.debugReason == "pre_lock_hold" }.count
+        let impactHit = result.observations.first { $0.frameIndex == impactIdx }?.centerX != nil
+        print("[TrackSummary] pre=\(preTracked)/\(preObs.count) (lockHold=\(lockHeld)) impactFrame=\(impactIdx) impactTracked=\(impactHit) post=\(postTracked)/\(postObs.count) reason=\(result.impactDetectionReason)")
+
         Self.printSummary(result)
         return result
     }
@@ -383,7 +459,8 @@ final class PostImpactBallTracker {
         impactFrameIndex: Int,
         lockedBallRect: CGRect,
         preConfig: ScanConfig,
-        postConfig: ScanConfig
+        postConfig: ScanConfig,
+        glareBaseline: [UInt8]? = nil
     ) -> TrackingPassResult {
         recentDiameters = []
         candidateLogLines = []   // only the final pass's table gets printed
@@ -400,6 +477,18 @@ final class PostImpactBallTracker {
         var ballLaunched = false
         var ballTerminated = false
         var consecutiveMissesAfterLaunch = 0
+        // Configured launch direction as a unit vector (screen y-down): righty 180° → (-1, 0).
+        let launchTheta = cfg.launchAngleDegrees * .pi / 180
+        let launchU = (dx: cos(launchTheta), dy: -sin(launchTheta))
+        // Set when a pre-impact frame shows a ball-sized candidate displaced FORWARD beyond the
+        // drift allowance — the ball has left early (detected impact is late). From then on
+        // lock-holds are forbidden: holding the anchor after departure feeds stationary points
+        // to movement-based impact detection and masks the launch entirely (observed: 6
+        // straight holds while the ball was mid-flight, impact detected 6 frames late).
+        var preBallDeparted = false
+        // Ballistic launch chain (see findLaunchChain) — frameIndex → pinned candidate.
+        var launchChain: [Int: Candidate] = [:]
+        var launchChainTried = false
         // Monotonic progress along the launch path — the ball never comes back.
         var lastProgress: CGFloat = 0
         var expectedDiameter: CGFloat? = nil
@@ -434,7 +523,9 @@ final class PostImpactBallTracker {
                     roi: roi,
                     config: preConfig,
                     preferredCenter: anchor,
-                    expectedDiameter: lockedDiameter
+                    expectedDiameter: lockedDiameter,
+                    frameIndex: idx,
+                    rescueMayReplacePick: true
                 )
                 var chosen = chosenRaw
                 var driftReason: String? = nil
@@ -442,8 +533,81 @@ final class PostImpactBallTracker {
                     let drift = hypot(c.center.x - anchor.x, c.center.y - anchor.y)
                     let maxDrift = lockedDiameter * cfg.preAnchorMaxDriftDiameters
                     if drift > maxDrift {
-                        driftReason = String(format: "pre_drift_reject(%.3f>%.3f)", drift, maxDrift)
-                        chosen = nil
+                        // Ball-sized candidate displaced FORWARD past the allowance = the ball
+                        // is launching during nominally-pre frames (detected impact is late).
+                        // Brightness gate: dim static glare blobs also sit forward of the lock
+                        // (observed br=105 at 1 ball-width forward killing an entire pre-track);
+                        // the launching ball reads distinctly bright (observed 121-168).
+                        let fwd = (c.center.x - anchor.x) * launchU.dx + (c.center.y - anchor.y) * launchU.dy
+                        if fwd > maxDrift, c.meanBrightness >= 120 {
+                            preBallDeparted = true
+                            driftReason = String(format: "pre_ball_departed(fwd=%.3f br=%d)", fwd, c.meanBrightness)
+                            // KEEP the candidate: this IS the ball, one or two frames into its
+                            // flight. Nil-ing it (old behavior) threw away up to half of the
+                            // only airborne observations a driver produces — at 100+ mph the
+                            // ball leaves the frame ~2 frames after contact — and left impact
+                            // detection to infer the launch from a missing frame instead of a
+                            // moving center.
+                        } else {
+                            driftReason = String(format: "pre_drift_reject(%.3f>%.3f)", drift, maxDrift)
+                            chosen = nil
+                        }
+                    }
+                }
+                // Glare-proof launch detection: when the normal scan lost the ball (merged with
+                // glare / drift-rejected), rescan a forward launch corridor WITH static-glare
+                // suppression. Pre-impact everything is static by definition — so a ball-sized
+                // moving-bright blob displaced forward of the lock is the ball LAUNCHING, and
+                // this frame is really post-impact (detected impact was late). Without this the
+                // July 12 failure repeats: LOCK-HOLD pins the pre-track to the anchor, impact
+                // detection sees zero movement, and by the fallback impact frame the ball has
+                // already left the frame entirely. Among eligible blobs prefer the FARTHEST
+                // forward — the ball outruns the clubhead from the first frame after contact.
+                if chosen == nil, let baseline = glareBaseline {
+                    let unit = max(lockedBallRect.width, 0.02)
+                    let p2 = CGPoint(x: anchor.x + launchU.dx * 16 * unit,
+                                     y: anchor.y + launchU.dy * 16 * unit)
+                    let lat = 4 * unit
+                    let corridor = CGRect(x: min(anchor.x, p2.x) - lat, y: min(anchor.y, p2.y) - lat,
+                                          width: abs(p2.x - anchor.x) + 2 * lat,
+                                          height: abs(p2.y - anchor.y) + 2 * lat)
+                        .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+                    let (dCands, _) = findCandidates(pd, roi: corridor, config: preConfig,
+                                                     preferredCenter: anchor,
+                                                     expectedDiameter: lockedDiameter,
+                                                     frameIndex: idx,
+                                                     glareBaseline: baseline)
+                    let departed = dCands
+                        .filter { c in
+                            guard c.accepted else { return false }
+                            // The launching ball is decisively BRIGHT (measured 121-168
+                            // across sessions; junk and suppressed glare remnants sit
+                            // 97-115). Without this gate, a dim blob at the far end of the
+                            // corridor read as "the ball left" on frame 0 of a glare-flooded
+                            // capture and hijacked the entire pre-track — which then poisoned
+                            // movement-based impact detection. Same 120 bar as the
+                            // drift-keep departure path above.
+                            guard c.meanBrightness >= 120 else { return false }
+                            let ratio = c.diameter / max(lockedDiameter, 1e-6)
+                            guard ratio >= 0.35 && ratio <= 1.9 else { return false }
+                            let fwd = (c.center.x - anchor.x) * launchU.dx + (c.center.y - anchor.y) * launchU.dy
+                            return fwd >= lockedDiameter * 1.0
+                        }
+                        .max { a, b in
+                            let fa = (a.center.x - anchor.x) * launchU.dx + (a.center.y - anchor.y) * launchU.dy
+                            let fb = (b.center.x - anchor.x) * launchU.dx + (b.center.y - anchor.y) * launchU.dy
+                            return fa < fb
+                        }
+                    if let c = departed {
+                        let fwd = (c.center.x - anchor.x) * launchU.dx + (c.center.y - anchor.y) * launchU.dy
+                        preBallDeparted = true
+                        chosen = c
+                        driftReason = nil
+                        if cfg.logCandidateDetail {
+                            candidateLogLines.append(String(
+                                format: "[TrackDebug] f=%02d pre BALL DEPARTED (glare-suppressed) — moving blob fwd=%.3f d=%.4f br=%d",
+                                idx, fwd, c.diameter, c.meanBrightness))
+                        }
                     }
                 }
                 logCandidateTable(frameIndex: idx, phase: "pre", chosen: chosen,
@@ -455,6 +619,35 @@ final class PostImpactBallTracker {
                     lastPreCenter = c.center
                     postImpactSeedCenter = c.center
                     if let d = obs.finalDiameter ?? obs.diameter { preFinalDiameters.append(d) }
+                } else if !preBallDeparted, candidates.contains(where: { $0.rect.intersects(lockedBallRect) }) {
+                    // Scanner failed, but a bright mass overlaps the lock — the ball is merged
+                    // with glare, not gone. Pre-impact the ball hasn't moved BY DEFINITION (the
+                    // live pipeline locked it stationary and the trigger hasn't fired yet), so
+                    // hold the locked position rather than dropping the frame. This keeps the
+                    // pre-track and expected diameter sane for impact detection and metrics.
+                    if cfg.logCandidateDetail {
+                        candidateLogLines.append(String(
+                            format: "[TrackDebug] f=%02d pre LOCK-HOLD — ball merged with glare, holding locked center (%.3f,%.3f d=%.4f)",
+                            idx, anchor.x, anchor.y, lockedDiameter))
+                    }
+                    observations.append(ShotBallObservation(
+                        frameIndex: idx,
+                        timestamp: frame.timestamp,
+                        relativeTime: frame.relativeTime,
+                        centerX: anchor.x,
+                        centerY: anchor.y,
+                        diameter: lockedDiameter,
+                        candidateDiameter: lockedDiameter,
+                        finalDiameter: lockedDiameter,
+                        confidence: 0.25,
+                        wasInterpolated: true,
+                        debugReason: "pre_lock_hold",
+                        diameterDebugReason: "locked_rect",
+                        bboxHeightNorm: lockedBallRect.height
+                    ))
+                    lastPreCenter = anchor
+                    postImpactSeedCenter = anchor
+                    preFinalDiameters.append(lockedDiameter)
                 } else {
                     observations.append(miss(frame, reason: reason ?? "no_candidate"))
                 }
@@ -485,7 +678,9 @@ final class PostImpactBallTracker {
                     roi: roi,
                     config: preConfig,
                     preferredCenter: lastPreCenter,
-                    expectedDiameter: lockedDiameter
+                    expectedDiameter: lockedDiameter,
+                    frameIndex: idx,
+                    rescueMayReplacePick: true
                 )
                 logCandidateTable(frameIndex: idx, phase: "impact", chosen: chosenRaw,
                                   candidates: candidates, expectedDiameter: lockedDiameter)
@@ -496,7 +691,19 @@ final class PostImpactBallTracker {
                     if !preImpactDiameters.isEmpty {
                         let sorted = preImpactDiameters.sorted()
                         let median = sorted[sorted.count / 2]
-                        let ratio = c.diameter / median
+                        var ratio = c.diameter / median
+                        // The raw candidate bbox is stride-sampled (2px quanta) and reads
+                        // ~25% fat on a perfectly clean ball, while the pre median it is
+                        // compared against is mask-REFINED — that mismatch rejected a real
+                        // un-merged impact ball at ratio 1.26 (Simulate Shot sample, f17).
+                        // Refine the candidate the same way before declaring it merged.
+                        if median > 1e-6, ratio > cfg.impactFrameMaxDiameterGrowthRatio,
+                           cfg.diameterRefinement.enabled,
+                           let refined = maskRefineDiameter(pd, center: c.center,
+                                                            candidateDiameter: c.diameter,
+                                                            config: cfg.diameterRefinement).diameter {
+                            ratio = refined / median
+                        }
                         if median > 1e-6 && ratio > cfg.impactFrameMaxDiameterGrowthRatio {
                             dbg("[PostImpactBallTracker] Strict impact gate: frame=\(idx) ratio=\(String(format:"%.2f",ratio)) > \(cfg.impactFrameMaxDiameterGrowthRatio), rejecting merged candidate")
                             chosen = nil
@@ -532,6 +739,19 @@ final class PostImpactBallTracker {
                 if expectedDiameter == nil, !preFinalDiameters.isEmpty {
                     let sorted = preFinalDiameters.sorted()
                     expectedDiameter = sorted[sorted.count / 2]
+                    // The locked rect is the most trusted size in the pipeline (20 stable live
+                    // frames); a pre median far outside it means the pre track refined noise
+                    // specks, not the ball (observed: expD=0.0083 vs lock 0.082, which made
+                    // size-consistency PREFER specks and exclude the real ball post-impact).
+                    let lockedDiameter = (lockedBallRect.width + lockedBallRect.height) / 2
+                    if let d = expectedDiameter, d < lockedDiameter * 0.5 || d > lockedDiameter * 1.5 {
+                        if cfg.logCandidateDetail {
+                            candidateLogLines.append(String(
+                                format: "[TrackDebug] f=%02d expectedDiameter %.4f implausible vs locked %.4f — using locked",
+                                idx, d, lockedDiameter))
+                        }
+                        expectedDiameter = lockedDiameter
+                    }
                 }
 
                 // After termination, emit miss for all remaining frames
@@ -565,7 +785,10 @@ final class PostImpactBallTracker {
                     ?? (lockedBallRect.width + lockedBallRect.height) / 2
                 let (allCandidates, chosen0) = findCandidates(
                     pd, roi: roi, config: postConfig, preferredCenter: roiCenter,
-                    expectedDiameter: postExpectedDiameter
+                    expectedDiameter: postExpectedDiameter,
+                    frameIndex: idx,
+                    glareBaseline: glareBaseline,
+                    requireBrightTier: !ballLaunched
                 )
                 var chosen: Candidate? = chosen0
                 logCandidateTable(frameIndex: idx, phase: "post", chosen: chosen0,
@@ -584,6 +807,34 @@ final class PostImpactBallTracker {
                         pd: pd,
                         frameIndex: idx
                     )
+                }
+
+                // Ballistic launch chain: per-frame selection can't beat glare remnants sitting
+                // next to the seed when the ball is already several ball-widths downrange one
+                // frame after impact. Search the launch window ONCE for the best multi-frame,
+                // constant-velocity, forward-moving chain of ball-sized blobs and pin the
+                // tracker to it. Frames before the chain starts are forced to misses so a junk
+                // pick can't lock a bogus launch direction first.
+                if !launchChainTried, !ballLaunched {
+                    launchChainTried = true
+                    launchChain = findLaunchChain(
+                        frames: frames,
+                        pixelData: pixelData,
+                        firstPostIndex: idx,
+                        seedCenter: postImpactSeedCenter,
+                        launchU: launchU,
+                        lockedBallRect: lockedBallRect,
+                        expectedDiameter: postExpectedDiameter,
+                        config: postConfig,
+                        glareBaseline: glareBaseline
+                    )
+                }
+                if let chainStart = launchChain.keys.min() {
+                    if let pinned = launchChain[idx] {
+                        chosen = pinned
+                    } else if idx < chainStart {
+                        chosen = nil
+                    }
                 }
 
                 // Monotonicity: the ball only moves away from the impact point (along the launch
@@ -605,6 +856,26 @@ final class PostImpactBallTracker {
                         chosen = nil
                     } else {
                         lastProgress = max(lastProgress, progress)
+                    }
+                }
+
+                // Path consistency: a launched ball travels a near-straight image line from the
+                // impact point; the clubhead's follow-through crosses the same region on a
+                // DIFFERENT line. A pick whose perpendicular offset from the locked launch line
+                // is out of proportion to how far downrange it claims to be is the club, not
+                // the ball. Proportional (not absolute) so a direction locked from a short
+                // first step doesn't strangle a legitimately rising shot.
+                if let c = chosen, ballLaunched, let ld = launchDir {
+                    let dx = c.center.x - initCenter.x
+                    let dy = c.center.y - initCenter.y
+                    let progress = dx * ld.dx + dy * ld.dy
+                    let perp = abs(dx * ld.dy - dy * ld.dx)
+                    if perp > max(cfg.pathResidualFloorNorm, cfg.pathResidualFractionOfProgress * max(progress, 0)) {
+                        if cfg.logCandidateDetail {
+                            candidateLogLines.append(String(format: "[TrackDebug] f=%02d post PATH REJECT (%.3f,%.3f) perp=%.4f progress=%.4f — off the launch line",
+                                         idx, c.center.x, c.center.y, perp, progress))
+                        }
+                        chosen = nil
                     }
                 }
 
@@ -646,7 +917,7 @@ final class PostImpactBallTracker {
                 // Build observation and update state
                 let observation: ShotBallObservation
                 if let c = chosen {
-                    observation = makeHit(frame, c, pd: pd)
+                    observation = makeHit(frame, c, pd: pd, glareBaseline: glareBaseline)
                     lastPostCenter = c.center
 
                     // Accumulate recent post points for prediction (Python: sc_lookback=3 → maxlen=4)
@@ -673,6 +944,28 @@ final class PostImpactBallTracker {
                         ballTerminated = true
                         if cfg.logCandidateDetail {
                             candidateLogLines.append(String(format: "[TrackDebug] f=%02d ball at frame edge (%.3f,%.3f) — track terminated", idx, c.center.x, c.center.y))
+                        }
+                    }
+
+                    // Predictive exit: with a measured velocity and the NEXT frame's real
+                    // timestamp we KNOW where the ball will be — if that's outside the frame,
+                    // the track ends now. Waiting for 3 misses left a multi-frame window in
+                    // which the club's follow-through (bright, moving the same general
+                    // direction) could re-steal the track after the ball was already gone.
+                    if !ballTerminated, recentPostPoints.count >= 2, i + 1 < frames.count {
+                        let p1 = recentPostPoints[recentPostPoints.count - 2]
+                        let p2 = recentPostPoints[recentPostPoints.count - 1]
+                        let dt = p2.t - p1.t
+                        if dt > 1e-6 {
+                            let nextDt = frames[i + 1].relativeTime - frame.relativeTime
+                            let px = p2.x + (p2.x - p1.x) / CGFloat(dt) * CGFloat(nextDt)
+                            let py = p2.y + (p2.y - p1.y) / CGFloat(dt) * CGFloat(nextDt)
+                            if px < em || px > 1 - em || py < em || py > 1 - em {
+                                ballTerminated = true
+                                if cfg.logCandidateDetail {
+                                    candidateLogLines.append(String(format: "[TrackDebug] f=%02d predictive exit — next-frame position (%.3f,%.3f) is off-frame, track terminated", idx, px, py))
+                                }
+                            }
                         }
                     }
                 } else {
@@ -830,6 +1123,178 @@ final class PostImpactBallTracker {
         return bestCandidate
     }
 
+    // MARK: - Launch Chain Search
+    //
+    // What uniquely identifies the ball right after impact is not brightness or proximity —
+    // it's MULTI-FRAME CONSISTENCY: a ball-sized blob advancing along the launch direction at
+    // near-constant image velocity. (Observed failure: the real ball at br=112 lost every
+    // frame to dim px=18 specks beside the seed because nearest-to-previous ruled.) This runs
+    // once when post-impact tracking starts: scan a wide launch corridor in the first few
+    // post frames, enumerate velocity-consistent forward chains, keep the best.
+    private func findLaunchChain(
+        frames: [AnalyzedShotFrame],
+        pixelData: [(bytes: [UInt8], width: Int, height: Int)?],
+        firstPostIndex: Int,
+        seedCenter: CGPoint,
+        launchU: (dx: CGFloat, dy: CGFloat),
+        lockedBallRect: CGRect,
+        expectedDiameter: CGFloat,
+        config: ScanConfig,
+        glareBaseline: [UInt8]? = nil
+    ) -> [Int: Candidate] {
+        let windowLen = 8
+        let w = max(lockedBallRect.width, 0.02)
+        // Corridor: 1.5 ball-widths behind the seed, forward all the way to the frame edge
+        // (dropped frames put the first airborne observation most of a frame downrange),
+        // ±4 lateral.
+        let fwdExtent = max(16 * w, 1.5)
+        let p1 = CGPoint(x: seedCenter.x - launchU.dx * 1.5 * w, y: seedCenter.y - launchU.dy * 1.5 * w)
+        let p2 = CGPoint(x: seedCenter.x + launchU.dx * fwdExtent, y: seedCenter.y + launchU.dy * fwdExtent)
+        let lat = 4 * w
+        let roi = CGRect(x: min(p1.x, p2.x) - lat, y: min(p1.y, p2.y) - lat,
+                         width: abs(p2.x - p1.x) + 2 * lat, height: abs(p2.y - p1.y) + 2 * lat)
+            .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        guard roi.width > 0, roi.height > 0 else { return [:] }
+
+        var perFrame: [(frameIndex: Int, cands: [Candidate])] = []
+        for (i, frame) in frames.enumerated() {
+            let idx = frame.frameIndex
+            guard idx >= firstPostIndex, idx < firstPostIndex + windowLen,
+                  i < pixelData.count, let pd = pixelData[i] else { continue }
+            let (cands, _) = findCandidates(pd, roi: roi, config: config,
+                                            preferredCenter: seedCenter,
+                                            expectedDiameter: expectedDiameter,
+                                            frameIndex: idx,
+                                            glareBaseline: glareBaseline)
+            let eligible = Array(
+                cands.filter { c in
+                    guard c.accepted else { return false }
+                    let ratio = c.diameter / max(expectedDiameter, 1e-6)
+                    return ratio >= 0.35 && ratio <= 2.2
+                }
+                .sorted { $0.meanBrightness > $1.meanBrightness }
+                .prefix(8)
+            )
+            if !eligible.isEmpty { perFrame.append((idx, eligible)) }
+        }
+        // Always explain the chain's inputs — when it comes up empty on-device the per-frame
+        // eligible lists are the only way to see WHICH gate starved it.
+        if cfg.logCandidateDetail {
+            for (fi, cands) in perFrame {
+                let desc = cands.map { String(format: "(%.3f,%.3f br=%d d=%.4f px=%d)",
+                                              $0.center.x, $0.center.y, $0.meanBrightness,
+                                              $0.diameter, $0.brightPixelCount) }
+                    .joined(separator: " ")
+                candidateLogLines.append("[TrackDebug] CHAIN f=\(String(format: "%02d", fi)) eligible: \(desc)")
+            }
+        }
+        guard perFrame.count >= 2 else { return [:] }
+
+        struct Link { let frameIdx: Int; let cand: Candidate }
+        var best: (score: CGFloat, chain: [Link])? = nil
+        var expansions = 0
+
+        // Real capture time per stored frame index. Frame drops are routine — the July 12
+        // session stored consecutive indices whose timestamps are 2-4 capture periods apart —
+        // so every velocity here is normalized by elapsed 240fps PERIODS, never index gaps.
+        // (Index-gap division read a normal drive as 2-4× ball speed and the fwd<=0.30 gate
+        // rejected every real chain, which is how the club stole the Simulate Shot track.)
+        let timeByIdx = Dictionary(frames.map { ($0.frameIndex, $0.relativeTime) },
+                                   uniquingKeysWith: { a, _ in a })
+        func elapsedPeriods(_ aIdx: Int, _ bIdx: Int) -> CGFloat {
+            if let ta = timeByIdx[aIdx], let tb = timeByIdx[bIdx], tb > ta {
+                return max(1, CGFloat((tb - ta) * 240.0))
+            }
+            return max(1, CGFloat(bIdx - aIdx))
+        }
+
+        // Per-period velocity between two links (1-frame gap or one skipped frame). Must move
+        // forward at a plausible ball speed with limited lateral drift.
+        func velocity(_ a: Link, _ b: Link) -> CGPoint? {
+            let g = CGFloat(b.frameIdx - a.frameIdx)
+            guard g >= 1, g <= 2 else { return nil }
+            let periods = elapsedPeriods(a.frameIdx, b.frameIdx)
+            let vx = (b.cand.center.x - a.cand.center.x) / periods
+            let vy = (b.cand.center.y - a.cand.center.y) / periods
+            let fwd = vx * launchU.dx + vy * launchU.dy
+            let latV = -vx * launchU.dy + vy * launchU.dx
+            guard fwd >= 0.015, fwd <= 0.30, abs(latV) <= max(0.02, 0.5 * fwd) else { return nil }
+            return CGPoint(x: vx, y: vy)
+        }
+
+        func finalize(_ chain: [Link]) {
+            guard chain.count >= 2, let first = chain.first, let last = chain.last else { return }
+            let fwdProgress = (last.cand.center.x - first.cand.center.x) * launchU.dx
+                + (last.cand.center.y - first.cand.center.y) * launchU.dy
+            // A 2-point "chain" is only trusted when it covers real distance AND both points
+            // look like the ball (observed: a dim px-blob chained to the real ball across a
+            // skipped frame produced a bogus 150mph 2-pointer); 3+ points carry their own
+            // consistency evidence.
+            guard chain.count >= 3
+                || (fwdProgress >= 0.08 && chain.allSatisfy { $0.cand.meanBrightness >= 115 })
+            else { return }
+            let n = CGFloat(chain.count)
+            let avgBr = chain.reduce(CGFloat(0)) { $0 + CGFloat($1.cand.meanBrightness) } / n
+            let frameSpan = elapsedPeriods(first.frameIdx, last.frameIdx)
+            let avgVel = frameSpan > 0 ? fwdProgress / frameSpan : 0
+            // Weighting matters: pure length let a 7-point slow dim club chain (v≈0.025,
+            // br≈117) beat the real 5-point ball (v≈0.068, br≈145). Velocity and brightness
+            // are what distinguish a struck ball from anything else that moves.
+            let score = n * 60 + fwdProgress * 250 + max(0, avgBr - 100) * 6 + avgVel * 800
+            if best == nil || score > best!.score { best = (score, chain) }
+        }
+
+        func extend(_ chain: [Link], lastVel: CGPoint?) {
+            guard expansions < 30_000 else { finalize(chain); return }
+            expansions += 1
+            guard let lastLink = chain.last else { return }
+            var extended = false
+            for (fIdx, cands) in perFrame where fIdx > lastLink.frameIdx && fIdx <= lastLink.frameIdx + 2 {
+                for cand in cands {
+                    let link = Link(frameIdx: fIdx, cand: cand)
+                    guard let vel = velocity(lastLink, link) else { continue }
+                    if let lv = lastVel {
+                        // Perspective decelerates the ball in image space, so allow generous
+                        // change frame-to-frame — but not teleports.
+                        let dv = hypot(vel.x - lv.x, vel.y - lv.y)
+                        guard dv <= max(0.025, 0.55 * hypot(lv.x, lv.y) + 0.01) else { continue }
+                    }
+                    extended = true
+                    extend(chain + [link], lastVel: vel)
+                }
+            }
+            if !extended { finalize(chain) }
+        }
+
+        // Chains may start in any of the first 3 candidate-bearing window frames (the exact
+        // impact frame is itself uncertain). The start must not be behind the seed.
+        for (fIdx, cands) in perFrame.prefix(3) {
+            for cand in cands {
+                let fwd0 = (cand.center.x - seedCenter.x) * launchU.dx
+                    + (cand.center.y - seedCenter.y) * launchU.dy
+                guard fwd0 >= -w else { continue }
+                extend([Link(frameIdx: fIdx, cand: cand)], lastVel: nil)
+            }
+        }
+
+        guard let found = best else {
+            if cfg.logCandidateDetail {
+                candidateLogLines.append("[TrackDebug] LAUNCH CHAIN none in f=\(firstPostIndex)..\(firstPostIndex + windowLen - 1)")
+            }
+            return [:]
+        }
+        if cfg.logCandidateDetail {
+            let pts = found.chain.map {
+                String(format: "f%02d(%.3f,%.3f br=%d)", $0.frameIdx, $0.cand.center.x, $0.cand.center.y, $0.cand.meanBrightness)
+            }
+            candidateLogLines.append(String(format: "[TrackDebug] LAUNCH CHAIN %d pts score=%.0f: %@",
+                                            found.chain.count, found.score, pts.joined(separator: " -> ")))
+        }
+        var map: [Int: Candidate] = [:]
+        for link in found.chain { map[link.frameIdx] = link.cand }
+        return map
+    }
+
     // MARK: - Connected-Components Candidate Scanner
 
     private func findCandidates(
@@ -837,10 +1302,16 @@ final class PostImpactBallTracker {
         roi: CGRect,
         config: ScanConfig,
         preferredCenter: CGPoint,
-        expectedDiameter: CGFloat? = nil
+        expectedDiameter: CGFloat? = nil,
+        frameIndex: Int = -1,
+        rescueMayReplacePick: Bool = false,
+        glareBaseline: [UInt8]? = nil,
+        requireBrightTier: Bool = false
     ) -> ([Candidate], Candidate?) {
         let (bytes, width, height) = pd
         let step = max(1, cfg.sampleStride)
+        // Only trust a baseline whose geometry matches this frame's buffer.
+        let baseline: [UInt8]? = (glareBaseline?.count == width * height) ? glareBaseline : nil
 
         let xStart = max(0, Int(roi.minX * CGFloat(width)))
         let xEnd = min(width, Int(roi.maxX * CGFloat(width)))
@@ -867,8 +1338,14 @@ final class PostImpactBallTracker {
                 let b = Int(bytes[i + 2])
                 let brightness = (r + g + b) / 3
                 let spread = max(r, max(g, b)) - min(r, min(g, b))
-                bright[row * cols + col] = brightness >= config.brightnessThreshold
+                var qualifies = brightness >= config.brightnessThreshold
                     && spread <= config.maxChannelSpread
+                // Static-glare suppression: a pixel must be brighter than its own pre-impact
+                // baseline to count — turf glare is bright in BOTH, the moving ball only now.
+                if qualifies, let base = baseline {
+                    qualifies = brightness - Int(base[py * width + px]) >= cfg.glareBaselineMinDelta
+                }
+                bright[row * cols + col] = qualifies
                 lumaGrid[row * cols + col] = UInt8(brightness)
             }
         }
@@ -927,6 +1404,16 @@ final class PostImpactBallTracker {
             }
         }
 
+        // Never go blind from suppression alone: if the baseline filtered out every last
+        // pixel (ball dim, or still overlapping its own pre-impact position on a slow shot),
+        // rescan this frame the old unsuppressed way — worst case is the old behavior.
+        if blobs.isEmpty, baseline != nil {
+            dbg("[PostImpactBallTracker] f=\(frameIndex) glare-suppressed scan empty — falling back to unsuppressed")
+            return findCandidates(pd, roi: roi, config: config, preferredCenter: preferredCenter,
+                                  expectedDiameter: expectedDiameter, frameIndex: frameIndex,
+                                  rescueMayReplacePick: rescueMayReplacePick, glareBaseline: nil)
+        }
+
         let candidates = blobs.map {
             evaluateBlob($0, step: step, width: width, height: height, config: config)
         }
@@ -947,12 +1434,202 @@ final class PostImpactBallTracker {
             pool = accepted
         }
 
-        let chosen = pool.min {
+        // Bright-tier preference: see brightBallTierMinBrightness/Bandwidth. Absolute floor
+        // AND relative band — the ball outshines everything else that moves, so only
+        // candidates within the band of the brightest one may compete on distance. Falls
+        // back to the whole pool when nothing reaches the tier (dim ball / overcast) so
+        // tracking never goes blind.
+        let maxPoolBrightness = pool.map(\.meanBrightness).max() ?? 0
+        let brightTier = pool.filter {
+            $0.meanBrightness >= cfg.brightBallTierMinBrightness
+                && $0.meanBrightness >= maxPoolBrightness - cfg.brightBallTierBandwidth
+        }
+        // Pre-launch the ball is ALWAYS decisively bright (freshly struck, full face to the
+        // sun/exposure lock) — a frame whose pool is all-dim does not contain a findable
+        // ball, and picking "the nearest dim blob" is how a junk pick locked a bogus launch
+        // direction that then walled out the real ball. Callers set requireBrightTier for
+        // pre-launch frames: no tier, no pick.
+        if requireBrightTier, brightTier.isEmpty {
+            return (candidates, nil)
+        }
+        let selectionPool = brightTier.isEmpty ? pool : brightTier
+        var chosen = selectionPool.min {
             hypot($0.center.x - preferredCenter.x, $0.center.y - preferredCenter.y)
                 < hypot($1.center.x - preferredCenter.x, $1.center.y - preferredCenter.y)
         }
 
-        return (candidates, chosen)
+        // An OVERSIZED blob sits right where the ball should be — in glare the ball and the
+        // bright patch around it merge into one blob the size gates reject (observed live:
+        // ball locked at d=0.064 inside a w=0.267 blob). The live-view detector survives this
+        // because it demands bright AND color-neutral pixels; re-scan the merged blob with
+        // that stricter criterion to split the white ball back out of the glare.
+        // When `rescueMayReplacePick` (pre-impact/impact, where the ball is stationary at the
+        // lock by definition), the rescue can also OVERRIDE an accepted pick that is a stray
+        // speck far from the expected spot while a merged blob covers that spot — a session
+        // showed noise specks 0.086 from the lock winning every pre frame because they were
+        // "accepted" while the actual ball sat rejected inside the glare blob. Post-impact the
+        // override stays off: after launch, glare still covering the ball's OLD spot must not
+        // beat the real ball that has moved on.
+        var allCandidates = candidates
+        let chosenDist = chosen.map { hypot($0.center.x - preferredCenter.x, $0.center.y - preferredCenter.y) }
+        let mergedCoversExpectedSpot = candidates.contains { c in
+            guard let r = c.rejectionReason,
+                  r.hasPrefix("w_large") || r.hasPrefix("h_large") else { return false }
+            return c.rect.contains(preferredCenter)
+        }
+        let pickIsSuspect = chosenDist.map { $0 > max(expectedDiameter ?? 0, 0.03) * 0.75 } ?? true
+        let rescueTrigger = chosen == nil
+            || (rescueMayReplacePick && mergedCoversExpectedSpot && pickIsSuspect)
+        if rescueTrigger,
+           let rescued = rescueMergedBlob(
+               pd, candidates: candidates, config: config,
+               preferredCenter: preferredCenter, expectedDiameter: expectedDiameter,
+               frameIndex: frameIndex, glareBaseline: baseline
+           ) {
+            let rescuedDist = hypot(rescued.center.x - preferredCenter.x, rescued.center.y - preferredCenter.y)
+            if chosenDist == nil || rescuedDist < chosenDist! {
+                allCandidates.append(rescued)
+                chosen = rescued
+            }
+        }
+
+        return (allCandidates, chosen)
+    }
+
+    /// Splits a ball+glare merged blob by re-thresholding just that blob's bounding box at
+    /// escalating brightness with the live detector's channel-spread cap (white, not colored).
+    /// Returns the first sub-blob that passes the normal size gates, preferring size-consistent
+    /// candidates nearest `preferredCenter`.
+    private func rescueMergedBlob(
+        _ pd: (bytes: [UInt8], width: Int, height: Int),
+        candidates: [Candidate],
+        config: ScanConfig,
+        preferredCenter: CGPoint,
+        expectedDiameter: CGFloat?,
+        frameIndex: Int,
+        glareBaseline: [UInt8]? = nil
+    ) -> Candidate? {
+        let reach = max(expectedDiameter ?? 0, 0.05)
+        let mergedBlobs = candidates
+            .filter { c in
+                guard let r = c.rejectionReason,
+                      r.hasPrefix("w_large") || r.hasPrefix("h_large") else { return false }
+                return c.rect.insetBy(dx: -reach, dy: -reach).contains(preferredCenter)
+            }
+            .sorted {
+                hypot($0.center.x - preferredCenter.x, $0.center.y - preferredCenter.y)
+                    < hypot($1.center.x - preferredCenter.x, $1.center.y - preferredCenter.y)
+            }
+        guard !mergedBlobs.isEmpty else { return nil }
+
+        let (bytes, width, height) = pd
+        let spreadCap = min(config.maxChannelSpread, 72)   // live BallDetector's white criterion
+
+        for blob in mergedBlobs.prefix(2) {
+            let x0 = max(0, Int(blob.rect.minX * CGFloat(width)))
+            let x1 = min(width - 1, Int(blob.rect.maxX * CGFloat(width)))
+            let y0 = max(0, Int(blob.rect.minY * CGFloat(height)))
+            let y1 = min(height - 1, Int(blob.rect.maxY * CGFloat(height)))
+            guard x1 > x0, y1 > y0 else { continue }
+            let cols = x1 - x0 + 1
+            let rows = y1 - y0 + 1
+            guard cols * rows <= 200_000 else { continue }   // runaway blob — not worth a full-res pass
+
+            var thr = config.brightnessThreshold + 25
+            while thr <= 235 {
+                var bright = [Bool](repeating: false, count: cols * rows)
+                var luma = [UInt8](repeating: 0, count: cols * rows)
+                for row in 0..<rows {
+                    let base = (y0 + row) * width * 4
+                    for col in 0..<cols {
+                        let i = base + (x0 + col) * 4
+                        let r = Int(bytes[i]); let g = Int(bytes[i + 1]); let b = Int(bytes[i + 2])
+                        let brightness = (r + g + b) / 3
+                        let spread = max(r, max(g, b)) - min(r, min(g, b))
+                        let idx = row * cols + col
+                        var qualifies = brightness >= thr && spread <= spreadCap
+                        // Same static-glare gate as the main scan — a merged blob being split
+                        // here is usually ball+glare, and the glare half is baseline-bright.
+                        if qualifies, let base = glareBaseline, base.count == width * height {
+                            qualifies = brightness - Int(base[(y0 + row) * width + (x0 + col)]) >= cfg.glareBaselineMinDelta
+                        }
+                        bright[idx] = qualifies
+                        luma[idx] = UInt8(brightness)
+                    }
+                }
+
+                var visited = [Bool](repeating: false, count: cols * rows)
+                var subCandidates: [Candidate] = []
+                for startRow in 0..<rows {
+                    for startCol in 0..<cols {
+                        let startIndex = startRow * cols + startCol
+                        guard bright[startIndex], !visited[startIndex] else { continue }
+                        var sub = RawBlob(minX: Int.max, maxX: 0, minY: Int.max, maxY: 0,
+                                          sumX: 0, sumY: 0, count: 0, sumBrightness: 0)
+                        var queue = [startIndex]
+                        var head = 0
+                        visited[startIndex] = true
+                        while head < queue.count {
+                            let index = queue[head]
+                            head += 1
+                            let col = index % cols
+                            let row = index / cols
+                            let px = x0 + col
+                            let py = y0 + row
+                            sub.count += 1
+                            sub.sumX += px
+                            sub.sumY += py
+                            sub.sumBrightness += Int(luma[index])
+                            if px < sub.minX { sub.minX = px }
+                            if px > sub.maxX { sub.maxX = px }
+                            if py < sub.minY { sub.minY = py }
+                            if py > sub.maxY { sub.maxY = py }
+                            for offset in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                                let nc = col + offset.0
+                                let nr = row + offset.1
+                                guard nc >= 0, nc < cols, nr >= 0, nr < rows else { continue }
+                                let ni = nr * cols + nc
+                                if bright[ni], !visited[ni] {
+                                    visited[ni] = true
+                                    queue.append(ni)
+                                }
+                            }
+                        }
+                        let cand = evaluateBlob(sub, step: 1, width: width, height: height, config: config)
+                        if cand.accepted { subCandidates.append(cand) }
+                    }
+                }
+
+                if !subCandidates.isEmpty {
+                    // The rescue exists to find the BALL, whose size is known — unlike the main
+                    // scanner there is no fall-back to any-sized blob (observed: a px=6 speck
+                    // "rescued" after the ball had already launched out of the glare).
+                    let pool: [Candidate]
+                    if let expected = expectedDiameter, expected > 1e-6 {
+                        pool = subCandidates.filter {
+                            let ratio = $0.diameter / expected
+                            return ratio >= cfg.chosenDiameterRatioMin && ratio <= cfg.chosenDiameterRatioMax
+                        }
+                    } else {
+                        pool = subCandidates
+                    }
+                    if let best = pool.min(by: {
+                        hypot($0.center.x - preferredCenter.x, $0.center.y - preferredCenter.y)
+                            < hypot($1.center.x - preferredCenter.x, $1.center.y - preferredCenter.y)
+                    }) {
+                        if cfg.logCandidateDetail {
+                            candidateLogLines.append(String(
+                                format: "[TrackDebug] f=%02d MERGED-BLOB RESCUE thr=%d spread<=%d split w=%.4f blob -> ball (%.3f,%.3f d=%.4f px=%d)",
+                                frameIndex, thr, spreadCap, blob.rect.width,
+                                best.center.x, best.center.y, best.diameter, best.brightPixelCount))
+                        }
+                        return best
+                    }
+                }
+                thr += 20
+            }
+        }
+        return nil
     }
 
     // One compact line per frame: every blob the scanner considered, with the chosen one
@@ -1037,7 +1714,8 @@ final class PostImpactBallTracker {
     private func makeHit(
         _ frame: AnalyzedShotFrame,
         _ candidate: Candidate,
-        pd: (bytes: [UInt8], width: Int, height: Int)
+        pd: (bytes: [UInt8], width: Int, height: Int),
+        glareBaseline: [UInt8]? = nil
     ) -> ShotBallObservation {
         let candidateDiameter = candidate.diameter
         let maskOutput = cfg.diameterRefinement.enabled
@@ -1045,7 +1723,8 @@ final class PostImpactBallTracker {
                 pd,
                 center: candidate.center,
                 candidateDiameter: candidateDiameter,
-                config: cfg.diameterRefinement
+                config: cfg.diameterRefinement,
+                glareBaseline: glareBaseline
             )
             : MaskRefineOutput(diameter: nil, whitePixelCount: 0, reason: "refinement_disabled")
 
@@ -1101,7 +1780,8 @@ final class PostImpactBallTracker {
         _ pd: (bytes: [UInt8], width: Int, height: Int),
         center: CGPoint,
         candidateDiameter: CGFloat,
-        config: DiameterRefinementConfig
+        config: DiameterRefinementConfig,
+        glareBaseline: [UInt8]? = nil
     ) -> MaskRefineOutput {
         let (bytes, width, height) = pd
         let cx = Int((center.x * CGFloat(width)).rounded())
@@ -1126,6 +1806,42 @@ final class PostImpactBallTracker {
         let x1 = min(width - 1, cx + radiusPx)
         let y0 = max(0, cy - radiusPx)
         let y1 = min(height - 1, cy + radiusPx)
+
+        // Baseline-difference mask first (post-impact only — callers pass the baseline). The
+        // in-flight ball is the one thing brighter than its own pixel's pre-impact median, so
+        // the component bbox is a tight fit of the true disc regardless of background glare.
+        // Any failure falls through to the percentile-brightness mask below.
+        if let baseline = glareBaseline, baseline.count == width * height {
+            var diffMask = [Bool](repeating: false, count: cropSize * cropSize)
+            for py in y0...y1 {
+                for px in x0...x1 {
+                    let col = px - cropOriginX
+                    let row = py - cropOriginY
+                    guard col >= 0, col < cropSize, row >= 0, row < cropSize else { continue }
+                    let pixelIndex = py * width * 4 + px * 4
+                    let brightness = (Int(bytes[pixelIndex]) + Int(bytes[pixelIndex + 1]) + Int(bytes[pixelIndex + 2])) / 3
+                    diffMask[row * cropSize + col] = brightness >= config.maskBrightnessThreshold
+                        && brightness - Int(baseline[py * width + px]) >= config.maskBaselineDelta
+                }
+            }
+            let diffSelection = mainMaskComponent(
+                in: diffMask,
+                cropSize: cropSize,
+                targetCol: cx - cropOriginX,
+                targetRow: cy - cropOriginY,
+                maxCenterDriftPx: max(2, candidateDiameter * CGFloat(width) * 0.55)
+            )
+            if let component = diffSelection.component, component.count >= 3 {
+                let bboxWidthPx = component.maxCol - component.minCol + 1
+                let bboxHeightPx = component.maxRow - component.minRow + 1
+                return MaskRefineOutput(
+                    diameter: CGFloat(max(bboxWidthPx, bboxHeightPx)) / CGFloat(width),
+                    heightNorm: CGFloat(bboxHeightPx) / CGFloat(height),
+                    whitePixelCount: component.count,
+                    reason: "mask_refined_baseline_diff_\(config.maskBaselineDelta)"
+                )
+            }
+        }
 
         var patchBrightness: [Int] = []
         for py in y0...y1 {
@@ -1520,6 +2236,50 @@ final class PostImpactBallTracker {
         dbg("PostImpactBallTracker analysis mode: DarkenedHighContrast (gamma=0.909 matches Python)")
     }
 
+    /// Per-pixel MEDIAN luma across up to 7 evenly-spaced pre-impact frames — the static-glare
+    /// map (see Configuration.staticGlareSuppressionEnabled). Median over ≥5 samples is robust
+    /// to the club or an early-launching ball sweeping through: a moving object holds any one
+    /// pixel for at most 1-2 of the sampled frames. Returns nil when there aren't enough
+    /// uniform pre-impact frames to trust (suppression then simply stays off for the shot).
+    private static func buildGlareBaseline(
+        pixelData: [(bytes: [UInt8], width: Int, height: Int)?],
+        frames: [AnalyzedShotFrame],
+        beforeFrameIndex: Int
+    ) -> [UInt8]? {
+        let preArrayIdx = frames.indices.filter { i in
+            frames[i].frameIndex < beforeFrameIndex && i < pixelData.count && pixelData[i] != nil
+        }
+        guard preArrayIdx.count >= 3, let firstPD = pixelData[preArrayIdx[0]] else { return nil }
+        let width = firstPD.width, height = firstPD.height
+        guard width > 0, height > 0 else { return nil }
+
+        let sampleCount = min(7, preArrayIdx.count)
+        let chosen = (0..<sampleCount).map { preArrayIdx[$0 * (preArrayIdx.count - 1) / max(1, sampleCount - 1)] }
+
+        var planes: [[UInt8]] = []
+        for i in chosen {
+            guard let pd = pixelData[i], pd.width == width, pd.height == height else { continue }
+            var plane = [UInt8](repeating: 0, count: width * height)
+            pd.bytes.withUnsafeBufferPointer { buf in
+                for p in 0..<(width * height) {
+                    let o = p * 4
+                    plane[p] = UInt8((Int(buf[o]) + Int(buf[o + 1]) + Int(buf[o + 2])) / 3)
+                }
+            }
+            planes.append(plane)
+        }
+        guard planes.count >= 3 else { return nil }
+
+        var baseline = [UInt8](repeating: 0, count: width * height)
+        var vals = [UInt8](repeating: 0, count: planes.count)
+        for p in 0..<(width * height) {
+            for (k, plane) in planes.enumerated() { vals[k] = plane[p] }
+            vals.sort()
+            baseline[p] = vals[vals.count / 2]
+        }
+        return baseline
+    }
+
     private func pixelBytes(from image: UIImage) -> (bytes: [UInt8], width: Int, height: Int)? {
         guard let cg = image.cgImage else { return nil }
         let width = cg.width
@@ -1562,7 +2322,9 @@ final class PostImpactBallTracker {
         let px = -fy           // perpendicular unit x
         let py = fx            // perpendicular unit y
 
-        let fwd  = cfg.postFwdScale * base
+        // Forward extent always reaches the frame edge (corner clamp below trims the excess) —
+        // ball-width scaling alone loses the ball across dropped-frame gaps.
+        let fwd  = max(cfg.postFwdScale * base, cfg.postFwdMinNormExtent)
         let bwd  = cfg.postBwdScale * base
         let vert = (hasTracking ? cfg.postVertScaleTracked : cfg.postVertScaleUntracked) * base
 
@@ -1615,4 +2377,808 @@ final class PostImpactBallTracker {
 
 private extension CGRect {
     var center: CGPoint { CGPoint(x: midX, y: midY) }
+}
+
+// MARK: - ═══════════════ V2 Engine (label-trained, July 2026) ═══════════════
+// Faithful Swift port of tools/experimental detector2/track_optimizer/metrics_kfold —
+// the pipeline validated against 223 hand-labeled shots (ball 97.4%, club 77.8%) and
+// the July 12 Garmin session. Runs on the ORIGINAL color frames (hue carries the
+// signal), consumes real per-frame timestamps (frame drops are routine), and feeds
+// learned heads whose outputs are clamped to what the pixels physically allow.
+// Models: Resources/Models/tc_v2_models.json (retrain via tools/experimental + THURSDAY.md).
+
+struct V2Output {
+    var ballSpeedMph: Double?
+    var clubSpeedMph: Double?
+    var vlaDegrees: Double?
+    var confident: Bool
+    var flightPointCount: Int
+    var notes: [String]
+}
+
+final class V2Engine {
+
+    // MARK: Models
+
+    private struct LinearHead: Decodable {
+        let mu: [Double]; let sd: [Double]; let w: [Double]; let intercept: Double
+        let clamp: [Double]?
+        func predict(_ x: [Double]) -> Double {
+            var z = intercept
+            for i in 0..<min(w.count, x.count) { z += w[i] * (x[i] - mu[i]) / sd[i] }
+            return z
+        }
+    }
+    private struct BallScorerModel: Decodable { let w: [Double]; let b: Double; let threshold: Double }
+    private struct ClubGBTModel: Decodable {
+        let base: Double; let stumps: [[Double]]; let threshold: Double
+        func prob(_ x: [Double]) -> Double {
+            var f = base
+            for s in stumps where s.count == 4 {
+                let j = Int(s[0])
+                f += (j < x.count && x[j] <= s[1]) ? s[2] : s[3]
+            }
+            return 1.0 / (1.0 + exp(-max(-30, min(30, f))))
+        }
+    }
+    private struct Models: Decodable {
+        let version: String
+        let ball_scorer: BallScorerModel
+        let club_gbt: ClubGBTModel
+        let ball_head: LinearHead
+        let vla_head: LinearHead
+        let club_head: LinearHead?
+    }
+
+    private static let models: Models? = {
+        guard let url = Bundle.main.url(forResource: "tc_v2_models", withExtension: "json", subdirectory: "Models"),
+              let data = try? Data(contentsOf: url),
+              let m = try? JSONDecoder().decode(Models.self, from: data) else {
+            print("[V2] models missing — engine disabled")
+            return nil
+        }
+        print("[V2] models loaded (\(m.version))")
+        return m
+    }()
+
+    static var isAvailable: Bool { models != nil }
+
+    // MARK: Per-frame planes
+
+    private struct Planes {
+        let W: Int, H: Int
+        var dh: [UInt8]      // hue-distance channel (the winning separation)
+        var v: [UInt8]       // HSV value 0-255
+        var s: [UInt8]       // HSV saturation 0-255
+        var luma: [Float]
+    }
+
+    private static func planes(from image: UIImage) -> Planes? {
+        guard let cg = image.cgImage else { return nil }
+        let W = cg.width, H = cg.height
+        var rgba = [UInt8](repeating: 0, count: W * H * 4)
+        guard let ctx = CGContext(data: &rgba, width: W, height: H, bitsPerComponent: 8,
+                                  bytesPerRow: W * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: W, height: H))
+
+        var hplane = [UInt8](repeating: 0, count: W * H)   // OpenCV-style H in 0-180
+        var vplane = [UInt8](repeating: 0, count: W * H)
+        var splane = [UInt8](repeating: 0, count: W * H)
+        var luma = [Float](repeating: 0, count: W * H)
+        var hist = [Int](repeating: 0, count: 181)         // turf-hue histogram (s>=60, v>=60)
+
+        for p in 0..<(W * H) {
+            let r = Int(rgba[p * 4]), g = Int(rgba[p * 4 + 1]), b = Int(rgba[p * 4 + 2])
+            let mx = max(r, g, b), mn = min(r, g, b)
+            let vv = mx
+            let ss = mx == 0 ? 0 : (255 * (mx - mn)) / mx
+            var hdeg = 0.0
+            if mx != mn {
+                let d = Double(mx - mn)
+                if mx == r { hdeg = 60 * (Double(g - b) / d).truncatingRemainder(dividingBy: 6) }
+                else if mx == g { hdeg = 60 * (Double(b - r) / d + 2) }
+                else { hdeg = 60 * (Double(r - g) / d + 4) }
+                if hdeg < 0 { hdeg += 360 }
+            }
+            let h180 = UInt8(min(180, Int(hdeg / 2.0)))
+            hplane[p] = h180
+            vplane[p] = UInt8(vv)
+            splane[p] = UInt8(ss)
+            luma[p] = Float(r + g + b) / 3.0
+            if ss >= 60 && vv >= 60 { hist[Int(h180)] += 1 }
+        }
+        // median turf hue from the histogram
+        let total = hist.reduce(0, +)
+        var turf = 60
+        if total > 500 {
+            var acc = 0
+            for (i, c) in hist.enumerated() { acc += c; if acc >= total / 2 { turf = i; break } }
+        }
+        var dh = [UInt8](repeating: 0, count: W * H)
+        for p in 0..<(W * H) {
+            if vplane[p] < 60 { dh[p] = 0; continue }
+            if splane[p] < 40 { dh[p] = 255; continue }
+            let d0 = abs(Int(hplane[p]) - turf)
+            let d = min(d0, 180 - d0)
+            dh[p] = UInt8(min(255, d * 4))
+        }
+        return Planes(W: W, H: H, dh: dh, v: vplane, s: splane, luma: luma)
+    }
+
+    // MARK: Binary morphology (separable rect kernels)
+
+    private static func morph(_ mask: inout [Bool], W: Int, H: Int, k: Int, dilate: Bool) {
+        guard k > 1 else { return }
+        let r = k / 2
+        var tmp = mask
+        for y in 0..<H {                       // horizontal pass
+            let row = y * W
+            for x in 0..<W {
+                var acc = dilate ? false : true
+                for dx in -r...r {
+                    let xx = x + dx
+                    let val = (xx >= 0 && xx < W) ? mask[row + xx] : false
+                    if dilate { acc = acc || val } else { acc = acc && val }
+                    if dilate && acc { break }
+                    if !dilate && !acc { break }
+                }
+                tmp[row + x] = acc
+            }
+        }
+        for x in 0..<W {                       // vertical pass
+            for y in 0..<H {
+                var acc = dilate ? false : true
+                for dy in -r...r {
+                    let yy = y + dy
+                    let val = (yy >= 0 && yy < H) ? tmp[yy * W + x] : false
+                    if dilate { acc = acc || val } else { acc = acc && val }
+                    if dilate && acc { break }
+                    if !dilate && !acc { break }
+                }
+                mask[y * W + x] = acc
+            }
+        }
+    }
+
+    private static func openClose(_ mask: inout [Bool], W: Int, H: Int, openK: Int, closeK: Int) {
+        morph(&mask, W: W, H: H, k: openK, dilate: false)
+        morph(&mask, W: W, H: H, k: openK, dilate: true)
+        morph(&mask, W: W, H: H, k: closeK, dilate: true)
+        morph(&mask, W: W, H: H, k: closeK, dilate: false)
+    }
+
+    // MARK: Blobs
+
+    struct Blob {
+        var src: String
+        var area: Double, circ: Double, r: Double
+        var cx: Double, cy: Double
+        var w: Int, h: Int
+        var theta: Double, elong: Double
+        var border: Bool
+        var mot: Double, dhMean: Double, vMean: Double
+        var prob: Double = 0
+    }
+
+    private static func blobs(mask: [Bool], planes: Planes, motion: [Float]?, src: String, minArea: Double) -> [Blob] {
+        let W = planes.W, H = planes.H
+        var visited = [Bool](repeating: false, count: W * H)
+        var out: [Blob] = []
+        var queue = [Int]()
+        for start in 0..<(W * H) where mask[start] && !visited[start] {
+            visited[start] = true
+            queue.removeAll(keepingCapacity: true)
+            queue.append(start)
+            var head = 0
+            var pix: [Int] = []
+            while head < queue.count {
+                let p = queue[head]; head += 1
+                pix.append(p)
+                let x = p % W, y = p / W
+                for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let nx = x + dx, ny = y + dy
+                    guard nx >= 0, nx < W, ny >= 0, ny < H else { continue }
+                    let np = ny * W + nx
+                    if mask[np] && !visited[np] { visited[np] = true; queue.append(np) }
+                }
+            }
+            let area = Double(pix.count)
+            if area < minArea { continue }
+            var sx = 0.0, sy = 0.0
+            var minX = W, maxX = 0, minY = H, maxY = 0
+            for p in pix {
+                let x = p % W, y = p / W
+                sx += Double(x); sy += Double(y)
+                minX = min(minX, x); maxX = max(maxX, x)
+                minY = min(minY, y); maxY = max(maxY, y)
+            }
+            let cx = sx / area, cy = sy / area
+            var mu20 = 0.0, mu02 = 0.0, mu11 = 0.0, er2 = 0.0
+            var motSum = 0.0, dhSum = 0.0, vSum = 0.0
+            for p in pix {
+                let x = Double(p % W) - cx, y = Double(p / W) - cy
+                mu20 += x * x; mu02 += y * y; mu11 += x * y
+                er2 = max(er2, x * x + y * y)
+                motSum += motion.map { Double($0[p]) } ?? 0
+                dhSum += Double(planes.dh[p]); vSum += Double(planes.v[p])
+            }
+            mu20 /= area; mu02 /= area; mu11 /= area
+            let theta = (mu20 != mu02 || mu11 != 0) ? 0.5 * atan2(2 * mu11, mu20 - mu02) : 0
+            let elong = (sqrt(pow(mu20 - mu02, 2) + 4 * mu11 * mu11)) / (mu20 + mu02 + 1e-9)
+            let er = max(sqrt(er2), 1)
+            out.append(Blob(
+                src: src, area: area,
+                circ: area / (Double.pi * er * er + 1e-6),
+                r: sqrt(area / Double.pi), cx: cx, cy: cy,
+                w: maxX - minX + 1, h: maxY - minY + 1,
+                theta: theta, elong: elong,
+                border: minX <= 1 || minY <= 1 || maxX >= W - 2 || maxY >= H - 2,
+                mot: motSum / area, dhMean: dhSum / area, vMean: vSum / area))
+        }
+        return out
+    }
+
+    private static func maskFrom(_ planes: Planes, motion: [Float]?, prevLuma: [Float]?) -> (bright: [Blob], dark: [Blob], diff: [Blob]) {
+        let W = planes.W, H = planes.H
+        var bm = (0..<(W * H)).map { planes.dh[$0] >= 160 }
+        openClose(&bm, W: W, H: H, openK: 3, closeK: 5)
+        let bright = blobs(mask: bm, planes: planes, motion: motion, src: "bright", minArea: 8)
+
+        var dm = (0..<(W * H)).map { planes.v[$0] <= 78 && planes.s[$0] <= 130 }
+        if let mot = motion {
+            for p in 0..<(W * H) where mot[p] < 12 { dm[p] = false }
+        }
+        openClose(&dm, W: W, H: H, openK: 3, closeK: 5)
+        let dark = blobs(mask: dm, planes: planes, motion: motion, src: "dark", minArea: 50)
+
+        var diff: [Blob] = []
+        if let prev = prevLuma {
+            var fd = [Float](repeating: 0, count: W * H)
+            for p in 0..<(W * H) { fd[p] = abs(planes.luma[p] - prev[p]) }
+            let sorted = fd.sorted()
+            let thr = max(15.0, Double(sorted[sorted.count / 2]) * 4 + 8)
+            var fm = (0..<(W * H)).map { Double(fd[$0]) >= thr }
+            openClose(&fm, W: W, H: H, openK: 2, closeK: 9)
+            diff = blobs(mask: fm, planes: planes, motion: motion, src: "diff", minArea: 30)
+        }
+        return (bright, dark, diff)
+    }
+
+    // MARK: Feature vectors (must match training exactly — see tools/experimental)
+
+    private static func ballFeatures(_ b: Blob, lock: CGPoint, r0: Double, pred: CGPoint?,
+                                     dir: (Double, Double)?, progress: Double, impacted: Bool) -> [Double] {
+        var distPred = 0.5
+        if let p = pred {
+            distPred = min(hypot(b.cx - p.x, b.cy - p.y) / max(r0, 1), 8.0) / 8.0
+        }
+        let vx = b.cx - lock.x, vy = b.cy - lock.y
+        let dist = hypot(vx, vy)
+        var dev = 0.5, aligned = 0.5
+        if let d = dir, dist > 1e-6 {
+            let du = (vx / dist, vy / dist)
+            dev = acos(max(-1, min(1, du.0 * d.0 + du.1 * d.1))) * 180 / .pi / 180.0
+            let ax = cos(b.theta), ay = sin(b.theta)
+            aligned = abs(ax * d.0 + ay * d.1)
+        }
+        let step = (dist - progress) / max(r0, 1)
+        return [b.circ, b.elong, min(b.r / max(r0, 1), 3.0) / 3.0,
+                b.dhMean / 255.0, b.border ? 1 : 0,
+                distPred, dev, max(-2, min(step / 10.0, 2.0)), aligned,
+                impacted ? 1 : 0, b.src == "rescue" ? 1 : 0]
+    }
+
+    private static func clubFeatures(_ b: Blob, lock: CGPoint, r0: Double, prevClub: CGPoint?) -> [Double] {
+        let dx = b.cx - lock.x, dy = b.cy - lock.y
+        let dist = hypot(dx, dy)
+        let backward = dx    // FLIGHT_DIR = -1: backward = +x side
+        let coneAng = backward > 0 ? atan2(abs(dy), backward) * 180 / .pi : 180.0
+        var base: [Double] = [
+            log(max(b.area, 1)),
+            Double(max(b.w, b.h)) / Double(max(1, min(b.w, b.h))),
+            b.elong, min(b.mot, 80) / 80.0, b.dhMean / 255.0, b.vMean / 255.0,
+            min(dist / max(r0, 1) / 20.0, 1.5), min(coneAng, 180) / 180.0,
+            b.src == "bright" ? 1 : 0, b.src == "dark" ? 1 : 0, b.src == "diff" ? 1 : 0,
+            b.border ? 1 : 0, b.circ]
+        if let pc = prevClub {
+            base.append(min(hypot(b.cx - pc.x, b.cy - pc.y) / max(r0, 1) / 12.0, 1.5))
+            base.append(1.0)
+        } else {
+            base.append(1.0); base.append(0.0)
+        }
+        let n = max(dist, 1e-6)
+        let radial = (dx / n, dy / n)
+        let coneCos = abs(cos(b.theta) * radial.0 + sin(b.theta) * radial.1)
+        base.append(Double(b.w) / max(r0, 1) / 10.0)
+        base.append(Double(b.h) / max(r0, 1) / 10.0)
+        base.append(coneCos)
+        return base
+    }
+
+    // MARK: Public entry
+
+    /// Runs the V2 pipeline over the captured shot. `impactHint` is the capture's fallback
+    /// impact index; the engine re-derives the true impact from ball motion.
+    static func run(frames: [AnalyzedShotFrame], lockedBallRect: CGRect?, impactHint: Int) -> V2Output? {
+        guard let models else { return nil }
+        var notes: [String] = []
+
+        // planes per frame (original color images)
+        var planeByIdx: [Int: Planes] = [:]
+        for f in frames {
+            if let p = planes(from: f.originalFrame.image) { planeByIdx[f.frameIndex] = p }
+        }
+        guard let first = planeByIdx.values.first else { return nil }
+        let W = first.W, H = first.H
+
+        // pre-impact median luma baseline (motion channel)
+        let preIdx = frames.map(\.frameIndex).sorted().prefix(while: { $0 < max(3, impactHint - 2) })
+        var basePlanes: [[Float]] = []
+        for i in stride(from: 0, to: min(14, preIdx.count), by: 3) {
+            if let p = planeByIdx[preIdx[i]] { basePlanes.append(p.luma) }
+        }
+        var baseLuma: [Float]? = nil
+        if basePlanes.count >= 3 {
+            var b = [Float](repeating: 0, count: W * H)
+            for p in 0..<(W * H) {
+                var vals = basePlanes.map { $0[p] }
+                vals.sort()
+                b[p] = vals[vals.count / 2]
+            }
+            baseLuma = b
+        }
+
+        func motion(for pl: Planes) -> [Float]? {
+            guard let base = baseLuma else { return nil }
+            var m = [Float](repeating: 0, count: W * H)
+            for p in 0..<(W * H) { m[p] = abs(pl.luma[p] - base[p]) }
+            return m
+        }
+
+        // ── lock: observed rest ball (metadata lock as fallback)
+        var lock = CGPoint(x: Double(lockedBallRect?.midX ?? 0.64) * Double(W),
+                           y: Double(lockedBallRect?.midY ?? 0.55) * Double(H))
+        var r0 = max(4.0, Double(lockedBallRect?.width ?? 0.05) * Double(W) / 2)
+        var restCands: [[Blob]] = []
+        for fi in [0, 2, 4, 6, 8] {
+            guard let pl = planeByIdx[fi] else { continue }
+            let (bright, _, _) = maskFrom(pl, motion: nil, prevLuma: nil)
+            restCands.append(bright.filter { $0.r >= 2.5 && $0.r <= 22 && $0.circ >= 0.55 && $0.area >= 15 && !$0.border })
+        }
+        var bestRest: Blob? = nil; var bestN = 0
+        for fr in restCands {
+            for b in fr {
+                let n = restCands.reduce(0) { acc, other in
+                    acc + (other.contains { hypot($0.cx - b.cx, $0.cy - b.cy) <= max(4, b.r) } ? 1 : 0)
+                }
+                if n > bestN { bestN = n; bestRest = b }
+            }
+        }
+        if let rest = bestRest, bestN >= 3 {
+            lock = CGPoint(x: rest.cx, y: rest.cy)
+            r0 = max(4.0, rest.r)
+            notes.append("lock=observed-rest-ball")
+        } else {
+            notes.append("lock=capture-metadata")
+        }
+
+        // ── impact: first frame a NEW round blob sits >=1.5 r0 forward of the lock, minus
+        // one. "New" is load-bearing: round bright glare that already exists in the earliest
+        // frames is scenery — without the exclusion it fired impact 6 frames early on the
+        // Simulate Shot sample, a junk pre-launch pick became "flight", and the monotone
+        // gate then walled out the real airborne ball.
+        var impact = impactHint
+        var impactSrc = "hint"
+        let idxSorted = frames.map(\.frameIndex).sorted()
+        var staticForward: [(x: Double, y: Double, r: Double)] = []
+        for fi in idxSorted.prefix(3) {
+            guard let pl = planeByIdx[fi] else { continue }
+            let (bright, _, _) = maskFrom(pl, motion: motion(for: pl), prevLuma: nil)
+            for b in bright where b.r >= 2.5 && b.r <= 22 && b.circ >= 0.55 && b.area >= 15 {
+                staticForward.append((b.cx, b.cy, b.r))
+            }
+        }
+        outer: for fi in idxSorted where fi >= max(0, impactHint - 8) && fi <= impactHint + 9 {
+            guard let pl = planeByIdx[fi] else { continue }
+            let (bright, _, _) = maskFrom(pl, motion: motion(for: pl), prevLuma: nil)
+            for b in bright where b.r >= 2.5 && b.r <= 22 && b.circ >= 0.55 && b.area >= 15 && !b.border {
+                let vx = b.cx - lock.x
+                if vx * -1 <= 0 { continue }        // forward is -x
+                // Launch cone: a just-struck ball leaves from LOCK HEIGHT — within a few
+                // ball-widths vertically, opening at most ~45° with forward distance. A
+                // flickering treeline glint at the top edge (y=9 vs lock y≈104) fired this
+                // 6 frames early; no launched ball can be 16 radii above the lock while
+                // only 4 radii forward.
+                if abs(b.cy - lock.y) > max(r0 * 8, abs(vx)) { continue }
+                if hypot(vx, b.cy - lock.y) >= r0 * 1.5,
+                   !staticForward.contains(where: {
+                       hypot($0.x - b.cx, $0.y - b.cy) <= max(4, max($0.r, b.r))
+                   }) {
+                    impact = fi - 1
+                    impactSrc = String(format: "ball-motion@f%d(%.0f,%.0f r%.1f circ%.2f)", fi, b.cx, b.cy, b.r, b.circ)
+                    break outer
+                }
+            }
+        }
+        notes.append("impact=f\(impact)(\(impactSrc))")
+
+        // ── ball track (sequential v2.2 state machine)
+        var progress = 0.0
+        var direction: (Double, Double)? = nil
+        var lastT: Double? = nil
+        var lastPos: CGPoint? = nil
+        var vel: (Double, Double)? = nil
+        var exited = false
+        var flightPoints = 0
+        var missesInFlight = 0
+        var rescuesLeft = 2
+        var prevLuma: [Float]? = nil
+        var prevClub: CGPoint? = nil
+
+        struct FlightPt { let t: Double; var x: Double; var y: Double; var r: Double; let fi: Int }
+        var flight: [FlightPt] = []
+        var clubPts: [(t: Double, x: Double, y: Double)] = []
+        var restRadii: [Double] = []
+
+        for f in frames.sorted(by: { $0.frameIndex < $1.frameIndex }) {
+            let fi = f.frameIndex
+            guard let pl = planeByIdx[fi] else { continue }
+            let mot = motion(for: pl)
+            let (bright, dark, diff) = maskFrom(pl, motion: mot, prevLuma: prevLuma)
+            prevLuma = pl.luma
+            let t = f.timestamp
+            let impacted = fi > impact
+
+            // club (approach window only; used for club speed + follow-through has no value)
+            if fi <= impact + 1 {
+                var pool: [(Double, Blob)] = []
+                for b in (bright + dark + diff) where b.area >= 12 && b.area <= 6000 {
+                    let p = models.club_gbt.prob(clubFeatures(b, lock: lock, r0: r0, prevClub: prevClub))
+                    pool.append((p, b))
+                }
+                if let bestC = pool.max(by: { $0.0 < $1.0 }), bestC.0 >= models.club_gbt.threshold {
+                    prevClub = CGPoint(x: bestC.1.cx, y: bestC.1.cy)
+                    if fi <= impact, fi >= impact - 6 {
+                        clubPts.append((t, bestC.1.cx, bestC.1.cy))
+                    }
+                }
+            }
+
+            if !impacted {
+                // rest ball: roundest bright blob at the lock (+ merged-strike rescue)
+                let cands = bright.filter {
+                    $0.r >= 2.0 && $0.r <= 24 && $0.area >= 12 && !$0.border && $0.circ >= 0.5
+                        && hypot($0.cx - lock.x, $0.cy - lock.y) <= r0 * 2.2
+                }
+                if let rest = cands.max(by: { $0.circ < $1.circ }) {
+                    restRadii.append(subpixelRadius(pl, cx: rest.cx, cy: rest.cy, rHint: rest.r))
+                }
+                continue
+            }
+            if exited { continue }
+
+            // exit projection (dt-exact)
+            if let v = vel, let lt = lastT, let lp = lastPos {
+                let dt = t - lt
+                let px = lp.x + v.0 * dt, py = lp.y + v.1 * dt
+                let m = r0 * 1.5
+                if !(-m...(Double(W) + m)).contains(px) || !(-m...(Double(H) + m)).contains(py) {
+                    exited = true
+                    continue
+                }
+            }
+
+            var cands: [(Double, Blob)] = []
+            let pred: CGPoint? = {
+                guard let v = vel, let lt = lastT, let lp = lastPos else { return nil }
+                let dt = t - lt
+                return CGPoint(x: lp.x + v.0 * dt, y: lp.y + v.1 * dt)
+            }()
+            for b in bright {
+                guard b.r >= 2.0, b.r <= 24, b.area >= 12 else { continue }
+                let vx = b.cx - lock.x, vy = b.cy - lock.y
+                let dist = hypot(vx, vy)
+                if dist >= r0 && vx > 0 { continue }                     // backwards
+                if dist < progress - r0 * 1.5 { continue }               // monotone
+                if let lp = lastPos, let p = pred {
+                    let dLast = hypot(b.cx - lp.x, b.cy - lp.y)
+                    let dPred = hypot(p.x - lp.x, p.y - lp.y)
+                    if dLast < r0 && dPred > r0 * 2.5 { continue }       // static junk
+                }
+                let feats = ballFeatures(b, lock: lock, r0: r0, pred: pred,
+                                         dir: direction, progress: progress, impacted: true)
+                var z = models.ball_scorer.b
+                for i in 0..<min(models.ball_scorer.w.count, feats.count) { z += models.ball_scorer.w[i] * feats[i] }
+                let p = 1.0 / (1.0 + exp(-max(-30, min(30, z))))
+                if p >= models.ball_scorer.threshold { cands.append((p, b)) }
+            }
+            var chosen = cands.max(by: { $0.0 < $1.0 })?.1
+            if chosen == nil, !exited, rescuesLeft > 0, let p = pred {
+                if let rb = rescueAt(pl, x: p.x, y: p.y, rHint: r0) {
+                    rescuesLeft -= 1
+                    chosen = rb
+                }
+            }
+            if let c = chosen {
+                let vx = c.cx - lock.x, vy = c.cy - lock.y
+                let dist = hypot(vx, vy)
+                progress = max(progress, dist)
+                if dist >= r0 * 2 { direction = (vx / dist, vy / dist) }
+                if dist >= r0 {
+                    flightPoints += 1
+                    let (sx, sy, sr) = subpixelCenter(pl, cx: c.cx, cy: c.cy, rHint: c.r)
+                    flight.append(FlightPt(t: t, x: sx, y: sy, r: sr, fi: fi))
+                }
+                missesInFlight = 0
+                if let lt = lastT, t > lt, let lp = lastPos {
+                    vel = ((c.cx - lp.x) / (t - lt), (c.cy - lp.y) / (t - lt))
+                }
+                lastT = t
+                lastPos = CGPoint(x: c.cx, y: c.cy)
+            } else if flightPoints >= 1 {
+                missesInFlight += 1
+                if missesInFlight >= 2 { exited = true }
+            }
+        }
+
+        // ── metric features (port of metrics_kfold.features_from_track)
+        let rLockSub = restRadii.isEmpty ? r0 : restRadii.sorted()[restRadii.count / 2]
+        var pts = Array(flight.prefix(5))
+        // club-sized points can't enter the fit (far-field radius filter)
+        let radiusFiltered = pts.filter { $0.r <= rLockSub * 1.35 || hypot($0.x - lock.x, $0.y - lock.y) <= rLockSub * 6 }
+        // Heavy-drop captures leave exactly TWO airborne sightings, and the far one is
+        // motion-smeared so its radius reads club-fat — the far-field filter then starved
+        // the fit down to one point on shots the tracker followed perfectly (the Simulate
+        // Shot sample: ball label-perfect at f18+f19, V2 withheld). With only two sightings
+        // total, keep the pair; the 2-point confidence gate below (lock/p1/p2 speed
+        // agreement ≤ 25%) plus the physics clamp decide trust instead of the radius.
+        pts = (pts.count == 2 && radiusFiltered.count < 2) ? pts : radiusFiltered
+        // no steep descent in the first visible frames (follow-through grabs)
+        while pts.count >= 2 {
+            let dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y
+            if dy > abs(dx) * 1.732 { pts.remove(at: 1) } else { break }
+        }
+        guard pts.count >= 2, pts.last!.t > pts.first!.t else {
+            // Name the evidence: which frames the sequential tracker actually caught and
+            // what filtering left — "withheld" without this was undebuggable in the field.
+            let raw = flight.map { String(format: "f%d(r%.1f)", $0.fi, $0.r) }.joined(separator: " ")
+            return V2Output(ballSpeedMph: nil, clubSpeedMph: nil, vlaDegrees: nil,
+                            confident: false, flightPointCount: pts.count,
+                            notes: notes + ["withheld: <2 usable flight points [flight: \(raw.isEmpty ? "none" : raw) → usable \(pts.count), rLock \(String(format: "%.1f", rLockSub))]"])
+        }
+
+        func lineFit(_ P: [FlightPt]) -> (vx: Double, vy: Double, x0: Double, y0: Double, t0: Double, chiMax: Double) {
+            let t0 = P[0].t
+            let n = Double(P.count)
+            var st = 0.0, sx = 0.0, sy = 0.0, stt = 0.0, stx = 0.0, sty = 0.0
+            for p in P {
+                let dt = p.t - t0
+                st += dt; sx += p.x; sy += p.y
+                stt += dt * dt; stx += dt * p.x; sty += dt * p.y
+            }
+            let denom = max(n * stt - st * st, 1e-9)
+            let vx = (n * stx - st * sx) / denom
+            let vy = (n * sty - st * sy) / denom
+            let x0 = (sx - vx * st) / n
+            let y0 = (sy - vy * st) / n
+            var chiMax = 0.0
+            for p in P {
+                let dt = p.t - t0
+                chiMax = max(chiMax, hypot(p.x - (x0 + vx * dt), p.y - (y0 + vy * dt)) / 0.6)
+            }
+            return (vx, vy, x0, y0, t0, chiMax)
+        }
+        var fit = lineFit(pts)
+        if pts.count >= 4 && fit.chiMax > 4 / 0.6 {
+            // drop the worst residual point once (robust trim)
+            var worstI = 0; var worstR = -1.0
+            for (i, p) in pts.enumerated() {
+                let dt = p.t - fit.t0
+                let r = hypot(p.x - (fit.x0 + fit.vx * dt), p.y - (fit.y0 + fit.vy * dt))
+                if r > worstR { worstR = r; worstI = i }
+            }
+            pts.remove(at: worstI)
+            fit = lineFit(pts)
+        }
+        let vPx = hypot(fit.vx, fit.vy)
+        let ang = atan2(-fit.vy, -fit.vx) * 180 / .pi
+        let mPerPx = 0.04267 / 2 / max(rLockSub, 2)
+        let vPhysMps = vPx * mPerPx
+        guard vPhysMps >= 3.0 && vPhysMps <= 105.0 else {
+            return V2Output(ballSpeedMph: nil, clubSpeedMph: nil, vlaDegrees: nil,
+                            confident: false, flightPointCount: pts.count,
+                            notes: notes + [String(format: "withheld: implausible physics %.1f m/s", vPhysMps)])
+        }
+
+        // contact instant: closest approach of the flight line to the lock
+        let v2 = fit.vx * fit.vx + fit.vy * fit.vy
+        var tContact: Double? = nil
+        if v2 > 1e-9 {
+            tContact = fit.t0 + ((lock.x - fit.x0) * fit.vx + (lock.y - fit.y0) * fit.vy) / v2
+        }
+        var firstStep = vPx
+        if let tc = tContact, pts[0].t - tc > 2e-3 {
+            firstStep = hypot(pts[0].x - lock.x, pts[0].y - lock.y) / (pts[0].t - tc)
+        }
+        var v2pt = vPx
+        if pts.count >= 2, pts[1].t > pts[0].t {
+            v2pt = hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) / (pts[1].t - pts[0].t)
+        }
+        let rPxMed = pts.map(\.r).sorted()[pts.count / 2]
+        var shrink = 0.0
+        if pts.count >= 2, pts.last!.t > pts.first!.t {
+            shrink = (pts.first!.r - pts.last!.r) / (pts.last!.t - pts.first!.t)
+        }
+
+        // club speed: arc fit at contact (smash-gated only when the ball is trustworthy)
+        var clubVpx = 0.0
+        if clubPts.count >= 2 {
+            clubVpx = arcSpeed(clubPts, tContact: tContact) ?? 0
+            let trustworthy = pts.count >= 2 && fit.chiMax <= 2.5
+            if clubVpx > 0 && trustworthy && !(0.95...1.62).contains(vPx / clubVpx) {
+                notes.append("club_v zeroed (smash gate)")
+                clubVpx = 0
+            }
+        }
+
+        // features (order = metrics_kfold.FEATS)
+        let x: [Double] = [vPx, ang, rPxMed, Double(pts.count), firstStep, clubVpx,
+                           vPhysMps, v2pt, shrink, rLockSub,
+                           v2pt * mPerPx, sin(ang * .pi / 180), cos(ang * .pi / 180)]
+        var ballMph = models.ball_head.predict(x)
+        let physMph = v2pt * mPerPx * 2.23694
+        if let clamp = models.ball_head.clamp, clamp.count == 2 {
+            ballMph = max(clamp[0] * physMph, min(clamp[1] * physMph, ballMph))
+        }
+        let vla = models.vla_head.predict(x + [ballMph])
+        var clubMph: Double? = nil
+        if clubVpx > 0 {
+            if let head = models.club_head {
+                clubMph = head.predict(x + [ballMph])
+            } else {
+                clubMph = clubVpx * mPerPx * 2.23694
+            }
+        }
+
+        // confidence: fit residuals within noise, or 2-point speed agreement
+        let agree2pt = abs(v2pt - firstStep) / max(v2pt, 1e-6)
+        let confident = (pts.count >= 3 && fit.chiMax <= 2.5) || (pts.count == 2 && agree2pt <= 0.25)
+        notes.append(String(format: "v=%.0fpx/s phys=%.1fmph pts=%d chi=%.1f agree=%.2f",
+                            vPx, physMph, pts.count, fit.chiMax, agree2pt))
+
+        return V2Output(ballSpeedMph: ballMph, clubSpeedMph: clubMph,
+                        vlaDegrees: vla, confident: confident,
+                        flightPointCount: pts.count, notes: notes)
+    }
+
+    // MARK: Subpixel + rescue helpers
+
+    private static func subpixelCenter(_ pl: Planes, cx: Double, cy: Double, rHint: Double) -> (Double, Double, Double) {
+        let W = pl.W, H = pl.H
+        let R = Int(max(6, rHint * 2.2))
+        let x0 = max(0, Int(cx) - R), x1 = min(W, Int(cx) + R)
+        let y0 = max(0, Int(cy) - R), y1 = min(H, Int(cy) + R)
+        var tot = 0.0, sx = 0.0, sy = 0.0, area = 0.0
+        for y in y0..<y1 {
+            for x in x0..<x1 {
+                let w = max(0.0, Double(pl.dh[y * W + x]) - 120)
+                tot += w; sx += w * Double(x); sy += w * Double(y)
+                if w > 30 { area += 1 }
+            }
+        }
+        guard tot >= 1 else { return (cx, cy, rHint) }
+        let sr = area >= 6 ? sqrt(area / Double.pi) : rHint
+        return (sx / tot, sy / tot, sr)
+    }
+
+    private static func subpixelRadius(_ pl: Planes, cx: Double, cy: Double, rHint: Double) -> Double {
+        subpixelCenter(pl, cx: cx, cy: cy, rHint: rHint).2
+    }
+
+    private static func rescueAt(_ pl: Planes, x px: Double, y py: Double, rHint: Double) -> Blob? {
+        let W = pl.W, H = pl.H
+        let R = Int(max(18, rHint * 4))
+        let x0 = max(0, Int(px) - R), x1 = min(W, Int(px) + R)
+        let y0 = max(0, Int(py) - R), y1 = min(H, Int(py) + R)
+        guard x1 - x0 > 6, y1 - y0 > 6 else { return nil }
+        let w = x1 - x0, h = y1 - y0
+        var mask = [Bool](repeating: false, count: w * h)
+        for y in 0..<h {
+            for x in 0..<w {
+                mask[y * w + x] = pl.dh[(y + y0) * W + (x + x0)] >= 140
+            }
+        }
+        morph(&mask, W: w, H: h, k: 5, dilate: true)
+        morph(&mask, W: w, H: h, k: 5, dilate: false)
+        var visited = [Bool](repeating: false, count: w * h)
+        var best: (Double, Blob)? = nil
+        for start in 0..<(w * h) where mask[start] && !visited[start] {
+            visited[start] = true
+            var queue = [start]; var head = 0
+            var sx = 0.0, sy = 0.0, n = 0.0
+            while head < queue.count {
+                let p = queue[head]; head += 1
+                let xx = p % w, yy = p / w
+                sx += Double(xx); sy += Double(yy); n += 1
+                for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                    let nx = xx + dx, ny = yy + dy
+                    guard nx >= 0, nx < w, ny >= 0, ny < h else { continue }
+                    let np = ny * w + nx
+                    if mask[np] && !visited[np] { visited[np] = true; queue.append(np) }
+                }
+            }
+            guard n >= 10 else { continue }
+            let r = sqrt(n / Double.pi)
+            guard r >= 2.0, r <= 24 else { continue }
+            let cx = sx / n + Double(x0), cy = sy / n + Double(y0)
+            let d = hypot(cx - px, cy - py)
+            if d <= rHint * 2.5, best == nil || d < best!.0 {
+                best = (d, Blob(src: "rescue", area: n, circ: 0.5, r: r, cx: cx, cy: cy,
+                                w: Int(r * 2), h: Int(r * 2), theta: 0, elong: 0.5,
+                                border: false, mot: 0, dhMean: 200, vMean: 200))
+            }
+        }
+        return best?.1
+    }
+
+    private static func arcSpeed(_ pts: [(t: Double, x: Double, y: Double)], tContact: Double?) -> Double? {
+        let P = pts.sorted { $0.t < $1.t }
+        guard P.count >= 2 else { return nil }
+        if P.count >= 3 {
+            // Kasa circle fit
+            var a11 = 0.0, a12 = 0.0, a13 = 0.0, a22 = 0.0, a23 = 0.0, a33 = Double(P.count)
+            var b1 = 0.0, b2 = 0.0, b3 = 0.0
+            for p in P {
+                let z = p.x * p.x + p.y * p.y
+                a11 += 4 * p.x * p.x; a12 += 4 * p.x * p.y; a13 += 2 * p.x
+                a22 += 4 * p.y * p.y; a23 += 2 * p.y
+                b1 += 2 * p.x * z; b2 += 2 * p.y * z; b3 += z
+            }
+            // solve 3x3 (a, c, d)
+            let m = [[a11, a12, a13], [a12, a22, a23], [a13, a23, a33]]
+            let bb = [b1, b2, b3]
+            if let sol = solve3(m, bb) {
+                let (ax, cy2, d) = (sol[0], sol[1], sol[2])
+                let R = sqrt(max(d + ax * ax + cy2 * cy2, 1e-6))
+                if R >= 20 && R <= 5000 {
+                    var th = P.map { atan2($0.y - cy2, $0.x - ax) }
+                    for i in 1..<th.count {                          // unwrap
+                        while th[i] - th[i - 1] > .pi { th[i] -= 2 * .pi }
+                        while th[i] - th[i - 1] < -.pi { th[i] += 2 * .pi }
+                    }
+                    let t0 = P[0].t
+                    var st = 0.0, sth = 0.0, stt = 0.0, stth = 0.0
+                    let n = Double(P.count)
+                    for (i, p) in P.enumerated() {
+                        let dt = p.t - t0
+                        st += dt; sth += th[i]; stt += dt * dt; stth += dt * th[i]
+                    }
+                    let denom = max(n * stt - st * st, 1e-12)
+                    let om = (n * stth - st * sth) / denom
+                    return abs(om) * R
+                }
+            }
+        }
+        let (p1, p2) = (P.first!, P.last!)
+        guard p2.t > p1.t else { return nil }
+        return hypot(p2.x - p1.x, p2.y - p1.y) / (p2.t - p1.t)
+    }
+
+    private static func solve3(_ m: [[Double]], _ b: [Double]) -> [Double]? {
+        var a = m.map { $0 }
+        var v = b
+        for i in 0..<3 {
+            var piv = i
+            for r in (i + 1)..<3 where abs(a[r][i]) > abs(a[piv][i]) { piv = r }
+            if abs(a[piv][i]) < 1e-12 { return nil }
+            a.swapAt(i, piv); v.swapAt(i, piv)
+            for r in 0..<3 where r != i {
+                let f = a[r][i] / a[i][i]
+                for c in i..<3 { a[r][c] -= f * a[i][c] }
+                v[r] -= f * v[i]
+            }
+        }
+        return [v[0] / a[0][0], v[1] / a[1][1], v[2] / a[2][2]]
+    }
 }

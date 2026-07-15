@@ -163,6 +163,11 @@ struct FeedView: View {
                     sectionGap
                     challengesSection
                     sectionGap
+                    // Directly under the challenges it counts — completing those cards
+                    // permanently banks credits toward these unlocks.
+                    SimUnlocksCard()
+                        .padding(.horizontal, TCTheme.hPad)
+                    sectionGap
                     if vm.posts.isEmpty && !vm.isLoading {
                         emptyState
                     } else {

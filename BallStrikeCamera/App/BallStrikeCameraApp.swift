@@ -16,10 +16,49 @@ struct BallStrikeCameraApp: App {
         // Touch the singleton so CBCentralManager is created and begins scanning
         // as soon as Bluetooth is available — before any camera screen opens.
         _ = RFIDHubManager.shared
+
+        #if DEBUG
+        // Headless replay for simulator/CI: TC_REPLAY_EXPORTS=1 runs every export in
+        // Documents/ShotExports + AllFramesArchive through the live-parity pipeline,
+        // prints the full diagnostics, then exits. Nothing else in the app starts mattering.
+        if ProcessInfo.processInfo.environment["TC_REPLAY_EXPORTS"] == "1" {
+            Task.detached(priority: .userInitiated) {
+                let loader = TestFrameLoader()
+                let exports = loader.listAvailableExports()
+                print("[Replay] headless mode — \(exports.count) export(s) found")
+                for url in exports.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                    do {
+                        let seq = try loader.loadSequence(from: url)
+                        print("\n[Replay] ================ \(seq.sourceName) (\(seq.frames.count) frames, impact=\(seq.impactFrameIndex)) ================")
+                        _ = LiveParityTestRunner().run(sequence: seq)
+                    } catch {
+                        print("[Replay] FAILED to load \(url.lastPathComponent): \(error)")
+                    }
+                }
+                print("\n[Replay] headless run complete — exiting")
+                exit(0)
+            }
+        }
+        #endif
+    }
+
+    // TC_OPEN_TESTER=1 (simulator/dev): boot straight into the Ball Tracking Tester so saved
+    // shots can be replayed with overlays without navigating the app shell.
+    private var openTesterDirectly: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.environment["TC_OPEN_TESTER"] == "1"
+        #else
+        return false
+        #endif
     }
 
     var body: some Scene {
         WindowGroup {
+            if openTesterDirectly {
+                #if DEBUG
+                BallTrackingTestView(onDismiss: {})
+                #endif
+            } else {
             ContentView()
                 .environmentObject(session)
                 .environmentObject(camera)
@@ -28,6 +67,12 @@ struct BallStrikeCameraApp: App {
                     CrashReporter.shared.attach(backend: session.backend)
                 }
                 .onChange(of: scenePhase) { phase in
+                    if phase == .background {
+                        // Natural "done hitting" moment: push archived shots to Drive
+                        // (verified, then freed locally) so the phone stays light.
+                        GoogleDriveUploadService.shared.autoOffloadIfNeeded()
+                        return
+                    }
                     guard phase == .active else { return }
                     Task { await session.refreshSessionAndEntitlement() }
                 }
@@ -62,6 +107,7 @@ struct BallStrikeCameraApp: App {
                         }
                     }
                 }
+            }
         }
     }
 }

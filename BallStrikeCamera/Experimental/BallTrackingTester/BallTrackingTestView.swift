@@ -46,7 +46,16 @@ struct BallTrackingTestView: View {
         .tcAppearance()
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
-        .onAppear { exports = loader.listAvailableExports() }
+        .onAppear {
+            exports = loader.listAvailableExports()
+            // Headed dev demo (TC_OPEN_TESTER=1): auto-load the first export and run it so
+            // the overlays are on screen without any tapping.
+            if ProcessInfo.processInfo.environment["TC_OPEN_TESTER"] == "1",
+               sequence == nil, let first = exports.first {
+                loadExport(first)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { runTracker() }
+            }
+        }
     }
 
     // MARK: - Top bar
@@ -2058,45 +2067,20 @@ struct BallTrackingTestView: View {
         guard let seq = sequence, !isRunning else { return }
         isRunning = true
         exportStatus = nil
-        let cfg = settings.toConfiguration()
-        let currentSettings = settings
-        print("Settings: Sc: Size W = \(settings.scoring.sizeScoreWeight)  |  Mask Percentile = \(settings.diameter.maskWhitenessPercentile)  |  Post Bright >= \(settings.postBrightnessThreshold)  |  Post MinW = \(settings.postMinNormWidth)")
+        // LIVE-PARITY REPLAY: runs the exact production pipeline (FrameNormalizer +
+        // PostImpactBallTracker + ShotMetricsCalculator + validation gates) on the loaded
+        // export. Tuning happens in the live components directly — the tester settings
+        // panels for the old ExperimentalBallTracker no longer affect this run.
+        print("[Replay] running LIVE pipeline on \(seq.sourceName) (\(seq.frames.count) frames, impact=\(seq.impactFrameIndex))")
         Task.detached(priority: .userInitiated) {
-            let tracker = ExperimentalBallTracker(configuration: cfg)
-            let r = tracker.run(on: seq)
-            let metrics = ExperimentalShotMetricsCalculator(
-                configuration: currentSettings.toMetricsCalculatorConfig()
-            ).calculate(
-                sequence: seq,
-                ballResult: r,
-                calibrationSettings: currentSettings.calibration,
-                clubConfiguration: currentSettings.club.toConfig(
-                    trackingMode: currentSettings.trackingMode,
-                    sampleStride: currentSettings.sampleStride
-                ),
-                zeroDegreeAngleDegrees: currentSettings.zeroDegreeAngleDeg,
-                carryCorrectionFactor: currentSettings.carryCorrectionFactor
-            )
-            if currentSettings.club.debugLoggingEnabled {
-                print("Club overlay: Orange solid line = club center path")
+            let output = LiveParityTestRunner().run(sequence: seq)
+            await MainActor.run {
+                self.result = output.result
+                self.isRunning = false
+                self.exportStatus = output.lockUsedAutoDerive
+                    ? "\(output.verdict) · auto-lock"
+                    : output.verdict
             }
-            let finalResult = BallTrackingTestResult(
-                observations: r.observations,
-                trackedCount: r.trackedCount,
-                missingCount: r.missingCount,
-                averageConfidence: r.averageConfidence,
-                detectedImpactFrameIndex: r.detectedImpactFrameIndex,
-                fallbackImpactFrameIndex: r.fallbackImpactFrameIndex,
-                impactDetectionReason: r.impactDetectionReason,
-                initialBallCenter: r.initialBallCenter,
-                movementThresholdNorm: r.movementThresholdNorm,
-                metrics: metrics,
-                launchDirectionVector: r.launchDirectionVector,
-                ballLaunchedAtFrameIndex: r.ballLaunchedAtFrameIndex,
-                ballTrackTerminated: r.ballTrackTerminated,
-                ballTerminatedAtFrameIndex: r.ballTerminatedAtFrameIndex
-            )
-            await MainActor.run { self.result = finalResult; self.isRunning = false }
         }
     }
 

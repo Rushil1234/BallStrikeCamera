@@ -10,7 +10,12 @@ struct TrueCarryInsightsView: View {
     @EnvironmentObject var session: AuthSessionStore
     @State private var shots: [SavedShot] = []
     @State private var clubs: [UserClub]  = []
+    /// Verified on-course shots (score+putts entered and every full swing logged) — real
+    /// start→end GPS distances with lateral deviation, folded into the Total view.
+    @State private var roundShots: [VerifiedRoundShot] = []
     @State private var selectedClub: String? = nil
+    /// ALL mode: every club on one top-tracer-style chart, each with its own color + cluster.
+    @State private var allMode = false
     @State private var showProfile = false
     @State private var dispersionMetric: DispersionMetric = .carry
 
@@ -38,6 +43,19 @@ struct TrueCarryInsightsView: View {
 
     private var selectedShots: [SavedShot] {
         selectedClub.map { shotsFor($0) } ?? []
+    }
+
+    private func roundShotsFor(_ club: String) -> [VerifiedRoundShot] {
+        let clubIds = Set(clubs.filter { $0.name == club }.map(\.id))
+        return roundShots.filter { rs in
+            if rs.clubName == club { return true }
+            guard let id = rs.clubId else { return false }
+            return clubIds.contains(id)
+        }
+    }
+
+    private var selectedRoundShots: [VerifiedRoundShot] {
+        selectedClub.map { roundShotsFor($0) } ?? []
     }
 
     // MARK: - Stat helpers
@@ -97,6 +115,8 @@ struct TrueCarryInsightsView: View {
                         if !gappingRows.isEmpty { gappingSection }
                         if availableClubs.isEmpty {
                             emptyState
+                        } else if allMode {
+                            allClubsContent
                         } else if selectedClub != nil {
                             statsContent
                         } else {
@@ -132,8 +152,16 @@ struct TrueCarryInsightsView: View {
         guard let uid = session.currentUser?.id else { return }
         async let s = try? await session.backend.loadShots(userId: uid)
         async let c = try? await session.backend.loadClubs(userId: uid)
+        async let r = try? await session.backend.loadCourseRounds(userId: uid)
         shots = (await s ?? []).filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
         clubs = await c ?? []
+        let rounds = await r ?? []
+        roundShots = rounds.flatMap { round in
+            RoundShotVerifier.verifiedShots(
+                round: round,
+                course: OSMGolfService.shared.loadCached(courseId: round.courseId)
+            )
+        }
         if selectedClub == nil || !availableClubs.contains(selectedClub ?? "") {
             selectedClub = availableClubs.first
         }
@@ -158,6 +186,7 @@ struct TrueCarryInsightsView: View {
     private var clubPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                allChip
                 ForEach(availableClubs, id: \.self) { club in
                     clubChip(club)
                 }
@@ -167,11 +196,37 @@ struct TrueCarryInsightsView: View {
         .padding(.horizontal, -TCTheme.hPad)
     }
 
+    /// Top-tracer view of the whole bag at once.
+    private var allChip: some View {
+        Button {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) { allMode = true }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "circle.hexagongrid.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("ALL")
+                    .font(.system(size: 13, weight: .bold))
+            }
+            .foregroundColor(allMode ? TCTheme.onPrimary : TCTheme.textMuted)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 9)
+            .background(allMode ? AnyShapeStyle(TCTheme.primaryFill) : AnyShapeStyle(TCTheme.panel))
+            .clipShape(Capsule())
+            .overlay(
+                Capsule().strokeBorder(allMode ? Color.clear : TCTheme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func clubChip(_ club: String) -> some View {
-        let selected = selectedClub == club
+        let selected = !allMode && selectedClub == club
         let count = shotsFor(club).count
         return Button {
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) { selectedClub = club }
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                allMode = false
+                selectedClub = club
+            }
         } label: {
             HStack(spacing: 7) {
                 Text(club)
@@ -319,11 +374,150 @@ struct TrueCarryInsightsView: View {
     private var statsContent: some View {
         let s = selectedShots
         dispersionCard(s)
+        singleClubKeyCard
         metricsCard(s)
         carryTrendCard(s)
         spinCard(s)
         advancedCard(s)
         Spacer(minLength: 140)
+    }
+
+    // MARK: - ALL mode (top-tracer: every club, colored clusters)
+
+    /// One series per club with any plottable shots — camera shots always, verified
+    /// on-course shots folded in when the Total toggle is active.
+    private var allClubSeries: [TCRangeFinderDispersion.ClubSeries] {
+        availableClubs.enumerated().compactMap { index, club in
+            var pts = shotsFor(club).compactMap { rangePoint(for: $0) }
+            if dispersionMetric == .total {
+                pts += roundShotsFor(club).map {
+                    TCRangeFinderDispersion.ShotPoint(carry: $0.distanceYards, lateral: $0.lateralYards)
+                }
+            }
+            guard !pts.isEmpty else { return nil }
+            return TCRangeFinderDispersion.ClubSeries(
+                id: club, name: club,
+                color: TCDispersionColor.club(index),
+                points: pts
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var allClubsContent: some View {
+        let series = allClubSeries
+        if series.isEmpty {
+            Text("Hit some shots to see your whole bag plotted here.")
+                .font(.system(size: 14))
+                .foregroundColor(TCTheme.textMuted)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 36)
+                .tcCard(padding: 16)
+        } else {
+            allClubsCard(series)
+            allClubsKeyCard(series)
+        }
+        Spacer(minLength: 140)
+    }
+
+    private func allClubsCard(_ series: [TCRangeFinderDispersion.ClubSeries]) -> some View {
+        let allPoints = series.flatMap(\.points)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top) {
+                cardHeader("Whole Bag", "Every club's \(dispersionMetric.rawValue.lowercased()) cluster at once")
+                Spacer(minLength: 8)
+                dispersionMetricPicker
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+
+            TCRangeFinderDispersion(shots: allPoints, clubSeries: series)
+                .frame(maxWidth: .infinity)
+                .frame(height: 460)
+
+            HStack(spacing: 0) {
+                inlineStat("\(series.count)", "CLUBS")
+                verticalDivider(height: 28)
+                inlineStat("\(allPoints.count)", "SHOTS")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
+                .strokeBorder(TCTheme.border, lineWidth: 1)
+        )
+        .padding(.horizontal, -TCTheme.hPad)
+    }
+
+    /// Legend: which color is which club, plus what the rings mean.
+    private func allClubsKeyCard(_ series: [TCRangeFinderDispersion.ClubSeries]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            cardHeader("Key", "Colors & clusters")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 8)], alignment: .leading, spacing: 8) {
+                ForEach(series) { club in
+                    HStack(spacing: 6) {
+                        Circle().fill(club.color).frame(width: 10, height: 10)
+                        Text(club.name)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .lineLimit(1)
+                        Text("\(club.points.count)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(TCTheme.textUltraMuted)
+                    }
+                }
+            }
+            TCDivider()
+            keyRow(swatch: AnyView(
+                Circle().strokeBorder(TCTheme.textMuted, lineWidth: 1.6).frame(width: 12, height: 12)
+            ), text: "Ring = that club's typical grouping (2σ of its shots)")
+            keyRow(swatch: AnyView(
+                RoundedRectangle(cornerRadius: 2).fill(Color(red: 0.14, green: 0.30, blue: 0.12)).frame(width: 12, height: 12)
+            ), text: "Green stripe = fairway width (±20 yd of your target line)")
+        }
+        .tcCard(padding: 14)
+    }
+
+    /// Single-club key: what the dot colors mean (graded by how far offline the shot landed).
+    private var singleClubKeyCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            cardHeader("Key", "Dot colors = distance offline")
+            keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(0)).frame(width: 12, height: 12)),
+                   text: "Dark green — dead straight (within 5 yd of center)")
+            keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(8)).frame(width: 12, height: 12)),
+                   text: "Light green — close (5–12 yd offline)")
+            keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(18)).frame(width: 12, height: 12)),
+                   text: "Yellow — drifting (12–25 yd offline)")
+            keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(30)).frame(width: 12, height: 12)),
+                   text: "Red — offline by 25+ yd")
+            TCDivider()
+            keyRow(swatch: AnyView(
+                Circle().strokeBorder(TCTheme.textMuted, lineWidth: 1.6).frame(width: 12, height: 12)
+            ), text: "White ring = your typical grouping (2σ)")
+            keyRow(swatch: AnyView(
+                RoundedRectangle(cornerRadius: 2).fill(Color(red: 0.14, green: 0.30, blue: 0.12)).frame(width: 12, height: 12)
+            ), text: "Green stripe = fairway width (±20 yd of your target line)")
+            keyRow(swatch: AnyView(
+                Circle().fill(TCDispersionColor.byLateral(0)).frame(width: 12, height: 12)
+                    .overlay(Circle().strokeBorder(.white.opacity(0.85), lineWidth: 1))
+            ), text: "Bigger dot = several shots landed on the same spot")
+        }
+        .tcCard(padding: 14)
+    }
+
+    private func keyRow(swatch: AnyView, text: String) -> some View {
+        HStack(spacing: 10) {
+            swatch.frame(width: 14)
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundColor(TCTheme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
     }
 
     // MARK: - Advanced (Pro)
@@ -438,38 +632,50 @@ struct TrueCarryInsightsView: View {
 
     // MARK: - Dispersion
 
+    /// Converts a camera shot to a plotted dispersion point (lateral from HLA + curve; the
+    /// same physics ShotResultView animates). Shared by the single-club and ALL charts.
+    private func rangePoint(for shot: SavedShot) -> TCRangeFinderDispersion.ShotPoint? {
+        let carry = shot.metrics.carryYards
+        guard carry > 0 else { return nil }
+        let total = shot.metrics.totalYards > 0 ? shot.metrics.totalYards : carry
+
+        // Signed HLA component
+        let signedHLA = shot.metrics.hlaDirection.lowercased() == "left"
+            ? -shot.metrics.hlaDegrees : shot.metrics.hlaDegrees
+        let hlaRad = signedHLA * .pi / 180.0
+
+        // Curve from spin axis (preferred) or sidespin — identical to ShotResultView
+        let spinAxis = shot.metrics.spinAxisDegrees   // already signed
+        let sidespin = shot.metrics.sidespinRpm       // already signed
+        let curveStrength: Double
+        if abs(spinAxis) > 0.5 {
+            curveStrength = (spinAxis > 0 ? 1.0 : -1.0) * min(abs(spinAxis) / 16.0, 1.0)
+        } else if abs(sidespin) > 30 {
+            curveStrength = (sidespin > 0 ? 1.0 : -1.0) * min(abs(sidespin) / 1100.0, 1.0)
+        } else {
+            curveStrength = 0
+        }
+        let curveMagnitude = abs(curveStrength) * max(total * 0.10, 8.0)
+        let curveSign: Double = curveStrength >= 0 ? 1.0 : -1.0
+
+        // Lateral landing at the carry point (p = carry / total)
+        let carryFrac = carry / total
+        let lateral = tan(hlaRad) * total * carryFrac
+                    + curveSign * curveMagnitude * pow(carryFrac, 1.6)
+
+        let plotted = dispersionMetric == .carry ? carry : total
+        return TCRangeFinderDispersion.ShotPoint(carry: plotted, lateral: lateral)
+    }
+
     private func dispersionCard(_ shots: [SavedShot]) -> some View {
-        let rangePoints = shots.compactMap { shot -> TCRangeFinderDispersion.ShotPoint? in
-            let carry = shot.metrics.carryYards
-            guard carry > 0 else { return nil }
-            let total = shot.metrics.totalYards > 0 ? shot.metrics.totalYards : carry
-
-            // Signed HLA component
-            let signedHLA = shot.metrics.hlaDirection.lowercased() == "left"
-                ? -shot.metrics.hlaDegrees : shot.metrics.hlaDegrees
-            let hlaRad = signedHLA * .pi / 180.0
-
-            // Curve from spin axis (preferred) or sidespin — identical to ShotResultView
-            let spinAxis = shot.metrics.spinAxisDegrees   // already signed
-            let sidespin = shot.metrics.sidespinRpm       // already signed
-            let curveStrength: Double
-            if abs(spinAxis) > 0.5 {
-                curveStrength = (spinAxis > 0 ? 1.0 : -1.0) * min(abs(spinAxis) / 16.0, 1.0)
-            } else if abs(sidespin) > 30 {
-                curveStrength = (sidespin > 0 ? 1.0 : -1.0) * min(abs(sidespin) / 1100.0, 1.0)
-            } else {
-                curveStrength = 0
+        var rangePoints = shots.compactMap { rangePoint(for: $0) }
+        // Verified on-course shots are total-distance points (GPS start → end, roll included),
+        // so they join the chart in Total view — with the real measured lateral miss.
+        let courseShots = selectedRoundShots
+        if dispersionMetric == .total {
+            rangePoints += courseShots.map {
+                TCRangeFinderDispersion.ShotPoint(carry: $0.distanceYards, lateral: $0.lateralYards)
             }
-            let curveMagnitude = abs(curveStrength) * max(total * 0.10, 8.0)
-            let curveSign: Double = curveStrength >= 0 ? 1.0 : -1.0
-
-            // Lateral landing at the carry point (p = carry / total)
-            let carryFrac = carry / total
-            let lateral = tan(hlaRad) * total * carryFrac
-                        + curveSign * curveMagnitude * pow(carryFrac, 1.6)
-
-            let plotted = dispersionMetric == .carry ? carry : total
-            return TCRangeFinderDispersion.ShotPoint(carry: plotted, lateral: lateral)
         }
         let dispersion = TCRangeFinderDispersion(shots: rangePoints)
 
@@ -507,10 +713,18 @@ struct TrueCarryInsightsView: View {
                 verticalDivider(height: 28)
                 inlineStat(onTarget,                               "ON TARGET (<5°)")
                 verticalDivider(height: 28)
-                inlineStat(shots.isEmpty ? "—" : "\(shots.count)", "SHOTS")
+                inlineStat(rangePoints.isEmpty ? "—" : "\(rangePoints.count)", "SHOTS")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
+
+            if dispersionMetric == .total && !courseShots.isEmpty {
+                Text("Includes \(courseShots.count) verified on-course shot\(courseShots.count == 1 ? "" : "s") (GPS distance + lateral miss).")
+                    .font(.system(size: 10))
+                    .foregroundColor(TCTheme.textUltraMuted)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
         }
         .background(TCTheme.panel)
         .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))

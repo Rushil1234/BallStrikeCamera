@@ -3,7 +3,9 @@ import UIKit
 import simd
 
 struct BallLaunchMetrics {
-    let ballSpeedMph: Double?
+    // var: the V2 engine (label-trained, July 2026) may replace this after legacy
+    // calculation when its confidence gate passes.
+    var ballSpeedMph: Double?
     let hlaDegrees: Double?
     let hlaDisplay: String
     let hla3DRawDegrees: Double?
@@ -30,10 +32,11 @@ struct BallLaunchMetrics {
 }
 
 struct ClubMetrics {
-    let clubSpeedMph: Double?
+    // var: replaced by the V2 arc-fit head when confident (see calculate()).
+    var clubSpeedMph: Double?
     let pointsUsed: Int
     let quality: Double
-    let method: String
+    var method: String
     let warnings: [String]
     let speedFrameIndices: [Int]
 }
@@ -188,12 +191,56 @@ struct ShotMetricsCalculator {
                 ballCenterX: analysis.initialBallCenter?.x ?? analysis.lockedBallRect?.midX
             )
         }
-        let clubMetrics = calculateClubMetrics(
+        var clubMetrics = calculateClubMetrics(
             clubObservations: clubObservations,
             ball3DObservations: ball3DObservations,
             calibration: calibration,
             impactFrameIndex: analysis.detectedImpactFrameIndex
         )
+
+        // ── V2 engine (label-trained, Garmin-fit — July 2026). When it produces a
+        // confident result its ball speed / VLA / club speed REPLACE the legacy values
+        // before smash, distance, and spin derive from them. Legacy numbers stay as
+        // the fallback whenever V2 withholds, and everything is tagged in warnings so
+        // offline scoring can tell which path produced each shot. Kill switch:
+        // UserDefaults "tc_v2_metrics" = false.
+        var v2Warnings = [String]()
+        let v2Start = CFAbsoluteTimeGetCurrent()
+        if !isPutterMode,
+           UserDefaults.standard.object(forKey: "tc_v2_metrics") as? Bool ?? true,
+           V2Engine.isAvailable,
+           let v2 = V2Engine.run(frames: analysis.frames,
+                                 lockedBallRect: analysis.lockedBallRect,
+                                 impactHint: analysis.fallbackImpactFrameIndex) {
+            // Wall-clock visibility: V2's per-frame image work is the slowest stage of the
+            // whole pipeline and ~20× slower in unoptimized builds — a multi-second number
+            // here means the build is -Onone, not that the tracker is broken.
+            print(String(format: "[V2] compute took %.2fs", CFAbsoluteTimeGetCurrent() - v2Start))
+            print("[V2] \(v2.notes.joined(separator: " | "))")
+            if let speed = v2.ballSpeedMph, v2.confident {
+                v2Warnings.append(String(format: "V2 metrics active (confident, %d flight pts): ball %.1f mph%@%@.",
+                                         v2.flightPointCount, speed,
+                                         v2.vlaDegrees.map { String(format: ", VLA %.1f°", $0) } ?? "",
+                                         v2.clubSpeedMph.map { String(format: ", club %.1f mph", $0) } ?? ""))
+                ballLaunch.ballSpeedMph = speed
+                if let vla = v2.vlaDegrees {
+                    ballLaunch.vlaLegacyDegrees = ballLaunch.vlaDegrees
+                    ballLaunch.vlaTrainedModelDegrees = vla
+                    ballLaunch.vlaFinalDegrees = vla
+                    ballLaunch.vlaDegrees = vla
+                    ballLaunch.vlaModelUsed = "v2_stacked_head"
+                }
+                if let cs = v2.clubSpeedMph {
+                    clubMetrics.clubSpeedMph = cs
+                    clubMetrics.method = "v2_arc_fit_head"
+                }
+            } else if let speed = v2.ballSpeedMph {
+                v2Warnings.append(String(format: "V2 low-confidence (%d pts): measured %.1f mph — legacy values shown.",
+                                         v2.flightPointCount, speed))
+            } else {
+                v2Warnings.append("V2 withheld: " + (v2.notes.last ?? "no usable flight track"))
+            }
+        }
 
         // Smash factor with 1.50 cap
         let rawSmashFactor: Double?
@@ -253,6 +300,7 @@ struct ShotMetricsCalculator {
         )
 
         var warnings: [String] = [calibration.calibrationWarning]
+        warnings.append(contentsOf: v2Warnings)
         warnings.append(contentsOf: smashWarnings)
         warnings.append(contentsOf: ballLaunch.warnings)
         warnings.append(contentsOf: ballLaunch.vlaModelWarnings)
@@ -318,7 +366,23 @@ struct ShotMetricsCalculator {
         let postImpact = ball3DObservations
             .filter { $0.frameIndex > impactFrameIndex }
             .sorted { $0.frameIndex < $1.frameIndex }
-        let selected = Array(postImpact.prefix(configuration.preferredBallPointLimit))
+        var selected = Array(postImpact.prefix(configuration.preferredBallPointLimit))
+
+        // Single flight point: anchor it to the resting ball at the detected impact frame.
+        // The ball's rest position and the impact frame's timestamp are both KNOWN, so one
+        // tracked flight point still yields displacement over a known interval. The launch
+        // actually happened somewhere inside the impact→next-frame gap, so this reads as a
+        // floor — but a floored measurement beats "unavailable" (frequent at driver speed
+        // with dropped frames, where the ball survives only 1-2 stored frames).
+        var anchoredToImpact = false
+        if selected.count == 1,
+           let anchor = ball3DObservations
+               .filter({ $0.frameIndex <= impactFrameIndex })
+               .max(by: { $0.frameIndex < $1.frameIndex }) {
+            selected.insert(anchor, at: 0)
+            anchoredToImpact = true
+            warnings.append("Ball speed estimated from the resting ball at impact plus one flight point — treat as a floor.")
+        }
 
         guard selected.count >= configuration.minimumBallPoints else {
             warnings.append("Too few post-impact ball points for ball speed/HLA/VLA.")
@@ -335,7 +399,10 @@ struct ShotMetricsCalculator {
 
         let velocity: SIMD3<Double>?
         let method: String
-        if selected.count >= 3 {
+        if anchoredToImpact {
+            velocity = deltaVelocity(first: selected[0], last: selected[1])
+            method = "impact_anchor_single_point"
+        } else if selected.count >= 3 {
             velocity = linearFitVelocity(selected.map { ($0.relativeTime, $0.positionMeters) })
             method = "linear_fit_\(selected.count)_points"
         } else {
@@ -359,6 +426,23 @@ struct ShotMetricsCalculator {
 
         let speedMetersPerSecond = vectorLength(velocity)
         let ballSpeedMph = speedMetersPerSecond * 2.23694
+
+        // The impact-anchored single-point estimate is only as good as its one flight point;
+        // a junk pick reads as hundreds of mph (observed 719). Outside the range a golf ball
+        // can physically fly, withhold rather than report — and rather than letting the
+        // implausibility gate discard the whole shot.
+        if anchoredToImpact, !(3.0...230.0).contains(ballSpeedMph) {
+            warnings.append(String(format: "Single-point speed estimate implausible (%.0f mph) — withheld.", ballSpeedMph))
+            return BallLaunchMetrics(
+                ballSpeedMph: nil, hlaDegrees: nil, hlaDisplay: "—",
+                hla3DRawDegrees: nil, vlaDegrees: nil,
+                hlaReferenceAngleDegrees: zeroDegreeAngleDegrees,
+                ballMovementDx: nil, ballMovementDy: nil,
+                hlaForwardComponent: nil, hlaLateralComponent: nil,
+                pointsUsed: 1, quality: 0,
+                method: "impact_anchor_rejected", warnings: warnings
+            )
+        }
         // Reversed mount flips world-x; keep downrange (z) forward so HLA sign stays golf-correct.
         let hla3D = atan2(HitDirection.sign * velocity.x, velocity.z) * 180 / .pi
         let horizontalSpeed = sqrt(velocity.x * velocity.x + velocity.z * velocity.z)

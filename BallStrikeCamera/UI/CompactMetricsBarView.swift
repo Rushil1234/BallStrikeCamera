@@ -20,8 +20,12 @@ struct CompactMetricsBarView: View {
             compactMetric(label: "Smash", value: smashText, unit: "")
         }
         .padding(.vertical, 8)
-        .background(Color(white: 0.08))
+        .background(ShotResultView.panelBG)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(ShotResultView.ink.opacity(0.10), lineWidth: 1)
+        )
     }
 
     private var vlaText: String {
@@ -48,21 +52,21 @@ struct CompactMetricsBarView: View {
         VStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(0.82))
+                .foregroundColor(ShotResultView.ink.opacity(0.55))
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
                     .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(ShotResultView.ink)
                     .minimumScaleFactor(0.7)
                     .lineLimit(1)
 
                 if !unit.isEmpty {
                     Text(unit)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.78))
+                        .foregroundColor(ShotResultView.ink.opacity(0.55))
                 }
             }
         }
@@ -71,7 +75,7 @@ struct CompactMetricsBarView: View {
 
     private var divider: some View {
         Rectangle()
-            .fill(Color.white.opacity(0.24))
+            .fill(ShotResultView.ink.opacity(0.12))
             .frame(width: 1, height: 30)
     }
 }

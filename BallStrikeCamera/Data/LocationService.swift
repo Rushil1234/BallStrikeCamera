@@ -17,8 +17,25 @@ final class LocationService: NSObject, ObservableObject {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = 5
+        // No distance filter: standing over the ball still yields ~1Hz fixes, so yardages
+        // tick live instead of freezing until the player walks 5+ meters.
+        manager.distanceFilter = kCLDistanceFilterNone
+        manager.activityType = .fitness
         authorizationStatus = manager.authorizationStatus
+    }
+
+    /// During an active round the app keeps receiving fixes with the screen locked or the app
+    /// backgrounded, so the lock-screen widget / Live Activity yardages stay current. Scoped to
+    /// rounds only — background GPS outside a round would just burn battery.
+    func beginRoundBackgroundUpdates() {
+        manager.allowsBackgroundLocationUpdates = true
+        manager.pausesLocationUpdatesAutomatically = false
+        manager.showsBackgroundLocationIndicator = true
+    }
+
+    func endRoundBackgroundUpdates() {
+        manager.allowsBackgroundLocationUpdates = false
+        manager.pausesLocationUpdatesAutomatically = true
     }
 
     func requestPermission() {

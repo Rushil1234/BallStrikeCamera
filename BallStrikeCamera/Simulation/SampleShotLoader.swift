@@ -89,7 +89,7 @@ struct SampleShotLoader {
         let framePaths = allFiles
             .filter { url in
                 let name = url.lastPathComponent
-                return name.hasPrefix("frame_") && name.hasSuffix(".png")
+                return name.hasPrefix("frame_") && (name.hasSuffix(".png") || name.hasSuffix(".jpg"))
             }
             .sorted { a, b in
                 (frameIndex(from: a.lastPathComponent) ?? 0) < (frameIndex(from: b.lastPathComponent) ?? 0)
@@ -137,10 +137,15 @@ struct SampleShotLoader {
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let array = root["timestamps"] as? [[String: Any]] else { return map }
         for entry in array {
+            // relative_time is OPTIONAL: archive-format timestamps.json only carries
+            // frame_index + timestamp, and requiring the third key silently emptied the
+            // whole map — every Simulate Shot then ran on synthesized perfect-240fps
+            // spacing, compressing the real (frame-dropped) dt 3× and inflating ball
+            // speed 3× (252.6 vs 84.2 mph) while starving the launch chain's velocity
+            // gate. relativeTime is never read downstream; timestamp is what matters.
             if let idx = entry["frame_index"] as? Int,
-               let ts  = entry["timestamp"]    as? Double,
-               let rel = entry["relative_time"] as? Double {
-                map[idx] = (timestamp: ts, relativeTime: rel)
+               let ts  = entry["timestamp"]    as? Double {
+                map[idx] = (timestamp: ts, relativeTime: entry["relative_time"] as? Double ?? 0)
             }
         }
         return map
@@ -170,8 +175,9 @@ struct SampleShotLoader {
     }
 
     private static func frameIndex(from filename: String) -> Int? {
-        guard filename.hasPrefix("frame_"), filename.hasSuffix(".png") else { return nil }
-        let numStr = filename.dropFirst("frame_".count).dropLast(".png".count)
+        guard filename.hasPrefix("frame_"),
+              filename.hasSuffix(".png") || filename.hasSuffix(".jpg") else { return nil }
+        let numStr = filename.dropFirst("frame_".count).dropLast(4)
         return Int(numStr)
     }
 

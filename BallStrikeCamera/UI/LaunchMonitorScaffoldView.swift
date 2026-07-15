@@ -18,6 +18,7 @@ struct LaunchMonitorScaffoldView: View {
     @State private var exportError: String?
     @State private var lastComposite: PlatformImage?   // last shot's composite for the side panel
     @State private var showHandPicker = false
+    @State private var showLastReplay = false          // frame replay of the last shot, from set-into
 
     // Player's hitting hand (persisted default). Lefty = the whole hitting view is mirrored
     // vertically so a golfer set up the opposite way sees everything oriented for them — a pure
@@ -27,13 +28,35 @@ struct LaunchMonitorScaffoldView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let summaryWidth = min(330, geo.size.width * 0.24)
+            // Wider summary column so the last-shot composite reads at a glance.
+            let summaryWidth = min(380, geo.size.width * 0.30)
             let bottomHeight = geo.size.height * 0.21
             let mainHeight = geo.size.height - bottomHeight
 
             ZStack {
-                Color(white: 0.05)
+                ShotResultView.pageBG
                     .ignoresSafeArea()
+
+                // Capture-health banner: frame drops silently corrupt every measured
+                // velocity, so degradation must be impossible to miss at the range.
+                if let warning = camera.captureHealthWarning {
+                    VStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "thermometer.sun.fill")
+                            Text(warning)
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.yellow.opacity(0.92))
+                        .clipShape(Capsule())
+                        .padding(.top, 6)
+                        Spacer()
+                    }
+                    .zIndex(10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
 
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
@@ -81,11 +104,11 @@ struct LaunchMonitorScaffoldView: View {
                                         HStack(spacing: 4) {
                                             Text("Count")
                                                 .font(.system(size: 10, weight: .semibold))
-                                                .foregroundColor(.white.opacity(0.88))
+                                                .foregroundColor(ShotResultView.ink.opacity(0.62))
 
                                             Text("\(shotCount)")
                                                 .font(.system(size: 12, weight: .bold))
-                                                .foregroundColor(.white)
+                                                .foregroundColor(ShotResultView.ink)
                                         }
                                     }
 
@@ -100,8 +123,8 @@ struct LaunchMonitorScaffoldView: View {
                                                     .font(.system(size: 12, weight: .bold))
                                                     .lineLimit(1)
                                             }
-                                            .foregroundColor(.white.opacity(
-                                                (camera.isAnalyzingShot || camera.showShotResult) ? 0.42 : 0.94
+                                            .foregroundColor(ShotResultView.ink.opacity(
+                                                (camera.isAnalyzingShot || camera.showShotResult) ? 0.35 : 0.92
                                             ))
                                         }
                                     }
@@ -117,10 +140,25 @@ struct LaunchMonitorScaffoldView: View {
                                                     .font(.system(size: 12, weight: .bold))
                                                     .lineLimit(1)
                                             }
-                                            .foregroundColor(.white.opacity(0.94))
+                                            .foregroundColor(ShotResultView.ink.opacity(0.92))
                                         }
                                     }
                                     .buttonStyle(.plain)
+
+                                    Button { showLastReplay = true } label: {
+                                        RangeOverlayPill {
+                                            HStack(spacing: 5) {
+                                                Image(systemName: "film")
+                                                    .font(.system(size: 11, weight: .bold))
+                                                Text("Replay")
+                                                    .font(.system(size: 12, weight: .bold))
+                                                    .lineLimit(1)
+                                            }
+                                            .foregroundColor(ShotResultView.ink.opacity(camera.latestShotAnalysis == nil ? 0.35 : 0.92))
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(camera.latestShotAnalysis == nil)
 
                                     Button(action: exportFrames) {
                                         RangeOverlayPill {
@@ -132,7 +170,7 @@ struct LaunchMonitorScaffoldView: View {
                                                     .font(.system(size: 12, weight: .bold))
                                                     .lineLimit(1)
                                             }
-                                            .foregroundColor(.white.opacity(camera.capturedFrames.isEmpty ? 0.42 : 0.94))
+                                            .foregroundColor(ShotResultView.ink.opacity(camera.capturedFrames.isEmpty ? 0.35 : 0.92))
                                         }
                                     }
                                     .buttonStyle(.plain)
@@ -176,6 +214,7 @@ struct LaunchMonitorScaffoldView: View {
         .ignoresSafeArea()
         .navigationBarHidden(true)
         .statusBarHidden(true)
+        .tcSunlight()
         .persistentSystemOverlays(.hidden)
         // Cache the last shot's composite for the side panel when a shot completes.
         // Keyed on the analysis timestamp (not showShotResult): the cover now presents BEFORE
@@ -205,16 +244,31 @@ struct LaunchMonitorScaffoldView: View {
             } else {
                 // Analysis still running — the cover appears the instant the swing is captured.
                 ZStack {
-                    Color(white: 0.06).ignoresSafeArea()
+                    ShotResultView.pageBG.ignoresSafeArea()
                     VStack(spacing: 16) {
-                        ProgressView().tint(.white).scaleEffect(1.4)
+                        ProgressView().tint(ShotResultView.ink).scaleEffect(1.4)
                         Text("Analyzing shot…")
                             .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.92))
+                            .foregroundColor(ShotResultView.ink)
                     }
                 }
-                .tcAppearance()
+                .tcSunlight()
                 .statusBarHidden(true)
+            }
+        }
+        // Frame replay of the last shot, reachable from the set-into screen. The shot was
+        // already auto-saved when it landed, so dismissing here never touches shot flow.
+        .fullScreenCover(isPresented: $showLastReplay) {
+            if let analysis = camera.latestShotAnalysis {
+                ShotTrackingReviewView(
+                    analysis: analysis,
+                    context: context,
+                    selectedClubId: selectedClubId,
+                    selectedClubName: selectedClub,
+                    onShotSaved: onShotSaved
+                ) {
+                    showLastReplay = false
+                }
             }
         }
         .sheet(isPresented: $showShareSheet) {
@@ -249,11 +303,11 @@ struct LaunchMonitorScaffoldView: View {
             HStack(spacing: 4) {
                 Text("Club")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.88))
+                    .foregroundColor(ShotResultView.ink.opacity(0.62))
 
                 Text(selectedClub)
                     .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.white)
+                    .foregroundColor(ShotResultView.ink)
             }
         }
     }
@@ -305,12 +359,18 @@ struct LaunchMonitorScaffoldView: View {
 struct RangeOverlayPill<Content: View>: View {
     @ViewBuilder let content: Content
 
+    // Light, near-opaque pill so the on-preview controls read as part of the light
+    // hit-a-shot chrome instead of dark camera HUD remnants.
     var body: some View {
         content
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(Color.black.opacity(0.82))
+            .background(ShotResultView.panelBG.opacity(0.96))
             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(ShotResultView.ink.opacity(0.18), lineWidth: 1)
+            )
     }
 }
 

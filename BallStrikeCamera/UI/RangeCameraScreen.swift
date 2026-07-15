@@ -129,6 +129,7 @@ struct RangeCameraScreen: View {
         .onDisappear {
             OrientationManager.shared.unlockAllButUpsideDown()
             camera.stop()
+            GoogleDriveUploadService.shared.autoOffloadIfNeeded()
             if !isCourseMode {
                 WatchConnectivityBridge.shared.unregisterRangeCommandHandler()
             }

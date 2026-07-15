@@ -76,6 +76,37 @@ extension AppearanceStore {
 
 extension View {
     func tcAppearance() -> some View { modifier(AppearanceModifier()) }
+
+    /// Forces the light (paper) colorway while this view is visible, regardless of the
+    /// user's appearance choice. For outdoor hitting screens — dark UI is unreadable in
+    /// direct sun. Reference-counted so nested presentations (scaffold → result cover)
+    /// hand back the user's appearance only when the last sunlight screen leaves.
+    func tcSunlight() -> some View { modifier(SunlightModifier()) }
+}
+
+/// Global force-light latch. `TCAppearance.isDark` consults this before the stored
+/// preference; observing it re-renders the forced screens when the count flips.
+final class SunlightOverride: ObservableObject {
+    static let shared = SunlightOverride()
+    @Published var count = 0
+}
+
+private struct SunlightModifier: ViewModifier {
+    @ObservedObject private var override = SunlightOverride.shared
+    func body(content: Content) -> some View {
+        content
+            .preferredColorScheme(.light)
+            .onAppear {
+                SunlightOverride.shared.count += 1
+                AppearanceStore.applyToWindows(.light)
+            }
+            .onDisappear {
+                SunlightOverride.shared.count = max(0, SunlightOverride.shared.count - 1)
+                if SunlightOverride.shared.count == 0 {
+                    AppearanceStore.applyToWindows(AppearanceStore.current)
+                }
+            }
+    }
 }
 
 // MARK: - Dynamic color helper
@@ -90,8 +121,10 @@ extension Color {
 }
 
 enum TCAppearance {
-    /// The effective scheme: explicit choice wins; `.system` follows the device.
+    /// The effective scheme: sunlight screens force light; otherwise explicit choice
+    /// wins and `.system` follows the device.
     static var isDark: Bool {
+        if SunlightOverride.shared.count > 0 { return false }
         switch AppearanceStore.current {
         case .dark:   return true
         case .light:  return false

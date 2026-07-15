@@ -103,8 +103,21 @@ struct EnsembleBFSClubTracker {
         let fps = computeFPS(analysis.frames)
         let impact = analysis.detectedImpactFrameIndex
 
-        // Determine detection window
+        // Determine detection window. The club is only physically in frame within ~1/60s
+        // of contact (16ms out, a driver head is still a couple clubheads short of the
+        // ball), so pre-impact frames are gated by REAL elapsed time, not stored index —
+        // with frame drops an index window of 3 stored frames spans 25-50ms and every
+        // extra frame contributed a junk "club" point. At healthy 240fps the time gate
+        // and the legacy 3-index cap admit the same frames.
+        let maxClubLeadSeconds = 1.0 / 60.0
         var start = max((sortedIndices.first ?? 0) + 1, impact - 3)
+        if let impactTime = frameTimes[impact] {
+            while start < impact,
+                  let t = frameTimes[start],
+                  impactTime - t > maxClubLeadSeconds {
+                start += 1
+            }
+        }
         let end   = min(sortedIndices.last ?? 0, impact + 1)
         // Shift start forward until frame at start-1 exists for frame diff
         while start <= end && frameMap[start - 1] == nil { start += 1 }

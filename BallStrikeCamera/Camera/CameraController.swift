@@ -6,7 +6,9 @@ import UIKit
 import QuartzCore
 
 final class CameraController: NSObject, ObservableObject {
-    @Published var phase: CameraPhase = .searching
+    @Published var phase: CameraPhase = .searching {
+        didSet { syncFramesNeeded() }
+    }
     @Published var selectedShutter: ShutterPreset = .oneThousand
     @Published var currentBallRect: CGRect?
     @Published var capturedFrames: [CapturedFrame] = []
@@ -44,6 +46,20 @@ final class CameraController: NSObject, ObservableObject {
     // Impact ROI — set on MainActor when ball locks, read on videoQueue via impactLock.
     private let impactLock = NSLock()
     nonisolated(unsafe) private var _impactROI: CGRect? = nil
+
+    // Frame-event staging: the capture delegate must return FAST — a synchronous GPU render
+    // inside it stalls buffer release, exhausts the camera's pixel-buffer pool, and the
+    // session drops frames in bursts (the 2-4-period gaps in every archived shot). Renders
+    // run on a dedicated serial queue (order-preserving); events are batched to the main
+    // actor through one in-flight drain task instead of 240 Tasks/second.
+    private let renderQueue = DispatchQueue(label: "com.ballstrike.camera.render", qos: .userInteractive)
+    private let eventLock = NSLock()
+    nonisolated(unsafe) private var _stagedFrameEvents: [(CapturedFrame?, BallObservation?, Bool)] = []
+    nonisolated(unsafe) private var _frameDrainScheduled = false
+    nonisolated(unsafe) private var _rendersInFlight = 0
+    // Set (under roiLock) when a ball lock lands; the video queue consumes it on the next
+    // frame and runs the one-shot stride-1 tight-fit scan around the padded lock rect.
+    nonisolated(unsafe) private var _pendingTightRefineRect: CGRect? = nil
     private var lockedImpactROI: CGRect?
 
     func updateSearchROI(_ roi: CGRect) {
@@ -84,11 +100,44 @@ final class CameraController: NSObject, ObservableObject {
     private var clubPullSuppressCount = 0
     // Throttles automatic exposure re-locks when lighting drifts (see relockExposureIfDrifted).
     private var lastExposureRelock = Date.distantPast
+    // exposureTargetOffset observed right after the current lock settled (written on
+    // sessionQueue, read on videoQueue). The shutter-first lock intentionally runs under
+    // metered exposure, so "drift" is distance from THIS baseline, not from 0EV.
+    // NaN = lock in progress, drift check suspended.
+    nonisolated(unsafe) private var _lockedExposureOffsetEV: Double = .nan
+
+    /// Capture-health warning shown as a banner. Frame drops corrupt every velocity the
+    /// tracker measures (July 12: 92% of shots had gaps), so degradation must be VISIBLE
+    /// at the range, not discovered at analysis time. Set when two consecutive stats
+    /// windows run below 225fps or above 5% drops, or the device reports serious thermals.
+    @Published var captureHealthWarning: String? = nil
+    nonisolated(unsafe) private var _badStatsWindows = 0
+    // Windows counted since capture start — the first two always read low (session spin-up,
+    // autofocus/exposure settling) and must not trip the health banner on every launch.
+    nonisolated(unsafe) private var _statsWindowsSeen = 0
+    private var thermalObserver: NSObjectProtocol?
     private let readyLostFrameLimit = 120   // ~0.5 s at 240 fps
     private let readyNearThreshold: CGFloat = 0.06
     private let readyHoldLogInterval = 240  // throttle "hold" prints (~1 s at 240 fps)
 
-    private var pendingPostCapture = false
+    private var pendingPostCapture = false {
+        didSet { syncFramesNeeded() }
+    }
+
+    // Mirrors "does any consumer need rendered frames right now" onto the video queue.
+    // While SEARCHING (no ball locked) nothing consumes the rolling buffer — the impact
+    // trigger can't fire until 0.25s after a lock — so the per-frame CIContext render +
+    // UIImage creation (the single largest steady CPU cost at 240fps, and a prime
+    // overheating suspect) is skipped entirely. Buffering resumes at .tracking, a full
+    // stability window (~20 frames + 0.25s) before any capture could trigger.
+    nonisolated(unsafe) private var _framesNeeded = false
+
+    private func syncFramesNeeded() {
+        let needed = phase == .tracking || phase == .ready || pendingPostCapture
+        roiLock.lock()
+        _framesNeeded = needed
+        roiLock.unlock()
+    }
     private var eventFrames: [CapturedFrame] = []
     private var remainingPostFrames = 0
     private var lastPublishedDetectionTime = CACurrentMediaTime()
@@ -129,6 +178,12 @@ final class CameraController: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        // Console lines are heavily abbreviated so full sessions survive paste/size limits.
+        print("""
+        [LOG] legend — BD=BallDetector RDY=ready-phase IMP=ImpactDetector EXP=exposure FPS=frame-stats
+        [LOG]   NCF=no candidate  CAND=candidate found  REJ=rejected  rej#=cluster rejected
+        [LOG]   w=bright white-ish px  c=bright colored px (glare)  b/c/t/n=baseline/current/threshold/consecutive
+        """)
     }
 
     func start() {
@@ -145,6 +200,31 @@ final class CameraController: NSObject, ObservableObject {
                 self?.session.startRunning()
                 Task { @MainActor in
                     self?.applyShutter(.oneThousand)
+                    self?.observeThermalState()
+                }
+            }
+        }
+    }
+
+    /// Serious/critical thermals throttle the CPU and are the prime suspect for the
+    /// July 12 frame drops — warn the user before the captures silently degrade.
+    @MainActor
+    private func observeThermalState() {
+        guard thermalObserver == nil else { return }
+        thermalObserver = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                switch ProcessInfo.processInfo.thermalState {
+                case .serious:
+                    self.captureHealthWarning = "Phone is running hot — frame rate may drop. Shade the phone between shots."
+                case .critical:
+                    self.captureHealthWarning = "Phone is overheating — captures will degrade until it cools."
+                default:
+                    if self.captureHealthWarning?.hasPrefix("Phone") == true {
+                        self.captureHealthWarning = nil
+                    }
                 }
             }
         }
@@ -163,6 +243,10 @@ final class CameraController: NSObject, ObservableObject {
         sessionQueue.async { [weak self] in
             guard let self, let device = self.device else { return }
 
+            // Baseline is unknown until the new lock settles — park it so the drift
+            // check in logFrameTiming can't fire against a stale value mid-converge.
+            self._lockedExposureOffsetEV = .nan
+
             // Re-measure the scene before freezing exposure. Locking straight onto
             // device.iso (the old behavior) captures whatever transient ISO the sensor
             // last had — often a stale/arbitrary value from right after session start
@@ -179,10 +263,22 @@ final class CameraController: NSObject, ObservableObject {
                 print("BallDetector exposure: could not re-enable auto-exposure before lock: \(error.localizedDescription)")
             }
 
+            // isAdjustingExposure does NOT flip on synchronously when auto re-engages from a
+            // custom lock — polling it immediately read "settled after 0.00s" and snapshotted
+            // the PREVIOUS lock as the metering (observed: re-lock to 1/8000 "metered" the old
+            // 1/1000×66 lock and stacked its ISO cap on top of it). Wait for AE to visibly
+            // start adjusting before trusting "not adjusting"; if it never starts within
+            // 0.35s the current exposure genuinely matches the scene and that reading is fine.
             let convergeStart = CACurrentMediaTime()
             var waited = 0.0
             let timeout = 1.0
-            while device.isAdjustingExposure && waited < timeout {
+            var sawAdjusting = false
+            while waited < timeout {
+                if device.isAdjustingExposure {
+                    sawAdjusting = true
+                } else if sawAdjusting || waited >= 0.35 {
+                    break
+                }
                 Thread.sleep(forTimeInterval: 0.05)
                 waited = CACurrentMediaTime() - convergeStart
             }
@@ -199,12 +295,14 @@ final class CameraController: NSObject, ObservableObject {
                 let minISO = Double(device.activeFormat.minISO)
                 let maxISO = Double(device.activeFormat.maxISO)
 
-                // Preserve the AE-metered exposure across the duration change: exposure ∝
-                // duration × ISO, so a preset N× faster than what AE metered needs N× the ISO.
-                // Keeping the metered ISO unchanged (old behavior) underexposed by exactly that
-                // ratio — e.g. 1/8000 against a metered 1/1300 ran ~2.7 stops dark, dim enough
-                // that the ball in flight disappeared from post-impact tracking while the
-                // stationary pre-shot ball still read fine.
+                // SHUTTER-FIRST lock: the preset duration is sacred. Every detector downstream
+                // thresholds on brightness against a darker background, so a crisp slightly-dark
+                // ball beats a bright streak every time. The AE metering above is used only to
+                // pick a sane ISO: boost at most one stop over metered so frames land ~1-2 stops
+                // under instead of pitch black, but NEVER slow the shutter to buy brightness.
+                // (The previous brightness-preserving fallback silently locked 1/250-1/500 in
+                // ordinary light — a 150mph ball smears ~10in during a 1/250 exposure, and that
+                // motion blur is what collapsed in-flight tracking.)
                 let meteredISO    = Double(device.iso)
                 let autoSeconds   = autoConvergedDuration.seconds
                 let presetSeconds = 1.0 / Double(preset.denominator)
@@ -215,26 +313,31 @@ final class CameraController: NSObject, ObservableObject {
 
                 if neededISO < minISO {
                     // Preset is slower than the scene needs and ISO can't drop below the floor —
-                    // locking the preset would overexpose. Keep the AE-metered duration instead.
+                    // locking the preset would overexpose. The AE duration is FASTER here, so
+                    // honoring it keeps frames crisp and properly exposed.
                     print(String(format: "BallDetector exposure: preset %@ would overexpose at floor ISO (%.1f) — using auto-converged duration 1/%.0f instead",
                                  preset.label, minISO, autoSeconds > 0 ? 1.0 / autoSeconds : 0))
                     duration = autoConvergedDuration
                     neededISO = meteredISO
-                } else if neededISO > maxISO {
-                    // The requested shutter can't be exposed even at max ISO. Honoring it anyway
-                    // ran sessions 3 stops dark — the ball went invisible in flight and the
-                    // tracker chased ISO-noise blobs. A launch monitor needs a VISIBLE ball more
-                    // than an ultra-fast shutter: lock the fastest duration max ISO can expose.
-                    let properSeconds = min(autoSeconds * (meteredISO / maxISO), 1.0 / 250.0)
-                    if properSeconds > presetSeconds {
-                        duration = CMTimeMakeWithSeconds(properSeconds, preferredTimescale: 1_000_000)
-                        print(String(format: "BallDetector exposure: preset %@ needs ISO %.0f (max %.0f) — using fastest properly-exposed duration 1/%.0f instead",
-                                     preset.label, neededISO, maxISO, 1.0 / properSeconds))
-                    }
-                    neededISO = maxISO
                 }
 
-                let targetISO = Float(min(max(neededISO, minISO), maxISO))
+                // Aim TWO STOPS UNDER the metered scene — the field-validated operating regime
+                // (July 10 session, full sun @ 1/8000): the white ball stays decisively the
+                // brightest object (tracker candidates br 141-158 vs background 95-110, matching
+                // the bright-tier calibration) while grass/mat glare drops out entirely (live
+                // c-counts fell ~700 → 0 at this offset). ISO is additionally ceilinged at 4×
+                // metered so sensor noise stays bounded — a fast preset in dim light lands even
+                // darker than −2EV rather than grainy, which the pipeline tolerates far better.
+                let idealISO = neededISO / 4.0
+                let isoNoiseCeiling = meteredISO * 4.0
+                let targetISO = Float(min(max(idealISO, minISO), min(isoNoiseCeiling, maxISO)))
+                let stopsUnder = neededISO > 0 && Double(targetISO) > 0
+                    ? max(0, log2(neededISO / Double(targetISO)))
+                    : 0
+                if stopsUnder > 0.1 {
+                    print(String(format: "BallDetector exposure: holding shutter %@ at %.1f stops under metered (iso %.0f, target -2.0, noise ceiling %.0f)",
+                                 preset.label, stopsUnder, targetISO, isoNoiseCeiling))
+                }
                 print(String(format: "BallDetector exposure: LOCKING preset=%@ iso=%.1f (metered %.1f @ 1/%.0f, range %.0f-%.0f) duration=1/%.0f",
                              preset.label, targetISO, meteredISO,
                              autoSeconds > 0 ? 1.0 / autoSeconds : 0,
@@ -242,6 +345,16 @@ final class CameraController: NSObject, ObservableObject {
                              duration.seconds > 0 ? 1.0 / duration.seconds : 0))
                 device.setExposureModeCustom(duration: duration, iso: targetISO, completionHandler: nil)
                 device.unlockForConfiguration()
+
+                // A deliberately-underexposed lock keeps exposureTargetOffset at a constant
+                // negative value forever. Snapshot that settled value as the drift baseline —
+                // the relock check must measure movement AWAY from it, not distance from 0,
+                // or it would re-meter every few seconds for the whole session.
+                self.sessionQueue.asyncAfter(deadline: .now() + 0.3) { [weak self, weak device] in
+                    guard let self, let device else { return }
+                    self._lockedExposureOffsetEV = Double(device.exposureTargetOffset)
+                    print(String(format: "BallDetector exposure: post-lock offset baseline %+.2fEV", self._lockedExposureOffsetEV))
+                }
             } catch {
                 Task { @MainActor in
                     self.statusText = "Could not set shutter: \(error.localizedDescription)"
@@ -375,6 +488,20 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Result screen / analysis active: skip detection, impact checks, and the per-frame
         // CGImage render entirely so analysis gets the CPU.
         if paused { return }
+
+        // One-shot tight fit of a fresh ball lock (ball is stationary, so any frame works).
+        // Consumed only while live so a request can't be dropped during an analysis pause.
+        roiLock.lock()
+        let tightRefineRect = _pendingTightRefineRect
+        if tightRefineRect != nil { _pendingTightRefineRect = nil }
+        roiLock.unlock()
+        if let tightRefineRect {
+            let tight = detector.tightRect(in: pixelBuffer, around: tightRefineRect)
+            Task { @MainActor in
+                self.applyTightLockRect(tight, paddedRect: tightRefineRect)
+            }
+        }
+
         let raw = detector.detect(in: pixelBuffer, roi: roi)
         // Discard detections whose center falls in the corners of the bounding rect
         // but outside the actual circular placement boundary (ellipse equation check).
@@ -394,10 +521,72 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             impactDetected = impactDetector.checkForImpact(pixelBuffer: pixelBuffer, roi: impactROI)
         }
 
-        let frame = makeCapturedFrame(from: pixelBuffer, timestamp: timestamp)
+        roiLock.lock()
+        let framesNeeded = _framesNeeded
+        roiLock.unlock()
 
-        Task { @MainActor in
-            processFrame(frame, observation: observation, impactDetected: impactDetected)
+        // The delegate returns HERE — before any GPU work — so the camera gets its pixel
+        // buffer back within the frame budget. Every event (with or without an image) goes
+        // through the same serial render queue so frames, detections, and impact flags reach
+        // processFrame strictly in capture order.
+        if framesNeeded {
+            eventLock.lock()
+            let backlogged = _rendersInFlight >= 3
+            if !backlogged { _rendersInFlight += 1 }
+            eventLock.unlock()
+            if backlogged {
+                // GPU can't keep up (thermal): sacrifice THIS frame's image, keep its
+                // detection/impact event and, crucially, keep the camera itself flowing —
+                // one archive gap beats a multi-frame pool-starvation burst.
+                renderQueue.async { [weak self] in
+                    self?.stageFrameEvent(nil, observation, impactDetected)
+                }
+            } else {
+                renderQueue.async { [weak self] in
+                    guard let self else { return }
+                    let frame = self.makeCapturedFrame(from: pixelBuffer, timestamp: timestamp)
+                    self.eventLock.lock()
+                    self._rendersInFlight -= 1
+                    self.eventLock.unlock()
+                    self.stageFrameEvent(frame, observation, impactDetected)
+                }
+            }
+        } else {
+            renderQueue.async { [weak self] in
+                self?.stageFrameEvent(nil, observation, impactDetected)
+            }
+        }
+    }
+
+    /// Appends a frame event and guarantees exactly one main-actor drain task is in flight.
+    nonisolated private func stageFrameEvent(_ frame: CapturedFrame?,
+                                             _ observation: BallObservation?,
+                                             _ impactDetected: Bool) {
+        eventLock.lock()
+        _stagedFrameEvents.append((frame, observation, impactDetected))
+        let schedule = !_frameDrainScheduled
+        if schedule { _frameDrainScheduled = true }
+        eventLock.unlock()
+        if schedule {
+            Task { @MainActor in self.drainFrameEvents() }
+        }
+    }
+
+    @MainActor
+    private func drainFrameEvents() {
+        while true {
+            eventLock.lock()
+            let events = _stagedFrameEvents
+            _stagedFrameEvents.removeAll(keepingCapacity: true)
+            if events.isEmpty {
+                _frameDrainScheduled = false
+                eventLock.unlock()
+                return
+            }
+            eventLock.unlock()
+            for e in events {
+                processFrame(e.0, observation: e.1, impactDetected: e.2)
+            }
         }
     }
 
@@ -408,6 +597,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         if lastFrameStatsPrintTime < 0 {
             lastFrameStatsPrintTime = timestamp
             frameStatsWindowStartTime = timestamp
+            _statsWindowsSeen = 0
         }
 
         // Estimate dropped frames by looking at the gap since the last delivered frame.
@@ -431,24 +621,53 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 ? Double(droppedFrameEstimate) / Double(totalFramesSeen + droppedFrameEstimate) * 100
                 : 0
 
-            print(String(format: "Frame stats: seen=%d estimatedDropped=%d dropRate=%.1f%% windowFPS=%.1f",
-                         totalFramesSeen, droppedFrameEstimate, dropRate, windowFPS))
+            print(String(format: "[FPS] seen=%d drop=%.1f%% fps=%.1f",
+                         totalFramesSeen, dropRate, windowFPS))
+
+            // Capture-health check: one bad window is a blip (autofocus hunt, brief
+            // contention); two consecutive means sustained degradation worth surfacing.
+            // 225fps ≈ 6% frame loss at target 240 — beyond that, flight velocities
+            // start losing whole samples on a 2-frame-visible drive.
+            let windowDropRate = windowDuration > 0
+                ? max(0, (240.0 - windowFPS) / 240.0 * 100) : 0
+            _statsWindowsSeen += 1
+            if _statsWindowsSeen <= 2 {
+                // Warmup grace: the first windows after start always read low (34–41% drops
+                // in the field) while the session spins up — never count them as "bad".
+                _badStatsWindows = 0
+            } else if windowFPS < 225 || windowDropRate > 5 {
+                _badStatsWindows += 1
+            } else {
+                _badStatsWindows = 0
+            }
+            let bad = _badStatsWindows
+            Task { @MainActor in
+                if bad >= 2 {
+                    self.captureHealthWarning = String(
+                        format: "Camera running at %.0f fps — tracking accuracy degraded. Let the phone cool / close other apps.", windowFPS)
+                } else if bad == 0, self.captureHealthWarning?.hasPrefix("Camera running") == true {
+                    self.captureHealthWarning = nil
+                }
+            }
 
             // Live exposure state — lets us see if the custom lock actually held (mode
             // should stay .custom) and how far the current fixed exposure is from what
             // auto-exposure would pick for the current scene (targetOffset far from 0
             // means the locked exposure is wrong for what's currently in frame).
             if let device {
-                let modeStr = device.exposureMode == .custom ? "custom" : "\(device.exposureMode.rawValue)"
+                let modeStr = device.exposureMode == .custom ? "custom" : "mode\(device.exposureMode.rawValue)"
                 let offset = device.exposureTargetOffset
-                print(String(format: "Exposure state: mode=%@ iso=%.1f duration=1/%.0f targetOffset=%.2fEV isAdjusting=%@",
+                print(String(format: "[EXP] %@ iso=%.0f 1/%.0f off=%+.2fEV%@",
                              modeStr, device.iso,
                              device.exposureDuration.seconds > 0 ? 1.0 / device.exposureDuration.seconds : 0,
-                             offset, device.isAdjustingExposure ? "yes" : "no"))
+                             offset, device.isAdjustingExposure ? " ADJUSTING" : ""))
                 // Conditions drifted badly since the lock (cloud/sun change) — a whole session
                 // once ran at +2.5EV blown out / 3 stops under and every shot was garbage.
-                // Re-meter and re-lock, but only while idle (never mid-ready or mid-analysis).
-                if abs(offset) > 1.5 {
+                // Drift is measured against the settled post-lock baseline (the shutter-first
+                // lock sits at a constant negative offset by design). Re-meter and re-lock,
+                // but only while idle (never mid-ready or mid-analysis).
+                let baseline = _lockedExposureOffsetEV
+                if !baseline.isNaN, abs(Double(offset) - baseline) > 1.5 {
                     Task { @MainActor in self.relockExposureIfDrifted() }
                 }
             }
@@ -492,7 +711,9 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 // Testing mode: persist every raw burst (even ones analysis will later discard) so
                 // they can be batch-exported and compared against a reference monitor. No-op unless
                 // the developer "Save all frames" toggle is on.
-                FrameArchiveService.shared.archive(frames: capturedFrames, impactIndex: preHitFrames)
+                FrameArchiveService.shared.archive(frames: capturedFrames, impactIndex: preHitFrames,
+                                                   lockedBallRect: lockedBallRect,
+                                                   lockedImpactROI: lockedImpactROI)
                 print("Resetting shot pipeline")
                 let savedLockedBallRect  = lockedBallRect   // capture before reset clears them
                 let savedLockedImpactROI = lockedImpactROI
@@ -555,17 +776,19 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             }
 
             if nearLock {
-                if readyLostFrameCount > 0 {
-                    print("READY maintained: valid ball near locked rect (was lost for \(readyLostFrameCount) frames)")
+                // Short dropouts (1-9 frames) are constant background chatter — only losses
+                // long enough to matter get a line, in compact [RDY] form.
+                if readyLostFrameCount >= 10 {
+                    print("[RDY] re-acq after \(readyLostFrameCount) lost")
                 }
                 readyLostFrameCount = 0
             } else {
                 readyLostFrameCount += 1
-                if readyLostFrameCount % readyHoldLogInterval == 1 {
-                    print("READY hold: missing/invalid frame count \(readyLostFrameCount)")
+                if readyLostFrameCount == 30 || readyLostFrameCount == 90 {
+                    print("[RDY] ball missing x\(readyLostFrameCount) — holding lock")
                 }
                 if readyLostFrameCount >= readyLostFrameLimit {
-                    print("READY lost — ball absent/invalid for \(readyLostFrameCount) frames")
+                    print("[RDY] LOST — ball absent \(readyLostFrameCount) frames, re-searching")
                     resetShotPipeline(to: .searching, status: "Looking for ball")
                 }
             }
@@ -658,6 +881,14 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
                 print("LOCKED valid ball rect: \(rect), aspect: \(String(format: "%.3f", aspect))")
                 print("stableFrameCount: \(stableFrameCount)")
+
+                // Cosmetic + metric polish: the lock rect above is padded 1.35× and stride-
+                // quantized. Ask the video queue to tight-fit it around the actual ball on the
+                // next frame so the on-screen circle hugs the ball and the tracker's locked
+                // pixel diameter is the real one.
+                roiLock.lock()
+                _pendingTightRefineRect = rect
+                roiLock.unlock()
             }
 
         case .ready:
@@ -666,6 +897,23 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         case .reviewingShot:
             break  // blocked above
         }
+    }
+
+    /// Swap the padded lock rect for the stride-1 tight fit measured on the video queue.
+    /// Deliberately does NOT touch the impact ROI or the ImpactDetector baseline — those were
+    /// armed from the padded rect and the trigger behavior should stay exactly as validated.
+    @MainActor
+    private func applyTightLockRect(_ tight: CGRect?, paddedRect: CGRect) {
+        // The lock may have been lost or replaced between request and result — only apply
+        // to the exact lock that asked for it.
+        guard phase == .ready, lockedBallRect == paddedRect else { return }
+        guard let tight else {
+            print("[BD] TIGHT no-fit — keeping padded lock rect")
+            return
+        }
+        lockedBallRect = tight
+        currentBallRect = tight
+        stableRect = tight
     }
 
     // Center must sit within ~77% of the setup-circle radius (ellipse test in normalized
@@ -697,7 +945,9 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard observation.fillRatio >= ballMinFillRatio else {
             rejectedFrameCount += 1
             if rejectedFrameCount % rejectionLogInterval == 1 {
-                print("Rejected non-round candidate: fill=\(String(format: "%.2f", observation.fillRatio)) < \(ballMinFillRatio) rect=\(rect) (rejection #\(rejectedFrameCount))")
+                print(String(format: "[BD] REJ round fill=%.2f<%.2f (%.3f,%.3f %.3fx%.3f) #%d",
+                             observation.fillRatio, ballMinFillRatio,
+                             rect.minX, rect.minY, rect.width, rect.height, rejectedFrameCount))
             }
             return false
         }
@@ -715,7 +965,8 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
     private func logRejection(_ rect: CGRect) {
         rejectedFrameCount += 1
         if rejectedFrameCount % rejectionLogInterval == 1 {
-            print("Rejected implausible ball rect: \(rect) (rejection #\(rejectedFrameCount))")
+            print(String(format: "[BD] REJ size (%.3f,%.3f %.3fx%.3f) #%d",
+                         rect.minX, rect.minY, rect.width, rect.height, rejectedFrameCount))
         }
     }
 
@@ -784,15 +1035,24 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                                                preHitFrames: preHit,
                                                isPutterMode: putterMode)
             await MainActor.run {
+                // Any Simulate Shot hand override ends with its analysis.
+                HitDirection.overrideIsLefty = nil
+                // Dev mode: upload EVERY capture to Google Drive regardless of verdict —
+                // discarded/false-trigger shots are exactly the footage needed to debug the
+                // tracker. No-op unless signed in and the toggle is on.
+                GoogleDriveUploadService.shared.uploadShotIfEnabled(frames: frames, impactIndex: preHit,
+                                                                    lockedBallRect: lockedBallRect,
+                                                                    lockedImpactROI: lockedImpactROI)
                 switch outcome {
-                case .discard:
+                case .discard(let reason):
                     // No trustworthy metrics → false trigger or unreadable tracking. Dismiss the
-                    // analyzing cover silently and tell the user why in the status line.
-                    print("[ShotValidation] No valid metrics — discarding, resuming search")
+                    // analyzing cover and tell the user WHY — a real shot silently vanishing is
+                    // indistinguishable from the trigger never firing.
+                    print("[ShotValidation] ❌ SHOT DISCARDED — \(reason)")
                     self.isAnalyzingShot = false
                     self.showShotResult = false
                     self.setLiveProcessingPaused(false)
-                    self.resetShotPipeline(to: .searching, status: "Bad tracking — shot discarded")
+                    self.resetShotPipeline(to: .searching, status: "Shot discarded: \(reason)")
                 case .repositioned:
                     // Ball was moved within the circle, not struck. Quietly re-arm and re-lock.
                     self.isAnalyzingShot = false
@@ -808,20 +1068,13 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     self.showShotResult = true
                     self.phase = .reviewingShot
                     self.reviewTriggerLogCount = 0
-                    // Dev mode: real-time upload to Google Drive, only for shots that made it past
-                    // the plausibility check above (not a discarded false trigger). No-op unless
-                    // signed in and the toggle is on.
-                    GoogleDriveUploadService.shared.uploadShotIfEnabled(
-                        frames: result.frames.map { $0.originalFrame },
-                        impactIndex: result.impactFrameIndex
-                    )
                 }
             }
         }
     }
 
     private enum AnalysisOutcome {
-        case discard
+        case discard(reason: String)
         // The "shot" was the user repositioning the ball inside the circle (or the track never
         // really left the setup area) — not a strike. Resume searching and re-lock quietly.
         case repositioned
@@ -906,6 +1159,18 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             )
         }
 
+        // Zero-flight check: not a single post-impact frame tracked the ball → there is
+        // nothing to measure. Showing a result screen for these was pure noise (blank or
+        // fabricated numbers) — treat exactly like a rejected shot and snap straight back
+        // to hitting.
+        let postImpactTracked = finalFrames.filter {
+            $0.frameIndex > effectiveImpactIndex && $0.ballObservation?.centerX != nil
+        }.count
+        if postImpactTracked == 0 {
+            print("[ShotValidation] no post-impact ball points — auto-discarding to hitting mode")
+            return .discard(reason: "no ball flight detected")
+        }
+
         // Reposition check: if the last tracked post-impact position is still inside the
         // impact ROI (the area right around where the ball was locked), nothing actually
         // launched — the user moved the ball within the circle. Skip metrics entirely and
@@ -947,6 +1212,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         )
 
         var validMetrics: ShotMetricsResult? = nil
+        var discardReason = "metrics calculation failed (no calibration)"
         if let metrics = ShotMetricsCalculator().calculate(for: baseResult, isPutterMode: isPutterMode) {
             // SANITY CHECK — reject physically impossible readings caused by
             // tracking noise, glare, or a second ball placement.
@@ -955,11 +1221,18 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             let carryOK = metrics.distance.carryYards.map      { $0 >= 0   && $0 <= 375 } ?? true
             if speedOK && hlaOK && carryOK {
                 validMetrics = metrics
+                if metrics.ballLaunch.ballSpeedMph == nil {
+                    // Shown anyway (composite still has diagnostic value) but say why the
+                    // numbers are blank instead of leaving an unexplained "—" screen.
+                    print("[ShotValidation] ⚠️ metrics incomplete — \(metrics.ballLaunch.warnings.joined(separator: "; "))")
+                }
             } else {
-                print(String(format: "[ShotValidation] Implausible metrics suppressed — speed=%.1f hla=%.1f carry=%.1f",
-                             metrics.ballLaunch.ballSpeedMph ?? 0,
-                             metrics.ballLaunch.hlaDegrees ?? 0,
-                             metrics.distance.carryYards ?? 0))
+                var failed: [String] = []
+                if !speedOK { failed.append(String(format: "speed=%.1f mph", metrics.ballLaunch.ballSpeedMph ?? 0)) }
+                if !hlaOK   { failed.append(String(format: "HLA=%.1f°",      metrics.ballLaunch.hlaDegrees ?? 0)) }
+                if !carryOK { failed.append(String(format: "carry=%.0f yd",  metrics.distance.carryYards ?? 0)) }
+                discardReason = "implausible metrics (\(failed.joined(separator: ", "))) — tracker likely followed glare/noise, see [TrackSummary]"
+                print("[ShotValidation] Implausible metrics suppressed — \(failed.joined(separator: ", "))")
             }
             GroundPlaneMetricsCalculator.logResult(
                 groundPlaneResult,
@@ -973,7 +1246,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             )
         }
 
-        guard let metrics = validMetrics else { return .discard }
+        guard let metrics = validMetrics else { return .discard(reason: discardReason) }
 
         // A non-putter "shot" under 3 mph is a hand nudge, not a strike (the slowest real chip
         // is far faster). Putter mode keeps its own lower floor since slow taps are legitimate.
@@ -1013,7 +1286,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         roiLock.unlock()
     }
 
-    /// Exposure drifted >1.5EV from the metering target (lighting changed since the lock).
+    /// Exposure drifted >1.5EV from the settled post-lock baseline (lighting changed since the lock).
     /// Re-runs the meter+lock cycle for the current preset — only while searching/tracking so
     /// a mid-swing or mid-analysis brightness change can never corrupt a capture.
     func relockExposureIfDrifted() {
@@ -1044,6 +1317,10 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             let shot = try SampleShotLoader.loadRawFramesOnly()
             print("Simulate Shot: running fresh live analysis")
             statusText = "Simulating shot…"
+            // The bundled sample is a RIGHTY capture and its frames are never lefty-rotated —
+            // analyzing it under a lefty hand setting sent every direction consumer the wrong
+            // way (tracker latched onto the club). Cleared when the analysis completes.
+            HitDirection.overrideIsLefty = false
             analyzeCapturedFrames(shot.frames,
                                   lockedBallRect: shot.lockedBallRect,
                                   lockedImpactROI: shot.lockedImpactROI)

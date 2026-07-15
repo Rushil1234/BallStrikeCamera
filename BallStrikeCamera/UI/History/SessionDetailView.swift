@@ -121,7 +121,9 @@ struct SessionDetailView: View {
                             if case .course(let r)  = item { courseStatsCard(r) }
                             if case .course = item { attestSection }
                             if case .course(let r)  = item {
-                                let hasMap = !r.nfcShots.isEmpty || shots.contains { $0.shotLatitude != nil }
+                                let hasMap = !r.nfcShots.isEmpty
+                                    || r.holes.contains { !$0.trackedShots.isEmpty }
+                                    || shots.contains { $0.shotLatitude != nil }
                                 if hasMap { roundShotLogSection(r, shots: shots) }
                             }
                             if case .course = item { EmptyView() } else { shotsSection }
@@ -133,8 +135,10 @@ struct SessionDetailView: View {
                 }
             }
         }
+        // Inline title: long course names truncate as large titles, and the header card
+        // right below shows the full (wrapping) name anyway.
         .navigationTitle(item.displayName)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.clear, for: .navigationBar)
         .toolbar {
             if showsShotsList && !shots.isEmpty && isSelecting {
@@ -378,6 +382,22 @@ struct SessionDetailView: View {
 
     // MARK: Header
 
+    /// Course rounds record shots as GPS-tracked shots + NFC taps on the round itself, not as
+    /// camera SavedShots — counting only SavedShots showed "0 SHOTS" for every scored round.
+    private var headerShotCount: Int {
+        if case .course(let r) = item {
+            let tracked = r.holes.reduce(0) { $0 + $1.trackedShots.count }
+            let nfc = r.nfcShots.count
+            let recorded = max(tracked, nfc) + shots.count
+            if recorded > 0 { return recorded }
+            // No per-shot records at all — fall back to strokes taken (score minus nothing),
+            // which is what the user thinks of as "shots" for a scored round.
+            let strokes = r.holes.compactMap { $0.score }.reduce(0, +)
+            if strokes > 0 { return strokes }
+        }
+        return isLoading ? item.shotIds.count : shots.count
+    }
+
     private var headerCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
@@ -393,15 +413,17 @@ struct SessionDetailView: View {
                     Text(item.displayName)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(TCTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(item.subtitle)
                         .font(.system(size: 12))
                         .foregroundColor(TCTheme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
                     // Live count of the actually-present shots so it updates after deletions
                     // (item.shotIds is the session's original recorded list and never changes).
-                    Text("\(isLoading ? item.shotIds.count : shots.count)")
+                    Text("\(headerShotCount)")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(TCTheme.textPrimary)
                     Text("SHOTS")
@@ -474,9 +496,7 @@ struct SessionDetailView: View {
                     Text("\(hole.par)")
                         .frame(width: 40, alignment: .center)
                     if let score = hole.score {
-                        let diff = score - hole.par
-                        Text("\(score)")
-                            .foregroundColor(scoreToParColor(diff))
+                        scoreMark(score: score, par: hole.par)
                             .frame(width: 56, alignment: .center)
                     } else {
                         Text("—").frame(width: 56, alignment: .center)
@@ -497,22 +517,56 @@ struct SessionDetailView: View {
         }
     }
 
-    private func scoreToParColor(_ diff: Int) -> Color {
-        if diff <= -2 { return .yellow }
-        if diff == -1 { return .red }
-        if diff == 0  { return TCTheme.textPrimary }
-        if diff == 1  { return Color(white: 0.65) }
-        return Color(white: 0.5)
+    /// Traditional scorecard marks: ace → gold star, eagle+ → two circles, birdie → one
+    /// circle, par → plain, bogey → one box, double+ → two boxes. Tints are deliberately
+    /// quiet — light green/darker green for birdie/eagle, light red/deeper red for
+    /// bogey/double+ — the shape carries the meaning, not the color.
+    @ViewBuilder
+    private func scoreMark(score s: Int, par: Int) -> some View {
+        let diff = s - par
+        let tint: Color = {
+            if diff <= -2 { return Color(red: 0.22, green: 0.62, blue: 0.36).opacity(0.85) } // eagle: darker green
+            if diff == -1 { return Color(red: 0.55, green: 0.80, blue: 0.55).opacity(0.85) } // birdie: light green
+            if diff == 1  { return Color(red: 0.90, green: 0.58, blue: 0.54).opacity(0.85) } // bogey: light red
+            if diff >= 2  { return Color(red: 0.85, green: 0.38, blue: 0.34).opacity(0.85) } // double+: deeper red
+            return .clear                                                                    // par: no mark
+        }()
+        ZStack {
+            if s == 1 {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(Color(red: 0.86, green: 0.68, blue: 0.13).opacity(0.9))
+            } else if diff <= -2 {
+                Circle().stroke(tint, lineWidth: 1.1).frame(width: 24, height: 24)
+                Circle().stroke(tint, lineWidth: 1.1).frame(width: 19, height: 19)
+            } else if diff == -1 {
+                Circle().stroke(tint, lineWidth: 1.1).frame(width: 21, height: 21)
+            } else if diff == 1 {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .stroke(tint, lineWidth: 1.1).frame(width: 21, height: 21)
+            } else if diff >= 2 {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .stroke(tint, lineWidth: 1.1).frame(width: 24, height: 24)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .stroke(tint, lineWidth: 1.1).frame(width: 19, height: 19)
+            }
+            Text("\(s)")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(TCTheme.textPrimary)
+        }
+        .frame(width: 28, height: 28)
     }
 
     // MARK: Round Shot Map
 
     private func roundShotLogSection(_ r: CourseRound, shots: [SavedShot]) -> some View {
-        let holeCount  = Set(r.nfcShots.map { $0.holeNumber }).count
+        let trackedCount = r.holes.reduce(0) { $0 + $1.trackedShots.count }
+        let shotCount = max(trackedCount, r.nfcShots.count)
+        let holeNumbers = Set(r.nfcShots.map { $0.holeNumber })
+            .union(r.holes.filter { !$0.trackedShots.isEmpty }.map { $0.holeNumber })
         let linkedCount = r.nfcShots.filter { $0.linkedShotId != nil }.count
-        let subtitle = linkedCount > 0
-            ? "\(r.nfcShots.count) taps · \(holeCount) hole\(holeCount == 1 ? "" : "s") · \(linkedCount) with video"
-            : "\(r.nfcShots.count) taps · \(holeCount) hole\(holeCount == 1 ? "" : "s")"
+        var subtitle = "\(shotCount) shot\(shotCount == 1 ? "" : "s") · \(holeNumbers.count) hole\(holeNumbers.count == 1 ? "" : "s")"
+        if linkedCount > 0 { subtitle += " · \(linkedCount) with video" }
         return VStack(alignment: .leading, spacing: 12) {
             TCSectionHeader(title: "Shot Map · \(subtitle)")
             RoundShotLogView(round: r, linkedShots: shots)

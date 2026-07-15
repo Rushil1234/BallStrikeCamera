@@ -469,7 +469,18 @@ struct TCRangeFinderDispersion: View {
         let lateral: Double  // yards, signed: + right, − left (pre-computed landing offset)
     }
 
+    /// One club's shots for the ALL (top-tracer) view: its own dot color + grouping ellipse.
+    struct ClubSeries: Identifiable {
+        let id: String
+        let name: String
+        let color: Color
+        let points: [ShotPoint]
+    }
+
     let shots: [ShotPoint]
+    /// nil = single-club mode (dots tiered by how offline they are). Non-nil = ALL mode:
+    /// every club at once, each with its own color and its own 2σ grouping ellipse.
+    var clubSeries: [ClubSeries]? = nil
 
     private var valid: [ShotPoint] { shots.filter { $0.carry > 0 } }
 
@@ -600,46 +611,61 @@ struct TCRangeFinderDispersion: View {
                 )
             }
 
-            // ── Dispersion ellipse (2-sigma) ────────────────────────────────
-            if pts.count > 2 {
-                let cgs = pts.map { CGPoint(x: xCG($0.lateral), y: yCG($0.carry)) }
+            // Merges near-coincident shots into ONE solid dot that grows with the count —
+            // rather than stacking many semi-transparent dots, which blended into a muddy
+            // brown blob. Dots are opaque so overlapping clusters never mix into brown.
+            func drawDots(_ series: [ShotPoint], color fixedColor: Color?) {
+                let bucket = 1.5   // yards; shots within this merge into a single, larger dot
+                var groups: [String: (sumLat: Double, sumCarry: Double, n: Int)] = [:]
+                for sp in series {
+                    let key = "\(Int((sp.lateral / bucket).rounded()))_\(Int((sp.carry / bucket).rounded()))"
+                    var g = groups[key] ?? (0, 0, 0)
+                    g.sumLat += sp.lateral; g.sumCarry += sp.carry; g.n += 1
+                    groups[key] = g
+                }
+                // Draw denser groups last so the bigger dots sit on top.
+                for (_, g) in groups.sorted(by: { $0.value.n < $1.value.n }) {
+                    let lat = g.sumLat / Double(g.n), carry = g.sumCarry / Double(g.n)
+                    let pt = CGPoint(x: xCG(lat), y: yCG(carry))
+                    guard pt.x >= plotLeft - 8 && pt.x <= plotRight + 8 &&
+                          pt.y >= plotTop  - 8 && pt.y <= plotBot  + 8 else { continue }
+                    let col = fixedColor ?? TCDispersionColor.byLateral(abs(lat))
+                    let r: CGFloat = min(5 + CGFloat(g.n - 1) * 1.3, 11)   // grow per extra shot, capped
+                    ctx.fill(Path(ellipseIn: CGRect(x: pt.x-r, y: pt.y-r, width: r*2, height: r*2)),
+                             with: .color(col))
+                    ctx.stroke(Path(ellipseIn: CGRect(x: pt.x-r, y: pt.y-r, width: r*2, height: r*2)),
+                               with: .color(Color.white.opacity(0.85)), lineWidth: 0.9)
+                }
+            }
+
+            /// 2σ grouping ellipse for a set of points.
+            func drawEllipse(_ series: [ShotPoint], fill: Color, stroke: Color) {
+                guard series.count > 2 else { return }
+                let cgs = series.map { CGPoint(x: xCG($0.lateral), y: yCG($0.carry)) }
                 let mx = cgs.map { $0.x }.reduce(0, +) / CGFloat(cgs.count)
                 let my = cgs.map { $0.y }.reduce(0, +) / CGFloat(cgs.count)
                 let sx = sqrt(cgs.map { pow($0.x - mx, 2) }.reduce(0, +) / CGFloat(cgs.count))
                 let sy = sqrt(cgs.map { pow($0.y - my, 2) }.reduce(0, +) / CGFloat(cgs.count))
-                let er = CGRect(x: mx - sx*2, y: my - sy*2, width: sx*4, height: sy*4)
-                ctx.fill(Path(ellipseIn: er), with: .color(Color.white.opacity(0.07)))
-                ctx.stroke(Path(ellipseIn: er), with: .color(Color.white.opacity(0.50)),
-                           lineWidth: 1.8)
+                let er = CGRect(x: mx - sx*2, y: my - sy*2, width: max(sx*4, 10), height: max(sy*4, 10))
+                ctx.fill(Path(ellipseIn: er), with: .color(fill))
+                ctx.stroke(Path(ellipseIn: er), with: .color(stroke), lineWidth: 1.8)
             }
 
-            // ── Shot dots ───────────────────────────────────────────────────
-            // Color by how straight the shot was (distance from the 0-line): dark green = dead
-            // straight, light green = close, yellow = drifting, red = well offline.
-            //
-            // Shots that land on (nearly) the same spot are merged into ONE solid dot that grows
-            // with the count — rather than stacking many semi-transparent dots, which blended into
-            // a muddy brown blob. Dots are opaque so overlapping clusters never mix into brown.
-            let bucket = 1.5   // yards; shots within this merge into a single, larger dot
-            var groups: [String: (sumLat: Double, sumCarry: Double, n: Int)] = [:]
-            for sp in pts {
-                let key = "\(Int((sp.lateral / bucket).rounded()))_\(Int((sp.carry / bucket).rounded()))"
-                var g = groups[key] ?? (0, 0, 0)
-                g.sumLat += sp.lateral; g.sumCarry += sp.carry; g.n += 1
-                groups[key] = g
-            }
-            // Draw denser groups last so the bigger dots sit on top.
-            for (_, g) in groups.sorted(by: { $0.value.n < $1.value.n }) {
-                let lat = g.sumLat / Double(g.n), carry = g.sumCarry / Double(g.n)
-                let pt = CGPoint(x: xCG(lat), y: yCG(carry))
-                guard pt.x >= plotLeft - 8 && pt.x <= plotRight + 8 &&
-                      pt.y >= plotTop  - 8 && pt.y <= plotBot  + 8 else { continue }
-                let col = TCDispersionColor.byLateral(abs(lat))
-                let r: CGFloat = min(5 + CGFloat(g.n - 1) * 1.3, 11)   // grow per extra shot, capped
-                ctx.fill(Path(ellipseIn: CGRect(x: pt.x-r, y: pt.y-r, width: r*2, height: r*2)),
-                         with: .color(col))
-                ctx.stroke(Path(ellipseIn: CGRect(x: pt.x-r, y: pt.y-r, width: r*2, height: r*2)),
-                           with: .color(Color.white.opacity(0.85)), lineWidth: 0.9)
+            if let series = clubSeries {
+                // ── ALL mode (top-tracer): one color + grouping ellipse per club ──
+                // Ellipses under all dots so no club's cluster ring hides another's shots.
+                for club in series {
+                    drawEllipse(club.points.filter { $0.carry > 0 },
+                                fill: club.color.opacity(0.10),
+                                stroke: club.color.opacity(0.85))
+                }
+                for club in series {
+                    drawDots(club.points.filter { $0.carry > 0 }, color: club.color)
+                }
+            } else {
+                // ── Single club: white 2σ ellipse + dots tiered by how offline ──
+                drawEllipse(pts, fill: Color.white.opacity(0.07), stroke: Color.white.opacity(0.50))
+                drawDots(pts, color: nil)
             }
 
         }
@@ -676,15 +702,19 @@ enum TCDispersionColor {
     }
 
     /// Distinct, stable colors for the multi-club overlay — one per club.
+    /// Validated (all-pairs CVD ΔE ≥ 12, ≥3:1 contrast on both the plot and fairway-stripe
+    /// surfaces): worst confusable pair improved from ΔE 9.1 (old cyan/teal, pink/coral,
+    /// orange/amber near-twins) to 14.6. Order is fixed; neighbors are maximally different
+    /// so consecutive clubs never read alike.
     static let clubPalette: [Color] = [
-        Color(red: 0.26, green: 0.74, blue: 1.00),   // cyan
-        Color(red: 1.00, green: 0.56, blue: 0.20),   // orange
-        Color(red: 0.69, green: 0.46, blue: 1.00),   // violet
-        Color(red: 1.00, green: 0.40, blue: 0.72),   // pink
-        Color(red: 0.36, green: 0.84, blue: 0.48),   // green
-        Color(red: 1.00, green: 0.82, blue: 0.27),   // amber
-        Color(red: 0.40, green: 0.93, blue: 0.86),   // teal
-        Color(red: 0.96, green: 0.45, blue: 0.40),   // coral
+        Color(red: 0.24, green: 0.62, blue: 1.00),   // blue     #3D9EFF
+        Color(red: 1.00, green: 0.84, blue: 0.00),   // gold     #FFD500
+        Color(red: 1.00, green: 0.28, blue: 0.69),   // magenta  #FF47B0
+        Color(red: 0.34, green: 0.91, blue: 0.34),   // green    #57E857
+        Color(red: 1.00, green: 0.54, blue: 0.20),   // orange   #FF8A33
+        Color(red: 0.81, green: 0.70, blue: 1.00),   // lavender #CFB3FF
+        Color(red: 0.24, green: 0.93, blue: 0.93),   // cyan     #3DEDED
+        Color(red: 0.96, green: 0.36, blue: 0.26),   // red      #F55C42
     ]
 
     static func club(_ index: Int) -> Color {

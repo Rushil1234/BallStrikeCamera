@@ -90,6 +90,9 @@ enum HandicapService {
 struct HandicapView: View {
     let rounds: [CourseRound]
 
+    /// Round highlighted from a bar tap — its detail card renders under the chart.
+    @State private var selectedRoundID: UUID? = nil
+
     private var result: HandicapService.Result { HandicapService.compute(from: rounds) }
 
     private static let dateFormatter: DateFormatter = {
@@ -160,6 +163,9 @@ struct HandicapView: View {
                     .frame(maxWidth: 132)
             }
             trendChart
+            if let sel = result.differentials.first(where: { $0.id == selectedRoundID }) {
+                selectedRoundCard(sel)
+            }
             legend
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -176,22 +182,19 @@ struct HandicapView: View {
             ForEach(chartData, id: \.diff.id) { item in
                 BarMark(
                     x: .value("Round", item.idx),
-                    y: .value("Differential", item.diff.differential)
+                    // Total score (not differential) — the leading axis reads as shot counts.
+                    y: .value("Total Score", item.diff.round.scoreSummary.totalScore),
+                    width: .fixed(22)
                 )
                 .foregroundStyle(item.diff.counted ? TCTheme.sage : TCTheme.textUltraMuted.opacity(0.45))
                 .cornerRadius(3)
-            }
-            if let idx = result.index {
-                RuleMark(y: .value("Index", idx))
-                    .foregroundStyle(TCTheme.gold.opacity(0.85))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    .annotation(position: .top, alignment: .trailing) {
-                        Text("Index \(HandicapService.indexString(idx))")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(TCTheme.gold)
-                    }
+                .opacity(selectedRoundID == nil || selectedRoundID == item.diff.id ? 1.0 : 0.35)
             }
         }
+        // Anchor the x-domain to a minimum of 8 slots: with only 2–3 rounds the default
+        // domain stretched them to opposite edges of the chart with a huge void between.
+        // Now early rounds sit side-by-side on the left and the chart fills in over time.
+        .chartXScale(domain: -0.5...(Double(max(chartData.count, 8)) - 0.5))
         .chartXAxis(.hidden)
         .chartYAxis {
             AxisMarks(position: .leading) { _ in
@@ -199,7 +202,68 @@ struct HandicapView: View {
                 AxisValueLabel().foregroundStyle(TCTheme.textMuted)
             }
         }
+        // Tap a bar → its round's details show in a card under the chart; tap again to clear.
+        .chartOverlay { proxy in
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    .onTapGesture { location in
+                        let plotOrigin = geo[proxy.plotAreaFrame].origin
+                        guard let slot: Double = proxy.value(atX: location.x - plotOrigin.x) else { return }
+                        let idx = Int(slot.rounded())
+                        guard let item = chartData.first(where: { $0.idx == idx }) else {
+                            selectedRoundID = nil
+                            return
+                        }
+                        selectedRoundID = selectedRoundID == item.diff.id ? nil : item.diff.id
+                    }
+            }
+        }
         .frame(height: 150)
+    }
+
+    /// Detail card for the tapped bar: where, when, shots taken, and score to par.
+    private func selectedRoundCard(_ d: HandicapService.RoundDifferential) -> some View {
+        let r = d.round
+        let s = r.scoreSummary
+        let toPar = s.totalScore - s.totalPar
+        let toParStr = toPar == 0 ? "E" : (toPar > 0 ? "+\(toPar)" : "\(toPar)")
+        return NavigationLink {
+            ScorecardView(round: r, backButtonTitle: "Back to Scores")
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(r.courseName.isEmpty ? (r.name.isEmpty ? "Round" : r.name) : r.courseName)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .lineLimit(1)
+                    Text("\(Self.dateFormatter.string(from: r.startedAt)) · \(r.teeBoxName) tees")
+                        .font(.system(size: 11))
+                        .foregroundColor(TCTheme.textMuted)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text("\(s.totalScore) shots")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text("\(toParStr) to par · Diff \(String(format: "%.1f", d.differential))")
+                        .font(.system(size: 11))
+                        .foregroundColor(d.counted ? TCTheme.sage : TCTheme.textMuted)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(TCTheme.textUltraMuted)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .background(TCTheme.panelRaised)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(TCTheme.sage.opacity(0.5), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 
     private var legend: some View {
@@ -207,6 +271,9 @@ struct HandicapView: View {
             legendKey(color: TCTheme.sage, label: "Counted toward index")
             legendKey(color: TCTheme.textUltraMuted.opacity(0.45), label: "Other rounds")
             Spacer()
+            Text("Tap a bar for round details")
+                .font(.system(size: 10))
+                .foregroundColor(TCTheme.textUltraMuted)
         }
     }
 
@@ -257,7 +324,8 @@ struct HandicapView: View {
                 Text(r.courseName.isEmpty ? (r.name.isEmpty ? "Round" : r.name) : r.courseName)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(TCTheme.textPrimary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text("\(Self.dateFormatter.string(from: r.startedAt)) · \(r.teeBoxName) tees")
                     .font(.system(size: 11))
                     .foregroundColor(TCTheme.textMuted)

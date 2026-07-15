@@ -56,7 +56,7 @@ final class ImpactDetector {
 
         debugFrameCounter += 1
         if debugFrameCounter % configuration.debugPrintEveryNFrames == 0 {
-            print(String(format: "ImpactDetector baseline=%.4f current=%.4f threshold=%.4f consecutive=%d",
+            print(String(format: "[IMP] b=%.3f c=%.3f t=%.3f n=%d",
                          baseline, current, threshold, consecutiveImpactFrames))
         }
 
@@ -68,7 +68,7 @@ final class ImpactDetector {
                 // console with 60+ identical lines per swing.
                 if consecutiveImpactFrames == configuration.minimumConsecutiveImpactFrames
                     || consecutiveImpactFrames % 60 == 0 {
-                    print(String(format: "ROI IMPACT DETECTED baseline=%.4f current=%.4f threshold=%.4f consecutive=%d",
+                    print(String(format: "[IMP] TRIGGERED b=%.3f c=%.3f t=%.3f n=%d",
                                  baseline, current, threshold, consecutiveImpactFrames))
                 }
                 return true

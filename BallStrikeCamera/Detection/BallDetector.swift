@@ -29,6 +29,8 @@ final class BallDetector {
     private let diagnosticLogInterval = 60   // ~4x/sec at 240fps, ~2x/sec at 120fps
     private var hasLoggedFormatError = false
     private var rejectedCandidateCount = 0
+    // Session-constant scan parameters are only logged when this changes.
+    private var lastLoggedROI: CGRect?
 
     init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
@@ -110,15 +112,26 @@ final class BallDetector {
         }
 
         if shouldLogSnapshot {
-            print("BallDetector scan: roi=\(roi) pxBounds=(\(xStart),\(yStart))-(\(xEnd),\(yEnd)) sampled=\(sampledPixels) maxBrightness=\(maxBrightnessSeen)/\(configuration.brightnessThreshold) bright+lowSpread=\(brightX.count) bright+highSpread=\(brightIgnoringSpread) needBright=\(configuration.minimumBrightPixels)")
+            // ROI/thresholds are constant for a whole session — print them only on change,
+            // then keep the per-snapshot line to the three numbers that actually vary.
+            // w = bright+low-spread (white-ish, ball material), c = bright+high-spread (colored glare).
+            if roi != lastLoggedROI {
+                lastLoggedROI = roi
+                print(String(format: "[BD] roi=(%.3f,%.3f %.3fx%.3f) px=(%d,%d)-(%d,%d) sampled=%d thrBright=%d thrSpread=%d needW=%d",
+                             roi.minX, roi.minY, roi.width, roi.height,
+                             xStart, yStart, xEnd, yEnd, sampledPixels,
+                             configuration.brightnessThreshold, configuration.maxChannelSpread,
+                             configuration.minimumBrightPixels))
+            }
+            print("[BD] max=\(maxBrightnessSeen) w=\(brightX.count) c=\(brightIgnoringSpread)")
         }
 
         guard brightX.count >= configuration.minimumBrightPixels else {
             if shouldLogSnapshot {
                 let reason = maxBrightnessSeen < configuration.brightnessThreshold
-                    ? "nothing in ROI reached brightness threshold — too dark / ball outside ROI / exposure too fast"
-                    : "bright pixels present but too saturated/colored (spread > \(configuration.maxChannelSpread)) or too few (\(brightX.count) < \(configuration.minimumBrightPixels))"
-                print("BallDetector: NO CANDIDATE — \(reason)")
+                    ? "dark max=\(maxBrightnessSeen)"
+                    : "w=\(brightX.count)<\(configuration.minimumBrightPixels) c=\(brightIgnoringSpread)"
+                print("[BD] NCF \(reason)")
             }
             return nil
         }
@@ -179,7 +192,7 @@ final class BallDetector {
             let gridH = max(1, (maxY - minY) / sampleStride + 1)
             let fillRatio = Double(count) / Double(gridW * gridH)
             guard fillRatio >= configuration.minimumFillRatio else {
-                bestRejectReason = "cluster too scattered, fillRatio=\(String(format: "%.3f", fillRatio)) need >= \(configuration.minimumFillRatio) (grid=\(gridW)x\(gridH), count=\(count))"
+                bestRejectReason = "scatter fill=\(String(format: "%.3f", fillRatio))<\(configuration.minimumFillRatio) grid=\(gridW)x\(gridH) n=\(count)"
                 continue
             }
 
@@ -193,7 +206,7 @@ final class BallDetector {
                   aspect <= configuration.maximumAspectRatio,
                   normalizedArea >= configuration.minimumNormalizedArea,
                   normalizedArea <= configuration.maximumNormalizedArea else {
-                bestRejectReason = "aspect=\(String(format: "%.2f", aspect)) (need \(configuration.minimumAspectRatio)-\(configuration.maximumAspectRatio)), normalizedArea=\(String(format: "%.5f", normalizedArea)) (need \(configuration.minimumNormalizedArea)-\(configuration.maximumNormalizedArea)), boxPx=\(Int(boxWidth))x\(Int(boxHeight))"
+                bestRejectReason = "asp=\(String(format: "%.2f", aspect)) area=\(String(format: "%.5f", normalizedArea)) box=\(Int(boxWidth))x\(Int(boxHeight))"
                 continue
             }
 
@@ -219,15 +232,165 @@ final class BallDetector {
         guard let observation = bestObservation else {
             rejectedCandidateCount += 1
             if shouldLogSnapshot || rejectedCandidateCount % 30 == 1 {
-                print("BallDetector: candidate rejected #\(rejectedCandidateCount) — \(bestRejectReason ?? "no cluster passed") [\(brightX.count) bright samples total]")
+                print("[BD] rej#\(rejectedCandidateCount) \(bestRejectReason ?? "no cluster") [w=\(brightX.count)]")
             }
             return nil
         }
 
         if shouldLogSnapshot {
-            print("BallDetector: CANDIDATE FOUND — confidence=\(String(format: "%.2f", observation.confidence)) rect=\(observation.normalizedRect)")
+            let r = observation.normalizedRect
+            print(String(format: "[BD] CAND c=%.2f (%.3f,%.3f %.3fx%.3f)",
+                         observation.confidence, r.minX, r.minY, r.width, r.height))
         }
         return observation
+    }
+
+    /// One-shot post-lock refinement. The live detect() rect is stride-quantized and padded
+    /// 1.35× around the bright-pixel centroid, so it overstates the true ball diameter by
+    /// ~35-50%. This rescans a small window around the locked rect at stride 1: a core pass
+    /// at the normal brightness threshold finds the ball's bright disc, then a rim pass at a
+    /// lower threshold grows that cluster outward so the darker limb of the ball is included
+    /// instead of just the specular core. Returns a tight square rect (normalized, full-frame
+    /// coords) or nil when no plausible cluster is found — the caller keeps the padded rect.
+    func tightRect(in pixelBuffer: CVPixelBuffer, around rect: CGRect) -> CGRect? {
+        CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
+
+        guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA,
+              let baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer) else { return nil }
+
+        let width = CVPixelBufferGetWidth(pixelBuffer)
+        let height = CVPixelBufferGetHeight(pixelBuffer)
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer)
+        let pointer = baseAddress.assumingMemoryBound(to: UInt8.self)
+
+        // The incoming rect already contains the ball with padding; a touch of extra margin
+        // covers the stride-6 quantization of its edges.
+        let window = rect.insetBy(dx: -rect.width * 0.15, dy: -rect.height * 0.15)
+            .intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        let xStart = max(0, Int(window.minX * CGFloat(width)))
+        let xEnd   = min(width, Int(window.maxX * CGFloat(width)))
+        let yStart = max(0, Int(window.minY * CGFloat(height)))
+        let yEnd   = min(height, Int(window.maxY * CGFloat(height)))
+        let winW = xEnd - xStart
+        let winH = yEnd - yStart
+        guard winW > 2, winH > 2, winW * winH < 200_000 else { return nil }
+
+        // 0 = background, 1 = rim (dimmer ball limb), 2 = core (ball-bright).
+        let coreBrightness = configuration.brightnessThreshold
+        let rimBrightness  = max(90, coreBrightness - 45)
+        let rimSpread      = configuration.maxChannelSpread + 20
+        var mask = [UInt8](repeating: 0, count: winW * winH)
+        for y in 0..<winH {
+            let row = pointer + (y + yStart) * bytesPerRow
+            for x in 0..<winW {
+                let idx = (x + xStart) * 4
+                let b = Int(row[idx]), g = Int(row[idx + 1]), r = Int(row[idx + 2])
+                let brightness = (r + g + b) / 3
+                let spread = max(r, max(g, b)) - min(r, min(g, b))
+                if brightness >= coreBrightness && spread <= configuration.maxChannelSpread {
+                    mask[y * winW + x] = 2
+                } else if brightness >= rimBrightness && spread <= rimSpread {
+                    mask[y * winW + x] = 1
+                }
+            }
+        }
+
+        // Largest 8-connected cluster of core pixels = the ball's bright disc.
+        var visited = [Bool](repeating: false, count: winW * winH)
+        var bestCluster: [Int] = []
+        for start in 0..<mask.count where mask[start] == 2 && !visited[start] {
+            visited[start] = true
+            var stack = [start]
+            var cluster: [Int] = []
+            while let i = stack.popLast() {
+                cluster.append(i)
+                let cx = i % winW, cy = i / winW
+                for dy in -1...1 {
+                    for dx in -1...1 where dx != 0 || dy != 0 {
+                        let nx = cx + dx, ny = cy + dy
+                        guard nx >= 0, nx < winW, ny >= 0, ny < winH else { continue }
+                        let ni = ny * winW + nx
+                        if mask[ni] == 2 && !visited[ni] {
+                            visited[ni] = true
+                            stack.append(ni)
+                        }
+                    }
+                }
+            }
+            if cluster.count > bestCluster.count { bestCluster = cluster }
+        }
+        guard bestCluster.count >= configuration.minimumBrightPixels else { return nil }
+
+        var coreMinX = winW, coreMinY = winH, coreMaxX = 0, coreMaxY = 0
+        for i in bestCluster {
+            let cx = i % winW, cy = i / winW
+            coreMinX = min(coreMinX, cx); coreMaxX = max(coreMaxX, cx)
+            coreMinY = min(coreMinY, cy); coreMaxY = max(coreMaxY, cy)
+        }
+        let coreSide = CGFloat(max(coreMaxX - coreMinX, coreMaxY - coreMinY) + 1)
+
+        // Grow the core outward over rim pixels so the tight box spans the whole ball,
+        // not just its brightest patch.
+        var grown = [Bool](repeating: false, count: winW * winH)
+        var stack = bestCluster
+        for i in bestCluster { grown[i] = true }
+        var minX = winW, minY = winH, maxX = 0, maxY = 0
+        while let i = stack.popLast() {
+            let cx = i % winW, cy = i / winW
+            minX = min(minX, cx); maxX = max(maxX, cx)
+            minY = min(minY, cy); maxY = max(maxY, cy)
+            for dy in -1...1 {
+                for dx in -1...1 where dx != 0 || dy != 0 {
+                    let nx = cx + dx, ny = cy + dy
+                    guard nx >= 0, nx < winW, ny >= 0, ny < winH else { continue }
+                    let ni = ny * winW + nx
+                    if mask[ni] >= 1 && !grown[ni] {
+                        grown[ni] = true
+                        stack.append(ni)
+                    }
+                }
+            }
+        }
+
+        var boxW = CGFloat(maxX - minX + 1)
+        var boxH = CGFloat(maxY - minY + 1)
+        // The rim can only be the ball's own limb, which adds a thin band around the core.
+        // Sunlit grass sits right at the rim threshold and, once one blade touches the core,
+        // the flood fill rides it to the window edge (observed: every lock "grew" past the
+        // padded rect and got rejected). If growth exceeded what a ball limb can physically
+        // add, discard it and take the core plus a fixed limb margin instead.
+        if max(boxW, boxH) > coreSide * 1.5 {
+            print(String(format: "[BD] TIGHT rim bled (%.0fpx from core %.0fpx) — using core+margin", max(boxW, boxH), coreSide))
+            minX = coreMinX; maxX = coreMaxX
+            minY = coreMinY; maxY = coreMaxY
+            boxW = coreSide * 1.15
+            boxH = boxW
+        }
+        let side = max(boxW, boxH)
+        guard side >= 4 else { return nil }
+
+        // Sanity: the tight square must actually be tighter than (or equal to) the padded
+        // lock rect, and not so small that we latched onto a glint. Outside that range the
+        // scan hit something odd (mat glare bleeding, logo-only cluster) — keep the original.
+        let originalSidePx = rect.width * CGFloat(width)
+        guard side <= originalSidePx * 1.05, side >= originalSidePx * 0.30 else {
+            print(String(format: "[BD] TIGHT rejected: side=%.0fpx vs locked %.0fpx", side, originalSidePx))
+            return nil
+        }
+
+        let centerX = CGFloat(minX + maxX) / 2 + CGFloat(xStart)
+        let centerY = CGFloat(minY + maxY) / 2 + CGFloat(yStart)
+        let tight = CGRect(
+            x: (centerX - side / 2) / CGFloat(width),
+            y: (centerY - side / 2) / CGFloat(height),
+            width: side / CGFloat(width),
+            height: side / CGFloat(height)
+        ).intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+        print(String(format: "[BD] TIGHT %.0fpx→%.0fpx core=%d (%.3f,%.3f %.3fx%.3f)",
+                     originalSidePx, side, bestCluster.count,
+                     tight.minX, tight.minY, tight.width, tight.height))
+        return tight
     }
 }
 

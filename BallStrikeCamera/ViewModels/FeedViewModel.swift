@@ -43,6 +43,9 @@ final class FeedViewModel: ObservableObject {
             applyEngagement(try await backend.loadEngagement(postIds: page.posts.map(\.id), userId: userId))
             leaderboardEntries = try await backend.loadFriendLeaderboard(userId: userId, period: .week)
             challengePreviews = makeChallengePreviews(summary: homeSummary, posts: posts)
+            // Completed challenges bank permanent credits toward sim-course unlocks
+            // (celebration popups fire from inside the service).
+            WeeklyGoalsService.shared.syncChallenges(challengePreviews)
             notifications = (try? await backend.loadFeedNotifications()) ?? notifications
         } catch {
             errorMessage = error.localizedDescription
@@ -65,6 +68,7 @@ final class FeedViewModel: ObservableObject {
             hasMoreFeed = page.hasMore
             applyEngagement(try await backend.loadEngagement(postIds: page.posts.map(\.id), userId: userId))
             challengePreviews = makeChallengePreviews(summary: homeSummary, posts: posts)
+            WeeklyGoalsService.shared.syncChallenges(challengePreviews)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -208,8 +212,10 @@ final class FeedViewModel: ObservableObject {
             ),
             FeedChallengePreview(
                 title: "GIR Streak",
-                subtitle: bestGIR > 0 ? "\(bestGIR) greens in a round" : "Finish a scored round",
-                progress: min(Double(bestGIR) / 18.0, 1),
+                subtitle: bestGIR > 0 ? "\(bestGIR) / 9 greens in a round" : "Finish a scored round",
+                // 9 greens = a genuinely strong round and actually completable — /18 meant
+                // this challenge could never finish, which broke the sim-unlock ladder.
+                progress: min(Double(bestGIR) / 9.0, 1),
                 icon: "flag.checkered"
             ),
             FeedChallengePreview(

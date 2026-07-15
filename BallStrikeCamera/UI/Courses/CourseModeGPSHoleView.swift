@@ -957,36 +957,41 @@ private struct SatelliteMapBackground: UIViewRepresentable {
 
         // Always start the aim line from the user's GPS when available; fall back to tee.
         let lineStart: CLLocationCoordinate2D? = userCoord ?? teeCoord
+        // Draw-time sanity on the tap-to-aim target: it must sit between the player and the
+        // green (or right around the green). A stale/bad target — e.g. one placed before the
+        // placement rules tightened — otherwise drags the whole line into the woods.
+        var validAimTarget = customAimTarget
+        if let at = validAimTarget, let g = greenCoord {
+            let targetToGreen = MKMapPoint(at).distance(to: MKMapPoint(g)) * 1.09361
+            let startToGreen  = lineStart.map { MKMapPoint($0).distance(to: MKMapPoint(g)) * 1.09361 }
+            if targetToGreen > max(startToGreen ?? 0, 40) { validAimTarget = nil }
+        }
         // Custom aim target overrides the pin; the (possibly user-moved) FLAG position is the
         // final line target — never the green center dot once the flag has been moved.
-        let effectiveGreen: CLLocationCoordinate2D? = customAimTarget ?? pinCoord ?? greenCoord
+        let effectiveGreen: CLLocationCoordinate2D? = validAimTarget ?? pinCoord ?? greenCoord
 
         var holePathForOverlay: [CLLocationCoordinate2D] = []
         if let green = effectiveGreen, let start = lineStart, !coordsEqual(start, green) {
+            // Live GPS: the line is ALWAYS direct player → pin. preferredHolePath splices the
+            // OSM hole-path waypoints between start and green, and those include points the
+            // player has already walked past — mid-hole that drew player → tee-side waypoint
+            // → green, i.e. the infamous "line back to the tees". The dogleg routing is only
+            // for planning views with no live fix (start = tee).
             // With the flag moved, the OSM hole path (which terminates at the green CENTER)
             // would draw start → center → flag. The moved flag always owns the line: direct.
-            holePathForOverlay = (pinCoord != nil && customAimTarget == nil)
+            holePathForOverlay = (userCoord != nil || (pinCoord != nil && validAimTarget == nil))
                 ? [start, green]
                 : preferredHolePath(start: start, green: green)
             if shouldRecenter {
-                // Frame from the PLAYER when they're on the hole (progressive follow: as the
-                // player advances, the view zooms toward the green with the player pinned near
-                // the bottom, same screen position the tee occupies pre-round). With no live
-                // fix, frame the full hole tee → green as before.
-                //
-                // A hole switch also frames tee → green: the player is often still walking
-                // over from the previous green then, and framing player → green left the new
-                // tee off-screen until a manual recenter. The follow takes over from the
-                // player's next GPS quantum.
-                let followUser: CLLocationCoordinate2D? =
-                    context.coordinator.isHoleSwitch(for: focusId) ? nil : userCoord
-                let frameStart = followUser ?? teeCoord ?? (holePathForOverlay.first ?? start)
+                // Always frame the FULL hole tee → green (like every reference GPS app): the
+                // camera is set once per hole and stays fixed while the player dot walks it.
+                // No progressive zoom-in toward the green — that constant reframing was
+                // disorienting and made the view creep in as the player approached the pin.
+                let frameStart = teeCoord ?? (holePathForOverlay.first ?? start)
                 let routeEnd   = holePathForOverlay.last  ?? green
                 // The overlay's aim line still starts at the player; the CAMERA path must
                 // start at frameStart or a player behind the tee drags the fit off the hole.
-                let cameraPath = followUser == nil
-                    ? preferredHolePath(start: frameStart, green: routeEnd)
-                    : holePathForOverlay
+                let cameraPath = preferredHolePath(start: frameStart, green: routeEnd)
                 let heading    = Self.bearing(from: frameStart, to: routeEnd)
 
                 let kPad     = 20.0
@@ -995,9 +1000,8 @@ private struct SatelliteMapBackground: UIViewRepresentable {
                 let kMPerDeg = 111_320.0
                 var minX = Double.infinity, maxX = -Double.infinity
                 var minY = Double.infinity, maxY = -Double.infinity
-                // Bounds: remaining route only when following the player (player + aim path +
-                // green); tee is included whenever the framing starts from it.
-                let boundsCoords = (followUser == nil ? (teeCoord.map { [$0] } ?? []) : [])
+                // Bounds: the whole hole — tee, full camera path, green.
+                let boundsCoords = (teeCoord.map { [$0] } ?? [])
                     + cameraPath + [routeEnd]
                 for coord in boundsCoords {
                     let dn = (coord.latitude  - frameStart.latitude)  * kMPerDeg
@@ -1137,7 +1141,7 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         // works because handleTap uses the raw coordinate arrays, not MKOverlay objects.
 
         // Custom aim target circle
-        if let at = customAimTarget {
+        if let at = validAimTarget {
             map.addAnnotation(AimTargetAnnotation(coordinate: at))
         }
 
@@ -1148,12 +1152,17 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         // Each entry keeps its ORIGINAL activeAimPoints index — the filter can drop earlier
         // points, and drag callbacks must report the original index or overrides land on the
         // wrong waypoint (and the flag-spawned waypoint gets mistaken for a base one).
-        var drawnAim: [(idx: Int, coord: CLLocationCoordinate2D)] =
-            aimPoints.enumerated().prefix(3).map { ($0.offset, $0.element) }
-        if let u = userCoord, let g = effectiveGreen {
-            let userToGreen = MKMapPoint(u).distance(to: MKMapPoint(g))
+        // Live GPS on the hole = single direct player→pin line, exactly like the reference
+        // GPS apps. Waypoint segments (tee → aim → green) are a PLANNING aid drawn only when
+        // there's no live fix (previewing another hole, GPS off) — mixing them with a live
+        // player position produced stale rings and criss-crossing lines mid-hole.
+        var drawnAim: [(idx: Int, coord: CLLocationCoordinate2D)] = userCoord != nil
+            ? []
+            : aimPoints.enumerated().prefix(3).map { ($0.offset, $0.element) }
+        if let u = lineStart, let g = effectiveGreen {
+            let startToGreen = MKMapPoint(u).distance(to: MKMapPoint(g))
             drawnAim = drawnAim.filter {
-                MKMapPoint($0.coord).distance(to: MKMapPoint(g)) < userToGreen - 5
+                MKMapPoint($0.coord).distance(to: MKMapPoint(g)) < startToGreen - 5
             }
         }
         // HARD RULE #2: segments always run toward the green. Draw order is by distance to
@@ -1414,13 +1423,11 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         }
 
         func shouldRecenter(for focusId: String, recenterToken: Int, gpsKey: String) -> Bool {
-            if !hasInitializedRegion || focusId != lastFocusId || recenterToken != lastRecenterToken {
-                return true
-            }
-            // Progressive follow: reframe as the player advances (~20yd GPS quanta) so the view
-            // zooms toward the green over the length of the hole. Suspended once the user
-            // manually pans/zooms/rotates — the recenter arrow restores auto-follow.
-            return !userAdjustedCamera && gpsKey != lastGpsKey && !gpsKey.isEmpty
+            // Camera reframes only on hole switch or an explicit recenter tap. The old
+            // progressive follow (reframe every ~20yd GPS quantum, zooming toward the green
+            // as the player advanced) is gone: the view now frames the full hole tee→green
+            // once and stays put while the player dot walks it.
+            !hasInitializedRegion || focusId != lastFocusId || recenterToken != lastRecenterToken
         }
 
         func completeRecenter(focusId: String, recenterToken: Int, gpsKey: String) {
@@ -1799,6 +1806,12 @@ struct CourseModeGPSHoleView: View {
     @State private var pendingFlight: FlightRequest?     // held until camera cover dismisses
     @State private var flightStart: Coordinate?
     @State private var flightShot: SavedShot?
+    // Fixed 1s heartbeat for the widget / Live Activity: GPS yardages must tick on the lock
+    // screen without any user interaction, so pushes can't ride on SwiftUI onChange alone
+    // (which stops firing the moment the app isn't foreground-active). Dedupe in
+    // pushWidgetData keeps the once-a-second tick from spamming identical writes.
+    private let widgetHeartbeat = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State private var lastWidgetPushKey = ""
 
     let initialCourse: GolfCourse?
     let initialTeeBox: TeeBox?
@@ -2086,23 +2099,19 @@ struct CourseModeGPSHoleView: View {
         }
     }
 
-    /// Reduces the golfer's shot history to per-club (carry, lateral) dispersion stats.
+    /// Reduces the golfer's shot history to per-club (carry, lateral, total) dispersion stats.
     private func loadClubStats(uid: UUID) async -> [CaddieEngine.ClubStat] {
         let svc = ShotPersistenceService(userId: uid, backend: session.backend)
         let all = (try? await svc.loadShots(limit: 600)) ?? []
-        var byClub: [String: [(carry: Double, lateral: Double)]] = [:]
-        var totalsByClub: [String: [Double]] = [:]
+        var byClub: [String: [CaddieEngine.ShotSample]] = [:]
         for shot in all where !shot.isBadShot {
             guard let p = ShotDispersion.point(for: shot) else { continue }
             let key = shot.clubName ?? shot.clubId?.uuidString ?? "Unknown"
-            byClub[key, default: []].append(p)
-            if shot.metrics.totalYards > 0 {
-                totalsByClub[key, default: []].append(shot.metrics.totalYards)
-            }
+            let total = shot.metrics.totalYards > 0 ? shot.metrics.totalYards : nil
+            byClub[key, default: []].append(
+                CaddieEngine.ShotSample(carry: p.carry, lateral: p.lateral, total: total))
         }
-        return byClub.compactMap {
-            CaddieEngine.stat(name: $0.key, samples: $0.value, totals: totalsByClub[$0.key] ?? [])
-        }
+        return byClub.compactMap { CaddieEngine.stat(name: $0.key, shots: $0.value) }
     }
 
     // MARK: - Dispersion overlay (#7)
@@ -2596,9 +2605,15 @@ struct CourseModeGPSHoleView: View {
             WidgetBridge.clear()
             WatchConnectivityBridge.shared.clearRound()
             if #available(iOS 16.2, *) { ActivityBridge.end() }
+            lastWidgetPushKey = ""
             return
         }
         let d = mapDistances
+        // The 1s heartbeat calls this unconditionally — skip when nothing the widget shows
+        // has changed so standing still doesn't rewrite the widget store every second.
+        let pushKey = "\(hole.holeNumber)|\(scoreToPar)|\(round.scoreSummary.totalScore)|\(d.front ?? -1)|\(d.center ?? -1)|\(d.back ?? -1)"
+        guard pushKey != lastWidgetPushKey else { return }
+        lastWidgetPushKey = pushKey
         let front  = d.front  ?? d.center.map { max($0 - 10, 0) } ?? 0
         let center = d.center ?? 0
         let back   = d.back   ?? d.center.map { $0 + 10 } ?? 0
@@ -2811,6 +2826,10 @@ struct CourseModeGPSHoleView: View {
                     let yardsToGreen = SatelliteMapBackground.metersBetween(userLoc, green) * 1.09361
                     guard yardsToGreen <= 240 else { return }
                     let tapToGreen = SatelliteMapBackground.metersBetween(coord, green) * 1.09361
+                    // An aim target only makes sense BETWEEN the player and the green (a layup
+                    // or a side of the green). Without this bound a stray tap while walking
+                    // planted a target hundreds of yards past the flag and the line chased it.
+                    guard tapToGreen <= max(yardsToGreen, 40) else { return }
                     aimTarget = tapToGreen < 25 ? nil : coord
                 },
                 focusId:        mapFocusId,
@@ -3200,6 +3219,12 @@ struct CourseModeGPSHoleView: View {
             loadElevationForHole()   // geometry arrives async from Supabase after onAppear
         }
         .onChange(of: vm.activeRound?.scoreSummary.totalScore) { _ in
+            pushWidgetData()
+        }
+        // Fixed-interval refresh: keeps lock-screen / Live Activity yardages current even
+        // when nothing in the foreground view tree changes (or the app is backgrounded —
+        // round-scoped background location keeps the process alive and the timer firing).
+        .onReceive(widgetHeartbeat) { _ in
             pushWidgetData()
         }
         .onChange(of: gpsOn) { _ in
@@ -3796,6 +3821,10 @@ struct CourseModeGPSHoleView: View {
     private func caddieResultCard(_ s: CaddieEngine.Suggestion) -> some View {
         VStack(spacing: 16) {
             VStack(spacing: 3) {
+                Text(s.isLayup ? "SMART ADVANCE" : "BEST GREEN ODDS")
+                    .font(.system(size: 10, weight: .black))
+                    .tracking(1.2)
+                    .foregroundColor(TCTheme.textMuted)
                 Text(s.clubName)
                     .font(.system(size: 30, weight: .black, design: .rounded))
                     .foregroundColor(TCTheme.textPrimary)
@@ -3806,8 +3835,19 @@ struct CourseModeGPSHoleView: View {
 
             HStack(spacing: 12) {
                 caddieStat("YOUR CARRY", "\(s.typicalYards)y")
-                caddieStat("ON GREEN", "\(s.onGreenPercent)%")
+                if s.isLayup {
+                    caddieStat("LEAVES", "\(s.leavesYards)y")
+                } else {
+                    caddieStat("ON GREEN", "\(s.onGreenPercent)%")
+                }
                 caddieStat("ACTUAL", "\(s.baseYards)y")
+            }
+
+            if !s.isLayup && s.greenSamples > 0 {
+                Text("\(s.greenHits) of \(s.greenSamples) tracked shots would have finished on this green.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.textSecondary)
+                    .multilineTextAlignment(.center)
             }
 
             // Adjustment chips
@@ -3829,7 +3869,13 @@ struct CourseModeGPSHoleView: View {
                     .foregroundColor(TCTheme.gold)
             }
 
-            Text("Best chance to hold the green from your tracked shots.")
+            if let t = s.tightest {
+                caddieTightestRow(t)
+            }
+
+            Text(s.isLayup
+                 ? "None of your clubs show green-holding results from this number — this leaves your best next shot."
+                 : "Ranked by your real results at this distance, not just the closest average carry.")
                 .font(.system(size: 11))
                 .foregroundColor(TCTheme.textUltraMuted)
                 .multilineTextAlignment(.center)
@@ -3837,6 +3883,39 @@ struct CourseModeGPSHoleView: View {
         .padding(20)
         .tcCard()
         .padding(.horizontal, TCTheme.hPad)
+    }
+
+    /// Secondary suggestion layer: the most repeatable club at this yardage when it isn't the
+    /// best-odds pick — steady distance, but the numbers say it hasn't been holding this green.
+    private func caddieTightestRow(_ t: CaddieEngine.TightestPick) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Label("TIGHTEST GROUPING", systemImage: "target")
+                    .font(.system(size: 10, weight: .black))
+                    .tracking(0.8)
+                    .foregroundColor(TCTheme.textMuted)
+                Spacer()
+                Text(t.clubName)
+                    .font(.system(size: 14, weight: .heavy, design: .rounded))
+                    .foregroundColor(TCTheme.textPrimary)
+            }
+            Text(caddieTightestBlurb(t))
+                .font(.system(size: 12))
+                .foregroundColor(TCTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func caddieTightestBlurb(_ t: CaddieEngine.TightestPick) -> String {
+        let base = "Your most repeatable club at this number — carries \(t.typicalYards)y within about ±\(t.spreadYards)y."
+        if t.greenHits == 0 {
+            return base + " But none of its \(t.greenSamples) tracked shots would have finished on the green."
+        }
+        return base + " \(t.greenHits) of \(t.greenSamples) tracked shots would have finished on the green."
     }
 
     private func caddieStat(_ label: String, _ value: String) -> some View {
@@ -4436,6 +4515,16 @@ struct FinalRoundReviewView: View {
                     .font(.system(size: 26, weight: .semibold, design: .serif))
                     .foregroundColor(TCTheme.textPrimary)
                     .padding(.top, 24)
+                if let name = vm.activeRound?.courseName, !name.isEmpty {
+                    // Full course name, wrapping as needed — never truncated to one row.
+                    Text(name)
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(TCTheme.sage)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 6)
+                }
                 Text("Tap any hole column to fix its score before saving.")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundColor(TCTheme.textMuted)
@@ -4586,11 +4675,22 @@ struct FinalRoundReviewView: View {
                 .frame(width: 46, alignment: .leading)
                 .padding(.leading, 8)
             ForEach(values.indices, id: \.self) { i in
+                // Greener = better, redder = worse — instant scan of where the round went wrong.
                 let color: Color = {
                     if let scores, let s = scores[i].0 {
-                        return s < scores[i].1 ? TCTheme.sage : (s == scores[i].1 ? TCTheme.textPrimary : .orange)
+                        let diff = s - scores[i].1
+                        if diff <= -2 { return Color(red: 0.10, green: 0.85, blue: 0.45) }
+                        if diff == -1 { return Color(red: 0.32, green: 0.78, blue: 0.42) }
+                        if diff == 0  { return TCTheme.textPrimary }
+                        if diff == 1  { return Color(red: 0.95, green: 0.62, blue: 0.30) }
+                        if diff == 2  { return Color(red: 0.93, green: 0.42, blue: 0.30) }
+                        return Color(red: 0.90, green: 0.26, blue: 0.26)
                     }
                     return bold ? TCTheme.textPrimary : TCTheme.textSecondary
+                }()
+                let scoreDiff: Int? = {
+                    guard let scores, let s = scores[i].0 else { return nil }
+                    return s - scores[i].1
                 }()
                 Group {
                     if let tappable {
@@ -4606,6 +4706,14 @@ struct FinalRoundReviewView: View {
                 }
                 .font(.system(size: 12, weight: bold ? .heavy : .semibold, design: .rounded))
                 .foregroundColor(color)
+                .background(
+                    // Tint non-par score cells so the color read survives small text.
+                    (scoreDiff != nil && scoreDiff != 0)
+                        ? RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(color.opacity(0.14))
+                            .padding(.horizontal, 1)
+                        : nil
+                )
             }
             Text(total ?? "")
                 .font(.system(size: 12, weight: .heavy, design: .rounded))

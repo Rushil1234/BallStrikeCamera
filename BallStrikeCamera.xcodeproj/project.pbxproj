@@ -7,8 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		LSN00000000000000000007 /* SwingStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000017 /* SwingStudioView.swift */; };
+		LSN00000000000000000006 /* LessonPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000016 /* LessonPlayerView.swift */; };
+		LSN00000000000000000005 /* LessonsHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000015 /* LessonsHomeView.swift */; };
 		150BB4359DEC31706EAC970A /* WatchCompanionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */; };
 		209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */; };
+		LSN00000000000000000004 /* SwingStudioController.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000014 /* SwingStudioController.swift */; };
 		2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = D285E96FFA0E9231BA42EF6E /* Appearance.swift */; };
 		3ED54E6FBC4125C8B7DC7BC0 /* WatchConnectivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */; };
 		452252E661FD97C9490B248D /* WatchCompanionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */; };
@@ -46,11 +50,14 @@
 		BF0000010000000000000023 /* BallTrackingTestModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000123 /* BallTrackingTestModels.swift */; };
 		BF0000010000000000000024 /* TestFrameLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000124 /* TestFrameLoader.swift */; };
 		BF0000010000000000000025 /* ExperimentalBallTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000125 /* ExperimentalBallTracker.swift */; };
+		BF0000010000000000009901 /* LiveParityTestRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000009902 /* LiveParityTestRunner.swift */; };
 		BF0000010000000000000026 /* BallTrackingTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000126 /* BallTrackingTestView.swift */; };
 		BF0000010000000000000027 /* BallTrackingTesterSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000127 /* BallTrackingTesterSettings.swift */; };
 		BF0000010000000000000028 /* ExperimentalImpactFrameDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000128 /* ExperimentalImpactFrameDetector.swift */; };
 		BF0000010000000000000029 /* CameraCalibration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000129 /* CameraCalibration.swift */; };
 		BF000001000000000000002A /* ShotMetricsCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012A /* ShotMetricsCalculator.swift */; };
+		LSN00000000000000000003 /* SwingAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000013 /* SwingAnalysis.swift */; };
+		RSV000000000000000000001 /* RoundShotVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = RSV000000000000000000101 /* RoundShotVerifier.swift */; };
 		BF000001000000000000002B /* ClubTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012B /* ClubTracker.swift */; };
 		BF000001000000000000002C /* DistanceEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012C /* DistanceEstimator.swift */; };
 		BF000001000000000000002D /* ExperimentalMetricsModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012D /* ExperimentalMetricsModels.swift */; };
@@ -72,6 +79,7 @@
 		BF000001000000000000003D /* ShotResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000013D /* ShotResultView.swift */; };
 		BF000001000000000000003E /* BallFlightPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000013E /* BallFlightPreviewView.swift */; };
 		BF000001000000000000003F /* Models in Resources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000013F /* Models */; };
+		LSN00000000000000000008 /* Lessons in Resources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000019 /* Lessons */; };
 		BF0000010000000000000040 /* ModelResourceLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000140 /* ModelResourceLoader.swift */; };
 		BF0000010000000000000041 /* FlightModelPredictor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000141 /* FlightModelPredictor.swift */; };
 		BF0000010000000000000042 /* SideLaunchAngleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000142 /* SideLaunchAngleView.swift */; };
@@ -136,11 +144,13 @@
 		BF0000060000000000000004 /* TrueCarryBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000003 /* TrueCarryBackground.swift */; };
 		BF0000060000000000000006 /* TCCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000005 /* TCCards.swift */; };
 		BF0000060000000000000008 /* TCBottomDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000007 /* TCBottomDock.swift */; };
+		GCO00000000000000000002 /* GoalCelebrationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = GCO00000000000000000001 /* GoalCelebrationOverlay.swift */; };
 		BF000006000000000000000A /* TrueCarryHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000009 /* TrueCarryHomeView.swift */; };
 		BF000006000000000000000C /* TrueCarryInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000000B /* TrueCarryInsightsView.swift */; };
 		BF000006000000000000000E /* TrueCarryPlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000000D /* TrueCarryPlayView.swift */; };
 		BF0000060000000000000010 /* TrueCarryLockerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000000F /* TrueCarryLockerView.swift */; };
 		BF0000060000000000000012 /* ShotContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000011 /* ShotContext.swift */; };
+		LSN00000000000000000001 /* LessonModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000011 /* LessonModels.swift */; };
 		BF0000060000000000000016 /* CourseModeGPSHoleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000015 /* CourseModeGPSHoleView.swift */; };
 		BF0000060000000000000018 /* ScoreEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000017 /* ScoreEntryView.swift */; };
 		BF000006000000000000001A /* PastSessionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000019 /* PastSessionsView.swift */; };
@@ -181,6 +191,8 @@
 		CA0000000000000000000004 /* RoundWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000001 /* RoundWidget.swift */; };
 		CA0000000000000000000005 /* BallStrikeCameraWidget.appex in Embed Widgets */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000002 /* BallStrikeCameraWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CA0000000000000000000011 /* WidgetBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000010 /* WidgetBridge.swift */; };
+		LSN00000000000000000002 /* LessonLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000012 /* LessonLibrary.swift */; };
+		WGS00000000000000000002 /* WeeklyGoalsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = WGS00000000000000000001 /* WeeklyGoalsService.swift */; };
 		CA0000000000000000000030 /* RoundLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA000000000000000000002F /* RoundLiveActivity.swift */; };
 		CA0000000000000000000033 /* ActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000032 /* ActivityBridge.swift */; };
 		CA0000000000000000000034 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000109 /* Assets.xcassets */; };
@@ -253,10 +265,14 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		LSN00000000000000000017 /* SwingStudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwingStudioView.swift; sourceTree = "<group>"; };
+		LSN00000000000000000016 /* LessonPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonPlayerView.swift; sourceTree = "<group>"; };
+		LSN00000000000000000015 /* LessonsHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonsHomeView.swift; sourceTree = "<group>"; };
 		06EDD5EAA4C54D150A3AB0AB /* TrueCarryWatchApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TrueCarryWatchApp.swift; sourceTree = "<group>"; };
 		149AC498EAA5CC0753C5FD3C /* FeedPostFactory.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FeedPostFactory.swift; sourceTree = "<group>"; };
 		20830B7C2FD09E3A0041181B /* berkshire_valley_sim.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = berkshire_valley_sim.gpx; path = DataPipeline/berkshire_valley_sim.gpx; sourceTree = "<group>"; };
 		209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImpactDetector.swift; sourceTree = "<group>"; };
+		LSN00000000000000000014 /* SwingStudioController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwingStudioController.swift; sourceTree = "<group>"; };
 		5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BallStrikeCameraWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8458BA0A5B9B11F51B8C347F /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchCompanionModels.swift; sourceTree = "<group>"; };
@@ -293,11 +309,14 @@
 		BF0000010000000000000123 /* BallTrackingTestModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTrackingTestModels.swift; sourceTree = "<group>"; };
 		BF0000010000000000000124 /* TestFrameLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestFrameLoader.swift; sourceTree = "<group>"; };
 		BF0000010000000000000125 /* ExperimentalBallTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalBallTracker.swift; sourceTree = "<group>"; };
+		BF0000010000000000009902 /* LiveParityTestRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveParityTestRunner.swift; sourceTree = "<group>"; };
 		BF0000010000000000000126 /* BallTrackingTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTrackingTestView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000127 /* BallTrackingTesterSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallTrackingTesterSettings.swift; sourceTree = "<group>"; };
 		BF0000010000000000000128 /* ExperimentalImpactFrameDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalImpactFrameDetector.swift; sourceTree = "<group>"; };
 		BF0000010000000000000129 /* CameraCalibration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraCalibration.swift; sourceTree = "<group>"; };
 		BF000001000000000000012A /* ShotMetricsCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotMetricsCalculator.swift; sourceTree = "<group>"; };
+		LSN00000000000000000013 /* SwingAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwingAnalysis.swift; sourceTree = "<group>"; };
+		RSV000000000000000000101 /* RoundShotVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundShotVerifier.swift; sourceTree = "<group>"; };
 		BF000001000000000000012B /* ClubTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubTracker.swift; sourceTree = "<group>"; };
 		BF000001000000000000012C /* DistanceEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistanceEstimator.swift; sourceTree = "<group>"; };
 		BF000001000000000000012D /* ExperimentalMetricsModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalMetricsModels.swift; sourceTree = "<group>"; };
@@ -319,6 +338,7 @@
 		BF000001000000000000013D /* ShotResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotResultView.swift; sourceTree = "<group>"; };
 		BF000001000000000000013E /* BallFlightPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallFlightPreviewView.swift; sourceTree = "<group>"; };
 		BF000001000000000000013F /* Models */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Models; sourceTree = "<group>"; };
+		LSN00000000000000000019 /* Lessons */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Lessons; sourceTree = "<group>"; };
 		BF0000010000000000000140 /* ModelResourceLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelResourceLoader.swift; sourceTree = "<group>"; };
 		BF0000010000000000000141 /* FlightModelPredictor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlightModelPredictor.swift; sourceTree = "<group>"; };
 		BF0000010000000000000142 /* SideLaunchAngleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideLaunchAngleView.swift; sourceTree = "<group>"; };
@@ -383,11 +403,13 @@
 		BF0000060000000000000003 /* TrueCarryBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryBackground.swift; sourceTree = "<group>"; };
 		BF0000060000000000000005 /* TCCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCCards.swift; sourceTree = "<group>"; };
 		BF0000060000000000000007 /* TCBottomDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCBottomDock.swift; sourceTree = "<group>"; };
+		GCO00000000000000000001 /* GoalCelebrationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalCelebrationOverlay.swift; sourceTree = "<group>"; };
 		BF0000060000000000000009 /* TrueCarryHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryHomeView.swift; sourceTree = "<group>"; };
 		BF000006000000000000000B /* TrueCarryInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryInsightsView.swift; sourceTree = "<group>"; };
 		BF000006000000000000000D /* TrueCarryPlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryPlayView.swift; sourceTree = "<group>"; };
 		BF000006000000000000000F /* TrueCarryLockerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryLockerView.swift; sourceTree = "<group>"; };
 		BF0000060000000000000011 /* ShotContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotContext.swift; sourceTree = "<group>"; };
+		LSN00000000000000000011 /* LessonModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonModels.swift; sourceTree = "<group>"; };
 		BF0000060000000000000015 /* CourseModeGPSHoleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseModeGPSHoleView.swift; sourceTree = "<group>"; };
 		BF0000060000000000000017 /* ScoreEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreEntryView.swift; sourceTree = "<group>"; };
 		BF0000060000000000000019 /* PastSessionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastSessionsView.swift; sourceTree = "<group>"; };
@@ -428,6 +450,8 @@
 		CA0000000000000000000001 /* RoundWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundWidget.swift; sourceTree = "<group>"; };
 		CA0000000000000000000002 /* BallStrikeCameraWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BallStrikeCameraWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CA0000000000000000000010 /* WidgetBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetBridge.swift; sourceTree = "<group>"; };
+		LSN00000000000000000012 /* LessonLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonLibrary.swift; sourceTree = "<group>"; };
+		WGS00000000000000000001 /* WeeklyGoalsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyGoalsService.swift; sourceTree = "<group>"; };
 		CA0000000000000000000020 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CA000000000000000000002F /* RoundLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundLiveActivity.swift; sourceTree = "<group>"; };
 		CA0000000000000000000032 /* ActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityBridge.swift; sourceTree = "<group>"; };
@@ -485,6 +509,16 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		LSN00000000000000000018 /* Lessons */ = {
+			isa = PBXGroup;
+			children = (
+				LSN00000000000000000015 /* LessonsHomeView.swift */,
+				LSN00000000000000000016 /* LessonPlayerView.swift */,
+				LSN00000000000000000017 /* SwingStudioView.swift */,
+			);
+			path = Lessons;
+			sourceTree = "<group>";
+		};
 		0505EA7BAD5D9CA7318AF8A3 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -576,6 +610,7 @@
 			children = (
 				BF0000010000000000000106 /* CameraController.swift */,
 				209C2C2A2FA46F0F00D25D25 /* ImpactDetector.swift */,
+				LSN00000000000000000014 /* SwingStudioController.swift */,
 				AA0001000000000000000102 /* FrameDiffTrigger.swift */,
 			);
 			path = Camera;
@@ -611,6 +646,7 @@
 				BF000001000000000000011F /* ShotTrackingReviewView.swift */,
 				BF0000010000000000000121 /* ShotCompositeView.swift */,
 				BF000001000000000000013D /* ShotResultView.swift */,
+				LSN00000000000000000018 /* Lessons */,
 				BF000001000000000000013E /* BallFlightPreviewView.swift */,
 				BF0000010000000000000142 /* SideLaunchAngleView.swift */,
 				BF0000010000000000000143 /* TopDownShotGridView.swift */,
@@ -641,6 +677,7 @@
 				BF0000010000000000000103 /* PlatformImage.swift */,
 				BF000001000000000000011C /* ShotAnalysisModels.swift */,
 				BF0000060000000000000011 /* ShotContext.swift */,
+				LSN00000000000000000011 /* LessonModels.swift */,
 				BF0000070000000000000001 /* SubscriptionModels.swift */,
 				BF0000070000000000000002 /* SocialModels.swift */,
 			);
@@ -656,6 +693,7 @@
 				BF000001000000000000011B /* LaunchScreen.storyboard */,
 				BF000001000000000000013B /* SampleShots */,
 				BF000001000000000000013F /* Models */,
+				LSN00000000000000000019 /* Lessons */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -668,6 +706,8 @@
 				BF0000010000000000000902 /* GroundPlaneMetricsCalculator.swift */,
 				BF0000010000000000000129 /* CameraCalibration.swift */,
 				BF000001000000000000012A /* ShotMetricsCalculator.swift */,
+				LSN00000000000000000013 /* SwingAnalysis.swift */,
+				RSV000000000000000000101 /* RoundShotVerifier.swift */,
 				CAFE0000000000000000FC10 /* FlightArcModel.swift */,
 				BF000001000000000000012B /* ClubTracker.swift */,
 				BF0000010000000000000153 /* EnsembleBFSClubTracker.swift */,
@@ -712,6 +752,7 @@
 				BF0000010000000000000123 /* BallTrackingTestModels.swift */,
 				BF0000010000000000000124 /* TestFrameLoader.swift */,
 				BF0000010000000000000125 /* ExperimentalBallTracker.swift */,
+				BF0000010000000000009902 /* LiveParityTestRunner.swift */,
 				BF0000010000000000000126 /* BallTrackingTestView.swift */,
 				BF0000010000000000000127 /* BallTrackingTesterSettings.swift */,
 				BF0000010000000000000128 /* ExperimentalImpactFrameDetector.swift */,
@@ -793,6 +834,8 @@
 				BF0000070000000000000006 /* SupabaseDTOs.swift */,
 				149AC498EAA5CC0753C5FD3C /* FeedPostFactory.swift */,
 				CA0000000000000000000010 /* WidgetBridge.swift */,
+				LSN00000000000000000012 /* LessonLibrary.swift */,
+				WGS00000000000000000001 /* WeeklyGoalsService.swift */,
 				CA0000000000000000000032 /* ActivityBridge.swift */,
 				E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */,
 			);
@@ -880,6 +923,7 @@
 			children = (
 				BF0000060000000000000005 /* TCCards.swift */,
 				BF0000060000000000000007 /* TCBottomDock.swift */,
+				GCO00000000000000000001 /* GoalCelebrationOverlay.swift */,
 				BF000006000000000000002F /* SpinningGolfBallView.swift */,
 				CAFE000000000000000000C0 /* SessionSaveSheet.swift */,
 				CAFE0000000000000000FA10 /* ShareSheet.swift */,
@@ -1107,6 +1151,7 @@
 				BF000001000000000000000A /* LaunchScreen.storyboard in Resources */,
 				BF000001000000000000003B /* SampleShots in Resources */,
 				BF000001000000000000003F /* Models in Resources */,
+				LSN00000000000000000008 /* Lessons in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1136,6 +1181,7 @@
 			files = (
 				BF0000010000000000000001 /* BallStrikeCameraApp.swift in Sources */,
 				209C2C2B2FA46F0F00D25D25 /* ImpactDetector.swift in Sources */,
+				LSN00000000000000000004 /* SwingStudioController.swift in Sources */,
 				AA0001000000000000000001 /* LightweightBallDetector.swift in Sources */,
 				AA0001000000000000000002 /* FrameDiffTrigger.swift in Sources */,
 				BF0000010000000000000002 /* CameraPhase.swift in Sources */,
@@ -1146,6 +1192,8 @@
 				BF0000010000000000000901 /* GroundPlaneMetricsCalculator.swift in Sources */,
 				BF0000010000000000000029 /* CameraCalibration.swift in Sources */,
 				BF000001000000000000002A /* ShotMetricsCalculator.swift in Sources */,
+				LSN00000000000000000003 /* SwingAnalysis.swift in Sources */,
+				RSV000000000000000000001 /* RoundShotVerifier.swift in Sources */,
 				CAFE0000000000000000FC11 /* FlightArcModel.swift in Sources */,
 				BF000001000000000000002B /* ClubTracker.swift in Sources */,
 				BF0000010000000000000053 /* EnsembleBFSClubTracker.swift in Sources */,
@@ -1177,6 +1225,7 @@
 				BF0000010000000000000023 /* BallTrackingTestModels.swift in Sources */,
 				BF0000010000000000000024 /* TestFrameLoader.swift in Sources */,
 				BF0000010000000000000025 /* ExperimentalBallTracker.swift in Sources */,
+				BF0000010000000000009901 /* LiveParityTestRunner.swift in Sources */,
 				BF0000010000000000000026 /* BallTrackingTestView.swift in Sources */,
 				BF0000010000000000000027 /* BallTrackingTesterSettings.swift in Sources */,
 				BF0000010000000000000028 /* ExperimentalImpactFrameDetector.swift in Sources */,
@@ -1199,6 +1248,9 @@
 				BF0000010000000000000041 /* FlightModelPredictor.swift in Sources */,
 				BF000001000000000000003C /* SampleShotLoader.swift in Sources */,
 				BF000001000000000000003D /* ShotResultView.swift in Sources */,
+				LSN00000000000000000007 /* SwingStudioView.swift in Sources */,
+				LSN00000000000000000006 /* LessonPlayerView.swift in Sources */,
+				LSN00000000000000000005 /* LessonsHomeView.swift in Sources */,
 				BF000001000000000000003E /* BallFlightPreviewView.swift in Sources */,
 				BF0000010000000000000042 /* SideLaunchAngleView.swift in Sources */,
 				BF0000010000000000000043 /* TopDownShotGridView.swift in Sources */,
@@ -1251,12 +1303,14 @@
 				BF0000060000000000000004 /* TrueCarryBackground.swift in Sources */,
 				BF0000060000000000000006 /* TCCards.swift in Sources */,
 				BF0000060000000000000008 /* TCBottomDock.swift in Sources */,
+				GCO00000000000000000002 /* GoalCelebrationOverlay.swift in Sources */,
 				BF0000060000000000000030 /* SpinningGolfBallView.swift in Sources */,
 				BF000006000000000000000A /* TrueCarryHomeView.swift in Sources */,
 				BF000006000000000000000C /* TrueCarryInsightsView.swift in Sources */,
 				BF000006000000000000000E /* TrueCarryPlayView.swift in Sources */,
 				BF0000060000000000000010 /* TrueCarryLockerView.swift in Sources */,
 				BF0000060000000000000012 /* ShotContext.swift in Sources */,
+				LSN00000000000000000001 /* LessonModels.swift in Sources */,
 				BF0000060000000000000016 /* CourseModeGPSHoleView.swift in Sources */,
 				BF0000060000000000000018 /* ScoreEntryView.swift in Sources */,
 				BF000006000000000000001A /* PastSessionsView.swift in Sources */,
@@ -1319,6 +1373,8 @@
 				A29AF9D940AB9F30006F388D /* FriendsView.swift in Sources */,
 				2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */,
 				CA0000000000000000000011 /* WidgetBridge.swift in Sources */,
+				LSN00000000000000000002 /* LessonLibrary.swift in Sources */,
+				WGS00000000000000000002 /* WeeklyGoalsService.swift in Sources */,
 				CA0000000000000000000033 /* ActivityBridge.swift in Sources */,
 				150BB4359DEC31706EAC970A /* WatchCompanionModels.swift in Sources */,
 				3ED54E6FBC4125C8B7DC7BC0 /* WatchConnectivityBridge.swift in Sources */,
@@ -1434,7 +1490,7 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
 			name = Debug;
 		};

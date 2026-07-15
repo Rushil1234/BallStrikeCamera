@@ -14,6 +14,9 @@ struct BallTrackingTestSequence {
     let sourceName: String
     let sourceURL: URL?
     let lockedBallRect: CGRect?
+    // The live ImpactDetector's 2.5×-expanded ROI, when the export recorded it — used by the
+    // live-parity replay's reposition gate. Nil for older exports (derived from the lock).
+    var lockedImpactROI: CGRect? = nil
 }
 
 struct BallTrackingCandidateDebug {

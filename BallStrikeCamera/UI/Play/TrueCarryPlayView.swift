@@ -23,11 +23,12 @@ struct TrueCarryPlayView: View {
     @State private var unfinishedRound: CourseRound?
     @State private var resumeRound: CourseRound?
     @State private var didApplyDefaultMode = false
+    @State private var showLessons = false
     @StateObject private var prewarmer = NearbyCoursePrewarmer()
     @StateObject private var prewarmLocation = LocationService()
     @AppStorage("tc_default_play_mode") private var defaultPlayMode = "Range"
 
-    enum PlayMode { case range, sim, course }
+    enum PlayMode { case range, sim, course, lessons }
 
     // MARK: Derived helpers
 
@@ -47,6 +48,7 @@ struct TrueCarryPlayView: View {
         case .range:  return "Start Session"
         case .sim:    return "Start Sim Session"
         case .course: return "Start Round"
+        case .lessons: return "Open Coach"
         }
     }
 
@@ -55,6 +57,7 @@ struct TrueCarryPlayView: View {
         case .range:  return "camera.fill"
         case .sim:    return "display"
         case .course: return "magnifyingglass"
+        case .lessons: return "figure.golf"
         }
     }
 
@@ -82,6 +85,10 @@ struct TrueCarryPlayView: View {
                 RangeCameraScreen(userId: uid, backend: session.backend)
                     .ignoresSafeArea().statusBarHidden(true)
             }
+        }
+        .sheet(isPresented: $showLessons) {
+            NavigationStack { LessonsHomeView() }
+                .tcAppearance()
         }
         .sheet(isPresented: $showSim) {
             if let uid = session.currentUser?.id {
@@ -256,6 +263,17 @@ struct TrueCarryPlayView: View {
                 motif: .course,
                 isSelected: selectedMode == .course
             ) { selectMode(.course) }
+
+            PlayModeTile(
+                icon: "figure.golf",
+                title: "Coach",
+                subtitle: "Guided lessons + camera swing analysis.",
+                motif: .target,
+                isSelected: selectedMode == .lessons
+            ) {
+                selectMode(.lessons)
+                showLessons = true   // Coach opens on tap — no second Start press needed
+            }
         }
     }
 
@@ -288,12 +306,17 @@ struct TrueCarryPlayView: View {
             } else {
                 showUpgradeAlert = true
             }
+        case .lessons:
+            // Coach handles its own Pro gate on the home screen (free users see the pitch).
+            showLessons = true
         }
     }
 
     private var upgradeAlertTitle: String {
         selectedMode == .sim ? "Sim Mode" : "Course Mode"
     }
+
+    // (Coach/Lessons gate lives inside LessonsHomeView so free users still see the pitch.)
 
     private var upgradeAlertMessage: String {
         selectedMode == .sim

@@ -161,6 +161,10 @@ struct TrueCarryAppShell: View {
                 }
                 .ignoresSafeArea(.keyboard)
                 .ignoresSafeArea(edges: .bottom)
+
+                // Weekly-goal / course-unlock celebration toasts, above everything.
+                // (Transparent when idle — empty space passes touches through.)
+                GoalCelebrationOverlay()
             }
         }
         .background(TCTheme.background.ignoresSafeArea())

@@ -48,7 +48,7 @@ struct ShotTrackingReviewView: View {
             imageArea   // slider is overlaid inside
             metricsPanel
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(ShotResultView.pageBG.ignoresSafeArea())
         .tcAppearance()
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
@@ -82,7 +82,7 @@ struct ShotTrackingReviewView: View {
         HStack(spacing: 8) {
             Text("Shot Review")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(ShotResultView.ink)
                 .layoutPriority(1)
 
             Spacer(minLength: 4)
@@ -93,23 +93,23 @@ struct ShotTrackingReviewView: View {
                     Button(action: { displayMode = mode }) {
                         Text(mode.displayName)
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(displayMode == mode ? .black : .white.opacity(0.65))
+                            .foregroundColor(displayMode == mode ? .white : ShotResultView.ink.opacity(0.60))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
-                            .background(displayMode == mode ? Color.white : Color.clear)
+                            .background(displayMode == mode ? ShotResultView.ink : Color.clear)
                     }
                 }
             }
-            .background(Color.white.opacity(0.15))
+            .background(ShotResultView.ink.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
             Button(action: { showBadShotConfirm = true }) {
                 Text("Bad Shot")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.orange.opacity(0.90))
+                    .foregroundColor(.orange)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.orange.opacity(0.18))
+                    .background(Color.orange.opacity(0.16))
                     .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .disabled(saveButtonDisabled)
@@ -119,13 +119,14 @@ struct ShotTrackingReviewView: View {
                 .foregroundColor(.blue)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
-                .background(Color.blue.opacity(0.15))
+                .background(Color.blue.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .padding(.horizontal, 14)
         .padding(.top, 11)
         .padding(.bottom, 11)
-        .background(Color(white: 0.10))
+        .background(ShotResultView.panelBG)
+        .overlay(Rectangle().fill(ShotResultView.ink.opacity(0.10)).frame(height: 1), alignment: .bottom)
     }
 
     private var actionBar: some View {
@@ -485,7 +486,7 @@ struct ShotTrackingReviewView: View {
                     metricCell("Carry",      value: yards(metrics.distance.carryYards))
                     metricCell("Total",      value: yards(metrics.distance.totalYards))
                 }
-                Divider().background(Color.white.opacity(0.06))
+                Divider().background(ShotResultView.ink.opacity(0.10))
                 // Row 2 — secondary metrics
                 HStack(spacing: 0) {
                     metricCell("Club Speed",   value: mph(metrics.club.clubSpeedMph))
@@ -497,7 +498,8 @@ struct ShotTrackingReviewView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 14)
-            .background(Color(white: 0.065))
+            .background(ShotResultView.panelBG)
+            .overlay(Rectangle().fill(ShotResultView.ink.opacity(0.10)).frame(height: 1), alignment: .top)
         }
     }
 
@@ -505,12 +507,12 @@ struct ShotTrackingReviewView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.white.opacity(0.50))
+                .foregroundColor(ShotResultView.ink.opacity(0.55))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
             Text(value)
                 .font(.system(size: 22, weight: .bold, design: .monospaced))
-                .foregroundColor(.white)
+                .foregroundColor(ShotResultView.ink)
                 .lineLimit(1)
                 .minimumScaleFactor(0.60)
         }
