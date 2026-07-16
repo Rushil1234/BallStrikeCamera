@@ -53,9 +53,16 @@ struct SupabaseConfig {
             return nil
         }
 
-        print("[TrueCarry] Supabase config found — using SupabaseBackendService (\(url.host ?? "?"))")
+        // load() is called from every service that needs the config (backend factory,
+        // course catalog, live sim, …) — log the resolution once, not per caller.
+        if !didLogResolution {
+            didLogResolution = true
+            print("[TrueCarry] Supabase config found — using SupabaseBackendService (\(url.host ?? "?"))")
+        }
         return SupabaseConfig(baseURL: url, anonKey: normalizedAnonKey)
     }
+
+    nonisolated(unsafe) private static var didLogResolution = false
 
     private static func isPlaceholder(_ value: String) -> Bool {
         let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)

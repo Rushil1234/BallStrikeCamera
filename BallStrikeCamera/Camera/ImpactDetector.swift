@@ -9,6 +9,11 @@ final class ImpactDetector {
         var dropRatioThreshold: Double = 0.55
         var minimumConsecutiveImpactFrames: Int = 2
         var debugPrintEveryNFrames: Int = 60
+        /// A real locked ball fills ~12% of the impact ROI (the ROI is the ball rect padded
+        /// 2.5× — see expandedImpactROI), so a baseline far below that means the lock is on
+        /// something that isn't a ball (dim indoor blob, reflection). Triggering off such a
+        /// baseline captures 41 frames of nothing and shows a phantom shot.
+        var minimumBaselineRatio: Double = 0.045
     }
 
     private let configuration: Configuration
@@ -63,6 +68,14 @@ final class ImpactDetector {
         if current < threshold {
             consecutiveImpactFrames += 1
             if consecutiveImpactFrames >= configuration.minimumConsecutiveImpactFrames {
+                guard baseline >= configuration.minimumBaselineRatio else {
+                    if consecutiveImpactFrames == configuration.minimumConsecutiveImpactFrames
+                        || consecutiveImpactFrames % 240 == 0 {
+                        print(String(format: "[IMP] trigger suppressed — baseline %.3f < %.3f floor (lock isn't a real ball)",
+                                     baseline, configuration.minimumBaselineRatio))
+                    }
+                    return false
+                }
                 // Print on first confirmation and then sparsely — when the caller suppresses
                 // the trigger (lock-age gate) this fires every frame and was flooding the
                 // console with 60+ identical lines per swing.

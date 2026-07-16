@@ -1220,7 +1220,10 @@ struct CoachReadDetailView: View {
                         .foregroundStyle(TCTheme.textMuted.opacity(0.6))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
                     ForEach(axes, id: \.offset) { i, shot in
-                        BarMark(x: .value("Shot", i), y: .value("Spin Axis", shot.metrics.spinAxisDegrees))
+                        // Integer x has no unit, so Charts logs a "falling back to fixed
+                        // dimension" complaint on every render without an explicit width.
+                        BarMark(x: .value("Shot", i), y: .value("Spin Axis", shot.metrics.spinAxisDegrees),
+                                width: .fixed(10))
                             .foregroundStyle(shot.metrics.spinAxisDegrees >= 0
                                              ? Color(red: 0.9, green: 0.45, blue: 0.25)
                                              : TCTheme.cyan)
