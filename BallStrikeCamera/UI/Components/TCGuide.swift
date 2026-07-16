@@ -7,7 +7,7 @@ import SwiftUI
 // All copy lives in GuideCatalog so it can be edited in one place.
 
 enum GuideScreen: String, CaseIterable {
-    case home, insights, play, history, locker, range, coach
+    case home, insights, play, history, locker, range, coach, swingStudio
 }
 
 struct GuideStep {
@@ -81,6 +81,18 @@ enum GuideCatalog {
                       text: "If the phone runs hot a yellow banner appears — heat causes dropped frames, which hurt speed accuracy. With no ball in view the screen also dims itself after ~30 seconds to stay cool; detection keeps running, so setting a ball (or tapping) wakes it."),
             GuideStep(icon: "chart.bar.doc.horizontal", title: "Results",
                       text: "After each shot you get ball speed, launch, carry, total, and spin. The side panel keeps the last shot's composite image and the bottom bar keeps its numbers."),
+        ],
+        .swingStudio: [
+            GuideStep(icon: "iphone", title: "Set the phone up",
+                      text: "Prop your phone upright — a tripod, a water bottle, anything stable. Then step back 8–10 feet until your WHOLE body is in the frame. The screen faces you so you can see yourself and every instruction."),
+            GuideStep(icon: "figure.golf", title: "No club needed",
+                      text: "The camera reads your BODY, not the club. Swing with a club or without one — practice swings in the living room count. Recording starts and stops by itself: get set, hold still for a second, then swing."),
+            GuideStep(icon: "camera.metering.center.weighted", title: "Two views, auto-detected",
+                      text: "Face the camera for the FACE-ON view (head movement, hip slide, balance). Turn so the camera looks down your target line for DOWN-THE-LINE (swing plane, takeaway path). The app detects which one you're using — the label at the top shows it."),
+            GuideStep(icon: "play.rectangle.fill", title: "Instant replay",
+                      text: "Right after each swing you get the replay with your skeleton drawn on it, phase-by-phase stills (address, top, impact, finish), your swing score, and the ONE thing to work on next."),
+            GuideStep(icon: "clock.arrow.circlepath", title: "Everything is saved",
+                      text: "Every analyzed swing lands in your History with all its numbers — tempo, hip slide, shoulder turn, balance — so you can watch them improve week over week."),
         ],
         .coach: [
             GuideStep(icon: "graduationcap.fill", title: "Lessons",

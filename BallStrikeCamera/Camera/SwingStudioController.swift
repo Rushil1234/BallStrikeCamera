@@ -38,6 +38,10 @@ final class SwingStudioController: NSObject, ObservableObject {
     /// Ordered live skeleton (SwingSkeleton.jointOrder) so the mirror draws bones, not dots.
     @Published var liveSkeleton: StoredPose? = nil
     @Published var captureFPS: Double = 60
+    /// Auto-detected camera view from live pose geometry: face-on = shoulders spread wide in
+    /// x; down-the-line/behind = shoulders overlap. Smoothed so it can't flicker mid-swing.
+    @Published var detectedView: SwingViewAngle = .faceOn
+    private var viewVotes: [SwingViewAngle] = []
 
     let session = AVCaptureSession()
     var source: SwingCameraSource = .backGuided
@@ -183,6 +187,28 @@ final class SwingStudioController: NSObject, ObservableObject {
             : []
         liveSkeleton = source == .frontMirror ? SwingSkeleton.stored(from: frame, at: 0) : nil
 
+        // View auto-detection: face-on shows the shoulders spread wide relative to torso
+        // height; side/behind (down-the-line) collapses that spread. The nose disappearing
+        // while the body stays visible is the behind-view giveaway. Majority vote over the
+        // last ~2s of pose samples so a mid-backswing shoulder turn can't flip the label.
+        if framed,
+           let ls = frame.joint(.leftShoulder), let rs = frame.joint(.rightShoulder),
+           let hips = frame.mid(.leftHip, .rightHip) {
+            let spread = abs(ls.x - rs.x)
+            let torso = abs(((ls.y + rs.y) / 2) - hips.y)
+            if torso > 0.05 {
+                let noseGone = frame.joint(.nose, minConfidence: 0.3) == nil
+                let vote: SwingViewAngle = (spread / torso < 0.45 || noseGone) ? .downTheLine : .faceOn
+                viewVotes.append(vote)
+                if viewVotes.count > 20 { viewVotes.removeFirst() }
+                if viewVotes.count >= 8 {
+                    let dtl = viewVotes.filter { $0 == .downTheLine }.count
+                    let winner: SwingViewAngle = dtl * 2 > viewVotes.count ? .downTheLine : .faceOn
+                    if winner != detectedView { detectedView = winner }
+                }
+            }
+        }
+
         // Direction the player must move, from what the camera can and can't see.
         let visibleCount = frame.joints.values.filter { $0.confidence > 0.25 }.count
         if framed {
@@ -202,9 +228,10 @@ final class SwingStudioController: NSObject, ObservableObject {
             ?? frame.joint(.leftWrist) ?? frame.joint(.rightWrist)
         defer { lastWrist = wrist; lastPoseTime = time }
 
+        // Auto-record runs for BOTH cameras now — front-camera coach mode is fully
+        // interactive (see yourself + instructions), so it needs the same zero-tap flow.
         switch state {
         case .framing:
-            guard source == .backGuided else { return }
             if framed {
                 state = .waitingForAddress
                 stillSince = nil
@@ -234,7 +261,6 @@ final class SwingStudioController: NSObject, ObservableObject {
                 }
             }
         case .recording:
-            guard source == .backGuided else { return }
             // Watch for the swing (a motion burst), then stop after post-swing stillness
             // or a hard 10s cap.
             if let wrist, let prev = lastWrist, lastPoseTime > 0 {
@@ -271,7 +297,7 @@ final class SwingStudioController: NSObject, ObservableObject {
     private func announce(_ text: String) {
         guard text != lastAnnouncement else { return }
         lastAnnouncement = text
-        guard source == .backGuided else { return }
+        // Voice guidance for both cameras — the player stands several feet away either way.
         let utterance = AVSpeechUtterance(string: text)
         utterance.rate = 0.5
         speech.speak(utterance)

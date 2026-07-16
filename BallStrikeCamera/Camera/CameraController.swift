@@ -1265,6 +1265,55 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             return .discard(reason: "no ball flight detected")
         }
 
+        // Pre-impact anchor: a real capture ALWAYS has the ball sitting at its locked
+        // position right up to impact (lock preceded the trigger). If the tracker found
+        // things pre-impact but they're NOT at the lock box, the trigger fired on scenery
+        // (computer screens, reflections) and nothing downstream can be trusted. Only
+        // positive evidence discards — an empty pre-track (heavy glare) passes through.
+        if let lockedRect = lockedBallRect {
+            let anchorBox = lockedRect.insetBy(dx: -lockedRect.width / 2, dy: -lockedRect.height / 2)  // 2× box
+            let preObs: [CGPoint] = finalFrames
+                .filter { $0.frameIndex >= effectiveImpactIndex - 8 && $0.frameIndex < effectiveImpactIndex }
+                .compactMap { f in
+                    guard let o = f.ballObservation, let x = o.centerX, let y = o.centerY else { return nil }
+                    return CGPoint(x: x, y: y)
+                }
+            if preObs.count >= 2 {
+                let anchored = preObs.filter { anchorBox.contains($0) }.count
+                if Double(anchored) / Double(preObs.count) < 0.4 {
+                    print(String(format: "[ShotValidation] pre-impact track not at the locked ball (%d/%d anchored) — trigger fired on scenery",
+                                 anchored, preObs.count))
+                    return .discard(reason: "no ball at address — not a shot")
+                }
+            }
+
+            // Launch coherence: a struck ball moves AWAY from the lock monotonically in its
+            // first tracked frames. Scenery flicker produces points that jump around instead.
+            // Only the first 6 points are judged so a net rebound later can't fail a real shot.
+            let launchPts: [CGPoint] = finalFrames
+                .filter { $0.frameIndex > effectiveImpactIndex }
+                .compactMap { f in
+                    guard let o = f.ballObservation, let x = o.centerX, let y = o.centerY else { return nil }
+                    return CGPoint(x: x, y: y)
+                }
+                .prefix(6).map { $0 }
+            if launchPts.count >= 3 {
+                let lockCenter = CGPoint(x: lockedRect.midX, y: lockedRect.midY)
+                let tolerance = max(lockedRect.width / 2, 0.008)
+                var regressions = 0
+                var lastDist: CGFloat = 0
+                for p in launchPts {
+                    let d = hypot(p.x - lockCenter.x, p.y - lockCenter.y)
+                    if d < lastDist - tolerance { regressions += 1 }
+                    lastDist = max(lastDist, d)
+                }
+                if regressions >= 2 {
+                    print("[ShotValidation] launch track incoherent (\(regressions) regressions toward lock in first \(launchPts.count) pts) — scenery, not a shot")
+                    return .discard(reason: "no coherent ball flight — not a shot")
+                }
+            }
+        }
+
         // Reposition check: if the last tracked post-impact position is still inside the
         // impact ROI (the area right around where the ball was locked), nothing actually
         // launched — the user moved the ball within the circle. Skip metrics entirely and

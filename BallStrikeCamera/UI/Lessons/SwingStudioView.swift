@@ -15,8 +15,16 @@ struct SwingStudioView: View {
 
     @State private var takes: [SwingRecording] = []
     @State private var analyzing = 0
-    @State private var mirrorMode = false
-    @State private var viewAngle: SwingViewAngle = .faceOn
+    // Front camera is the default: coach mode is interactive — the player sees themself,
+    // the live skeleton, and the instructions all at once. Back camera stays one tap away.
+    @State private var mirrorMode = true
+    /// nil = auto (follow the controller's pose-based detection); set = manual override.
+    @State private var manualView: SwingViewAngle? = nil
+    /// The just-analyzed swing — presented automatically so every swing is immediately
+    /// followed by its replay + suggestions.
+    @State private var reviewSwing: SwingRecording? = nil
+
+    private var viewAngle: SwingViewAngle { manualView ?? studio.detectedView }
 
     var body: some View {
         ZStack {
@@ -56,6 +64,26 @@ struct SwingStudioView: View {
             studio.stop()
             OrientationManager.shared.unlockAllButUpsideDown()
         }
+        // Post-swing replay + suggestions, automatically. Dismissing returns to the studio
+        // ready for the next swing (the controller re-arms itself after each clip).
+        .fullScreenCover(item: $reviewSwing) { swing in
+            NavigationStack {
+                SwingReplayView(swing: swing)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                reviewSwing = nil
+                            } label: {
+                                Text("Next Swing")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(TCTheme.sage)
+                            }
+                        }
+                    }
+            }
+            .tcAppearance()
+        }
+        .tcGuide(.swingStudio, showButton: false)
     }
 
     private func startStudio() {
@@ -77,17 +105,23 @@ struct SwingStudioView: View {
                     .background(Circle().fill(Color.black.opacity(0.55)))
             }
             Spacer()
+            // Auto → Face-On → Down-the-Line → Auto. Auto follows the live pose detection,
+            // so most players never touch this.
             Button {
-                viewAngle = viewAngle == .faceOn ? .downTheLine : .faceOn
+                switch manualView {
+                case nil:           manualView = .faceOn
+                case .faceOn:       manualView = .downTheLine
+                case .downTheLine:  manualView = nil
+                }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 11, weight: .bold))
-                    Text("Studio · \(viewAngle.displayName)")
-                        .font(.system(size: 14, weight: .bold))
+                    Image(systemName: manualView == nil ? "wand.and.stars" : "arrow.triangle.2.circlepath")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(manualView == nil ? "Auto · \(viewAngle.displayName)" : viewAngle.displayName)
+                        .font(.system(size: 16, weight: .bold))
                 }
                 .foregroundColor(.white)
-                .padding(.horizontal, 14).padding(.vertical, 8)
+                .padding(.horizontal, 16).padding(.vertical, 10)
                 .background(Capsule().fill(Color.black.opacity(0.55)))
             }
             Spacer()
@@ -102,33 +136,47 @@ struct SwingStudioView: View {
                     .frame(width: 40, height: 40)
                     .background(Circle().fill(Color.black.opacity(0.55)))
             }
+
+            Button {
+                NotificationCenter.default.post(name: .tcShowGuide, object: GuideScreen.swingStudio.rawValue)
+            } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.black.opacity(0.55)))
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
     }
 
+    // Big banner, not a pill — the player reads this from several feet away.
     private var statusPill: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Circle()
                 .fill(studio.state == .recording ? Color.red : (studio.bodyInFrame ? TCTheme.sage : TCTheme.gold))
-                .frame(width: 9, height: 9)
+                .frame(width: 14, height: 14)
             Text(statusText)
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
+                .multilineTextAlignment(.leading)
+                .minimumScaleFactor(0.7)
         }
-        .padding(.horizontal, 16).padding(.vertical, 9)
-        .background(Capsule().fill(Color.black.opacity(0.6)))
-        .padding(.bottom, 4)
+        .padding(.horizontal, 22).padding(.vertical, 14)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.black.opacity(0.65)))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
     }
 
     private var statusText: String {
-        if analyzing > 0 { return "Analyzing swing…" }
+        if analyzing > 0 { return "Analyzing your swing…" }
         switch studio.state {
         case .idle, .starting:     return "Starting camera…"
-        case .framing:             return "Step back — whole body in frame"
-        case .waitingForAddress:   return "Take your address and hold still"
-        case .recording:           return "Recording — swing away"
-        case .saving:              return "Saving clip…"
+        case .framing:             return "Step back until your WHOLE body is in frame"
+        case .waitingForAddress:   return "Get set up and hold still — recording starts by itself"
+        case .recording:           return "Recording — swing when ready (club optional)"
+        case .saving:              return "Saving…"
         case .failed(let msg):     return msg
         }
     }
@@ -226,6 +274,11 @@ struct SwingStudioView: View {
                 library.updateSwing(analyzed)
                 if let i = takes.firstIndex(where: { $0.id == analyzed.id }) { takes[i] = analyzed }
                 analyzing -= 1
+                // Every swing is immediately followed by its replay + suggestions — the
+                // feedback loop IS the product; nobody should have to dig for it.
+                if analyzed.analyzed {
+                    reviewSwing = analyzed
+                }
             }
         }
     }
