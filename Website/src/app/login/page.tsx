@@ -88,7 +88,7 @@ function LoginForm() {
           options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/account` },
         });
         if (error) throw error;
-        setSuccess("Account created — check your email to confirm, then sign in.");
+        setSuccess("Account created, check your email to confirm, then sign in.");
         setConfirmationEmail(email);
         setMode("signin");
       }

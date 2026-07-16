@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-8';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-8';
-import { RANGE, holeLength } from './holes.js?v=gspro-8';
-import { buildCourse } from './terrain.js?v=gspro-8';
-import { makeSky } from './sky.js?v=gspro-8';
-import { loadAssets } from './assets.js?v=gspro-8';
-import { HUD, toParStr } from './ui.js?v=gspro-8';
-import { SFX } from './audio.js?v=gspro-8';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-8';
-import { fetchSimCourses } from './courses.js?v=gspro-8';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-8';
-import { layoutIslandCourse } from './world.js?v=gspro-8';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-20';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-20';
+import { RANGE, holeLength } from './holes.js?v=gspro-20';
+import { buildCourse } from './terrain.js?v=gspro-20';
+import { makeSky } from './sky.js?v=gspro-20';
+import { loadAssets } from './assets.js?v=gspro-20';
+import { HUD, toParStr } from './ui.js?v=gspro-20';
+import { SFX } from './audio.js?v=gspro-20';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-20';
+import { fetchSimCourses } from './courses.js?v=gspro-20';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-20';
+import { layoutIslandCourse } from './world.js?v=gspro-20';
 
 // ---------- boot ----------
 
@@ -27,6 +27,9 @@ const launchParams = new URLSearchParams(location.search);
 const launchMode = launchParams.get('mode');
 const launchCourseId = launchParams.get('course') || launchParams.get('courseId') || 'pine-hollow';
 let urlLaunchHandled = false;
+// Live sim: only accept phone shots once a round/range has actually been started
+// by the player. Prevents a paired phone from firing into an idle/unchosen sim.
+let liveArmed = false;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 // Cap DPR: the post-fx chain at retina 2x quadruples fragment cost.
@@ -51,17 +54,16 @@ try {
 
   const size = renderer.getDrawingBufferSize(new THREE.Vector2());
   const target = new THREE.WebGLRenderTarget(size.x, size.y, {
-    samples: 4,
+    // 2x MSAA is plenty with the DPR cap; 4x was doubling the resolve cost for
+    // little visible gain and was a real hit on the shot-flight camera pans.
+    samples: 2,
     type: THREE.HalfFloatType,
   });
   composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
-  const sao = new SAOPass(scene, camera);
-  sao.params.saoIntensity = 0.012;
-  sao.params.saoScale = 64;
-  sao.params.saoKernelRadius = 18;
-  sao.params.saoBlur = true;
-  composer.addPass(sao);
+  // NOTE: dropped the SAO pass. At saoIntensity 0.012 it was all but invisible,
+  // yet a full-screen ambient-occlusion pass every frame was one of the biggest
+  // GPU costs — removing it smooths out the whole sim, especially during flight.
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.16, 0.35, 0.97);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
@@ -132,7 +134,11 @@ for (const c of CLUBS) {
 const ball = new THREE.Mesh(
   new THREE.SphereGeometry(0.034, 24, 18),
   new THREE.MeshStandardMaterial({
-    color: 0xfdfdf6, roughness: 0.32, metalness: 0.0, envMapIntensity: 0.9,
+    // Slightly slicker surface + a lifted env response gives the ball a soft,
+    // crisp specular highlight (the little bright dot of a real golf ball)
+    // without going metallic. Faint warm emissive keeps it reading at distance.
+    color: 0xfdfdf6, roughness: 0.26, metalness: 0.0, envMapIntensity: 1.25,
+    emissive: 0xfff2d6, emissiveIntensity: 0.05,
   }),
 );
 ball.castShadow = true;
@@ -204,6 +210,162 @@ const blob = new THREE.Mesh(
 );
 blob.rotation.x = -Math.PI / 2;
 scene.add(blob);
+
+// ---------- impact / landing particle FX ----------
+// One bounded, reusable Points cloud drives every burst: turf spray on the
+// strike, a dust / sand puff on landing, a splash on water. A fixed pool + a
+// single draw call keeps it cheap — dead particles simply carry zero alpha.
+const FX_MAX = 96;
+const fxPos = new Float32Array(FX_MAX * 3);
+const fxCol = new Float32Array(FX_MAX * 3);
+const fxVel = new Float32Array(FX_MAX * 3);
+const fxSize = new Float32Array(FX_MAX);
+const fxAlpha = new Float32Array(FX_MAX);
+const fxLife = new Float32Array(FX_MAX);   // remaining life (s); 0 = dead
+const fxTtl = new Float32Array(FX_MAX);    // total life (s), for fade
+const fxDrag = new Float32Array(FX_MAX);   // per-particle air drag
+let fxHead = 0;
+const fxTex = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 48;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(24, 24, 0, 24, 24, 24);
+  g.addColorStop(0.0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.7)');
+  g.addColorStop(1.0, 'rgba(255,255,255,0)');
+  c.fillStyle = g;
+  c.fillRect(0, 0, 48, 48);
+  return new THREE.CanvasTexture(cv);
+})();
+const fxGeo = new THREE.BufferGeometry();
+fxGeo.setAttribute('position', new THREE.BufferAttribute(fxPos, 3));
+fxGeo.setAttribute('aColor', new THREE.BufferAttribute(fxCol, 3));
+fxGeo.setAttribute('aSize', new THREE.BufferAttribute(fxSize, 1));
+fxGeo.setAttribute('aAlpha', new THREE.BufferAttribute(fxAlpha, 1));
+const fxMat = new THREE.ShaderMaterial({
+  uniforms: { map: { value: fxTex } },
+  transparent: true, depthWrite: false, depthTest: true,
+  vertexShader: `
+    attribute vec3 aColor; attribute float aSize; attribute float aAlpha;
+    varying vec3 vColor; varying float vAlpha;
+    void main() {
+      vColor = aColor; vAlpha = aAlpha;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_PointSize = aSize * (440.0 / max(-mv.z, 1.0));
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform sampler2D map; varying vec3 vColor; varying float vAlpha;
+    void main() {
+      float a = texture2D(map, gl_PointCoord).a * vAlpha;
+      if (a < 0.01) discard;
+      gl_FragColor = vec4(vColor, a);
+    }`,
+});
+const fxPoints = new THREE.Points(fxGeo, fxMat);
+fxPoints.frustumCulled = false;
+fxPoints.renderOrder = 4;
+scene.add(fxPoints);
+
+// Impact flash: a single additive sprite that pops + fades right at the strike,
+// so the ball leaves with a satisfying spark that reads through the bloom pass.
+const flashTex = (() => {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0.0, 'rgba(255,251,232,1)');
+  g.addColorStop(0.32, 'rgba(255,228,158,0.5)');
+  g.addColorStop(1.0, 'rgba(255,208,120,0)');
+  c.fillStyle = g;
+  c.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(cv);
+})();
+const flash = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: flashTex, transparent: true, depthWrite: false, depthTest: false,
+  blending: THREE.AdditiveBlending, opacity: 0,
+}));
+flash.renderOrder = 6;
+flash.visible = false;
+scene.add(flash);
+let flashT = 0, flashTtl = 0, flashScale = 1;
+function fireFlash(x, y, z, size) {
+  flash.position.set(x, y, z);
+  flashScale = size;
+  flashTtl = flashT = 0.16;
+  flash.visible = true;
+}
+
+// per-surface particle palettes (a little colour variety per burst reads richer)
+// Each palette mixes dark soil, mid tones and a brighter fleck so the burst
+// reads with a little contrast against grass instead of a flat green smudge.
+const _fxPal = {
+  turf: [[0.26, 0.36, 0.12], [0.44, 0.35, 0.18], [0.58, 0.62, 0.30], [0.72, 0.70, 0.45]],
+  dust: [[0.55, 0.60, 0.38], [0.46, 0.51, 0.28], [0.74, 0.76, 0.56], [0.84, 0.84, 0.66]],
+  sand: [[0.85, 0.77, 0.54], [0.74, 0.64, 0.42], [0.94, 0.88, 0.70], [0.98, 0.94, 0.80]],
+  splash: [[0.70, 0.81, 0.90], [0.88, 0.94, 1.00], [0.58, 0.73, 0.86], [0.95, 0.98, 1.00]],
+};
+function fxBurst(x, y, z, kind, power) {
+  const pal = _fxPal[kind] || _fxPal.turf;
+  const p = Math.max(0.2, Math.min(1.4, power || 0.7));
+  const n = Math.round((kind === 'splash' ? 20 : 12) + p * 13);
+  const up = kind === 'splash' ? 5.8 : (kind === 'sand' ? 3.0 : 3.7);
+  const spread = kind === 'turf' ? 2.5 : 2.0;
+  for (let s = 0; s < n; s++) {
+    const i = fxHead; fxHead = (fxHead + 1) % FX_MAX;
+    const col = pal[s % pal.length];
+    fxPos[i * 3] = x + (Math.random() - 0.5) * 0.05;
+    fxPos[i * 3 + 1] = y + 0.02 + Math.random() * 0.04;
+    fxPos[i * 3 + 2] = z + (Math.random() - 0.5) * 0.05;
+    const ang = Math.random() * Math.PI * 2;
+    const rad = Math.random();
+    fxVel[i * 3] = Math.cos(ang) * rad * spread * p;
+    fxVel[i * 3 + 1] = (0.4 + Math.random()) * up * (0.5 + 0.5 * p);
+    fxVel[i * 3 + 2] = Math.sin(ang) * rad * spread * p;
+    fxCol[i * 3] = col[0]; fxCol[i * 3 + 1] = col[1]; fxCol[i * 3 + 2] = col[2];
+    fxSize[i] = (kind === 'splash' ? 0.11 : 0.07) + Math.random() * 0.06;
+    fxAlpha[i] = 0.92;
+    fxTtl[i] = fxLife[i] = (kind === 'splash' ? 0.72 : 0.48) + Math.random() * 0.25;
+    fxDrag[i] = kind === 'splash' ? 1.4 : 2.7;
+  }
+  fxGeo.attributes.aColor.needsUpdate = true;
+}
+let _fxWasActive = false;
+function updateFX(dt) {
+  // impact flash — quick pop outward, then a squared fade so it snaps off clean
+  if (flash.visible) {
+    flashT -= dt;
+    if (flashT <= 0) flash.visible = false;
+    else {
+      const k = flashT / flashTtl;                 // 1 -> 0
+      const sc = flashScale * (1.0 + (1 - k) * 1.5);
+      flash.scale.set(sc, sc, 1);
+      flash.material.opacity = k * k * 0.95;
+    }
+  }
+  // particle pool
+  let any = false;
+  for (let i = 0; i < FX_MAX; i++) {
+    if (fxLife[i] <= 0) continue;
+    fxLife[i] -= dt;
+    if (fxLife[i] <= 0) { fxAlpha[i] = 0; fxSize[i] = 0; any = true; continue; }
+    any = true;
+    const dr = Math.max(0, 1 - fxDrag[i] * dt);
+    fxVel[i * 3] *= dr;
+    fxVel[i * 3 + 2] *= dr;
+    fxVel[i * 3 + 1] = fxVel[i * 3 + 1] * dr - 9.0 * dt;
+    fxPos[i * 3] += fxVel[i * 3] * dt;
+    fxPos[i * 3 + 1] += fxVel[i * 3 + 1] * dt;
+    fxPos[i * 3 + 2] += fxVel[i * 3 + 2] * dt;
+    fxAlpha[i] = (fxLife[i] / fxTtl[i]) * 0.92;
+  }
+  if (any || _fxWasActive) {
+    fxGeo.attributes.position.needsUpdate = true;
+    fxGeo.attributes.aAlpha.needsUpdate = true;
+    fxGeo.attributes.aSize.needsUpdate = true;
+  }
+  _fxWasActive = any;
+}
 
 // ---------- multi-player ghost balls ----------
 // Other players' resting ball positions, rendered simultaneously with the active player's
@@ -303,6 +465,7 @@ tracer.frustumCulled = false;
 tracer.renderOrder = 5;
 scene.add(tracer);
 let tracerCount = 0;
+let tracerAlpha = 1;   // 1 in flight; decays to a faint memory after the ball rests
 
 const _tv = {
   tan: new THREE.Vector3(), view: new THREE.Vector3(),
@@ -330,21 +493,27 @@ function tracerRepaint() {
       if (_tv.right.lengthSq() < 1e-6) _tv.right.set(1, 0, 0);
     }
     _tv.right.normalize();
-    // Screen-proportional width (like a TV tracer): slim tail, comet head.
-    // Thin pro-tracer: distance keeps it visible from tower/aerial cams but
-    // the cap stops it becoming a white road when viewed along the flight
-    // line from the chase camera.
-    const w = Math.min(0.85, Math.max(0.035, dist * (0.0012 + 0.0028 * t * t))) * tracerHf[i];
-    const gk = 0.22 + 0.78 * t * t;   // dim gold tail -> near-white head
+    // Screen-proportional width (like a TV tracer): a fine tail tapering up to a
+    // bright comet head at the ball. Distance keeps it visible from tower /
+    // aerial cams; the cap stops it becoming a white road when viewed straight
+    // down the flight line from the chase camera.
+    const tt = t * t;
+    const w = Math.min(0.9, Math.max(0.02, dist * (0.0009 + 0.0032 * tt))) * tracerHf[i];
+    // Warm-amber dim tail easing into a hot warm-white head. tracerAlpha fades
+    // the whole ribbon down to a faint memory once the ball comes to rest.
+    const gk = (0.12 + 0.88 * tt) * tracerAlpha;
+    const cr = 0.55 * gk + 0.45 * tt * tracerAlpha;
+    const cg = 0.40 * gk + 0.44 * tt * tracerAlpha;
+    const cb = 0.14 * gk + 0.30 * tt * tracerAlpha;
     for (let sdx = 0; sdx < 2; sdx++) {
       const v = i * 2 + sdx;
       const sign = sdx === 0 ? 1 : -1;
       tracerPos[v * 3] = _tv.pt.x + _tv.right.x * w * sign;
       tracerPos[v * 3 + 1] = _tv.pt.y + _tv.right.y * w * sign;
       tracerPos[v * 3 + 2] = _tv.pt.z + _tv.right.z * w * sign;
-      tracerCol[v * 3] = 0.93 * gk + 0.07;
-      tracerCol[v * 3 + 1] = 0.85 * gk + 0.06;
-      tracerCol[v * 3 + 2] = 0.62 * gk + 0.05;
+      tracerCol[v * 3] = cr;
+      tracerCol[v * 3 + 1] = cg;
+      tracerCol[v * 3 + 2] = cb;
     }
   }
   tracerGeo.setDrawRange(0, Math.max(0, (tracerCount - 1) * 6));
@@ -383,12 +552,12 @@ scene.add(ring);
 
 // ---------- atmosphere presets (per-course, G to cycle) ----------
 const ATMOSPHERES = {
-  sunny:    { exposure: 1.0,  fog: [0xd2dee8, 430, 2600], sun: [0xfff1d8, 2.0],  hemi: 0.62, bg: 1.0,  env: 0.55,
-    sky: { zenith: 0x2461a8, horizon: 0x9cc4e8, sun: 0xfff4dc, cloudLit: 0xffffff, cloudDark: 0xc6d2de, cover: 0.4, sharp: 0.74, haze: 0xc4d8ea } },
+  sunny:    { exposure: 1.05, fog: [0xccdae8, 360, 2450], sun: [0xffeccb, 2.15], hemi: 0.72, bg: 1.0,  env: 0.6,
+    sky: { zenith: 0x1f5aa6, horizon: 0x9cc4e8, sun: 0xfff4dc, cloudLit: 0xffffff, cloudDark: 0xaebfd0, cover: 0.4, sharp: 0.74, haze: 0xc4d8ea } },
   overcast: { exposure: 0.9,  fog: [0xb9c2c9, 290, 1800], sun: [0xdfe4e8, 1.1],  hemi: 1.0,  bg: 0.62, env: 0.3,
     sky: { zenith: 0x8b98a4, horizon: 0xb8c1c9, sun: 0xdfe6ea, cloudLit: 0xc8cfd6, cloudDark: 0x8792a0, cover: 0.86, sharp: 0.34, haze: 0xbcc4cc } },
   golden:   { exposure: 1.06, fog: [0xe6d5ba, 380, 2300], sun: [0xffd9a0, 1.75], hemi: 0.5,  bg: 0.92, env: 0.5,
-    sky: { zenith: 0x355a92, horizon: 0xf0c98e, sun: 0xffe1a8, cloudLit: 0xfff0d2, cloudDark: 0xc0a084, cover: 0.48, sharp: 0.66, haze: 0xefce9a } },
+    sky: { zenith: 0x2f5390, horizon: 0xf0c98e, sun: 0xffe1a8, cloudLit: 0xfff0d2, cloudDark: 0xb89577, cover: 0.48, sharp: 0.66, haze: 0xefce9a } },
 };
 const _skyVariants = { sunny: null };
 function skyVariant(name) {
@@ -494,7 +663,18 @@ const game = {
 let rangeMarkers = null;
 let lastRangeShot = null;
 let rangeStats = { shots: 0, totalCarry: 0, bestCarry: 0, recent: [] };
-if (launchParams.has('debug')) window.__tc = { scene, game: () => game };
+if (launchParams.has('debug')) window.__tc = {
+  scene, game: () => game, CLUBS,
+  // Debug: drop the ball on the current green a few metres from the pin and
+  // enter the putting address state (auto-putter + green cam + heatmap).
+  toGreen(off = 6) {
+    const pin = game.course.pinPos;
+    game.ballPos = { x: pin.x + off, y: game.course.heightAt(pin.x + off, pin.z + off) + 0.02, z: pin.z + off };
+    game.lie = SURF.GREEN;
+    game.strokes = 2;
+    setupShot();
+  },
+};
 const holePickerCard = document.getElementById('hole-picker-card');
 const holePicker = document.getElementById('hole-picker');
 const holeGrid = document.getElementById('hole-grid');
@@ -591,12 +771,14 @@ function startCourseRound(courseId = activeCourse.courseId, holeIndex = 0) {
   hud.titleHide();
   const idx = Math.max(0, Math.min(Number(holeIndex) || 0, courseHoles.length - 1));
   startHole(idx);
+  liveArmed = true;
   notifyParent('SIM_LAUNCHED', { mode: 'course', courseId: activeCourse.courseId, courseName: activeCourse.courseName });
 }
 
 function startPracticeRange() {
   hud.titleHide();
   startRange();
+  liveArmed = true;
   notifyParent('SIM_LAUNCHED', { mode: 'range', courseId: 'range', courseName: 'Practice Range' });
 }
 
@@ -1068,10 +1250,19 @@ function fire(accuracyRaw) {
 
   game.shotStart = { ...game.ballPos };
   tracerCount = 0;
+  tracerAlpha = 1;
   tracerGeo.setDrawRange(0, 0);
   game.state = 'FLIGHT';
   setGuides(false);
   SFX.strike(power, !!c.putter, clubKind(c), game.lie === SURF.SAND ? 'sand' : 'fairway');
+
+  // Impact FX: a quick spark + a spray of turf / sand kicked up off the strike,
+  // scaled by power. Skipped for putts (no divot on the green).
+  if (!c.putter) {
+    const bp = game.ballPos;
+    fireFlash(bp.x, bp.y + 0.03, bp.z, 0.30 + power * 0.34);
+    fxBurst(bp.x, bp.y, bp.z, game.lie === SURF.SAND ? 'sand' : 'turf', power);
+  }
 }
 
 function clubKind(c) {
@@ -1224,41 +1415,6 @@ function resolveShot() {
     game.lie = game.course.surfaceAt(game.ballPos.x, game.ballPos.z);
     hud.toast('<span class="t-gold">OUT OF BOUNDS</span><span class="t-sub">+1 PENALTY · REPLAY FROM ORIGINAL SPOT</span>', 3000);
     setupShot();
-    return;
-  }
-
-  // Gimme: anything at rest inside 3 feet of the cup is conceded — the hole
-  // closes at strokes + 1 (the pickup putt). An actually-holed shot never
-  // reaches here (sim.state === 'holed' returned above), so real makes score
-  // exactly as played.
-  if (!game.isRange && distToPin() <= 0.9144) {
-    game.strokes += 1;
-    const def = courseHoles[game.holeIdx];
-    const active = game.players[game.activePlayerIdx];
-    if (active) {
-      active.scores[game.holeIdx] = game.strokes;
-      active.holedOut = true;
-      active.ballPos = { ...game.ballPos };
-      active.strokes = game.strokes;
-    } else {
-      game.scores[game.holeIdx] = game.strokes;
-    }
-    SFX.holed();
-    const stillWaiting = game.players.length > 1 && game.players.some(p => !p || !p.holedOut);
-    if (stillWaiting) {
-      hud.toast(
-        `<span class="t-gold">GIMME — THAT'S GOOD</span>` +
-        `<span class="t-sub">${(active?.name ?? 'YOU').toUpperCase()} · ${game.strokes} STROKES · WAITING FOR OTHERS</span>`, 0);
-      game.state = 'WAITING_OTHERS';
-      pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
-      return;
-    }
-    hud.toast(
-      `<span class="t-gold">GIMME — ${scoreName(game.strokes, def.par)}</span>` +
-      `<span class="t-sub">INSIDE 3 FEET · HOLE ${def.id} · ${game.strokes} STROKES</span>`, 0);
-    game.state = 'HOLE_DONE';
-    game.doneTimer = 0;
-    pushLiveState({ sim_state: 'HOLED', result: scoreName(game.strokes, def.par) });
     return;
   }
 
@@ -1999,7 +2155,20 @@ function updateFlight() {
 
   for (const ev of sim.events.splice(0)) {
     if (ev.type === 'bounce') SFX.bounce(ev.speed, surfSfxName(ev.surface));
-    else if (ev.type === 'splash') SFX.splash();
+    else if (ev.type === 'land' && ev.pos) {
+      // First ground contact: a dust / turf / sand puff where it pitches. Steeper
+      // descents throw up a bit more. (Water lands are handled by 'splash'.)
+      if (ev.surface !== SURF.WATER) {
+        const kind = ev.surface === SURF.SAND ? 'sand'
+          : (ev.surface === SURF.ROUGH ? 'turf' : 'dust');
+        const lp = Math.min(1.1, 0.5 + (ev.descentDeg || 30) / 90);
+        fxBurst(ev.pos.x, ev.pos.y, ev.pos.z, kind, lp);
+      }
+    } else if (ev.type === 'splash') {
+      SFX.splash();
+      const sp = sim.pos;
+      fxBurst(sp.x, sp.y, sp.z, 'splash', 1.0);
+    }
     else if (ev.type === 'holed') SFX.holed();
     else if (ev.type === 'lip') hud.toast('<span class="t-gold">LIP OUT</span>', 1400);
     else if (ev.type === 'tree') {
@@ -2110,21 +2279,42 @@ function frame() {
       ring.material.opacity = 0.7 + 0.2 * Math.sin(game.time * 2.6);
     }
     if (game.course.greenGrid) {
-      game.course.greenGrid.visible = aiming && !!club().putter;
+      // Heatmap shows the whole time you're on the green with the putter —
+      // hidden only while the ball is actually rolling so it doesn't block it.
+      game.course.greenGrid.visible = !!club().putter && game.state !== 'FLIGHT' && game.state !== 'HOLE_DONE';
     }
 
     // ball + blob shadow
     if (game.state !== 'FLIGHT' && game.state !== 'HOLE_DONE') {
       ball.position.set(game.ballPos.x, game.ballPos.y, game.ballPos.z);
+      ball.scale.setScalar(1);
+    } else {
+      // Gently grow a far-away ball so it stays a readable lit sphere instead of
+      // a sub-pixel speck — capped low so it never becomes a giant billboard.
+      const d = camera.position.distanceTo(ball.position);
+      ball.scale.setScalar(Math.min(2.3, Math.max(1, d * 0.006)));
     }
     if (ball.visible) {
       const gh = game.course.heightAt(ball.position.x, ball.position.z);
       const alt = Math.max(ball.position.y - gh, 0);
       blob.position.set(ball.position.x, gh + 0.02, ball.position.z);
-      const s = 0.16 + alt * 0.05;
-      blob.scale.set(s, s, 1);
-      blob.material.opacity = Math.max(0.65 - alt * 0.012, 0.12);
+      // Tight, dark contact patch on the ground softening + widening with height;
+      // stretched slightly along the shadow's throw from the low raking sun.
+      const s = 0.15 + alt * 0.05;
+      const stretch = 1 + Math.min(alt * 0.02, 0.35);
+      // Align the disc's long axis with the sun/shadow line. The plane is tilted
+      // flat by rotation.x, which flips its local +X→+Z mapping, hence the -z.
+      if (sky && sky.sunDir) blob.rotation.z = Math.atan2(-sky.sunDir.z, sky.sunDir.x);
+      blob.scale.set(s * stretch, s, 1);
+      blob.material.opacity = Math.max(0.7 - alt * 0.012, 0.12);
       blob.visible = alt < 45;
+    }
+
+    // Once the ball rests, ease the tracer down to a faint memory (bounded — it
+    // stops repainting as soon as it reaches the floor).
+    if (game.state !== 'FLIGHT' && tracerCount > 8 && tracerAlpha > 0.46) {
+      tracerAlpha = Math.max(0.45, tracerAlpha - frameDt * 0.55);
+      tracerRepaint();
     }
 
     hud.mapDraw(
@@ -2140,6 +2330,7 @@ function frame() {
     }
     sky.update(game.time, camera.position);
   }
+  updateFX(frameDt);
   if (composer) composer.render();
   else renderer.render(scene, camera);
 }
@@ -2182,6 +2373,7 @@ window.addEventListener('message', (e) => {
   // Play page is ending the session (user exited on the laptop) — flag the
   // shared live state so a paired phone knows the round is over.
   if (e.data?.type === 'END_SESSION') {
+    liveArmed = false;
     if (liveCode) publishLiveState(liveCode, { sim_state: 'ENDED' });
     return;
   }
@@ -2311,6 +2503,9 @@ function showSwingPip(b64) {
     function (metrics) {
       livePhoneConnected = true; updateLiveBadge();
       if (liveWaiting) liveWaiting.classList.add('hidden');
+      // Ignore shots until the player has actually started a round/range and the
+      // ball is at address — never fire into an unchosen course or mid-flyover.
+      if (!liveArmed || !game.course) return;
       const ready = game.state === 'AIM' || game.state === 'METER_POWER'
         || game.state === 'METER_ACCURACY' || game.state === 'WAITING_OTHERS';
       if (ready) {

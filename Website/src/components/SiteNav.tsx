@@ -26,7 +26,7 @@ export default function SiteNav({ actions, onGetApp }: { actions?: ReactNode; on
 
   const onSim = pathname.startsWith("/play") || pathname.startsWith("/sim");
   const onStore = pathname.startsWith("/store");
-  const onSupport = pathname.startsWith("/support");
+  const onMission = pathname.startsWith("/mission");
   const link = (active: boolean, hideSm = false) =>
     `l${active ? " active" : ""}${hideSm ? " hide-sm" : ""}`;
 
@@ -41,10 +41,10 @@ export default function SiteNav({ actions, onGetApp }: { actions?: ReactNode; on
           {actions ?? (
             <>
               <Link className="l hide-sm" href="/#h03">What it does</Link>
+              <Link className={link(onMission, true)} href="/mission" aria-current={onMission ? "page" : undefined}>Mission</Link>
               <Link className={link(onSim, true)} href="/play" aria-current={onSim ? "page" : undefined}>The Sim</Link>
               <Link className={link(onStore)} href="/store" aria-current={onStore ? "page" : undefined}>Store</Link>
               <Link className="l" href="/#h07">Pricing</Link>
-              <Link className={link(onSupport, true)} href="/support" aria-current={onSupport ? "page" : undefined}>Support</Link>
               {user ? (
                 <>
                   <Link className="l btn primary" href="/account">Account</Link>

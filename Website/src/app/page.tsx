@@ -34,11 +34,13 @@ function HoleStrip({ hole }: { hole: Hole }) {
 export default function HomePage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutTier, setCheckoutTier] = useState("pro");
+  // Billing toggle for the pricing section. Yearly (annual commitment) first.
+  const [billing, setBilling] = useState<"yearly" | "monthly">("yearly");
   const totalRef = useRef<HTMLSpanElement | null>(null);
   const ballRef = useRef<HTMLDivElement | null>(null);
   const trailRef = useRef<HTMLDivElement | null>(null);
 
-  // Opening the panel never navigates — the overlay handles auth + Stripe inline.
+  // Opening the panel never navigates: the overlay handles auth + Stripe inline.
   function openCheckout(tier: string = "pro") {
     setCheckoutTier(tier);
     setCheckoutOpen(true);
@@ -120,7 +122,7 @@ export default function HomePage() {
 
   return (
     <div className="round">
-      {/* Header — the shared site nav (session-aware), with the primary
+      {/* Header, the shared site nav (session-aware), with the primary
           action opening the embedded checkout instead of a plain link. */}
       <SiteNav onGetApp={openCheckout} />
 
@@ -134,7 +136,7 @@ export default function HomePage() {
 
       <div className="shell">
         <main>
-          {/* H01 — hero */}
+          {/* H01, hero */}
           <section className="hole h01" id="h01">
             <video
               className="hero-video"
@@ -179,21 +181,11 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H03 — what it does + live demo */}
+          {/* H03, what it does + live demo */}
           <section className="hole h03" id="h03">
             <div className="wrap">
               <HoleStrip hole={HOLES[1]} />
-              <div className="app-demo">
-                <div className="app-demo-copy">
-                  <h2>See what it<br /><span className="it">does.</span></h2>
-                  <p className="deck">Set your phone down, hit a shot, and True Carry reads the strike at 240 frames a second — ball speed, launch, and the carry the ball actually flies. No add-on hardware.</p>
-                  <ul className="app-stats">
-                    <li><span>Ball speed</span><b>±1.4 mph</b><em>vs. radar baseline</em></li>
-                    <li><span>Launch</span><b>±0.4°</b><em>vs. radar baseline</em></li>
-                    <li><span>True carry</span><b>±2.1 yd</b><em>vs. TrackMan · 14,210 shots</em></li>
-                  </ul>
-                  <p className="app-demo-hint">Pick a club and take a swing →</p>
-                </div>
+              <div className="app-demo app-demo-solo">
                 <div className="app-demo-phone">
                   <PhoneDemo />
                 </div>
@@ -201,39 +193,26 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H05 — the sim */}
+          {/* H05, the sim */}
           <section className="hole h05" id="h05">
             <div className="wrap">
               <HoleStrip hole={HOLES[2]} />
-              <div className="sim-feature">
-                <div className="sim-copy">
-                  <h2>Play a round.<br /><span className="it">Right here.</span></h2>
-                  <p className="deck">Eighteen holes at Pine Hollow National, in your browser. The same flight model that reads your real shots drives every drive, chip, and putt.</p>
-                  <ul className="sim-points">
-                    <li><span>The course</span><b>18 holes · par 72 · 6,900 yd</b></li>
-                    <li><span>The physics</span><b>True flight — drag, lift, spin</b></li>
-                    <li><span>The numbers</span><b>Launch-monitor data, every swing</b></li>
-                  </ul>
-                  <div className="sim-ctas">
-                    <a className="solid" href="/play">Tee off in the sim</a>
-                    <a className="ghost" href="/sim/index.html?mode=course&course=pine-hollow" target="_blank" rel="noreferrer">Open full screen</a>
-                  </div>
-                </div>
+              <div className="sim-feature sim-feature-solo">
                 <SimDemo />
               </div>
             </div>
           </section>
 
-          {/* H06 — NFC club cards */}
+          {/* H06, NFC club cards */}
           <section className="hole h06" id="h06">
             <div className="wrap">
               <HoleStrip hole={HOLES[3]} />
               <div className="cards-feature">
                 <div className="cards-copy">
                   <h2>Tap in.<br /><span className="it">Every club, tagged.</span></h2>
-                  <p className="cards-deck">A slim NFC card lives on every club in your bag. Tap your phone on the way to address, and True Carry tags the shot — club, carry, and gapping build themselves, swing after swing.</p>
+                  <p className="cards-deck">A slim NFC card lives on every club in your bag. Tap your phone on the way to address, and True Carry tags the shot, club, carry, and gapping build themselves, swing after swing.</p>
                   <ul className="cards-points">
-                    <li><b>No batteries, no pairing</b><span>Passive NFC — tap and swing.</span></li>
+                    <li><b>No batteries, no pairing</b><span>Passive NFC, tap and swing.</span></li>
                     <li><b>Gapping that fills itself</b><span>Real carries per club, not range guesses.</span></li>
                     <li><b>Fits any grip</b><span>Under-grip sticker or bag-tag card.</span></li>
                   </ul>
@@ -247,21 +226,46 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H07 — pricing (four tiers) */}
+          {/* H07, pricing (four tiers) */}
           <span id="pricing" aria-hidden style={{ position: "absolute", marginTop: "-80px" }} />
           <section className="hole h07" id="h07">
             <div className="wrap">
               <HoleStrip hole={HOLES[4]} />
               <div className="plans-head">
-                <h2>One round.<br /><span className="it">Four ways to play.</span></h2>
+                <h2>One round.<br /><span className="it">Three ways to play.</span></h2>
                 <p>Start free. Step up when you want more of the numbers. <span className="it">Cancel anytime, keep your data.</span></p>
+              </div>
+              <div className="billing-toggle" role="tablist" aria-label="Billing interval">
+                <button
+                  role="tab"
+                  aria-selected={billing === "yearly"}
+                  className={`billing-opt${billing === "yearly" ? " on" : ""}`}
+                  onClick={() => setBilling("yearly")}
+                >
+                  Yearly<span className="billing-save">2 months free</span>
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={billing === "monthly"}
+                  className={`billing-opt${billing === "monthly" ? " on" : ""}`}
+                  onClick={() => setBilling("monthly")}
+                >
+                  Monthly
+                </button>
+                <span className={`billing-slide ${billing}`} aria-hidden />
               </div>
               <div className="plans">
                 {PLANS.map((plan) => (
                   <div className={`plan${plan.featured ? " featured" : ""}`} key={plan.id}>
                     {plan.featured && <span className="plan-flag">Most played</span>}
                     <div className="plan-name">{plan.name}</div>
-                    <div className="plan-price">{plan.price}<span className="per">{plan.per}</span></div>
+                    <div className="plan-price">
+                      {plan.flat ? plan.monthly : plan[billing]}
+                      <span className="per">{plan.per}</span>
+                    </div>
+                    <p className="plan-sub">
+                      {plan.flat ? " " : billing === "yearly" ? "billed yearly" : "billed monthly"}
+                    </p>
                     <p className="plan-tag">{plan.tag}</p>
                     <ul>
                       {plan.features.map((f) => <li key={f}>{f}</li>)}
@@ -277,7 +281,7 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H08 — closing */}
+          {/* H08, closing */}
           <section className="hole h08" id="h08">
             <div className="atlas-bg"><img src="/truecarry-logo.png" alt="" /></div>
             <div className="wrap">
@@ -287,7 +291,7 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H09 — footer */}
+          {/* H09, footer */}
           <footer className="hole h09" id="h09">
             <div className="wrap">
               <div className="grid">
@@ -353,13 +357,13 @@ export default function HomePage() {
             </div>
           </div>
           <div className="player">
-            <span className="who">— You</span>
+            <span className="who">,  You</span>
             <span className="stamp">live</span>
           </div>
         </aside>
       </div>
 
-      {checkoutOpen && <EmbeddedCheckoutPanel tier={checkoutTier} onClose={() => setCheckoutOpen(false)} />}
+      {checkoutOpen && <EmbeddedCheckoutPanel tier={checkoutTier} billingInterval={billing} onClose={() => setCheckoutOpen(false)} />}
     </div>
   );
 }

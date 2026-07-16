@@ -11,7 +11,7 @@ export default function CopyCommand({ command }: { command: string }) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
-      /* clipboard blocked — user can still select the text */
+      /* clipboard blocked, user can still select the text */
     }
   }
 

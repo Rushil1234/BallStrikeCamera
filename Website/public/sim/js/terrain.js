@@ -8,10 +8,10 @@
 // assets so the field logic also runs headless (jsc/Node) for testing.
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-8';
-import { Water } from 'three/addons/objects/Water.js?v=gspro-8';
-import { makeFbm, makeRng } from './noise.js?v=gspro-8';
-import { SURF } from './physics.js?v=gspro-8';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js?v=gspro-20';
+import { Water } from 'three/addons/objects/Water.js?v=gspro-20';
+import { makeFbm, makeRng } from './noise.js?v=gspro-20';
+import { SURF } from './physics.js?v=gspro-20';
 
 const VISUAL = typeof document !== 'undefined';
 
@@ -247,30 +247,37 @@ function normalsUp(geo) {
 }
 
 // Southern loblolly pine: a tall bare pole with an irregular crown in the top
-// third only — the signature silhouette of Georgia parkland courses.
+// third only — the signature silhouette of Georgia parkland courses. The crown
+// is built as a billowing ellipsoidal cloud of drooping fronds rather than a
+// radial star of upward spikes, so it reads as a rounded 3D volume from the
+// tee instead of a sparse dark blob.
 function loblollyCanopy(seed, dense) {
   const rng = makeRng(seed);
-  const sprig = cardGeo(2.7, 4.2, PINE_SPRIG);
+  const sprig = cardGeo(3.2, 4.7, PINE_SPRIG);
   const cards = [];
-  for (let y = 10.2; y <= 14.0; y += (dense ? 0.48 : 0.72)) {
-    const t = (y - 10.2) / 3.8;
-    const n = Math.round((dense ? 7.5 : 5.5) - 2.4 * t);
-    const s = 1.3 - 0.5 * t;
-    for (let i = 0; i < n; i++) {
-      const yaw = (i / n) * Math.PI * 2 + rng() * 1.4;
-      const pitch = -(Math.PI / 2) + 0.5 + rng() * 0.32;
-      const rad = 0.25 + (1 - t) * 0.55 * rng();
-      cards.push(placed(
-        sprig,
-        Math.cos(yaw) * rad, y + (rng() - 0.5) * 0.45, Math.sin(yaw) * rad,
-        pitch, yaw, 0,
-        s * (0.9 + rng() * 0.35),
-      ));
-    }
+  const CY = 12.1;                 // crown centre height
+  const rH = 2.65, rV = 2.85;      // crown radii (horizontal / vertical)
+  const N = dense ? 82 : 60;
+  for (let i = 0; i < N; i++) {
+    // point on an ellipsoid shell (surface-biased for a full silhouette, with
+    // some interior fill so gaps don't punch through to sky)
+    const az = rng() * Math.PI * 2;
+    const el = Math.acos(1 - 2 * rng());        // uniform over the sphere
+    const shell = 0.62 + 0.4 * rng();
+    const se = Math.sin(el);
+    const px = se * Math.cos(az) * rH * shell;
+    const pz = se * Math.sin(az) * rH * shell;
+    const py = CY + Math.cos(el) * rV * shell;
+    // frond faces outward and droops down-and-out like real pine foliage
+    const yaw = az + (rng() - 0.5) * 0.9;
+    const pitch = -0.45 - rng() * 0.55;
+    const s = (1.15 - 0.35 * shell) * (0.82 + rng() * 0.42);
+    cards.push(placed(sprig, px, py, pz, pitch, yaw, (rng() - 0.5) * 0.6, s));
   }
-  cards.push(placed(sprig, 0, 14.15, 0, -0.1, rng() * Math.PI, 0, 0.85));
-  cards.push(placed(sprig, 0, 14.05, 0, -0.14, rng() * Math.PI + Math.PI / 2, 0, 0.78));
-  return normalsUp(mergeGeometries(cards));
+  // a conical peak so the crown tapers to a pine tip, not a round ball
+  cards.push(placed(sprig, 0, CY + rV + 0.35, 0, -0.2, rng() * Math.PI, 0, 0.95));
+  cards.push(placed(sprig, 0, CY + rV + 0.1, 0, -0.22, rng() * Math.PI + 1.2, 0, 0.88));
+  return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
 }
 
 function bakeCanopyAO(geo) {
@@ -294,37 +301,71 @@ function bakeCanopyAO(geo) {
 
 function pineCanopy(seed, dense) {
   const rng = makeRng(seed);
-  const sprig = cardGeo(1.9, 3.2, PINE_SPRIG);
+  const sprig = cardGeo(2.5, 3.9, PINE_SPRIG);
   const cards = [];
-  for (let y = 2.4; y <= 8.2; y += (dense ? 0.6 : 0.92)) {
-    const t = (y - 2.4) / 5.8;
-    const n = Math.round((dense ? 8 : 6) - 3 * t);
-    const s = 1.15 - 0.62 * t;
+  for (let y = 2.0; y <= 8.4; y += (dense ? 0.44 : 0.62)) {
+    const t = (y - 2.0) / 6.4;
+    const n = Math.round((dense ? 11 : 9) - 3.5 * t);
+    const s = 1.3 - 0.65 * t;
+    const ring = 0.2 + (1 - t) * 1.05;   // broad conic base tapering to a point
     for (let i = 0; i < n; i++) {
       const yaw = (i / n) * Math.PI * 2 + rng() * 1.2;
-      const pitch = -(Math.PI / 2) + 0.38 + rng() * 0.25;  // fan out, slight droop
-      cards.push(placed(sprig, 0, y + (rng() - 0.5) * 0.3, 0, pitch, yaw, 0, s * (0.85 + rng() * 0.3)));
+      const pitch = -(Math.PI / 2) + 0.34 + rng() * 0.24;  // fan out, slight droop
+      const rad = ring * (0.45 + 0.6 * rng());
+      cards.push(placed(sprig, Math.cos(yaw) * rad, y + (rng() - 0.5) * 0.3, Math.sin(yaw) * rad, pitch, yaw, 0, s * (0.85 + rng() * 0.3)));
     }
   }
   // upright crown
-  cards.push(placed(sprig, 0, 8.0, 0, -0.06, rng() * Math.PI, 0, 0.8));
-  cards.push(placed(sprig, 0, 8.0, 0, -0.06, rng() * Math.PI + Math.PI / 2, 0, 0.72));
+  cards.push(placed(sprig, 0, 8.4, 0, -0.06, rng() * Math.PI, 0, 0.9));
+  cards.push(placed(sprig, 0, 8.35, 0, -0.06, rng() * Math.PI + Math.PI / 2, 0, 0.82));
+  return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
+}
+
+// Flowering dogwood: a small tiered understory tree with flat horizontal
+// blossom layers. Wired via the parkland flora system and tinted white / pale
+// pink per instance — Augusta's dogwoods bank the tree line with the azaleas.
+function dogwoodCanopy(seed) {
+  const rng = makeRng(seed);
+  const a = cardGeo(3.0, 3.0, LEAF_RECT_A);
+  const b = cardGeo(2.8, 2.8, LEAF_RECT_B);
+  const cards = [];
+  const layers = [
+    { y: 3.9, r: 2.5, n: 9 },
+    { y: 4.8, r: 2.1, n: 8 },
+    { y: 5.5, r: 1.5, n: 6 },
+    { y: 6.0, r: 0.8, n: 4 },
+  ];
+  for (const L of layers) {
+    for (let i = 0; i < L.n; i++) {
+      const az = (i / L.n) * Math.PI * 2 + rng() * 0.9;
+      const r = L.r * (0.5 + 0.55 * rng());
+      cards.push(placed(
+        rng() < 0.5 ? a : b,
+        Math.cos(az) * r, L.y + (rng() - 0.5) * 0.4, Math.sin(az) * r,
+        (rng() - 0.72) * 0.5,          // near-flat, slight down-droop → tiered look
+        rng() * Math.PI * 2,
+        (rng() - 0.5) * 0.4,
+        0.72 + rng() * 0.42,
+      ));
+    }
+  }
   return bakeCanopyAO(normalsUp(mergeGeometries(cards)));
 }
 
 function leafCanopy(seed, dense) {
   const rng = makeRng(seed);
-  const a = cardGeo(3.1, 3.1, LEAF_RECT_A);
-  const b = cardGeo(2.8, 3.0, LEAF_RECT_B);
+  const a = cardGeo(3.4, 3.4, LEAF_RECT_A);
+  const b = cardGeo(3.1, 3.3, LEAF_RECT_B);
   const cards = [];
-  const CY = 5.2;
-  for (let i = 0; i < (dense ? 48 : 26); i++) {
+  const CY = 5.4;
+  for (let i = 0; i < (dense ? 70 : 44); i++) {
     const az = rng() * Math.PI * 2;
-    const elev = (rng() - 0.32) * 1.9;
-    const r = 0.7 + rng() * 1.9;
+    const elev = (rng() - 0.28) * 1.85;
+    // bias radius toward the shell so the crown reads as a full rounded dome
+    const r = 1.05 + Math.sqrt(rng()) * 1.75;
     const px = Math.cos(az) * Math.cos(elev) * r;
     const pz = Math.sin(az) * Math.cos(elev) * r;
-    const py = CY + Math.sin(elev) * r * 0.8;
+    const py = CY + Math.sin(elev) * r * 0.82;
     cards.push(placed(
       rng() < 0.5 ? a : b,
       px, py - 1.4, pz,
@@ -376,8 +417,22 @@ function treeKit(assets) {
     };
     return mat;
   };
+  // Foliage cards are lit with a self-illumination floor keyed off their own
+  // texture: pure Lambert renders every backlit / shadow-side leaf near-black
+  // (the "black tree silhouette" look). Feeding the diffuse map back in as a
+  // low-intensity emissive means leaves always keep their real green/brown, the
+  // way sun-through-canopy scattering reads in real life — while the Lambert
+  // term still adds directional highlights on the sunlit side.
   const canopyMat = (map, cut) => addSway(new THREE.MeshLambertMaterial({
     map, alphaTest: cut, side: THREE.DoubleSide, vertexColors: true,
+    emissive: 0xffffff, emissiveMap: map, emissiveIntensity: 0.32,
+  }));
+  // Dogwood blossoms keep the self-illum floor idea, but with a flat pale-pink
+  // emissive instead of the green leaf-card emissiveMap — otherwise the green
+  // self-illum tints every blossom mint and no diffuse multiplier can whiten it.
+  const dogwoodMat = () => addSway(new THREE.MeshLambertMaterial({
+    map: t.leafCard, alphaTest: 0.4, side: THREE.DoubleSide, vertexColors: true,
+    emissive: 0xf6e6ec, emissiveIntensity: 0.24,
   }));
   const depthMat = (map, cut) => new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking, map, alphaTest: cut,
@@ -394,6 +449,8 @@ function treeKit(assets) {
       { geo: pineCanopy(19, true), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pine' },
       { geo: leafCanopy(57, true), mat: canopyMat(t.leafCard, 0.4), depth: depthMat(t.leafCard, 0.4), trunk: 'leaf' },
       { geo: loblollyCanopy(91, true), mat: canopyMat(t.pineCard, 0.52), depth: depthMat(t.pineCard, 0.52), trunk: 'pineTall' },
+      // 9: flowering dogwood (parkland flora only; tinted white/pink per instance)
+      { geo: dogwoodCanopy(43), mat: dogwoodMat(), depth: depthMat(t.leafCard, 0.4), trunk: 'leaf' },
     ],
     trunks: {
       pine: { geo: trunkGeo(0.07, 0.30, 8.6, 3), mat: new THREE.MeshLambertMaterial({ map: t.pineBark }) },
@@ -607,6 +664,14 @@ export function buildCourse(hole, assets) {
   const fbmDetail = makeFbm(hole.seed * 7 + 3, 3);
   const fbmGreen = makeFbm(hole.seed * 13 + 5, 3);
 
+  // Each green gets a consistent overall tilt (direction + magnitude derived
+  // deterministically from its position) so putts have a real, readable break
+  // rather than a table-flat surface. Amplitude ~1-2% — genuine but fair.
+  const gTiltAng = fbmGreen(hole.green.cx * 0.01 + 3, hole.green.cz * 0.01 - 7) * Math.PI * 2;
+  const gTiltMag = 0.005 + Math.abs(fbmGreen(hole.green.cx * 0.02 - 5, hole.green.cz * 0.02 + 9)) * 0.006;
+  const gTiltCos = Math.cos(gTiltAng) * gTiltMag;
+  const gTiltSin = Math.sin(gTiltAng) * gTiltMag;
+
   const path = hole.path;
   const tee = path[0];
   const fhw = hole.fairwayHalf;
@@ -624,6 +689,10 @@ export function buildCourse(hole, assets) {
   const forest = visualZones.forest || null;
   const forestFloor = visualZones.forestFloor || null;
   const dunes = visualZones.dunes || null;
+  // Open coastal links (St Andrews) are essentially treeless — the scenery is
+  // the town skyline, gorse, dunes and the sea, not a forest. Gorse flora is the
+  // links tell; an explicit `treeless` flag can override either way.
+  const treeless = visualZones.treeless ?? (visualZones.flora === 'gorse');
   const bunkerDepthMult = visualZones.bunkerDepth || 1;
   const forestFloorStart = forestFloor?.start ?? 26;
   const rawCoastLandPts = isCoastal ? (hole.island?.coastline?.land || []) : [];
@@ -722,6 +791,7 @@ export function buildCourse(hole, assets) {
     }
     h += fbmDetail(x * 0.05, z * 0.05) * 0.85 * (1 - fairMask);  // bumpy rough
     h += fairMask * 0.15;                                        // slight fairway crown
+    h += fairMask * fbmBase(x * 0.008 + 130, z * 0.008 - 90) * 0.8; // long, gentle fairway heave
     if (dunes) {
       // links mounding: 30-60m humps and hollows that run THROUGH fairways
       // (softened), the defining ground game of seaside golf
@@ -734,8 +804,11 @@ export function buildCourse(hole, assets) {
     const osmGreen = inFeaturePolys(osmGreens, x, z);
     if (gv < 3.2 || osmGreen) {
       const gm = osmGreen ? 1 : 1 - sstep(1.05, 2.6, gv);
-      const greenH = baseAt(hole.green.cx, hole.green.cz) + 0.4
-        + fbmGreen(x * 0.028, z * 0.028) * 0.13;
+      const gcx = hole.green.cx, gcz = hole.green.cz;
+      const tilt = (x - gcx) * gTiltCos + (z - gcz) * gTiltSin; // overall pitch
+      const swale = fbmGreen(x * 0.035 + 11, z * 0.035 - 4) * 0.11; // broad rolls
+      const micro = fbmGreen(x * 0.12, z * 0.12) * 0.03;           // fine texture
+      const greenH = baseAt(gcx, gcz) + 0.4 + tilt + swale + micro;
       h = lerp(h, greenH, gm);
     }
 
@@ -883,6 +956,7 @@ export function buildCourse(hole, assets) {
   let updateFlag = () => {};
   let updateWater = () => {};
   const flatWaters = [];
+  const foamBands = [];
   let oceanMesh = null;
   let spots = [];
 
@@ -910,27 +984,73 @@ export function buildCourse(hole, assets) {
         // A vast, reflective ocean stretching to the horizon — the course sits
         // on a coastal headland, not a tidy little island pond.
         const ocean = new Water(new THREE.PlaneGeometry(26000, 26000), {
-          textureWidth: 512,
-          textureHeight: 512,
+          // 256 reflection: this plane re-renders the whole scene every frame,
+          // so it was the single biggest cost on the coastal course. Distant
+          // rippled water doesn't need a sharp mirror — 256 is plenty and cuts
+          // the per-frame reflection cost to a quarter.
+          textureWidth: 160,
+          textureHeight: 160,
           waterNormals: assets.waterN,
           sunDirection: assets.sunDir.clone(),
-          sunColor: 0xffffff,
-          waterColor: 0x1a4f6b,
-          distortionScale: 2.6,
+          // Warm sun so the glint reads as sparkling sunlight on the Pacific
+          // rather than a flat white sheen.
+          sunColor: 0xfff2d6,
+          // Deep cold Pacific teal-blue for the body colour (the scatter term).
+          waterColor: 0x0d3a52,
+          distortionScale: 3.6,
           fog: true,
         });
         ocean.rotation.x = -Math.PI / 2;
         ocean.position.set(icx, waterLevel - 0.02, icz);
+        // Finer wave normals: at size 1.0 the ripples tile every ~100 m, so a
+        // 26 km sea reads as one glassy sheet. Bumping `size` tightens the swell
+        // into believable ocean chop and gives the sun a broken, sparkling glint.
+        ocean.material.uniforms.size.value = 4.0;
+        // Push the ocean's depth back so the tint plate above it always wins the
+        // depth test — otherwise the two 26,000 m coplanar planes z-fight and the
+        // whole sea flickers as the camera moves.
+        ocean.material.polygonOffset = true;
+        ocean.material.polygonOffsetFactor = 3;
+        ocean.material.polygonOffsetUnits = 3;
+        // BIGGEST coastal cost: the Water reflector re-renders the ENTIRE scene
+        // (every tree, rock, the lot) into its mirror texture every frame. Render
+        // it only every 2nd frame instead — ocean chop drifts slowly enough that
+        // a 30fps reflection is invisible, and it halves the reflection pass.
+        {
+          const _reflect = ocean.onBeforeRender;
+          let _f = 0;
+          ocean.onBeforeRender = function (renderer, sc, cam, geo, mat, grp) {
+            if ((_f++ & 1) === 0) _reflect.call(this, renderer, sc, cam, geo, mat, grp);
+          };
+        }
         group.add(ocean);
         oceanMesh = ocean;
-        // Deep-blue tint plate: keeps the Pacific reading blue instead of a
-        // silver sky mirror when viewed down the coast.
+        // Deep-blue tint plate with a depth gradient: rich near-shore water that
+        // lightens toward the horizon (aerial perspective). A radial vertex
+        // gradient centred on the headland reads as "deep by the cliffs, hazy far
+        // out" instead of one flat silver sky-mirror down the coast.
+        const tintGeo = new THREE.PlaneGeometry(26000, 26000, 24, 24);
+        {
+          const deep = new THREE.Color(0x0a3145);   // close, deep water
+          const far = new THREE.Color(0x1d5a7a);     // hazy distant water
+          const pos = tintGeo.attributes.position;
+          const tcol = new Float32Array(pos.count * 3);
+          const c = new THREE.Color();
+          for (let i = 0; i < pos.count; i++) {
+            // radial distance from plane centre (the headland), normalised
+            const r = Math.min(1, Math.hypot(pos.getX(i), pos.getY(i)) / 2200);
+            c.copy(deep).lerp(far, r);
+            tcol[i * 3] = c.r; tcol[i * 3 + 1] = c.g; tcol[i * 3 + 2] = c.b;
+          }
+          tintGeo.setAttribute('color', new THREE.BufferAttribute(tcol, 3));
+        }
         const oceanTint = new THREE.Mesh(
-          new THREE.PlaneGeometry(26000, 26000),
-          new THREE.MeshBasicMaterial({ color: 0x134a68, transparent: true, opacity: 0.58, depthWrite: false, fog: true }),
+          tintGeo,
+          new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.5, depthWrite: false, fog: true }),
         );
         oceanTint.rotation.x = -Math.PI / 2;
-        oceanTint.position.set(icx, waterLevel + 0.01, icz);
+        oceanTint.position.set(icx, waterLevel + 0.015, icz);
+        oceanTint.renderOrder = 1;
         group.add(oceanTint);
       } else if (hole.island.profile === 'coastal') {
         // Inland real-data course: forested land to the horizon, no sea.
@@ -982,19 +1102,26 @@ export function buildCourse(hole, assets) {
     const colors = new Float32Array((nx + 1) * (nz + 1) * 3);
     const splats = new Float32Array((nx + 1) * (nz + 1) * 4);
 
+    // Turf palette is per-course overridable so each venue keeps its own
+    // signature (e.g. Augusta's hyper-vibrant emerald + white sand vs a links'
+    // muted fescue). Defaults reproduce the original parkland look.
     const C = {
-      fairA: new THREE.Color(0x568f3f), fairB: new THREE.Color(0x447c31),
-      firstCut: new THREE.Color(0x4c8237),
-      fringe: new THREE.Color(0x467c38),
-      greenA: new THREE.Color(0x67a64f), greenB: new THREE.Color(0x5d9b46),
-      tee: new THREE.Color(0x5c9d48),
+      fairA: new THREE.Color(visualZones.fairA ?? 0x568f3f), fairB: new THREE.Color(visualZones.fairB ?? 0x447c31),
+      firstCut: new THREE.Color(visualZones.firstCut ?? 0x4c8237),
+      fringe: new THREE.Color(visualZones.fringe ?? 0x467c38),
+      greenA: new THREE.Color(visualZones.greenA ?? 0x67a64f), greenB: new THREE.Color(visualZones.greenB ?? 0x5d9b46),
+      tee: new THREE.Color(visualZones.teeColor ?? 0x5c9d48),
       rough: new THREE.Color(visualZones.roughColor ?? 0x3b662e),
       deep: new THREE.Color(visualZones.deepColor ?? 0x2c4f22),
       sand: new THREE.Color(visualZones.sandColor ?? 0xd5c28c),
       bed: new THREE.Color(0x31464a),
       beach: new THREE.Color(0xb9ab82),
       scrub: new THREE.Color(0x626c51),
-      rock: new THREE.Color(0x51463a),
+      // Weathered grey granite — the Monterey coast is pale grey rock, not brown
+      // dirt. `wet` is the dark damp band right at the tideline where rock/sand
+      // is soaked, so the land doesn't end in a hard line against the sea.
+      rock: new THREE.Color(0x7c7568),
+      wet: new THREE.Color(0x2f3138),
     };
     const strawColor = new THREE.Color(forestFloor?.color ?? 0x8a6742);
     const _dryBank = new THREE.Color(0x7a7f45);
@@ -1031,34 +1158,86 @@ export function buildCourse(hole, assets) {
           tmp.copy(C.bed); sr = 1;
         } else if (surf === SURF.SAND) {
           ss = 1;
-          let bv = 9;
-          for (const b of hole.bunkers) bv = Math.min(bv, ellipseVal(b, x, z));
+          let bv = 9, bnr = null;
+          for (const b of hole.bunkers) {
+            const ev = ellipseVal(b, x, z);
+            if (ev < bv) { bv = ev; bnr = b; }
+          }
+          // Raked furrows: fine parallel lines running across the bunker, faded
+          // by a little noise so raked sand reads as texture, not hard stripes.
+          // Aligned to each bunker's long axis (rot) so the rake follows the dish.
+          const ra = bnr ? (bnr.rot || 0) : 0;
+          const ru = (x - (bnr ? bnr.cx : 0)) * Math.sin(ra) + (z - (bnr ? bnr.cz : 0)) * Math.cos(ra);
+          const rake = Math.sin(ru * 1.85);                 // ~3.4 m furrow pitch
+          const rakeAmt = 0.055 * (0.55 + 0.45 * fbmDetail(x * 0.35 + 3, z * 0.35));
           if (bv > 1.3) {
             // polygon sand beyond any fitted ellipse: neutral wash
             tmp.copy(C.sand).multiplyScalar(0.97);
           } else {
-            // sculpted dish: bright raked centre, shadowed ring under the lip
-            const rim = sstep(0.5, 1.0, Math.min(bv, 1));
-            tmp.copy(C.sand).multiplyScalar(1.07 - 0.32 * rim);
+            // sculpted dish: crisp bright raked centre, cleanly shadowed lip ring
+            const rim = sstep(0.42, 1.0, Math.min(bv, 1));
+            tmp.copy(C.sand).multiplyScalar(1.09 - 0.36 * rim);
+            // rake furrows strongest across the flat centre, fading under the lip
+            tmp.multiplyScalar(1 + rakeAmt * rake * (1 - 0.7 * rim));
           }
         } else if (surf === SURF.GREEN || surf === SURF.TEE) {
-          const checker = (Math.floor(x / 2.4) + Math.floor(z / 2.4)) % 2 === 0;
-          tmp.copy(surf === SURF.TEE ? C.tee : (checker ? C.greenA : C.greenB));
+          if (surf === SURF.TEE) {
+            tmp.copy(C.tee);
+            // Lived-in tee box: faint darker divot scuffs from iron play.
+            const scuff = fbmDetail(x * 1.7 + 12, z * 1.7);
+            if (scuff > 0.36) tmp.multiplyScalar(1 - 0.09 * sstep(0.36, 0.58, scuff));
+          } else {
+            // Double-cut checkerboard mow: soft-edged bands in two perpendicular
+            // directions (lighter greenA vs darker greenB) plus a faint sheen so
+            // it reads as a manicured stripe pattern, not a hard tiled checker.
+            const gsx = sstep(-0.34, 0.34, Math.sin(x / 2.3 * Math.PI));
+            const gsz = sstep(-0.34, 0.34, Math.sin(z / 2.3 * Math.PI));
+            const checkT = gsx * gsz + (1 - gsx) * (1 - gsz);
+            tmp.copy(C.greenB).lerp(C.greenA, checkT);
+            tmp.multiplyScalar(1 + 0.035 * (checkT - 0.5) * 2);
+            // faint ball-mark speckle on the putting surface
+            const bm = fbmDetail(x * 2.1 + 41, z * 2.1);
+            if (bm > 0.52) tmp.multiplyScalar(1 - 0.05 * sstep(0.52, 0.72, bm));
+          }
           sg = 1; sw = 1;
         } else if (surf === SURF.FRINGE) {
-          tmp.copy(C.fringe); sg = 1; sw = 0.45;
+          // Fringe collar: pull slightly toward the green tone and carry a hint
+          // of tight-mow sheen so the green -> fringe -> fairway handoff blends
+          // instead of stepping.
+          const gv = ellipseVal(hole.green, x, z);
+          tmp.copy(C.fringe).lerp(C.greenB, 0.22 * (1 - sstep(1.0, 1.35, gv)));
+          sg = 1; sw = 0.55;
         } else if (surf === SURF.FAIRWAY) {
-          const stripe = Math.floor(p.along / 7) % 2 === 0;
-          tmp.copy(stripe ? C.fairA : C.fairB);
+          // Directional mowing stripes down the line of play: soft-edged
+          // light/dark bands (~6.5 m) with a subtle brightness sheen so they
+          // read crisply but naturally rather than as flat colour swaps.
+          const band = Math.sin(p.along / 6.5 * Math.PI);
+          const stripeT = sstep(-0.44, 0.44, band);
+          tmp.copy(C.fairB).lerp(C.fairA, stripeT);
+          tmp.multiplyScalar(1 + 0.05 * (stripeT - 0.5) * 2);
           sg = 1;
         } else if (p.dist < fhw + 3.5) {
-          tmp.copy(C.firstCut); sg = 0.55; sr = 0.45;
+          // First cut collar: blend the mown fairway tone (carrying a faint echo
+          // of the stripe) out toward the first-cut/rough colour across the band.
+          const ft = sstep(fhw - 1.0, fhw + 3.5, p.dist);
+          const band = Math.sin(p.along / 6.5 * Math.PI);
+          const stripeT = sstep(-0.44, 0.44, band);
+          tmp.copy(C.fairB).lerp(C.fairA, stripeT).lerp(C.firstCut, 0.5 + 0.5 * ft);
+          sg = lerp(0.85, 0.55, ft); sr = lerp(0.15, 0.45, ft);
         } else if (inMappedSand) {
           tmp.copy(C.beach); ss = 0.68; sr = 0.32;
         } else if (inMappedScrub) {
           tmp.copy(C.scrub); sr = 1;
         } else if (hasOcean && coastDist < 30 && !inFeaturePolys(osmFairways, x, z) && !inFeaturePolys(osmGreens, x, z)) {
-          tmp.copy(C.rock).lerp(C.rough, sstep(2, 30, coastDist)); sr = 1;
+          // Coastal shore: grey granite/sand at the tideline grading up to rough.
+          // A broken mottle keeps the rock from reading as one flat swatch, and
+          // the first few metres darken into a wet, sea-soaked band so the coast
+          // dissolves into the water instead of ending on a hard brown line.
+          const rmot = fbmDetail(x * 0.09 + 3, z * 0.09) * 0.5 + 0.5;
+          tmp.copy(C.rock).multiplyScalar(0.82 + 0.32 * rmot).lerp(C.rough, sstep(4, 30, coastDist));
+          const wetT = 1 - sstep(0.0, 6.0, coastDist);
+          if (wetT > 0) tmp.lerp(C.wet, 0.7 * wetT);
+          sr = 1;
         } else {
           const t = sstep(fhw + 10, fhw + 45, p.dist);
           tmp.copy(C.rough).lerp(C.deep, t);
@@ -1093,14 +1272,22 @@ export function buildCourse(hole, assets) {
             // raised grass lip catching light around the bunker edge
             const lip = 1 - Math.abs(bv - 1.2) / 0.3;
             if (lip > 0) tmp.multiplyScalar(1 + 0.13 * lip);
+          } else if (bv >= 1.5 && bv < 3.2) {
+            // Soft AO: turf just outside the lip sits in the bunker's shadow,
+            // giving the hazard depth. Fades out over ~2 units.
+            tmp.multiplyScalar(1 - 0.10 * (1 - sstep(1.5, 3.2, bv)));
           }
         }
         // Manicured turf stays smooth; only rough gets real mottling — the
-        // uniform noise was making greens/fairways look blotchy.
+        // uniform noise was making greens/fairways look blotchy. A very
+        // large-scale octave adds gentle sun-and-shade patches to open turf.
         const mottle = (surf === SURF.GREEN || surf === SURF.TEE) ? 0.15
           : (surf === SURF.FAIRWAY || surf === SURF.FRINGE) ? 0.4 : 1.0;
+        const broad = (surf === SURF.GREEN || surf === SURF.TEE) ? 0
+          : fbmDetail(x * 0.0125 + 61, z * 0.0125) * 0.055;
         const vmod = 1 + (fbmDetail(x * 0.11 + 31, z * 0.11) * 0.07
-          + fbmDetail(x * 0.031 + 7, z * 0.031) * 0.045) * mottle;
+          + fbmDetail(x * 0.031 + 7, z * 0.031) * 0.045) * mottle
+          + broad * (surf === SURF.FAIRWAY ? 0.6 : 1.0);
         colors[vi * 3] = tmp.r * vmod;
         colors[vi * 3 + 1] = tmp.g * vmod;
         colors[vi * 3 + 2] = tmp.b * vmod;
@@ -1159,51 +1346,76 @@ export function buildCourse(hole, assets) {
       // No separate cliff-wall mesh: the terrain now slopes smoothly into the
       // sea, so a vertical rock wall would just re-introduce the hard faceted
       // edge. Foam at the waterline + scattered rocks sell the shoreline instead.
-      const foamMat = new THREE.MeshBasicMaterial({
-        color: 0xf4fbff,
-        transparent: true,
-        opacity: 0.72,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      });
-      const foamNear = new THREE.Mesh(
-        ribbonGeometry(coastEdgePts, 8, waterLevel + 0.035),
-        foamMat,
-      );
-      const foamOffshore = new THREE.Mesh(
-        ribbonGeometry(offsetPolyline(coastEdgePts, 16, false), 5, waterLevel + 0.045),
-        foamMat.clone(),
-      );
-      foamOffshore.material.opacity = 0.38;
-      group.add(foamNear, foamOffshore);
+      // Layered surf: a bright, dense wash right at the rock, a mid swash band,
+      // and a faint outer ring where a spent wave slides back. The three bands
+      // gently pulse out of phase (see updateWater) so the tideline breathes
+      // instead of sitting as a static painted stripe.
+      const mkFoam = (pts, width, offset, y, opacity) => {
+        const m = new THREE.MeshBasicMaterial({
+          color: 0xf4fbff, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide,
+        });
+        const mesh = new THREE.Mesh(
+          ribbonGeometry(offset ? offsetPolyline(pts, offset, false) : pts, width, y),
+          m,
+        );
+        mesh.renderOrder = 2;   // sit above the ocean tint
+        group.add(mesh);
+        foamBands.push({ mat: m, base: opacity, phase: offset * 0.4 });
+        return mesh;
+      };
+      mkFoam(coastEdgePts, 9, 0, waterLevel + 0.05, 0.6);     // dense wash on the rock
+      mkFoam(coastEdgePts, 5, 8, waterLevel + 0.045, 0.4);    // swash band
+      mkFoam(coastEdgePts, 3.5, 18, waterLevel + 0.04, 0.22); // spent outer ring
 
       const coastRng = makeRng(hole.seed * 101 + 19);
-      const rockGeo = new THREE.DodecahedronGeometry(1, 1);
-      const rockMat = new THREE.MeshStandardMaterial({ color: 0x34312a, roughness: 0.96, metalness: 0.02 });
-      const rockCount = Math.min(120, Math.max(36, coastEdgePts.length * 5));
+      // Bare icosahedron (no subdivision) gives sharp facets that read as
+      // fractured coastal granite rather than smooth beach pebbles.
+      const rockGeo = new THREE.IcosahedronGeometry(1, 0);
+      // Weathered granite; per-instance colour (below) spreads it across a
+      // warm-tan to cool wet-grey range so the rocks don't read as one clump.
+      const rockMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.97, metalness: 0.02 });
+      const rockCount = Math.min(110, Math.max(50, coastEdgePts.length * 5));
       const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
       const rm = new THREE.Matrix4();
       const rq = new THREE.Quaternion();
       const re = new THREE.Euler();
       const rp = new THREE.Vector3();
       const rs = new THREE.Vector3();
+      const rc = new THREE.Color();
+      const graniteA = new THREE.Color(0x6f6a60);   // dry warm granite
+      const graniteB = new THREE.Color(0x3a3c40);   // dark cool wet grey
       for (let i = 0; i < rockCount; i++) {
         const idx = Math.floor(coastRng() * (coastEdgePts.length - 1));
         const a = coastEdgePts[idx];
         const b = coastEdgePts[idx + 1] || a;
         const t = coastRng();
         const n = coastlineOutsideNormal(coastEdgePts, idx, coastLandPts);
-        const x = lerp(a.x, b.x, t) + n.x * (12 + coastRng() * 42);
-        const z = lerp(a.z, b.z, t) + n.z * (12 + coastRng() * 42);
+        // Cluster most boulders in the wash zone right at the base of the cliff,
+        // with a few flung further out as sea stacks poking through the surf.
+        const stack = coastRng() < 0.2;
+        const off = stack ? 20 + coastRng() * 30 : 1 + coastRng() * 22;
+        const x = lerp(a.x, b.x, t) + n.x * off;
+        const z = lerp(a.z, b.z, t) + n.z * off;
         re.set(coastRng() * Math.PI, coastRng() * Math.PI, coastRng() * Math.PI);
         rq.setFromEuler(re);
-        rp.set(x, waterLevel + 0.1 + coastRng() * 1.4, z);
-        const s = 1.4 + coastRng() * 5.6;
-        rs.set(s * (0.8 + coastRng() * 0.7), s * (0.35 + coastRng() * 0.55), s * (0.8 + coastRng() * 0.7));
+        const s = (stack ? 2.2 : 1.1) + coastRng() * (stack ? 4.4 : 3.6);
+        // Seat rocks INTO the surface: centre sits below the tideline by a good
+        // fraction of the radius so they emerge from the water/beach rather than
+        // hovering. Sea stacks are the exception and stand proud.
+        const rise = stack ? 0.4 + coastRng() * 2.2 : -s * (0.45 + coastRng() * 0.45);
+        rp.set(x, waterLevel + rise, z);
+        // Stacks stand taller (less vertical squash) so they read as upright
+        // rock rather than flat discs floating on the far water.
+        const flat = stack ? (0.9 + coastRng() * 0.5) : (0.55 + coastRng() * 0.7);
+        rs.set(s * (0.8 + coastRng() * 0.8), s * flat, s * (0.8 + coastRng() * 0.8));
         rm.compose(rp, rq, rs);
         rocks.setMatrixAt(i, rm);
+        // Wetter (darker/cooler) low rocks, drier paler granite standing proud.
+        rc.copy(graniteB).lerp(graniteA, Math.min(1, Math.max(0, rise * 0.22 + 0.4 + coastRng() * 0.4)));
+        rocks.setColorAt(i, rc);
       }
       rocks.instanceMatrix.needsUpdate = true;
+      if (rocks.instanceColor) rocks.instanceColor.needsUpdate = true;
       rocks.castShadow = true;
       rocks.receiveShadow = true;
       group.add(rocks);
@@ -1256,56 +1468,29 @@ export function buildCourse(hole, assets) {
         sx = wMaxX - wMinX + w.width * 2 + 20;
         sz = wMaxZ - wMinZ + w.width * 2 + 20;
       }
-      if (waters.length >= 1 || w.type === 'channel') {
-        // cheap non-reflective plate: dark, slightly glossy, no scene re-render
-        const flatNorm = assets.waterN.clone();
-        flatNorm.wrapS = flatNorm.wrapT = THREE.RepeatWrapping;
-        flatNorm.repeat.set(sx / 18, sz / 18);
-        const flat = new THREE.Mesh(
-          new THREE.PlaneGeometry(sx, sz),
-          new THREE.MeshStandardMaterial({
-            color: new THREE.Color(visualZones.waterColor ?? 0x0e3526).multiplyScalar(0.7),
-            roughness: 0.14, metalness: 0.05, envMapIntensity: 0.7,
-            normalMap: flatNorm, normalScale: new THREE.Vector2(0.55, 0.55),
-          }),
-        );
-        flatWaters.push(flatNorm);
-        flat.rotation.x = -Math.PI / 2;
-        flat.position.set(cx, waterLevel, cz);
-        group.add(flat);
-        continue;
-      }
-      const water = new Water(new THREE.PlaneGeometry(sx, sz), {
-        textureWidth: 256,
-        textureHeight: 256,
-        waterNormals: assets.waterN,
-        sunDirection: assets.sunDir.clone(),
-        sunColor: 0xffffff,
-        waterColor: visualZones.waterColor ?? 0x0e3526,
-        distortionScale: 2.6,
-        fog: true,
-      });
-      water.rotation.x = -Math.PI / 2;
-      water.position.set(cx, waterLevel, cz);
-      group.add(water);
-      waters.push(water);
-      if (visualZones.waterColor != null) {
-        // The reflective shader reads silver from tee height; a translucent
-        // tint plate keeps ponds/creeks reading as deep water.
-        const tint = new THREE.Mesh(
-          new THREE.PlaneGeometry(sx, sz),
-          new THREE.MeshBasicMaterial({
-            color: visualZones.waterColor,
-            transparent: true,
-            opacity: 0.45,
-            depthWrite: false,
-            fog: true,
-          }),
-        );
-        tint.rotation.x = -Math.PI / 2;
-        tint.position.set(cx, waterLevel + 0.03, cz);
-        group.add(tint);
-      }
+      // All inland water (ponds AND creeks) uses one calm glassy plate. The
+      // reflective `Water` mirror was fine on the vast open ocean but on a small
+      // pond it z-fought the shoreline (jagged white edges) and threw a harsh
+      // full-scene mirror the ball vanished under. A dark, lightly-rippled
+      // env-map plate reads as clean, still pond water and never glitches.
+      const flatNorm = assets.waterN.clone();
+      flatNorm.wrapS = flatNorm.wrapT = THREE.RepeatWrapping;
+      flatNorm.repeat.set(sx / 12, sz / 12);
+      const flat = new THREE.Mesh(
+        new THREE.PlaneGeometry(sx, sz),
+        new THREE.MeshStandardMaterial({
+          color: new THREE.Color(visualZones.waterColor ?? 0x0e3526).multiplyScalar(0.6),
+          roughness: 0.16, metalness: 0.0, envMapIntensity: 0.85,
+          normalMap: flatNorm, normalScale: new THREE.Vector2(0.3, 0.3),
+          // Push the plate's depth back so the shoreline terrain always wins the
+          // depth test — no more shimmering z-fight where water meets grass.
+          polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2,
+        }),
+      );
+      flatWaters.push(flatNorm);
+      flat.rotation.x = -Math.PI / 2;
+      flat.position.set(cx, waterLevel - 0.04, cz);   // sit just under the shoreline
+      group.add(flat);
     }
     // (combined animation hook assigned after trees/birds are built)
 
@@ -1354,6 +1539,100 @@ export function buildCourse(hole, assets) {
       group.add(bridgeGrp);
     }
 
+    // ---------- tournament grandstands (config-driven, Augusta only) ----------
+    // Tiered spectator stands set behind a couple of greens. Fully instanced:
+    // one draw call for the stepped green structure, one for the speckled crowd,
+    // one for the white top rail — a few dozen to a few hundred boxes across all
+    // stands, no per-object meshes and no shadow casting. Each stand renders only
+    // if its anchor falls inside this hole's bounds (same guard as the bridges).
+    {
+      const stands = (visualZones.grandstands || []).filter(
+        (s) => Number.isFinite(s.x) && Number.isFinite(s.z)
+          && s.x >= minX && s.x <= maxX && s.z >= minZ && s.z <= maxZ
+          // Augusta's routing packs 15/16/17 greens together, so a stand set
+          // behind one green can fall inside a neighbour's bounds near its tee.
+          // Only draw a stand on the hole whose green it actually sits behind.
+          && Math.hypot(s.x - hole.green.cx, s.z - hole.green.cz) < 75,
+      );
+      if (stands.length) {
+        // Collect step + crowd + rail instances across every visible stand.
+        const stepT = [];    // {x,y,z,rot,w,h,d, tone}
+        const crowdT = [];   // {x,y,z,rot,w,h,d, col}
+        const railT = [];    // {x,y,z,rot,w,h,d}
+        const crowdPal = [
+          0xe8ded0, 0xd9c9b2, 0xc7d2dc, 0xb7c3cf, 0xd6bfa6,
+          0xcfd6cf, 0xe3d6c2, 0xbfc9b8, 0xd0c4d2, 0xe0e0da,
+        ];
+        const rot2 = (lx, lz, cos, sin) => ({ x: lx * cos + lz * sin, z: -lx * sin + lz * cos });
+        for (const s of stands) {
+          const T = Math.max(4, Math.min(12, s.tiers || 8));
+          const w = s.w || 32;
+          const rise = 0.58;                 // per-row rise
+          const d = 1.5;                      // per-row tread depth
+          const totalDepth = T * d;
+          const cos = Math.cos(s.rot || 0), sin = Math.sin(s.rot || 0);
+          const g0 = heightAt(s.x, s.z) - 0.05;
+          const cols = Math.max(6, Math.round(w / 2.1));
+          const seatW = w / cols;
+          for (let i = 0; i < T; i++) {
+            const lz = -totalDepth / 2 + (i + 0.5) * d;      // front (near green) -> back
+            const hgt = (i + 1) * rise;                       // stepped wedge to ground
+            const wp = rot2(0, lz, cos, sin);
+            stepT.push({
+              x: s.x + wp.x, y: g0 + hgt / 2, z: s.z + wp.z, rot: s.rot || 0,
+              w, h: hgt, d, tone: 0.9 + 0.06 * (i / T),
+            });
+            // Packed gallery on each tread: short seat blocks across the width.
+            for (let j = 0; j < cols; j++) {
+              const lx = -w / 2 + (j + 0.5) * seatW;
+              const cp = rot2(lx, lz, cos, sin);
+              const col = crowdPal[(i * 7 + j * 3) % crowdPal.length];
+              crowdT.push({
+                x: s.x + cp.x, y: g0 + hgt + 0.26, z: s.z + cp.z, rot: s.rot || 0,
+                w: seatW * 0.92, h: 0.5, d: d * 0.62, col,
+              });
+            }
+          }
+          // White top rail behind the back row.
+          const rz = -totalDepth / 2 + (T - 0.1) * d;
+          const rp = rot2(0, rz, cos, sin);
+          railT.push({
+            x: s.x + rp.x, y: g0 + T * rise + 0.24, z: s.z + rp.z, rot: s.rot || 0,
+            w: w + 0.4, h: 0.22, d: 0.22,
+          });
+        }
+        const unit = new THREE.BoxGeometry(1, 1, 1);
+        const m4 = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const up = new THREE.Vector3(0, 1, 0);
+        const col = new THREE.Color();
+        const placeInst = (arr, baseColor, colorPerInst) => {
+          const mat = new THREE.MeshLambertMaterial(baseColor != null ? { color: baseColor } : {});
+          const im = new THREE.InstancedMesh(unit, mat, arr.length);
+          arr.forEach((it, i) => {
+            q.setFromAxisAngle(up, it.rot);
+            m4.compose(new THREE.Vector3(it.x, it.y, it.z), q, new THREE.Vector3(it.w, it.h, it.d));
+            im.setMatrixAt(i, m4);
+            if (colorPerInst) {
+              col.set(it.col ?? 0xffffff).multiplyScalar(it.tone ?? 1);
+              im.setColorAt(i, col);
+            }
+          });
+          im.instanceMatrix.needsUpdate = true;
+          if (im.instanceColor) im.instanceColor.needsUpdate = true;
+          im.castShadow = false;
+          im.receiveShadow = false;
+          group.add(im);
+        };
+        // Dark green scaffold structure (per-instance tone for depth).
+        placeInst(stepT, 0x24402a, true);
+        // Speckled crowd.
+        placeInst(crowdT, null, true);
+        // White rail.
+        placeInst(railT, 0xf2efe6, false);
+      }
+    }
+
     // ---------- town edge: real building footprints + boundary walls ----------
     // Instanced (2 draw calls for all buildings, 1 for walls), no shadow
     // casting, sizes clamped — the previous per-mesh version was both the
@@ -1368,8 +1647,10 @@ export function buildCourse(hole, assets) {
       if (blds.length) {
         const bodyGeo = new THREE.BoxGeometry(1, 1, 1);
         const roofGeo = new THREE.CylinderGeometry(0.02, 0.72, 1, 4, 1);
-        const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
-        const roofMat = new THREE.MeshLambertMaterial({ color: 0x4a4742 });
+        // Emissive floor so the town doesn't collapse to a black silhouette when
+        // backlit by the low sun under the grey links sky.
+        const bodyMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x33302a, emissiveIntensity: 0.6 });
+        const roofMat = new THREE.MeshLambertMaterial({ color: 0x6a6560, emissive: 0x1f1c18 });
         const bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, blds.length);
         const roofs = new THREE.InstancedMesh(roofGeo, roofMat, blds.length);
         const facades = [0x8f8271, 0x7d7264, 0x97887a, 0x857a6c, 0x6e655a];
@@ -1410,7 +1691,7 @@ export function buildCourse(hole, assets) {
       if (segs.length) {
         const wallMesh = new THREE.InstancedMesh(
           new THREE.BoxGeometry(1, 1, 1),
-          new THREE.MeshLambertMaterial({ color: 0x6d675c }),
+          new THREE.MeshLambertMaterial({ color: 0x9a9184, emissive: 0x2a2824, emissiveIntensity: 0.7 }),
           segs.length,
         );
         const m4 = new THREE.Matrix4();
@@ -1429,20 +1710,47 @@ export function buildCourse(hole, assets) {
 
     // ---------- 3D rough grass: instanced swaying tufts (GSPro step 2) ----------
     if (visualZones.grass3d !== false && !hole.isRange) {
-      // tuft geometry: 3 thin bent blades, vertex-color gradient base->tip
+      // tuft geometry: a fan of fine tapered blades with a mid-bend, so each
+      // reads as a curved leaf rather than a flat spike. Vertex colours run a
+      // base->tip gradient, with per-blade hue jitter (some blades drier/yellow)
+      // for a richer, less uniform clump. Kept cheap: ~7 blades, 2 tris each.
       const gPos = [], gCol = [], gIdx = [];
-      const baseC = new THREE.Color(0x40602c);
-      const tipC = new THREE.Color(0x86b055);
-      for (let bIdx = 0; bIdx < 5; bIdx++) {
-        const a = (bIdx / 5) * Math.PI * 2 + bIdx * 0.7;
+      const baseC = new THREE.Color(0x3a5827);
+      const tipLush = new THREE.Color(0x8fbb5c);
+      const tipDry = new THREE.Color(0xa8ad63);
+      const NB = 7;
+      const bTmp = new THREE.Color();
+      for (let bIdx = 0; bIdx < NB; bIdx++) {
+        const a = (bIdx / NB) * Math.PI * 2 + bIdx * 0.9;
         const ca = Math.cos(a), sa = Math.sin(a);
-        const rad = 0.02 + (bIdx % 2) * 0.03;      // fan out into a clump
-        const w = 0.02, hgt = 0.11 + (bIdx % 3) * 0.03, bend = 0.05;
+        const rad = 0.015 + (bIdx % 3) * 0.022;              // fan out into a clump
+        const tall = (bIdx % 4 === 0) ? 1.55 : 1.0;          // an occasional flag blade
+        const w = 0.016, hgt = (0.10 + (bIdx % 3) * 0.028) * tall;
+        const bend = 0.045 + (bIdx % 2) * 0.02;
+        const midH = hgt * 0.55, midW = w * 0.62;
         const bx = ca * rad, bz = sa * rad;
+        // mid + tip offsets carry the blade over into a gentle arc
+        const mx = bx + bend * 0.45 * ca, mz = bz + bend * 0.45 * sa;
+        const tx = bx + bend * ca, tz = bz + bend * sa;
         const o = gPos.length / 3;
-        gPos.push(bx - w * ca, 0, bz - w * sa,  bx + w * ca, 0, bz + w * sa,  bx + bend * ca, hgt, bz + bend * sa);
-        gCol.push(baseC.r, baseC.g, baseC.b,  baseC.r, baseC.g, baseC.b,  tipC.r, tipC.g, tipC.b);
-        gIdx.push(o, o + 1, o + 2);
+        gPos.push(
+          bx - w * ca, 0, bz - w * sa,           // 0 base L
+          bx + w * ca, 0, bz + w * sa,           // 1 base R
+          mx - midW * ca, midH, mz - midW * sa,  // 2 mid L
+          mx + midW * ca, midH, mz + midW * sa,  // 3 mid R
+          tx, hgt, tz,                            // 4 tip
+        );
+        // drier blades near the clump edge, lush ones central & tall
+        const dry = (bIdx % 4 === 0) ? 0.15 : (bIdx % 3) * 0.28;
+        bTmp.copy(tipLush).lerp(tipDry, dry);
+        gCol.push(
+          baseC.r, baseC.g, baseC.b,
+          baseC.r, baseC.g, baseC.b,
+          baseC.r * 1.12, baseC.g * 1.12, baseC.b * 1.1,
+          baseC.r * 1.12, baseC.g * 1.12, baseC.b * 1.1,
+          bTmp.r, bTmp.g, bTmp.b,
+        );
+        gIdx.push(o, o + 2, o + 1,  o + 1, o + 2, o + 3,  o + 2, o + 4, o + 3);
       }
       const tuftGeo = new THREE.BufferGeometry();
       tuftGeo.setAttribute('position', new THREE.Float32BufferAttribute(gPos, 3));
@@ -1503,10 +1811,19 @@ export function buildCourse(hole, assets) {
           const hh = cachedH(dx2, dz2);
           if (hh < waterLevel + 0.2) continue;
           q.setFromAxisAngle(up, gRng() * Math.PI * 2);
-          const sc = 0.7 + gRng() * 0.5;
-          m4.compose(new THREE.Vector3(dx2, hh, dz2), q, new THREE.Vector3(sc, sc * (0.85 + gRng() * 0.5), sc));
+          const sc = 0.7 + gRng() * 0.55;
+          m4.compose(new THREE.Vector3(dx2, hh, dz2), q, new THREE.Vector3(sc, sc * (0.8 + gRng() * 0.6), sc));
           mats.push(m4.clone());
-          cTmp.setHSL(0.25 + gRng() * 0.03, 0.42, 0.42 + gRng() * 0.12);
+          // Richer clump-to-clump variation: mostly green, but a fraction dry
+          // out toward hay-gold (deeper into the rough), and lightness varies
+          // so the rough never reads as one flat carpet.
+          const r1 = gRng();
+          if (r1 < 0.16) {
+            // dried hay tuft — warmer hue, lower saturation
+            cTmp.setHSL(0.16 + gRng() * 0.04, 0.34, 0.44 + gRng() * 0.12);
+          } else {
+            cTmp.setHSL(0.24 + gRng() * 0.05, 0.40 + gRng() * 0.14, 0.38 + gRng() * 0.16);
+          }
           cols.push(cTmp.clone());
         }
         }
@@ -1524,8 +1841,44 @@ export function buildCourse(hole, assets) {
     // ---------- trees: instanced branch-card trees ----------
     const rng = makeRng(hole.seed * 31 + 7);
     spots = [];
-    const candidates = Math.floor((hasOcean ? 960 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
-    const maxRandomTrees = hasOcean ? 245 : (forest ? 950 : 460);
+
+    // Real tree placement from LiDAR (see augusta-trees.js). When a course ships
+    // measured canopy positions, plant trees exactly where they stand — real
+    // treelines from the USGS 3DEP point cloud — instead of a plausible scatter.
+    const realTrees = visualZones.realTrees || null;
+    if (realTrees && realTrees.length) {
+      const rMax = 2600;                              // per-hole render cap
+      const pineShare = forest?.pineShare ?? 0.85;
+      for (let i = 0; i < realTrees.length && spots.length < rMax; i++) {
+        const rx = realTrees[i][0], rz = realTrees[i][1], rh = realTrees[i][2];
+        if (rx < minX + 6 || rx > maxX - 6 || rz < minZ + 6 || rz > maxZ - 6) continue;
+        const p = pathInfo(rx, rz);
+        if (p.dist < fhw + 4) continue;               // never on the fairway itself
+        if (inFeaturePolys(osmFairways, rx, rz) || inFeaturePolys(osmGreens, rx, rz)
+          || inFeaturePolys(osmTees, rx, rz) || inFeaturePolys(osmBunkers, rx, rz)) continue;
+        if (ellipseVal(hole.green, rx, rz) < 2.4) continue;
+        if (Math.hypot(rx - tee.x, rz - tee.z) < 14) continue;
+        if (hasWater && waterMask(rx, rz).m > 0.05) continue;
+        const s = Math.max(0.85, Math.min(2.3, rh / 14));   // real canopy height -> scale
+        const lv = 0.8 + rng() * 0.4;
+        // Spring-Masters Augusta is lush green — keep the per-tree variation but
+        // bias cool/green so trees don't read autumn-brown.
+        const warm = (rng() - 0.62) * 0.2;
+        let tint = [lv * (1 + warm) * 0.94, lv * 1.24, lv * (1 - warm * 0.7) * 0.92];
+        const dTee = Math.hypot(rx - tee.x, rz - tee.z);
+        const haze = Math.min(0.55, Math.max(0, (dTee - 240) / 620));
+        if (haze > 0) tint = [tint[0] + (1.22 - tint[0]) * haze, tint[1] + (1.24 - tint[1]) * haze, tint[2] + (1.3 - tint[2]) * haze];
+        spots.push({
+          x: rx, z: rz, h: heightAt(rx, rz), s,
+          ry: rng() * Math.PI * 2, tilt: (rng() - 0.5) * 0.06,
+          kind: rng() < pineShare ? (rng() < 0.5 ? 4 : 5) : (rng() < 0.5 ? 2 : 3),
+          tint,
+        });
+      }
+    }
+
+    const candidates = (treeless || realTrees) ? 0 : Math.floor((hasOcean ? 700 : (forest ? 3200 : 1700)) * (hole.treeDensity || 1));
+    const maxRandomTrees = hasOcean ? 160 : (forest ? 950 : 460);
     for (let i = 0; i < candidates && spots.length < maxRandomTrees; i++) {
       const x = minX + 14 + rng() * (maxX - minX - 28);
       const z = minZ + 14 + rng() * (maxZ - minZ - 28);
@@ -1542,6 +1895,28 @@ export function buildCourse(hole, assets) {
       if (forest && p.dist > fhw + 95 && rng() < 0.45) continue; // wall hugs the corridor
       if (!forest && fbmDetail(x * 0.02 + 90, z * 0.02) < -0.12) continue; // clearings
       const pineShare = forest?.pineShare ?? (hasOcean ? 0.78 : 0.6);
+      // Per-instance foliage colour: one draw controls overall lightness, a
+      // second a warm<->cool bias. Correlating them (instead of three
+      // independent channels) breaks the flat green wall into a believable mix
+      // of lighter/deeper and warmer/cooler crowns while keeping green dominant.
+      const lv = 0.76 + rng() * 0.46;              // brightness 0.76..1.22
+      const warm = (rng() - 0.42) * 0.34;          // + warm/yellow, - cool/blue
+      let tint = forest
+        ? [lv * (1 + warm) * 0.98, lv * 1.18, lv * (1 - warm * 0.8) * 0.9]
+        : hasOcean
+          ? [lv * (1 + warm) * 0.74, lv * 0.9, lv * (1 - warm * 0.6) * 0.76]
+          : [lv * (1 + warm) * 1.0, lv * 1.02, lv * (1 - warm * 0.7) * 0.98];
+      // Distant trees soften into atmosphere: lift toward a pale, desaturated
+      // haze so the far treeline melts into the sky rather than popping.
+      const dTee = Math.hypot(x - tee.x, z - tee.z);
+      const haze = Math.min(0.55, Math.max(0, (dTee - 240) / 620));
+      if (haze > 0) {
+        tint = [
+          tint[0] + (1.22 - tint[0]) * haze,
+          tint[1] + (1.24 - tint[1]) * haze,
+          tint[2] + (1.3 - tint[2]) * haze,
+        ];
+      }
       spots.push({
         x, z, h: heightAt(x, z),
         s: forest
@@ -1552,18 +1927,23 @@ export function buildCourse(hole, assets) {
         kind: rng() < pineShare
           ? (forest ? (rng() < 0.5 ? 4 : 5) : (rng() < 0.5 ? 0 : 1))
           : (rng() < 0.5 ? 2 : 3),
-        tint: forest
-          ? [0.78 + rng() * 0.3, 0.95 + rng() * 0.33, 0.72 + rng() * 0.24]
-          : hasOcean
-            ? [0.62 + rng() * 0.22, 0.72 + rng() * 0.22, 0.60 + rng() * 0.18]
-            : [0.82 + rng() * 0.34, 0.84 + rng() * 0.34, 0.82 + rng() * 0.28],
+        tint,
       });
     }
+    const DOGWOOD = 9;
     if (visualZones.flora === 'azalea' || visualZones.flora === 'gorse') {
       // Flowering underplanting along the corridor edges (never in play):
       // azalea pinks/whites for parkland, whin-bush green-and-gold for links.
       const gorse = visualZones.flora === 'gorse';
       const aRng = makeRng(hole.seed * 97 + 13);
+      // Dogwood blossom tints: pure white to pale pink. The leaf card is
+      // green-dominant, so a true white needs the green multiplier held low
+      // while red+blue are pushed hard — otherwise green clamps first and the
+      // blossom reads mint, not white.
+      const dogwoodTints = [
+        [4.7, 2.2, 4.9], [4.9, 2.3, 4.6], [5.2, 2.0, 4.4], [4.6, 2.15, 5.1],
+      ];
+      let dogwoods = 0;
       // Foliage texture is green-heavy, so warm tones need strong multipliers.
       const palette = gorse
         ? [
@@ -1571,36 +1951,99 @@ export function buildCourse(hole, assets) {
             [0.55, 0.8, 0.4], [2.4, 1.9, 0.3],
           ]
         : [
-            [2.7, 0.55, 1.15], [2.9, 0.4, 0.7], [2.3, 2.15, 2.25],
-            [2.7, 0.8, 0.5], [2.4, 0.5, 1.35],
+            // Augusta azaleas + dogwoods: hot pink, crimson, pure white, and
+            // magenta. Multipliers are pushed hard (and blue-biased) so the tint
+            // reads true pink over the green foliage card, not muddy orange.
+            [3.1, 0.5, 1.5], [3.0, 0.3, 0.85], [2.7, 2.55, 2.7],
+            [3.0, 0.6, 1.9], [2.6, 1.5, 2.0],
           ];
-      const maxPlaced = gorse ? 200 : 130;
-      const bandMax = gorse ? 60 : 46;
+      // Augusta's azaleas grow in big flowering banks against the tree line and
+      // behind greens, so parkland gets many more, larger clumps than the sparse
+      // links whin. Cluster seeds spawn a tight burst of blooms for that mass.
+      const maxPlaced = gorse ? 200 : 720;
+      const bandMax = gorse ? 60 : 54;
       let placed = 0;
-      for (let i = 0; i < 3200 && placed < maxPlaced; i++) {
+      for (let i = 0; i < 6000 && placed < maxPlaced; i++) {
         const x = minX + 14 + aRng() * (maxX - minX - 28);
         const z = minZ + 14 + aRng() * (maxZ - minZ - 28);
         const p = pathInfo(x, z);
-        if (p.dist < fhw + 8 || p.dist > fhw + bandMax) continue;
+        if (p.dist < fhw + 3 || p.dist > fhw + bandMax) continue;
         if (inFeaturePolys(osmFairways, x, z) || inFeaturePolys(osmGreens, x, z)
           || inFeaturePolys(osmTees, x, z) || inFeaturePolys(osmBunkers, x, z)) continue;
         if (ellipseVal(hole.green, x, z) < 2.2) continue;
         if (hasWater && waterMask(x, z).m > 0.05) continue;
+        // Dogwoods: standing flowering trees scattered through the azalea banks
+        // along the tree line (parkland only). One per seed occasionally, sited
+        // toward the outer edge of the flowering band so they read as small
+        // trees in front of the pines, not in the azalea foreground.
+        if (!gorse && dogwoods < 54 && p.dist > fhw + 18 && aRng() < 0.2) {
+          spots.push({
+            x, z, h: heightAt(x, z),
+            s: 0.58 + aRng() * 0.36,
+            ry: aRng() * Math.PI * 2,
+            tilt: (aRng() - 0.5) * 0.06,
+            kind: DOGWOOD,
+            tint: dogwoodTints[Math.floor(aRng() * dogwoodTints.length)].slice(),
+          });
+          dogwoods++;
+          placed++;
+          continue;
+        }
+        // A clump: one dominant colour, several blooms tightly grouped. Parkland
+        // (Augusta) gets big, dense flowering banks so they read clearly against
+        // the dense real treeline.
+        const clumpN = gorse ? 1 : (4 + Math.floor(aRng() * 5));
         const tint = palette[Math.floor(aRng() * palette.length)];
-        spots.push({
-          x, z, h: heightAt(x, z),
-          s: 0.15 + aRng() * 0.16,
-          ry: aRng() * Math.PI * 2,
-          tilt: 0,
-          kind: aRng() < 0.5 ? 2 : 3,
-          tint: [tint[0], tint[1], tint[2]],
-        });
-        placed++;
+        for (let c = 0; c < clumpN && placed < maxPlaced; c++) {
+          const ox = c === 0 ? 0 : (aRng() - 0.5) * 4.4;
+          const oz = c === 0 ? 0 : (aRng() - 0.5) * 4.4;
+          spots.push({
+            x: x + ox, z: z + oz, h: heightAt(x + ox, z + oz),
+            s: gorse ? (0.15 + aRng() * 0.16) : (0.36 + aRng() * 0.46),
+            ry: aRng() * Math.PI * 2,
+            tilt: 0,
+            kind: aRng() < 0.5 ? 2 : 3,
+            tint: [tint[0], tint[1], tint[2]],
+          });
+          placed++;
+        }
+      }
+      // Greenside beds: Augusta's signature masses of azalea + dogwood hugging
+      // the green complex. Ring the green just off the putting surface so every
+      // approach frames a wall of bloom behind the flag.
+      if (!gorse) {
+        const gdef = hole.green;
+        const gRng = makeRng(hole.seed * 53 + 29);
+        const gcos = Math.cos(gdef.rot || 0), gsin = Math.sin(gdef.rot || 0);
+        let gp = 0;
+        for (let a = 0; a < Math.PI * 2 && gp < 96; a += 0.15) {
+          const rr = Math.sqrt(1.32 + gRng() * 0.75);      // just outside the green edge
+          const lx = Math.cos(a) * gdef.rx * rr, lz = Math.sin(a) * gdef.rz * rr;
+          const wx = gdef.cx + lx * gcos - lz * gsin;
+          const wz = gdef.cz + lx * gsin + lz * gcos;
+          if (wx < minX + 6 || wx > maxX - 6 || wz < minZ + 6 || wz > maxZ - 6) continue;
+          if (inFeaturePolys(osmFairways, wx, wz) || inFeaturePolys(osmTees, wx, wz) || inFeaturePolys(osmBunkers, wx, wz)) continue;
+          if (hasWater && waterMask(wx, wz).m > 0.05) continue;
+          const dw = gRng() < 0.24;
+          const tint = dw ? dogwoodTints[Math.floor(gRng() * dogwoodTints.length)] : palette[Math.floor(gRng() * palette.length)];
+          const clumpN = 3 + Math.floor(gRng() * 4);
+          for (let c = 0; c < clumpN && gp < 96; c++) {
+            const ox = (gRng() - 0.5) * 3.2, oz = (gRng() - 0.5) * 3.2;
+            spots.push({
+              x: wx + ox, z: wz + oz, h: heightAt(wx + ox, wz + oz),
+              s: dw ? (0.5 + gRng() * 0.3) : (0.36 + gRng() * 0.42),
+              ry: gRng() * Math.PI * 2, tilt: 0,
+              kind: dw ? DOGWOOD : (gRng() < 0.5 ? 2 : 3),
+              tint: [tint[0], tint[1], tint[2]],
+            });
+            gp++;
+          }
+        }
       }
     }
     if (hasOcean) {
       const coastTreeRng = makeRng(hole.seed * 211 + 5);
-      const maxCoastalTrees = Math.min(120, 42 + (hole.id === 7 || hole.id === 8 || hole.id === 17 || hole.id === 18 ? 34 : 0));
+      const maxCoastalTrees = Math.min(80, 30 + (hole.id === 7 || hole.id === 8 || hole.id === 17 || hole.id === 18 ? 24 : 0));
       let made = 0;
       for (let i = 0; i < coastEdgePts.length * 7 && made < maxCoastalTrees && spots.length < 560; i++) {
         const idx = Math.floor(coastTreeRng() * (coastEdgePts.length - 1));
@@ -1666,8 +2109,11 @@ export function buildCourse(hole, assets) {
       }
     }
 
-    // Corridor trees get the dense near-LOD canopy (where the camera lands)
+    // Corridor trees get the dense near-LOD canopy (where the camera lands).
+    // Dogwoods (kind 9) are already a bespoke near-LOD understory tree — leave
+    // them alone or the remap would turn them into dense pines.
     for (const t of spots) {
+      if (t.kind === 9) continue;
       if (pathInfo(t.x, t.z).dist < fhw + 40) {
         t.kind = t.kind <= 1 ? 6 : (t.kind <= 3 ? 7 : 8);
       }
@@ -1758,9 +2204,23 @@ export function buildCourse(hole, assets) {
     }
     // Point the ocean-dip toward the sea (coastal only)
     const oceanDir = hasOcean ? Math.atan2(0, 1) : null;
-    ridgeRing(baseR + 150, 128, 0, 12, 16, 2.4, 0x33502b, 0.35, 4, null);          // near treeline
-    ridgeRing(baseR + 620, 96, 0, 34, 60, 1.7, 0x3f5744, 0.62, 31, oceanDir);      // mid hills
-    ridgeRing(baseR + 1500, 80, 0, 70, 150, 1.1, 0x5a6f78, 0.82, 57, oceanDir);    // far mountains
+    if (treeless) {
+      // Flat coastal links (St Andrews): no hills, no mountains. A low, distant
+      // band of farmland/dunes melting into a big grey sky — the town buildings
+      // supply the only real skyline.
+      ridgeRing(baseR + 260, 112, 0, 4, 6, 2.1, 0x6d7856, 0.55, 4, oceanDir);       // low dune/links band
+      ridgeRing(baseR + 1000, 80, 0, 8, 10, 1.5, 0x8a9285, 0.8, 37, oceanDir);      // faint far shore, mostly haze
+    } else if (forest) {
+      // Rolling wooded country (Augusta): green pine ridges all the way out —
+      // never bare grey mountains. Lower and greener than the default massif.
+      ridgeRing(baseR + 150, 128, 0, 14, 22, 2.4, 0x2c4724, 0.30, 4, null);          // near pine wall
+      ridgeRing(baseR + 620, 96, 0, 30, 48, 1.7, 0x334a2c, 0.55, 31, null);          // mid wooded hills
+      ridgeRing(baseR + 1500, 80, 0, 46, 78, 1.1, 0x45583d, 0.80, 57, null);         // far wooded ridge (green)
+    } else {
+      ridgeRing(baseR + 150, 128, 0, 12, 16, 2.4, 0x33502b, 0.35, 4, null);          // near treeline
+      ridgeRing(baseR + 620, 96, 0, 34, 60, 1.7, 0x3f5744, 0.62, 31, oceanDir);      // mid hills
+      ridgeRing(baseR + 1500, 80, 0, 70, 150, 1.1, 0x5a6f78, 0.82, 57, oceanDir);    // far mountains
+    }
 
     if (hole.isRange && hole.rangeScenery?.mountains) {
       const mountainRng = makeRng(hole.seed * 421 + 9);
@@ -1856,14 +2316,18 @@ export function buildCourse(hole, assets) {
     }
 
     // ---------- tree contact AO: soft shadow discs at every trunk base ----------
-    // (GSPro step 3a) grounds the card trees — without these they float.
+    // (GSPro step 3a) grounds the card trees — without these they float. The
+    // disc has a dark contact core fading to a long soft edge, and is stretched
+    // + offset along the sun-shadow direction so the pool reads as a real cast
+    // shadow raking away from each trunk rather than a flat symmetric blob.
     if (spots.length) {
       const aoCv = document.createElement('canvas');
       aoCv.width = aoCv.height = 64;
       const aoCtx = aoCv.getContext('2d');
-      const aoG = aoCtx.createRadialGradient(32, 32, 3, 32, 32, 31);
-      aoG.addColorStop(0, 'rgba(10,16,8,0.42)');
-      aoG.addColorStop(0.6, 'rgba(10,16,8,0.22)');
+      const aoG = aoCtx.createRadialGradient(32, 32, 2, 32, 32, 31);
+      aoG.addColorStop(0, 'rgba(8,14,6,0.5)');
+      aoG.addColorStop(0.35, 'rgba(9,15,7,0.32)');
+      aoG.addColorStop(0.7, 'rgba(10,16,8,0.13)');
       aoG.addColorStop(1, 'rgba(10,16,8,0)');
       aoCtx.fillStyle = aoG;
       aoCtx.fillRect(0, 0, 64, 64);
@@ -1873,17 +2337,32 @@ export function buildCourse(hole, assets) {
         new THREE.MeshBasicMaterial({ map: aoTex, transparent: true, depthWrite: false }),
         Math.min(spots.length, 1400),
       );
+      // Orient the ellipse's long axis along the ground-projected shadow.
+      const shx = -assets.sunDir.x, shz = -assets.sunDir.z;
+      const shLen = Math.hypot(shx, shz) || 1;
+      const sux = shx / shLen, suz = shz / shLen;
+      const phi = Math.atan2(-suz, sux);
+      const qa = new THREE.Quaternion()
+        .setFromAxisAngle(new THREE.Vector3(0, 1, 0), phi)
+        .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2));
       const m4a = new THREE.Matrix4();
-      const qa = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
+      const posA = new THREE.Vector3();
+      const scaleA = new THREE.Vector3();
       let na = 0;
       for (const t of spots) {
         if (na >= aoMesh.count) break;
-        const r = (t.kind <= 1 ? 2.6 : 3.4) * t.s;
-        m4a.compose(
-          new THREE.Vector3(t.x, heightAt(t.x, t.z) + 0.025 + (na % 7) * 0.002, t.z),
-          qa,
-          new THREE.Vector3(r, r, r),
+        // dogwoods (9) are small, tall pines (loblolly) throw a wider pool
+        const base = t.kind === 9 ? 1.7 : (t.kind === 0 || t.kind === 1 || t.kind === 6) ? 2.6 : 3.3;
+        const r = base * t.s;
+        const long = r * 1.4, short = r * 0.92;
+        const off = (long - r) * 0.8;
+        posA.set(
+          t.x + sux * off,
+          heightAt(t.x, t.z) + 0.025 + (na % 7) * 0.002,
+          t.z + suz * off,
         );
+        scaleA.set(long, short, 1);
+        m4a.compose(posA, qa, scaleA);
         aoMesh.setMatrixAt(na++, m4a);
       }
       aoMesh.count = na;
@@ -1924,6 +2403,11 @@ export function buildCourse(hole, assets) {
       if (oceanMesh) oceanMesh.material.uniforms.time.value = t * 0.35;
       for (const w of waters) w.material.uniforms.time.value = t * 0.5;
       for (const fn of flatWaters) { fn.offset.x = t * 0.008; fn.offset.y = t * 0.011; }
+      // Surf breathes: each foam band swells and fades on a slow ~7 s swell,
+      // offset by band so the wash and the retreating ring never peak together.
+      for (const fb of foamBands) {
+        fb.mat.opacity = fb.base * (0.62 + 0.38 * Math.sin(t * 0.9 + fb.phase));
+      }
       const sh = terrain.material.userData.shader;
       if (sh) {
         sh.uniforms.uTime.value = t;
@@ -1976,95 +2460,140 @@ export function buildCourse(hole, assets) {
     flagGroup.position.set(pinPos.x, pinPos.y, pinPos.z);
     group.add(flagGroup);
 
-    // ---------- green-reading grid (slope colored: blue low → red high) ----------
+    // ---------- green-reading heatmap (filled elevation surface + fall-line arrows) ----------
     {
       const gdef = hole.green;
-      const R = Math.max(gdef.rx, gdef.rz) * 1.3;
-      const SUB = 0.6, STEP = 1.2;
-      const inside = (x, z) => ellipseVal(gdef, x, z) <= 1.3;
+      const R = Math.max(gdef.rx, gdef.rz) * 1.28;
+      const STEP = 0.7;                                    // heatmap cell size (m)
+      const inside = (x, z) => ellipseVal(gdef, x, z) <= 1.06;
+
+      // Height range across the green, for normalizing the color ramp.
       let hMin = Infinity, hMax = -Infinity;
-      for (let gx = -R; gx <= R; gx += SUB) {
-        for (let gz = -R; gz <= R; gz += SUB) {
+      for (let gx = -R; gx <= R; gx += STEP) {
+        for (let gz = -R; gz <= R; gz += STEP) {
           const x = gdef.cx + gx, z = gdef.cz + gz;
           if (!inside(x, z)) continue;
           const hh = heightAt(x, z);
-          hMin = Math.min(hMin, hh); hMax = Math.max(hMax, hh);
+          if (hh < hMin) hMin = hh;
+          if (hh > hMax) hMax = hh;
         }
       }
-      const span = Math.max(hMax - hMin, 0.01);
-      const lowC = new THREE.Color(0x58a7e8), highC = new THREE.Color(0xe8645f);
-      const cc = new THREE.Color();
-      const pos = [], col = [];
-      const pushPt = (x, z) => {
-        const hh = heightAt(x, z);
-        pos.push(x, hh + 0.035, z);
-        cc.copy(lowC).lerp(highC, (hh - hMin) / span);
-        col.push(cc.r, cc.g, cc.b);
-      };
-      const walk = (alongX) => {
-        for (let a = -R; a <= R; a += STEP) {
-          let prevIn = false;
-          for (let b = -R; b <= R; b += SUB) {
-            const x = gdef.cx + (alongX ? a : b);
-            const z = gdef.cz + (alongX ? b : a);
-            const isIn = inside(x, z);
-            if (isIn && prevIn) {
-              const px = gdef.cx + (alongX ? a : b - SUB);
-              const pz = gdef.cz + (alongX ? b - SUB : a);
-              pushPt(px, pz); pushPt(x, z);
-            }
-            prevIn = isIn;
+      const span = Math.max(hMax - hMin, 0.05);
+
+      // Elevation ramp for a green-book style overlay: low = cool blue, high =
+      // warm amber. Deliberately NO pure red (reads as "danger", not terrain) and
+      // no grass-green mid-tones (they would vanish into the turf).
+      const RAMP = [
+        [0.00, new THREE.Color(0x3577d6)],  // low  — blue
+        [0.34, new THREE.Color(0x37bfb0)],  // teal
+        [0.62, new THREE.Color(0xe9dc5c)],  // soft yellow
+        [1.00, new THREE.Color(0xe89a3c)],  // high — amber
+      ];
+      const _rc = new THREE.Color();
+      const ramp = (t) => {
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        for (let i = 1; i < RAMP.length; i++) {
+          if (t <= RAMP[i][0]) {
+            const a = RAMP[i - 1], b = RAMP[i];
+            const f = (t - a[0]) / ((b[0] - a[0]) || 1);
+            return _rc.copy(a[1]).lerp(b[1], f);
           }
         }
+        return _rc.copy(RAMP[RAMP.length - 1][1]);
       };
-      walk(true); walk(false);
-      // Fall-line chevrons: small downhill arrows every ~3m so the read is
-      // directional, not just a heat map.
+
+      const heatGroup = new THREE.Group();
+
+      // --- filled, translucent heatmap surface (triangulated grid) ---
+      const pos = [], col = [];
+      const steps = Math.ceil((2 * R) / STEP);
+      const push = (x, z, h) => {
+        pos.push(x, h + 0.06, z);
+        const c = ramp((h - hMin) / span);
+        col.push(c.r, c.g, c.b);
+      };
+      for (let ix = 0; ix < steps; ix++) {
+        for (let iz = 0; iz < steps; iz++) {
+          const x0 = gdef.cx - R + ix * STEP, z0 = gdef.cz - R + iz * STEP;
+          const x1 = x0 + STEP, z1 = z0 + STEP;
+          // Emit a quad only where all four corners lie on the green.
+          if (!(inside(x0, z0) && inside(x1, z0) && inside(x1, z1) && inside(x0, z1))) continue;
+          const c00 = heightAt(x0, z0), c10 = heightAt(x1, z0);
+          const c11 = heightAt(x1, z1), c01 = heightAt(x0, z1);
+          push(x0, z0, c00); push(x1, z0, c10); push(x1, z1, c11);
+          push(x0, z0, c00); push(x1, z1, c11); push(x0, z1, c01);
+        }
+      }
+      if (pos.length) {
+        const fgeo = new THREE.BufferGeometry();
+        fgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+        fgeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
+        const fill = new THREE.Mesh(fgeo, new THREE.MeshBasicMaterial({
+          vertexColors: true, transparent: true, opacity: 0.42,
+          depthWrite: false, side: THREE.DoubleSide,
+        }));
+        fill.renderOrder = 2;
+        heatGroup.add(fill);
+      }
+
+      // --- fall-line chevrons: brighter downhill arrows so the read is directional ---
+      const lpos = [], lcol = [];
+      const white = new THREE.Color(0xffffff);
       for (let gx = -R; gx <= R; gx += 3) {
         for (let gz = -R; gz <= R; gz += 3) {
           const x = gdef.cx + gx, z = gdef.cz + gz;
-          if (!inside(x, z)) continue;
+          if (ellipseVal(gdef, x, z) > 0.94) continue;      // keep arrows off the fringe
           const e2 = 0.6;
           const sx = heightAt(x + e2, z) - heightAt(x - e2, z);
           const sz = heightAt(x, z + e2) - heightAt(x, z - e2);
           const mag = Math.hypot(sx, sz);
-          if (mag < 0.012) continue;                 // dead flat: no arrow
-          const dx = -sx / mag, dz = -sz / mag;      // downhill
-          const len = Math.min(0.9, 0.35 + mag * 9);
+          if (mag < 0.006) continue;                        // dead flat: no arrow
+          const dx = -sx / mag, dz = -sz / mag;             // downhill direction
+          const len = Math.min(1.3, 0.55 + mag * 10);
           const hx = x + dx * len, hz = z + dz * len;
-          const hh0 = heightAt(x, z) + 0.05, hh1 = heightAt(hx, hz) + 0.05;
-          cc.copy(lowC).lerp(highC, (heightAt(x, z) - hMin) / span).lerp(new THREE.Color(0xffffff), 0.55);
-          // shaft
-          pos.push(x, hh0, z, hx, hh1, hz);
-          col.push(cc.r, cc.g, cc.b, cc.r, cc.g, cc.b);
-          // head barbs
+          const hh0 = heightAt(x, z) + 0.09, hh1 = heightAt(hx, hz) + 0.09;
+          _rc.copy(ramp((heightAt(x, z) - hMin) / span)).lerp(white, 0.62);
+          const cr = _rc.r, cg = _rc.g, cb = _rc.b;
+          lpos.push(x, hh0, z, hx, hh1, hz);
+          lcol.push(cr, cg, cb, cr, cg, cb);
           for (const side of [1, -1]) {
-            const bx2 = hx - dx * 0.28 + side * -dz * 0.18;
-            const bz2 = hz - dz * 0.28 + side * dx * 0.18;
-            pos.push(hx, hh1, hz, bx2, heightAt(bx2, bz2) + 0.05, bz2);
-            col.push(cc.r, cc.g, cc.b, cc.r, cc.g, cc.b);
+            const bx2 = hx - dx * 0.30 + side * -dz * 0.20;
+            const bz2 = hz - dz * 0.30 + side * dx * 0.20;
+            lpos.push(hx, hh1, hz, bx2, heightAt(bx2, bz2) + 0.06, bz2);
+            lcol.push(cr, cg, cb, cr, cg, cb);
           }
         }
       }
-      const ggeo = new THREE.BufferGeometry();
-      ggeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
-      ggeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(col), 3));
-      const grid = new THREE.LineSegments(ggeo, new THREE.LineBasicMaterial({
-        vertexColors: true, transparent: true, opacity: 0.55, depthWrite: false,
-      }));
-      grid.visible = false;
-      group.add(grid);
-      group.userData.greenGrid = grid;
+      if (lpos.length) {
+        const lgeo = new THREE.BufferGeometry();
+        lgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lpos), 3));
+        lgeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(lcol), 3));
+        const arrows = new THREE.LineSegments(lgeo, new THREE.LineBasicMaterial({
+          vertexColors: true, transparent: true, opacity: 0.9, depthWrite: false,
+        }));
+        arrows.renderOrder = 3;
+        heatGroup.add(arrows);
+      }
+
+      heatGroup.visible = false;
+      group.add(heatGroup);
+      group.userData.greenGrid = heatGroup;
     }
 
-    // ---------- OB stakes along the corridor ----------
+    // ---------- OB stakes / gallery rope line along the corridor ----------
+    // Parkland venues (visualZones.galleryFence) get a clean white gallery
+    // rope-and-post line — short posts at a tighter spacing joined by a low
+    // rope strand — instead of the plain OB stakes used on the links courses.
+    // Cheap: one instanced draw call for posts, one LineSegments for the rope.
     {
+      const gallery = !!visualZones.galleryFence;
+      const step = gallery ? 7 : 24;      // post spacing (m)
       const stakes = [];
       let L = 0;
       for (let i = 1; i < path.length; i++) {
         L += Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z);
       }
-      for (let s = 0; s <= L; s += 24) {
+      for (let s = 0; s <= L; s += step) {
         const p = pointAtAlong(s);
         const p2 = pointAtAlong(Math.min(s + 2, L));
         let tx = p2.x - p.x, tz = p2.z - p.z;
@@ -2073,29 +2602,57 @@ export function buildCourse(hole, assets) {
         for (const side of [-1, 1]) {
           const sx = p.x + -tz * side * (obDist - 2);
           const sz = p.z + tx * side * (obDist - 2);
-          if (hasWater && waterMask(sx, sz).m > 0.05) continue;
-          stakes.push({ x: sx, z: sz, h: heightAt(sx, sz) });
+          if (hasWater && waterMask(sx, sz).m > 0.05) { stakes.push(null); continue; }
+          stakes.push({ x: sx, z: sz, h: heightAt(sx, sz), side });
         }
       }
-      if (stakes.length) {
-        const sgeo = new THREE.CylinderGeometry(0.045, 0.045, 1.15, 6);
-        const smat = new THREE.MeshLambertMaterial({ color: 0xf5f2e8 });
-        const im = new THREE.InstancedMesh(sgeo, smat, stakes.length);
+      const real = stakes.filter(Boolean);
+      if (real.length) {
+        const postH = gallery ? 0.72 : 1.15;
+        const sgeo = new THREE.CylinderGeometry(gallery ? 0.035 : 0.045, gallery ? 0.035 : 0.045, postH, 6);
+        const smat = new THREE.MeshLambertMaterial({ color: gallery ? 0xf6f4ec : 0xf5f2e8 });
+        const im = new THREE.InstancedMesh(sgeo, smat, real.length);
         const sm4 = new THREE.Matrix4();
-        stakes.forEach((st, i) => {
-          sm4.makeTranslation(st.x, st.h + 0.55, st.z);
+        real.forEach((st, i) => {
+          sm4.makeTranslation(st.x, st.h + postH / 2, st.z);
           im.setMatrixAt(i, sm4);
         });
         im.instanceMatrix.needsUpdate = true;
-        im.castShadow = true;
+        im.castShadow = !gallery;         // tiny gallery posts don't cast shadow
         group.add(im);
+
+        if (gallery) {
+          // Slack white rope joining consecutive posts on each side. `stakes`
+          // holds interleaved [-1,+1] entries (nulls where a post fell in water),
+          // so pair up neighbours that share a side and both exist.
+          const ropeY = 0.42;
+          const rp = [];
+          for (let i = 0; i + 2 < stakes.length; i++) {
+            const a = stakes[i], b = stakes[i + 2];
+            if (!a || !b || a.side !== b.side) continue;
+            const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2;
+            const sag = 0.12;
+            const my = (heightAt(mx, mz) + ropeY) - sag;   // slight sag at mid-span
+            rp.push(a.x, a.h + ropeY, a.z, mx, my, mz);
+            rp.push(mx, my, mz, b.x, b.h + ropeY, b.z);
+          }
+          if (rp.length) {
+            const rgeo = new THREE.BufferGeometry();
+            rgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rp), 3));
+            const rope = new THREE.LineSegments(rgeo, new THREE.LineBasicMaterial({ color: 0xf6f4ec }));
+            group.add(rope);
+          }
+        }
       }
     }
 
-    const teeMarkMat = new THREE.MeshBasicMaterial({ color: 0xe8e3d2 });
+    // Tournament tee markers: low rounded blocks (optionally coloured per
+    // course, e.g. Augusta's members' green markers) instead of plain spheres.
+    const teeMarkMat = new THREE.MeshLambertMaterial({ color: visualZones.teeMarkColor ?? 0xe8e3d2 });
     for (const side of [-1, 1]) {
-      const mark = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), teeMarkMat);
-      mark.position.set(tee.x + side * 2.2, teeH + 0.1, tee.z);
+      const mark = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.16, 12), teeMarkMat);
+      mark.position.set(tee.x + side * 2.2, teeH + 0.08, tee.z);
+      mark.castShadow = true;
       group.add(mark);
     }
 

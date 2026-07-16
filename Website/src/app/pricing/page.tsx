@@ -8,24 +8,36 @@ import { PLANS } from "@/lib/plans";
 
 export default function PricingPage() {
   const [checkoutTier, setCheckoutTier] = useState<string | null>(null);
+  const [billing, setBilling] = useState<"yearly" | "monthly">("yearly");
 
   return (
     <>
       <SiteNav />
       <main className="narrow" style={{ paddingTop: 70, paddingBottom: 90 }}>
         <span className="eyebrow">Pricing</span>
-        <h1 style={{ fontSize: "clamp(32px,5vw,46px)", margin: "14px 0 10px" }}>One bag, four ways to carry it.</h1>
-        <p style={{ opacity: 0.7, marginBottom: 36, maxWidth: 560 }}>
+        <h1 style={{ fontSize: "clamp(32px,5vw,46px)", margin: "14px 0 10px" }}>One bag, three ways to carry it.</h1>
+        <p style={{ opacity: 0.7, marginBottom: 30, maxWidth: 560 }}>
           Every plan uses the same camera launch monitor. Paid tiers unlock cloud sync,
           the simulator, course mode, and deeper analytics. Cancel anytime.
         </p>
+
+        <div className="billing-toggle" role="tablist" aria-label="Billing interval" style={{ margin: "0 0 30px" }}>
+          <button role="tab" aria-selected={billing === "yearly"} className={`billing-opt${billing === "yearly" ? " on" : ""}`} onClick={() => setBilling("yearly")}>
+            Yearly<span className="billing-save">2 months free</span>
+          </button>
+          <button role="tab" aria-selected={billing === "monthly"} className={`billing-opt${billing === "monthly" ? " on" : ""}`} onClick={() => setBilling("monthly")}>
+            Monthly
+          </button>
+          <span className={`billing-slide ${billing}`} aria-hidden />
+        </div>
 
         <div className="plans">
           {PLANS.map((plan) => (
             <div className={`plan${plan.featured ? " featured" : ""}`} key={plan.id}>
               {plan.featured && <span className="plan-flag">Most played</span>}
               <div className="plan-name">{plan.name}</div>
-              <div className="plan-price">{plan.price}<span className="per">{plan.per}</span></div>
+              <div className="plan-price">{plan.flat ? plan.monthly : plan[billing]}<span className="per">{plan.per}</span></div>
+              <p className="plan-sub">{plan.flat ? " " : billing === "yearly" ? "billed yearly" : "billed monthly"}</p>
               <p className="plan-tag">{plan.tag}</p>
               <ul>
                 {plan.features.map((f) => <li key={f}>{f}</li>)}
@@ -40,19 +52,19 @@ export default function PricingPage() {
         </div>
 
         <p style={{ opacity: 0.55, fontSize: 13, marginTop: 28 }}>
-          Billing runs through Stripe on this site — Apple takes no cut, which is how the
+          Billing runs through Stripe on this site, so Apple takes no cut, which is how the
           prices stay this low. Referral rewards stack as complimentary Pro time.
         </p>
       </main>
-            <section className="pricing-disclosure" aria-label="Subscription terms">
+      <section className="pricing-disclosure" aria-label="Subscription terms">
         <h2>Auto-renewal &amp; cancellation</h2>
         <p>
-          Paid plans <strong>renew automatically</strong> at the then-current price — monthly
-          plans every month, annual plans every year — until you cancel. We&apos;ll charge the
+          Paid plans <strong>renew automatically</strong> at the then-current price. Monthly
+          plans renew every month, annual plans every year, until you cancel. We&apos;ll charge the
           payment method on file at each renewal.
         </p>
         <p>
-          <strong>Cancel anytime</strong> in <a href="/account">Account → Manage Billing</a> (two
+          <strong>Cancel anytime</strong> in <a href="/account">Account, Manage Billing</a> (two
           clicks, no phone call, no chat queue). Cancellation takes effect at the end of the
           current billing period and you keep full access until then. See the{" "}
           <a href="/terms">Terms</a> for details.
@@ -61,7 +73,7 @@ export default function PricingPage() {
       <SiteFooter />
 
       {checkoutTier && (
-        <EmbeddedCheckoutPanel tier={checkoutTier} onClose={() => setCheckoutTier(null)} />
+        <EmbeddedCheckoutPanel tier={checkoutTier} billingInterval={billing} onClose={() => setCheckoutTier(null)} />
       )}
     </>
   );

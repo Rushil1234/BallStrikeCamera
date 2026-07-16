@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import SiteNav from "@/components/SiteNav";
+
+export const metadata: Metadata = { robots: { index: false, follow: false } };
 
 export default function BillingCancelPage() {
   return (

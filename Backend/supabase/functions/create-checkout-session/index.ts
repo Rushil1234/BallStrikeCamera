@@ -23,9 +23,14 @@ const supabase = createClient(
 const websiteURL = Deno.env.get("TRUECARRY_WEBSITE_URL") ?? "https://truecarry.app";
 
 const PRICE_IDS: Record<string, Record<string, string>> = {
-  basic: { monthly: Deno.env.get("STRIPE_BASIC_MONTHLY_PRICE_ID") ?? "" },
-  pro:   { monthly: Deno.env.get("STRIPE_PRO_MONTHLY_PRICE_ID")   ?? "" },
-  atlas: { monthly: Deno.env.get("STRIPE_ATLAS_MONTHLY_PRICE_ID") ?? "" },
+  pro: {
+    monthly: Deno.env.get("STRIPE_PRO_MONTHLY_PRICE_ID") ?? "",
+    yearly:  Deno.env.get("STRIPE_PRO_YEARLY_PRICE_ID")  ?? "",
+  },
+  atlas: {
+    monthly: Deno.env.get("STRIPE_ATLAS_MONTHLY_PRICE_ID") ?? "",
+    yearly:  Deno.env.get("STRIPE_ATLAS_YEARLY_PRICE_ID")  ?? "",
+  },
 };
 
 const CORS_HEADERS = {

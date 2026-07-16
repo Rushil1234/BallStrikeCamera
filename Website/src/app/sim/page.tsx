@@ -60,7 +60,7 @@ function SimContent() {
           <h1 className="sim-landing-title">Stream shots to your browser</h1>
           <p className="sim-landing-desc">
             Open <strong>Sim → Live Sim</strong> in the True Carry iOS app and enter
-            the 6-digit code below to see your shots in real-time — no PC, no cables.
+            the 6-digit code below to see your shots in real-time, no PC, no cables.
           </p>
 
           <form

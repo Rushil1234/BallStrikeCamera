@@ -1,4 +1,4 @@
-// First-party web analytics — appends events to the same Supabase
+// First-party web analytics, appends events to the same Supabase
 // analytics_events table the iOS app uses (platform: "web"), so the existing
 // aggregate RPCs / dashboards cover the site with no extra vendor.
 //
@@ -8,7 +8,7 @@
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// One id per browser tab session — lets the dashboards group page flows.
+// One id per browser tab session, lets the dashboards group page flows.
 let sessionId: string | null = null;
 function getSessionId(): string {
   if (!sessionId) {

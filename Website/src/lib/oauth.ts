@@ -9,7 +9,7 @@ export const oauthCopy: Record<OAuthProvider, { error: string }> = {
 
 /**
  * Kick off a Supabase OAuth sign-in. On success the browser redirects to the
- * provider, so this never resolves with a value — it only throws on failure so
+ * provider, so this never resolves with a value, it only throws on failure so
  * callers can surface the error and reset their own loading state.
  *
  * @param nextPath app-relative path to return to after the auth callback.

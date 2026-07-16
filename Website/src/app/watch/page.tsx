@@ -79,7 +79,7 @@ function WatchInner() {
             <h1>Watch a live round.</h1>
             <p className="watch-deck">
               Enter the session code from the player&apos;s sim screen. You&apos;ll see every
-              shot land as it happens — read-only, nothing to install.
+              shot land as it happens, read-only, nothing to install.
             </p>
             <form
               onSubmit={(e) => { e.preventDefault(); setCode(input.trim()); }}
@@ -101,7 +101,7 @@ function WatchInner() {
               <h1>Live round</h1>
               <span className={`watch-dot${state && !stale ? " on" : ""}`} />
               <span className="watch-status">
-                {!state ? "Waiting for the session…" : stale ? "Signal lost — player may have finished" : (state.sim_state ?? "LIVE")}
+                {!state ? "Waiting for the session…" : stale ? "Signal lost, player may have finished" : (state.sim_state ?? "LIVE")}
               </span>
             </div>
 
@@ -109,15 +109,15 @@ function WatchInner() {
               <div className="watch-grid">
                 <div className="watch-card">
                   <p className="watch-label">Now playing</p>
-                  <p className="watch-big">Hole {state.hole ?? "—"}</p>
-                  <p className="watch-sub">Stroke {state.stroke ?? "—"}{state.result ? ` · ${state.result}` : ""}</p>
+                  <p className="watch-big">Hole {state.hole ?? ", "}</p>
+                  <p className="watch-sub">Stroke {state.stroke ?? ", "}{state.result ? ` · ${state.result}` : ""}</p>
                 </div>
 
                 <div className="watch-card">
                   <p className="watch-label">Last shot</p>
                   {shot ? (
                     <>
-                      <p className="watch-big">{shot.carry_yds ?? "—"}y <span className="watch-unit">carry</span></p>
+                      <p className="watch-big">{shot.carry_yds ?? ", "}y <span className="watch-unit">carry</span></p>
                       <p className="watch-sub">
                         {[shot.club, shot.ball_speed_mph && `${shot.ball_speed_mph} mph`, shot.total_yds && `${shot.total_yds}y total`]
                           .filter(Boolean).join(" · ")}
@@ -130,7 +130,7 @@ function WatchInner() {
 
                 {summary && (
                   <div className="watch-card wide">
-                    <p className="watch-label">Final — {summary.courseName ?? "round"}</p>
+                    <p className="watch-label">Final, {summary.courseName ?? "round"}</p>
                     <p className="watch-big">
                       {summary.totalStrokes} <span className="watch-unit">strokes ({fmtToPar(summary.toPar)})</span>
                     </p>
@@ -153,7 +153,7 @@ function WatchInner() {
             )}
 
             <p className="watch-note">
-              Read-only view. Shares the room&apos;s session code — only send this link to
+              Read-only view. Shares the room&apos;s session code, only send this link to
               people you&apos;d let in the room.
             </p>
           </section>

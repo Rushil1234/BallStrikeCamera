@@ -110,7 +110,7 @@ export default function AttestPage() {
               <p className="success-msg auth-message">
                 {finalStatus === "attested"
                   ? "Thanks! Your attestation has been sent."
-                  : "Got it — you've declined this request."}
+                  : "Got it, you've declined this request."}
               </p>
             )}
 
