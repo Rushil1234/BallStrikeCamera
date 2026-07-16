@@ -16,6 +16,7 @@ struct LessonsHomeView: View {
     @State private var completedUnitTitle: String?
     @State private var selectedRead: CoachSuggestion?
     @State private var fixTrackSheet: LessonTrack?
+    @State private var showFlightLab = false
 
     private var isPro: Bool { !session.entitlementVM.isFreeTier }
 
@@ -104,6 +105,7 @@ struct LessonsHomeView: View {
                     if !library.hasCompletedIntake { intakeBanner }
                     readPopup
                     roadmapSection
+                    flightLabCard
                     coachReadSection
                     weaknessSection
                     recentSwingsSection
@@ -126,6 +128,9 @@ struct LessonsHomeView: View {
                             .foregroundColor(TCTheme.textMuted)
                     }
                 }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                TCGuideButton(screen: .coach, size: 14)
             }
         }
         .onAppear {
@@ -153,6 +158,12 @@ struct LessonsHomeView: View {
             SwingStudioView(lessonId: nil, requiredSwings: 1) { showFreeAnalysis = false }
                 .tcAppearance()
         }
+        // Free for everyone — it's teaching material, not coaching.
+        .fullScreenCover(isPresented: $showFlightLab) {
+            CoachLabView { showFlightLab = false }
+                .tcAppearance()
+        }
+        .tcGuide(.coach, showButton: false)
         .sheet(item: $selectedRead) { read in
             CoachReadDetailView(read: read, shots: recentShots) { lessonId in
                 selectedRead = nil
@@ -188,6 +199,47 @@ struct LessonsHomeView: View {
         } message: {
             Text("Unlock the full lesson library, swing analysis, and your personal coaching plan.")
         }
+    }
+
+    // MARK: Ball Flight Lab entry
+
+    /// Interactive physics diagrams (CoachLabView) — animated explanations instead of
+    /// videos. Free for all tiers.
+    private var flightLabCard: some View {
+        Button { showFlightLab = true } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(TCTheme.sage.opacity(0.16))
+                        .frame(width: 46, height: 46)
+                    Image(systemName: "atom")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(TCTheme.sage)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ball Flight Lab")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text("Drag face, path, launch & strike — watch the flight explain itself")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(TCTheme.textMuted)
+                        .lineLimit(2)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(TCTheme.textUltraMuted)
+            }
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
+                    .fill(TCTheme.panel)
+                    .overlay(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous)
+                        .stroke(TCTheme.borderSage, lineWidth: 1.2))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Pro gate

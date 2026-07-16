@@ -8,6 +8,17 @@ enum CameraPhase: String, CaseIterable {
     case reviewingShot = "ReviewingShot"
 }
 
+/// Live lighting fit for a shutter preset, derived from the sensor's own metering.
+/// The shutter is sacred (motion blur kills tracking), so the only lever is ISO — and ISO
+/// tells you everything: too high = grain/murk, floor-limited = the lock falls back to a
+/// slower, streak-prone shutter.
+enum ShutterFitness {
+    case good        // holds the -2EV operating point at clean ISO
+    case grainy      // needs high ISO — noisy frames likely
+    case tooDark     // even max ISO can't reach the underexposed target — murky frames
+    case tooBright   // ISO floor overexposes — lock falls back to a slower shutter (streak risk)
+}
+
 enum ShutterPreset: CaseIterable, Identifiable {
     case oneThousand
     case twoThousand

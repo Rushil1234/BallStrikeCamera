@@ -200,17 +200,19 @@ struct TrueCarryAppShell: View {
 
     @ViewBuilder
     private var tabContent: some View {
+        // .tcGuide sits on each tab's ROOT view (not the stack) so the tour and its ⓘ
+        // button scope to that page and disappear when a child view is pushed.
         switch selectedTab {
         case .home:
-            NavigationStack { FeedHomeView() }
+            NavigationStack { FeedHomeView().tcGuide(.home) }
         case .insights:
-            NavigationStack { TrueCarryInsightsView() }
+            NavigationStack { TrueCarryInsightsView().tcGuide(.insights) }
         case .play:
-            NavigationStack { TrueCarryPlayView() }
+            NavigationStack { TrueCarryPlayView().tcGuide(.play) }
         case .history:
-            NavigationStack { TrueCarryHistoryView() }
+            NavigationStack { TrueCarryHistoryView().tcGuide(.history) }
         case .locker:
-            NavigationStack { TrueCarryLockerView() }
+            NavigationStack { TrueCarryLockerView().tcGuide(.locker) }
         }
     }
 }

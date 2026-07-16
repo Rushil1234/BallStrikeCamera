@@ -145,6 +145,9 @@
 		BF0000060000000000000006 /* TCCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000005 /* TCCards.swift */; };
 		BF0000060000000000000008 /* TCBottomDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000007 /* TCBottomDock.swift */; };
 		GCO00000000000000000002 /* GoalCelebrationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = GCO00000000000000000001 /* GoalCelebrationOverlay.swift */; };
+		GDE00000000000000000002 /* TCGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000001 /* TCGuide.swift */; };
+		GDE00000000000000000004 /* LessonDiagrams.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000003 /* LessonDiagrams.swift */; };
+		GDE00000000000000000006 /* CoachLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000005 /* CoachLabView.swift */; };
 		BF000006000000000000000A /* TrueCarryHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000060000000000000009 /* TrueCarryHomeView.swift */; };
 		BF000006000000000000000C /* TrueCarryInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000000B /* TrueCarryInsightsView.swift */; };
 		BF000006000000000000000E /* TrueCarryPlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000006000000000000000D /* TrueCarryPlayView.swift */; };
@@ -404,6 +407,9 @@
 		BF0000060000000000000005 /* TCCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCCards.swift; sourceTree = "<group>"; };
 		BF0000060000000000000007 /* TCBottomDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCBottomDock.swift; sourceTree = "<group>"; };
 		GCO00000000000000000001 /* GoalCelebrationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalCelebrationOverlay.swift; sourceTree = "<group>"; };
+		GDE00000000000000000001 /* TCGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCGuide.swift; sourceTree = "<group>"; };
+		GDE00000000000000000003 /* LessonDiagrams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonDiagrams.swift; sourceTree = "<group>"; };
+		GDE00000000000000000005 /* CoachLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachLabView.swift; sourceTree = "<group>"; };
 		BF0000060000000000000009 /* TrueCarryHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryHomeView.swift; sourceTree = "<group>"; };
 		BF000006000000000000000B /* TrueCarryInsightsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryInsightsView.swift; sourceTree = "<group>"; };
 		BF000006000000000000000D /* TrueCarryPlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryPlayView.swift; sourceTree = "<group>"; };
@@ -513,6 +519,8 @@
 			isa = PBXGroup;
 			children = (
 				LSN00000000000000000015 /* LessonsHomeView.swift */,
+				GDE00000000000000000003 /* LessonDiagrams.swift */,
+				GDE00000000000000000005 /* CoachLabView.swift */,
 				LSN00000000000000000016 /* LessonPlayerView.swift */,
 				LSN00000000000000000017 /* SwingStudioView.swift */,
 			);
@@ -924,6 +932,7 @@
 				BF0000060000000000000005 /* TCCards.swift */,
 				BF0000060000000000000007 /* TCBottomDock.swift */,
 				GCO00000000000000000001 /* GoalCelebrationOverlay.swift */,
+				GDE00000000000000000001 /* TCGuide.swift */,
 				BF000006000000000000002F /* SpinningGolfBallView.swift */,
 				CAFE000000000000000000C0 /* SessionSaveSheet.swift */,
 				CAFE0000000000000000FA10 /* ShareSheet.swift */,
@@ -1304,6 +1313,9 @@
 				BF0000060000000000000006 /* TCCards.swift in Sources */,
 				BF0000060000000000000008 /* TCBottomDock.swift in Sources */,
 				GCO00000000000000000002 /* GoalCelebrationOverlay.swift in Sources */,
+				GDE00000000000000000002 /* TCGuide.swift in Sources */,
+				GDE00000000000000000004 /* LessonDiagrams.swift in Sources */,
+				GDE00000000000000000006 /* CoachLabView.swift in Sources */,
 				BF0000060000000000000030 /* SpinningGolfBallView.swift in Sources */,
 				BF000006000000000000000A /* TrueCarryHomeView.swift in Sources */,
 				BF000006000000000000000C /* TrueCarryInsightsView.swift in Sources */,

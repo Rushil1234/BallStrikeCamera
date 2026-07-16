@@ -104,6 +104,14 @@ final class GoogleDriveUploadService: ObservableObject {
     @MainActor
     func autoOffloadIfNeeded(minShots: Int = 5) {
         guard isEnabled, GoogleDriveAuthService.shared.isSignedIn else { return }
+        // Never compete with a hot phone: offload is pure background convenience, and the
+        // archive is resumable — deferring costs nothing but a later retry, while zipping
+        // and uploading during thermal pressure is exactly the load that causes the frame
+        // drops the archive exists to debug.
+        guard ProcessInfo.processInfo.thermalState.rawValue <= ProcessInfo.ThermalState.fair.rawValue else {
+            print("[GoogleDrive] auto-offload deferred — thermal state \(ProcessInfo.processInfo.thermalState.rawValue)")
+            return
+        }
         guard pendingArchiveCount() >= minShots else { return }
         print("[GoogleDrive] auto-offload starting (\(pendingArchiveCount()) shots pending)")
         uploadArchive()
@@ -115,6 +123,13 @@ final class GoogleDriveUploadService: ObservableObject {
     func uploadShotIfEnabled(frames: [CapturedFrame], impactIndex: Int,
                              lockedBallRect: CGRect? = nil, lockedImpactROI: CGRect? = nil) {
         guard isEnabled, GoogleDriveAuthService.shared.isSignedIn, !frames.isEmpty else { return }
+        // Under thermal pressure the per-shot zip+upload competes with the 240fps capture
+        // for CPU. The shot is already safe in the local archive; the resumable
+        // "Upload Archive" path picks it up later.
+        guard ProcessInfo.processInfo.thermalState.rawValue <= ProcessInfo.ThermalState.fair.rawValue else {
+            print("[GoogleDrive] per-shot upload skipped (thermal) — shot stays in local archive")
+            return
+        }
         let snapshot = frames.enumerated().map { ($0.offset, $0.element.image, $0.element.timestamp) }
         let capturedAt = Date()
         Task.detached(priority: .utility) { [weak self] in

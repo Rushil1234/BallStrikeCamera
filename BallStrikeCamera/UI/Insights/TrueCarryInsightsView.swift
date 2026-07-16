@@ -295,6 +295,8 @@ struct TrueCarryInsightsView: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(TCTheme.textMuted)
                     .tracking(1.5)
+                TCInfoMark(title: "Bag gapping",
+                           text: "Clubs sorted by average distance. Two clubs within a few yards are doing the same job; a gap bigger than ~15 yards is a distance you can't hit. Only clubs with 3+ measured shots are shown.")
                 Spacer()
                 Text(dispersionMetric == .carry ? "avg carry · 3+ shots" : "avg total · 3+ shots")
                     .font(.system(size: 10))

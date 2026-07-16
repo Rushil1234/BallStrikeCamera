@@ -20,6 +20,15 @@ struct LaunchMonitorScaffoldView: View {
     @State private var showHandPicker = false
     @State private var showLastReplay = false          // frame replay of the last shot, from set-into
 
+    // Idle dim: the 240fps preview on a full-brightness OLED is the biggest heat source
+    // between shots. Only dims while SEARCHING (no ball placed) — never while a ball is
+    // locked and a swing could start. Detection keeps running under the dim, so placing a
+    // ball wakes the screen automatically.
+    @State private var idleDimmed = false
+    @State private var searchingSince: Date? = nil
+    private let idleDimTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    private static let idleDimDelay: TimeInterval = 30
+
     // Player's hitting hand (persisted default). Lefty = the whole hitting view is mirrored
     // vertically so a golfer set up the opposite way sees everything oriented for them — a pure
     // view flip that never touches the tracking algo.
@@ -74,9 +83,14 @@ struct LaunchMonitorScaffoldView: View {
 
                                 ExposureModePickerView(
                                     selectedShutter: camera.selectedShutter,
-                                    onShutterSelected: camera.applyShutter
+                                    onShutterSelected: camera.applyShutter,
+                                    fitness: camera.shutterFitness,
+                                    recommended: camera.recommendedShutter
                                 )
-                                .padding(.trailing, 12)
+
+                                TCGuideButton(screen: .range, size: 18)
+                                    .padding(.top, 10)
+                                    .padding(.trailing, 12)
                             }
                             .padding(.top, 8)
 
@@ -216,6 +230,50 @@ struct LaunchMonitorScaffoldView: View {
         .statusBarHidden(true)
         .tcSunlight()
         .persistentSystemOverlays(.hidden)
+        // Tour host: TCGuideButton next to the exposure picker triggers it, so no floating button.
+        .tcGuide(.range, showButton: false)
+        .overlay {
+            if idleDimmed {
+                ZStack {
+                    Color.black.opacity(0.88).ignoresSafeArea()
+                    VStack(spacing: 10) {
+                        Image(systemName: "moon.zzz.fill")
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.55))
+                        Text("Screen dimmed to keep the phone cool")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.85))
+                        Text("Ball detection is still running — set a ball or tap to wake")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.5))
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeOut(duration: 0.15)) { idleDimmed = false }
+                    searchingSince = Date()
+                }
+                .transition(.opacity)
+                .zIndex(50)
+            }
+        }
+        .onChange(of: camera.phase) { phase in
+            if phase == .searching {
+                searchingSince = Date()
+            } else {
+                searchingSince = nil
+                if idleDimmed { withAnimation(.easeOut(duration: 0.15)) { idleDimmed = false } }
+            }
+        }
+        .onReceive(idleDimTimer) { _ in
+            guard !idleDimmed,
+                  camera.phase == .searching,
+                  !camera.showShotResult,
+                  !camera.isAnalyzingShot,
+                  let since = searchingSince,
+                  Date().timeIntervalSince(since) > Self.idleDimDelay else { return }
+            withAnimation(.easeIn(duration: 0.6)) { idleDimmed = true }
+        }
         // Cache the last shot's composite for the side panel when a shot completes.
         // Keyed on the analysis timestamp (not showShotResult): the cover now presents BEFORE
         // analysis finishes, so this must fire when the result actually lands. The render runs

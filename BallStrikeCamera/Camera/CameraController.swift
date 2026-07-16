@@ -10,6 +10,9 @@ final class CameraController: NSObject, ObservableObject {
         didSet { syncFramesNeeded() }
     }
     @Published var selectedShutter: ShutterPreset = .oneThousand
+    /// Live per-preset lighting fitness + the fastest clean choice, for the picker's badges.
+    @Published var shutterFitness: [ShutterPreset: ShutterFitness] = [:]
+    @Published var recommendedShutter: ShutterPreset? = nil
     @Published var currentBallRect: CGRect?
     @Published var capturedFrames: [CapturedFrame] = []
     @Published var statusText: String = "Looking for ball"
@@ -669,6 +672,34 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 let baseline = _lockedExposureOffsetEV
                 if !baseline.isNaN, abs(Double(offset) - baseline) > 1.5 {
                     Task { @MainActor in self.relockExposureIfDrifted() }
+                }
+
+                // Per-preset lighting fitness: the current lock's ISO·seconds corrected by
+                // the measured offset gives the correct-exposure light product; each
+                // preset's required ISO follows directly. Published so the shutter picker
+                // can badge every button live — choosing a shutter the light can't support
+                // used to be silent until the frames came out grainy or streaked.
+                let curISO = Double(device.iso)
+                let curDur = device.exposureDuration.seconds
+                if curISO > 0, curDur > 0 {
+                    let hCorrect = curISO * curDur * pow(2.0, -Double(offset))
+                    let minISO = Double(device.activeFormat.minISO)
+                    let maxISO = Double(device.activeFormat.maxISO)
+                    var fitness: [ShutterPreset: ShutterFitness] = [:]
+                    for preset in ShutterPreset.allCases {
+                        let needed = hCorrect * Double(preset.denominator)
+                        let target = needed / 4.0    // the -2EV operating point
+                        if needed < minISO { fitness[preset] = .tooBright }
+                        else if target > maxISO { fitness[preset] = .tooDark }
+                        else if target > 1600 { fitness[preset] = .grainy }
+                        else { fitness[preset] = .good }
+                    }
+                    let order: [ShutterPreset] = [.eightThousand, .fourThousand, .twoThousand, .oneThousand]
+                    let rec = order.first { fitness[$0] == .good } ?? order.first { fitness[$0] == .grainy }
+                    Task { @MainActor in
+                        self.shutterFitness = fitness
+                        self.recommendedShutter = rec
+                    }
                 }
             }
 
