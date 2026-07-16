@@ -22,13 +22,26 @@ struct ShotVisualizationPanel: View {
                 // that barely turns — 0° still needs to be unmistakable, so it's kept, just bolder.
                 if camera.currentBallRect == nil {
                     if camera.isPutterMode {
-                        PuttingGridOverlayView()
+                        PuttingGridOverlayView(zoom: crop.zoom)
                     } else {
                         AimLineOverlayView()
                     }
                 }
 
                 BallCircleOverlayView(rect: camera.currentBallRect, crop: crop, phase: camera.phase)
+
+                // Green-speed chip (putter only): the putt engine projects roll-out from this
+                // stimp value, so it's adjustable right where putts are hit. Tap to cycle 8–13.
+                if camera.isPutterMode {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            GreenSpeedChip()
+                        }
+                    }
+                    .padding(10)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -128,57 +141,101 @@ private func aspectFillVideoFrame(for size: CGSize) -> CGRect {
 }
 
 /// Putter selected: a true grid (not an angle fan) — a putting stroke barely turns, so lateral
-/// aim is read in inches, not degrees. Lanes parallel to the 0° line show where the ball is
-/// starting relative to the target line; cross-lines mark forward distance from the ball.
+/// aim is read in inches, not degrees. Lanes and forward ticks are labeled in REAL ground
+/// inches via the measured 58×32in footprint, scaled through the preview zoom, so "3 in"
+/// on screen is 3 inches on the green.
 private struct PuttingGridOverlayView: View {
+    /// Preview zoom — converts ground inches into on-screen points (the preview magnifies
+    /// the buffer by this factor; the 58×32in footprint maps the buffer itself).
+    var zoom: CGFloat = 1
+
     // The camera buffer now rotates with the hand lock (landscapeLeft for lefty), so on-screen
     // ball travel is right→left for BOTH hands — no hand-specific flips needed. (The old flips
     // compensated for a buffer/UI orientation mismatch that also broke lefty detection.)
     private var dirSign: CGFloat { HitDirection.signCG }
     private var vSign: CGFloat { -1 }
 
-    private let lateralLanes: [CGFloat] = [-0.24, -0.12, 0, 0.12, 0.24]
-    private let forwardMarks: [CGFloat] = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90]
+    private let lateralInches: [CGFloat] = [-6, -3, 0, 3, 6]
+    private let forwardInches: [CGFloat] = [6, 12, 18, 24, 30, 36]
 
     var body: some View {
         GeometryReader { geo in
             let origin = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-            let unit   = min(geo.size.width, geo.size.height)
+            let video  = aspectFillVideoFrame(for: geo.size)
+            let ppiX   = video.width  * zoom / 58.0   // screen points per ground inch, along travel
+            let ppiY   = video.height * zoom / 32.0   // …lateral
             let length = max(geo.size.width, geo.size.height) * 1.45
 
             ZStack {
-                ForEach(lateralLanes, id: \.self) { lane in
-                    let isZero = lane == 0
+                // Lateral lanes at true inches off the start line.
+                ForEach(lateralInches, id: \.self) { inches in
+                    let isZero = inches == 0
+                    let y = origin.y + vSign * inches * ppiY
                     Path { path in
-                        let y = origin.y + vSign * lane * unit
-                        path.move(to: CGPoint(x: origin.x - dirSign * unit * 0.15, y: y))
+                        path.move(to: CGPoint(x: origin.x - dirSign * 30, y: y))
                         path.addLine(to: CGPoint(x: origin.x + dirSign * length, y: y))
                     }
                     .stroke(
-                        isZero ? Color.white.opacity(0.75) : Color.white.opacity(0.18),
-                        style: StrokeStyle(lineWidth: isZero ? 2.0 : 0.9, dash: isZero ? [] : [4, 5])
+                        isZero ? Color.white.opacity(0.8) : Color.white.opacity(0.2),
+                        style: StrokeStyle(lineWidth: isZero ? 2.2 : 0.9, dash: isZero ? [] : [4, 5])
                     )
-                }
-
-                ForEach(forwardMarks, id: \.self) { mark in
-                    Path { path in
-                        let x = origin.x + dirSign * mark * length
-                        path.move(to: CGPoint(x: x, y: origin.y - unit * 0.30))
-                        path.addLine(to: CGPoint(x: x, y: origin.y + unit * 0.30))
+                    if !isZero {
+                        Text("\(Int(abs(inches)))\u{2033}")
+                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.4))
+                            .position(x: origin.x + dirSign * 26, y: y - 7)
                     }
-                    .stroke(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: 0.8, dash: [3, 6]))
                 }
 
-                Text("0°")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                // Forward ticks every 6 real inches from the ball.
+                ForEach(forwardInches, id: \.self) { inches in
+                    let x = origin.x + dirSign * inches * ppiX
+                    Path { path in
+                        path.move(to: CGPoint(x: x, y: origin.y - 7 * ppiY))
+                        path.addLine(to: CGPoint(x: x, y: origin.y + 7 * ppiY))
+                    }
+                    .stroke(Color.white.opacity(0.16), style: StrokeStyle(lineWidth: 0.8, dash: [3, 6]))
+                    if inches.truncatingRemainder(dividingBy: 12) == 0 {
+                        Text("\(Int(inches))\u{2033}")
+                            .font(.system(size: 8, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.4))
+                            .position(x: x, y: origin.y + 7 * ppiY + 9)
+                    }
+                }
+
+                Text("TARGET LINE")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
                     .foregroundColor(.white.opacity(0.85))
                     .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(Color.black.opacity(0.28))
                     .cornerRadius(5)
-                    .position(x: origin.x + dirSign * unit * 0.34, y: origin.y - 16)
+                    .position(x: origin.x + dirSign * 24 * ppiX, y: origin.y - 14)
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+/// Tap-to-cycle green speed (stimp) — read by PuttAnalyzer for roll-out projection.
+private struct GreenSpeedChip: View {
+    @AppStorage(PuttAnalyzer.Config.stimpDefaultsKey) private var stimp: Double = 10
+
+    var body: some View {
+        Button {
+            stimp = stimp >= 13 ? 8 : stimp + 1
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "speedometer")
+                    .font(.system(size: 10, weight: .bold))
+                Text("Green \(Int(stimp))")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+            }
+            .foregroundColor(.white.opacity(0.88))
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(Capsule().fill(Color.black.opacity(0.42)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Green speed, stimp \(Int(stimp)), tap to change")
     }
 }
 

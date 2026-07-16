@@ -60,6 +60,8 @@ struct ShotMetricsResult {
     let ball3DObservations: [Ball3DObservation]
     let clubObservations: [ClubObservation]
     let warnings: [String]
+    /// Putt-mode readout (ground-plane roll + putter-head pass). Nil for full shots.
+    var putt: PuttReadout? = nil
 }
 
 struct ShotMetricsCalculator {
@@ -326,7 +328,7 @@ struct ShotMetricsCalculator {
             smashFactor: smashFactor
         )
 
-        let distance = distanceEstimator.estimate(
+        var distance = distanceEstimator.estimate(
             ballSpeedMph: ballLaunch.ballSpeedMph,
             vlaDegrees: ballLaunch.vlaDegrees,
             hlaDegrees: ballLaunch.hlaDegrees,
@@ -334,6 +336,65 @@ struct ShotMetricsCalculator {
             flightModel: flightModel,
             backspinRpm: spin.estimatedBackspinRpm
         )
+
+        // ── Putt engine: ground-plane physics replaces the flight machinery. The measured
+        // 58×32in footprint mapping is EXACT for a rolling ball, so its speed beats the
+        // 3D-projection estimate, roll-out comes from stimp physics instead of the flight
+        // model, and the putter-head diff pass fills club speed / path / face that the
+        // full-swing club tracker never produced for putts.
+        var puttReadout: PuttReadout? = nil
+        var clubPathFinal = clubPath
+        var faceAngleFinal = faceAngle
+        var smashFinal = smashFactor
+        var rawSmashFinal = rawSmashFactor
+        var smashClampedFinal = smashFactorClamped
+        // Explicit putter selection only — a speed-inferred slow chip is on turf, not a green,
+        // so stimp roll-out physics would overshoot it badly (that path keeps the old
+        // rolling-resistance estimate in DistanceEstimator).
+        if isPutterMode {
+            let readout = PuttAnalyzer().analyze(analysis: analysis)
+            puttReadout = readout
+
+            if let groundSpeed = readout.ballSpeedMph, groundSpeed <= 25 {
+                ballLaunch.ballSpeedMph = groundSpeed
+            }
+            if let rollFeet = readout.rollDistanceFeet {
+                let rollYards = rollFeet / 3.0
+                distance = DistanceEstimate(
+                    idealCarryYards: nil, carryCorrectionFactor: 1.0,
+                    carryYards: nil, rolloutYards: rollYards, totalYards: rollYards,
+                    rolloutFraction: 1.0, vlaBucket: "putt",
+                    method: String(format: "putt_stimp%.0f_physics", readout.stimp),
+                    warnings: readout.warnings)
+            }
+            if let headSpeed = readout.putterSpeedMph {
+                clubMetrics.clubSpeedMph = headSpeed
+                clubMetrics.method = "putter_head_diff"
+                // Putts routinely run smash ~1.6–1.9 off the putter face; the 1.50 full-swing
+                // clamp would misreport them, so putt smash stays raw.
+                if let bs = ballLaunch.ballSpeedMph, headSpeed > 0 {
+                    rawSmashFinal = bs / headSpeed
+                    smashFinal = rawSmashFinal
+                    smashClampedFinal = false
+                }
+            }
+            if let pathDeg = readout.putterPathDegreesSigned {
+                clubPathFinal = ClubPathEstimate(
+                    clubPathDegreesSigned: pathDeg,
+                    clubPathDisplay: String(format: "%.1f° %@", abs(pathDeg), pathDeg < 0 ? "L" : "R"),
+                    confidence: 0.6, method: "putter_head_diff", warnings: [])
+            }
+            if let faceDeg = readout.faceAngleDegreesSigned {
+                let faceToPath = readout.putterPathDegreesSigned.map { faceDeg - $0 }
+                faceAngleFinal = FaceAngleEstimate(
+                    faceAngleDegreesSigned: faceDeg,
+                    faceAngleDisplay: readout.faceDisplay,
+                    faceToPathDegreesSigned: faceToPath,
+                    faceToPathDisplay: faceToPath.map { String(format: "%.1f°", $0) } ?? "--",
+                    confidence: "estimated", method: "putter_silhouette_pca",
+                    warnings: [])
+            }
+        }
 
         var warnings: [String] = [calibration.calibrationWarning]
         warnings.append(contentsOf: v2Warnings)
@@ -343,9 +404,12 @@ struct ShotMetricsCalculator {
         warnings.append(contentsOf: clubMetrics.warnings)
         warnings.append(contentsOf: distance.warnings)
         warnings.append(contentsOf: spin.warnings)
-        warnings.append(contentsOf: clubPath.warnings)
-        warnings.append(contentsOf: faceAngle.warnings)
-        if smashFactor == nil {
+        warnings.append(contentsOf: clubPathFinal.warnings)
+        warnings.append(contentsOf: faceAngleFinal.warnings)
+        if let readout = puttReadout {
+            warnings.append(contentsOf: readout.warnings)
+        }
+        if smashFinal == nil {
             warnings.append("Smash factor unavailable until both ball speed and club speed are available.")
         }
 
@@ -356,17 +420,18 @@ struct ShotMetricsCalculator {
             zeroDegreeReferenceAngleDegrees: zeroDegreeReferenceAngleDegrees,
             ballLaunch: ballLaunch,
             club: clubMetrics,
-            smashFactor: smashFactor,
+            smashFactor: smashFinal,
             distance: distance,
             spin: spin,
-            clubPath: clubPath,
-            faceAngle: faceAngle,
+            clubPath: clubPathFinal,
+            faceAngle: faceAngleFinal,
             ball3DObservations: ball3DObservations,
             clubObservations: clubObservations,
             warnings: Array(Set(warnings)).sorted()
         )
-        result.rawSmashFactor    = rawSmashFactor
-        result.smashFactorClamped = smashFactorClamped
+        result.putt = puttReadout
+        result.rawSmashFactor    = rawSmashFinal
+        result.smashFactorClamped = smashClampedFinal
         result.faceFrameIndex    = faceFrameIndex
         result.faceFrameReason   = "detectedImpactFrameIndex_plus_one"
 

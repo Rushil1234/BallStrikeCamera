@@ -76,10 +76,12 @@ final class CameraController: NSObject, ObservableObject {
     private let rollingBufferLimit = 120
     // Putter shots move far slower than a full swing — more frames both before and after impact
     // give the tracker more samples to fit a reliable speed from, at the cost of a longer capture
-    // window (~421ms vs ~171ms at 240fps). rollingBufferLimit (120) already covers preHitFrames+1
-    // in both cases.
+    // window (~630ms vs ~171ms at 240fps). The post-impact window is the putt engine's whole
+    // observation of the roll: break curvature grows with the square of observed time, so 100
+    // post frames (0.42s) quadruples the bend signal vs the old 50. rollingBufferLimit (120)
+    // already covers preHitFrames+1 in both cases; post frames are appended live.
     private var preHitFrames: Int { isPutterMode ? 50 : 20 }
-    private var postHitFrames: Int { isPutterMode ? 50 : 20 }
+    private var postHitFrames: Int { isPutterMode ? 100 : 20 }
 
     private var stableRect: CGRect?
     private var stableFrameCount = 0

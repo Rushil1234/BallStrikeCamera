@@ -625,11 +625,11 @@ struct ShotResultView: View {
     private var puttMetricsBar: some View {
         HStack(spacing: 0) {
             metricCard("Distance",  distanceFt(m?.distance.totalYards ?? m?.distance.carryYards))
-            metricCard("Ball Speed", spd(m?.ballLaunch.ballSpeedMph))
+            metricCard("Ball Speed", puttSpd(m?.ballLaunch.ballSpeedMph))
             metricCard("Start Dir",  m?.ballLaunch.hlaDisplay ?? "--")
-            metricCard("Face",       m?.faceAngle.faceAngleDisplay ?? "--")
-            metricCard("VLA",        "0.0°")
-            metricCard("Club Path",  m?.clubPath.clubPathDisplay ?? "--")
+            metricCard("Break",      m?.putt?.breakDisplay ?? "--")
+            metricCard("Putter",     puttSpd(m?.club.clubSpeedMph))
+            metricCard("Face",       m?.putt?.faceDisplay ?? m?.faceAngle.faceAngleDisplay ?? "--")
         }
         .padding(.vertical, 8)
         .background(Self.panelBG)
@@ -1124,10 +1124,23 @@ struct ShotResultView: View {
     // out to the full roll distance. VLA is always 0 for a putt, so there's no vertical
     // component worth drawing at all — this is the whole picture.
 
-    /// Lateral offset (feet, +right/−left) at fraction `p` of the total roll: straight HLA
-    /// component plus the same spin-driven curve term `drawTopDown` uses for full shots.
+    /// Lateral offset (feet, +right/−left) at fraction `p` of the total roll.
+    ///
+    /// With a putt readout this is MEASURED physics: start line from HLA plus the fitted
+    /// curvature, shaped as break·(1−√(1−p))² — the closed form for constant lateral
+    /// acceleration (side slope) under linear deceleration, which is why real putts break
+    /// hardest as they die at the hole. Without a readout it falls back to the old
+    /// spin-heuristic curve so legacy saved shots still render.
     private func puttOffsetFt(_ p: Double, totalFt: Double) -> Double {
         let hlaRad = (m?.ballLaunch.hlaDegrees ?? 0) * .pi / 180.0
+        let straight = tan(hlaRad) * totalFt * p
+
+        if let putt = m?.putt {
+            let breakFt = (putt.breakMeasured ? (putt.projectedBreakInches ?? 0) : 0) / 12.0
+            let shape = pow(1.0 - (1.0 - min(max(p, 0), 1)).squareRoot(), 2)
+            return straight + breakFt * shape
+        }
+
         let spinAxis = m?.spin.estimatedSpinAxisDegreesSigned
         let sidespin = m?.spin.estimatedSidespinRpmSigned
         let curveStrength: Double
@@ -1140,13 +1153,23 @@ struct ShotResultView: View {
         }
         let curveMagnitudeFt = abs(curveStrength) * max(totalFt * 0.12, 1.0)
         let curveSign: Double = curveStrength >= 0 ? 1.0 : -1.0
-        return tan(hlaRad) * totalFt * p + curveSign * curveMagnitudeFt * pow(max(0, p), 1.6)
+        return straight + curveSign * curveMagnitudeFt * pow(max(0, p), 1.6)
     }
 
     private var puttSummaryText: String {
         guard let m else { return "" }
         let totalFt = (m.distance.totalYards ?? 0) * 3.0
         guard totalFt > 0.05 else { return "Start: \(m.ballLaunch.hlaDisplay)" }
+        if let putt = m.putt {
+            var parts = ["Start: \(m.ballLaunch.hlaDisplay)"]
+            if putt.breakMeasured, let b = putt.projectedBreakInches, abs(b) >= 1 {
+                parts.append(String(format: "Breaking %.0f in %@", abs(b), b < 0 ? "left" : "right"))
+            } else if putt.breakMeasured {
+                parts.append("Rolling straight")
+            }
+            parts.append(String(format: "%.1f ft at green speed %.0f", totalFt, putt.stimp))
+            return parts.joined(separator: "  ·  ")
+        }
         let hlaRad = (m.ballLaunch.hlaDegrees ?? 0) * .pi / 180.0
         let straightFt = tan(hlaRad) * totalFt
         let breakFt = puttOffsetFt(1.0, totalFt: totalFt) - straightFt
@@ -1233,6 +1256,20 @@ struct ShotResultView: View {
         }
         ctx.stroke(guide, with: .color(Self.ink.opacity(0.24)), style: StrokeStyle(lineWidth: 1.5, dash: [3, 5]))
 
+        // Measured/projected boundary: the roll was actually TRACKED this far; the rest of
+        // the path is the stimp-physics projection.
+        if let putt = m?.putt, putt.observedTravelInches > 1, totalFt > 0.05 {
+            let pMeasured = min(putt.observedTravelInches / 12.0 / totalFt, 1.0)
+            if pMeasured < 0.98 {
+                let bp = pathPt(pMeasured)
+                ctx.fill(Path(ellipseIn: CGRect(x: bp.x - 3.5, y: bp.y - 3.5, width: 7, height: 7)),
+                         with: .color(Self.ink.opacity(0.85)))
+                ctx.draw(Text("tracked to here").font(.system(size: 7, design: .monospaced))
+                            .foregroundColor(Self.ink.opacity(0.55)),
+                         at: CGPoint(x: bp.x + 8, y: bp.y), anchor: .leading)
+            }
+        }
+
         if rp > 0.001 {
             let maxStep = max(1, Int(Double(guideSteps) * rp))
             var rolled = Path(); rolled.move(to: pathPt(0))
@@ -1264,5 +1301,7 @@ struct ShotResultView: View {
 
     private func yds(_ v: Double?) -> String { v.map { String(format: "%.0f yd", $0) } ?? "--" }
     private func spd(_ v: Double?) -> String { v.map { String(format: "%.0f mph", $0) } ?? "--" }
+    /// Putt speeds are single digits — a whole-mph format would round 5.8 → "6 mph".
+    private func puttSpd(_ v: Double?) -> String { v.map { String(format: "%.1f mph", $0) } ?? "--" }
     private func vlaDeg(_ v: Double?) -> String { v.map { String(format: "%.1f°", $0) } ?? "--" }
 }
