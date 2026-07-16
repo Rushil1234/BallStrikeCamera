@@ -27,10 +27,16 @@ final class SwingStudioController: NSObject, ObservableObject {
         case failed(String)
     }
 
+    enum FramingHint: Equatable { case searching, stepBack, moveLeft, moveRight, good }
+
     @Published var state: StudioState = .idle
     @Published var bodyInFrame = false
+    /// What the player must DO to get framed — drives the big arrow overlay (voice mirrors it).
+    @Published var framingHint: FramingHint = .searching
     /// Live joints (Vision normalized coords) for the mirror-mode skeleton overlay.
     @Published var liveJoints: [CGPoint] = []
+    /// Ordered live skeleton (SwingSkeleton.jointOrder) so the mirror draws bones, not dots.
+    @Published var liveSkeleton: StoredPose? = nil
     @Published var captureFPS: Double = 60
 
     let session = AVCaptureSession()
@@ -175,6 +181,22 @@ final class SwingStudioController: NSObject, ObservableObject {
         liveJoints = source == .frontMirror
             ? frame.joints.values.filter { $0.confidence > 0.3 }.map(\.point)
             : []
+        liveSkeleton = source == .frontMirror ? SwingSkeleton.stored(from: frame, at: 0) : nil
+
+        // Direction the player must move, from what the camera can and can't see.
+        let visibleCount = frame.joints.values.filter { $0.confidence > 0.25 }.count
+        if framed {
+            framingHint = .good
+        } else if visibleCount < 4 {
+            framingHint = .searching
+        } else if head == nil || ankles == nil {
+            // Body parts spill off the top/bottom — too close.
+            framingHint = .stepBack
+        } else if let hips = frame.mid(.leftHip, .rightHip) {
+            framingHint = hips.x < 0.38 ? .moveRight : (hips.x > 0.62 ? .moveLeft : .stepBack)
+        } else {
+            framingHint = .stepBack
+        }
 
         let wrist = frame.mid(.leftWrist, .rightWrist)
             ?? frame.joint(.leftWrist) ?? frame.joint(.rightWrist)

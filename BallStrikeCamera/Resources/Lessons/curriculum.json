@@ -96,8 +96,8 @@
             {
               "id": "grip.model",
               "kind": "model3D",
-              "title": "The neutral grip, in 3D",
-              "body": "Rotate the model. Work through each checkpoint on your own club.",
+              "title": "The neutral grip",
+              "body": "This is exactly where the club lives in your lead hand. Study it, then continue — next step the camera does it with you on your own club.",
               "asset3D": "grip_interlock",
               "checkpoints": [
                 "Lead hand: club in the fingers, not the palm",
@@ -111,7 +111,7 @@
               "id": "grip.check",
               "kind": "check3D",
               "title": "Show me your grip",
-              "body": "Hold your grip up in front of the camera. We'll check hand stacking with on-device hand tracking \u2014 or step through the checklist yourself.",
+              "body": "Phone on the tripod, club in view. The camera finds your club, shows the hands going on, and confirms your grip live \u2014 or step through the checklist yourself.",
               "checkpoints": [
                 "Hands touching, no gap between them",
                 "Two lead-hand knuckles visible",
@@ -475,7 +475,8 @@
             {
               "id": "slg.model",
               "kind": "model3D",
-              "title": "Neutral vs strong grip, in 3D",
+              "title": "Neutral vs strong grip",
+              "body": "Same fingers, same pressure — the lead hand just rotates until a third knuckle shows.",
               "asset3D": "grip_strong",
               "checkpoints": [
                 "Rotate lead hand until you see 3 knuckles",
@@ -487,6 +488,7 @@
               "id": "slg.check",
               "kind": "check3D",
               "title": "Show me the stronger grip",
+              "body": "Phone on the tripod, club in view — the camera watches your hands come together on the club.",
               "checkpoints": [
                 "Three lead-hand knuckles visible",
                 "Trail palm slightly under the grip",

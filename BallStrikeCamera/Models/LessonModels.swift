@@ -206,6 +206,9 @@ struct SwingRecording: Codable, Identifiable {
     /// Skeletons at the 5 phase frames (SwingSkeleton.jointOrder order; [x, y, confidence]
     /// in Vision normalized coords) — powers the replay overlay without storing every frame.
     var keyPoses: [StoredPose] = []
+    /// Hand-center path across the whole swing ([x, y] normalized, ≤150 samples) — the
+    /// swing-trail ribbon on replay. Optional so pre-existing saved swings still decode.
+    var handTrail: [[Double]]? = nil
 }
 
 struct StoredPose: Codable {

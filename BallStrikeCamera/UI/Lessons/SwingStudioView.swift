@@ -24,25 +24,25 @@ struct SwingStudioView: View {
             CameraPreviewView(session: studio.session)
                 .ignoresSafeArea()
 
-            // Mirror-mode live skeleton dots
-            if mirrorMode {
+            // Mirror-mode live skeleton (side-colored bones, Sportsbox-style)
+            if mirrorMode, let pose = studio.liveSkeleton {
                 GeometryReader { geo in
-                    ForEach(Array(studio.liveJoints.enumerated()), id: \.offset) { _, p in
-                        Circle()
-                            .fill(TCTheme.sage.opacity(0.9))
-                            .frame(width: 8, height: 8)
-                            .position(x: p.x * geo.size.width,
-                                      y: (1 - p.y) * geo.size.height)
-                    }
+                    RichPoseOverlay(pose: pose, trail: nil, spineAngle: nil, size: geo.size)
                 }
                 .allowsHitTesting(false)
+            }
+
+            // Giant framing direction — readable from across the room, no small words.
+            if !studio.bodyInFrame, analyzing == 0,
+               studio.state == .framing || studio.state == .waitingForAddress {
+                FramingGuideOverlay(hint: studio.framingHint)
+                    .allowsHitTesting(false)
             }
 
             VStack {
                 topBar
                 Spacer()
                 statusPill
-                setupHint
                 takesRow
                 bottomBar
             }
@@ -119,23 +119,6 @@ struct SwingStudioView: View {
         .padding(.horizontal, 16).padding(.vertical, 9)
         .background(Capsule().fill(Color.black.opacity(0.6)))
         .padding(.bottom, 4)
-    }
-
-    /// Per-angle tripod setup guidance, shown until a body is framed.
-    @ViewBuilder
-    private var setupHint: some View {
-        if !studio.bodyInFrame, analyzing == 0 {
-            Text(viewAngle == .faceOn
-                 ? "Tripod to your SIDE, chest-height, phone upright — camera sees your whole body and the club."
-                 : "Tripod 6 FEET BEHIND you on the target line, camera at hand height, looking at the target.")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white.opacity(0.92))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Color.black.opacity(0.55)))
-                .padding(.horizontal, 30)
-                .padding(.bottom, 6)
-        }
     }
 
     private var statusText: String {
@@ -289,9 +272,14 @@ struct SwingReplayView: View {
                     .aspectRatio(9.0 / 16.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay {
-                        if showSkeleton, let pose = currentPose {
+                        if showSkeleton {
                             GeometryReader { geo in
-                                SkeletonOverlay(pose: pose, size: geo.size)
+                                RichPoseOverlay(
+                                    pose: currentPose,
+                                    trail: swing.handTrail,
+                                    spineAngle: swing.metrics.first { $0.kind == .spineTiltAddress }?.value,
+                                    size: geo.size
+                                )
                             }
                             .allowsHitTesting(false)
                         }
@@ -507,30 +495,145 @@ struct SwingReplayView: View {
     }
 }
 
-/// Draws a stored key pose over the video (Vision coords: origin bottom-left, y up).
-private struct SkeletonOverlay: View {
-    let pose: StoredPose
+/// The Sportsbox/SwingVision-style overlay: hand-path trail ribbon, side-colored bones
+/// (lead side cool blue, trail side warm red, torso green), glowing joints, and an angle
+/// badge — instead of bare dots.
+struct RichPoseOverlay: View {
+    let pose: StoredPose?
+    let trail: [[Double]]?
+    let spineAngle: Double?
     let size: CGSize
+
+    private static let leftJoints: Set<Int> = [2, 4, 6, 8, 10, 12]
+    private static let rightJoints: Set<Int> = [3, 5, 7, 9, 11, 13]
 
     var body: some View {
         Canvas { ctx, _ in
+            func toScreen(_ x: Double, _ y: Double) -> CGPoint {
+                CGPoint(x: x * size.width, y: (1 - y) * size.height)
+            }
+
+            // ── Swing trail ribbon (cyan→magenta along the path) ──
+            if let trail, trail.count > 3 {
+                var path = Path()
+                for (i, p) in trail.enumerated() {
+                    let pt = toScreen(p[0], p[1])
+                    if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                }
+                ctx.stroke(path, with: .linearGradient(
+                    Gradient(colors: [Color.cyan.opacity(0.9), Color(red: 1.0, green: 0.3, blue: 0.9).opacity(0.9)]),
+                    startPoint: toScreen(trail.first![0], trail.first![1]),
+                    endPoint: toScreen(trail.last![0], trail.last![1])),
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            }
+
+            guard let pose else { return }
             func pt(_ i: Int) -> CGPoint? {
                 guard i < pose.points.count, pose.points[i][2] > 0.25 else { return nil }
-                return CGPoint(x: pose.points[i][0] * size.width,
-                               y: (1 - pose.points[i][1]) * size.height)
+                return toScreen(pose.points[i][0], pose.points[i][1])
             }
+
+            // ── Bones, colored by body side ──
             for (a, b) in SwingSkeleton.bones {
                 guard let pa = pt(a), let pb = pt(b) else { continue }
+                let color: Color
+                if Self.leftJoints.contains(a) && Self.leftJoints.contains(b) {
+                    color = Color(red: 0.35, green: 0.65, blue: 1.0)      // lead/left side
+                } else if Self.rightJoints.contains(a) && Self.rightJoints.contains(b) {
+                    color = Color(red: 1.0, green: 0.38, blue: 0.35)      // trail/right side
+                } else {
+                    color = Color(red: 0.35, green: 0.9, blue: 0.5)       // torso/head
+                }
                 var line = Path()
                 line.move(to: pa); line.addLine(to: pb)
-                ctx.stroke(line, with: .color(TCTheme.sage.opacity(0.9)),
-                           style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                ctx.stroke(line, with: .color(color.opacity(0.95)),
+                           style: StrokeStyle(lineWidth: 5, lineCap: .round))
             }
+
+            // ── Spine line + angle badge ──
+            if let hipL = pt(8), let hipR = pt(9), let shL = pt(2), let shR = pt(3) {
+                let hip = CGPoint(x: (hipL.x + hipR.x)/2, y: (hipL.y + hipR.y)/2)
+                let sh  = CGPoint(x: (shL.x + shR.x)/2, y: (shL.y + shR.y)/2)
+                var spine = Path(); spine.move(to: hip); spine.addLine(to: sh)
+                ctx.stroke(spine, with: .color(.yellow.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 3.5, dash: [7, 5]))
+                if let spineAngle {
+                    let label = Text("\(Int(spineAngle))°")
+                        .font(.system(size: 17, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                    ctx.draw(label, at: CGPoint(x: hip.x + 34, y: (hip.y + sh.y)/2))
+                }
+            }
+
+            // ── Joints: white core + colored glow ──
             for i in pose.points.indices {
                 guard let p = pt(i) else { continue }
+                let glow: Color = Self.leftJoints.contains(i)
+                    ? Color(red: 0.35, green: 0.65, blue: 1.0)
+                    : Self.rightJoints.contains(i) ? Color(red: 1.0, green: 0.38, blue: 0.35)
+                    : Color(red: 0.35, green: 0.9, blue: 0.5)
+                ctx.fill(Path(ellipseIn: CGRect(x: p.x - 7, y: p.y - 7, width: 14, height: 14)),
+                         with: .color(glow.opacity(0.45)))
                 ctx.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)),
                          with: .color(.white))
             }
         }
     }
 }
+
+/// Room-scale framing direction: one giant animated arrow + a single huge word.
+struct FramingGuideOverlay: View {
+    let hint: SwingStudioController.FramingHint
+    @State private var pulse = false
+
+    private var arrow: String? {
+        switch hint {
+        case .stepBack:  return "arrow.down.backward.and.arrow.up.forward"
+        case .moveLeft:  return "arrow.left"
+        case .moveRight: return "arrow.right"
+        case .searching: return nil
+        case .good:      return nil
+        }
+    }
+
+    private var word: String {
+        switch hint {
+        case .stepBack:  return "STEP BACK"
+        case .moveLeft:  return "MOVE LEFT"
+        case .moveRight: return "MOVE RIGHT"
+        case .searching: return "STAND IN VIEW"
+        case .good:      return ""
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 18) {
+            if let arrow {
+                Image(systemName: arrow)
+                    .font(.system(size: 88, weight: .black))
+                    .foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 8)
+                    .scaleEffect(pulse ? 1.12 : 0.92)
+                    .offset(x: hint == .moveLeft ? (pulse ? -18 : 6)
+                              : hint == .moveRight ? (pulse ? 18 : -6) : 0)
+            } else {
+                Image(systemName: "figure.stand")
+                    .font(.system(size: 88, weight: .black))
+                    .foregroundColor(.white.opacity(pulse ? 1 : 0.5))
+                    .shadow(color: .black.opacity(0.6), radius: 8)
+            }
+            Text(word)
+                .font(.system(size: 34, weight: .black, design: .rounded))
+                .foregroundColor(.white)
+                .shadow(color: .black.opacity(0.7), radius: 6)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.35))
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+    }
+}
+

@@ -541,6 +541,16 @@ enum SwingAnalyzer {
             rec.keyPoses = phases.labelled.map { _, frameIdx in
                 SwingSkeleton.stored(from: frames[min(frameIdx, frames.count - 1)], at: frameIdx)
             }
+            // Hand trail: address→finish, downsampled to ≤150 points for the replay ribbon.
+            let trailRange = phases.address...min(phases.finish, frames.count - 1)
+            let trailStride = max(1, trailRange.count / 150)
+            rec.handTrail = trailRange.compactMap { i -> [Double]? in
+                guard i % trailStride == 0,
+                      let h = frames[i].mid(.leftWrist, .rightWrist)
+                          ?? frames[i].joint(.leftWrist) ?? frames[i].joint(.rightWrist)
+                else { return nil }
+                return [Double(h.x), Double(h.y)]
+            }
             if #available(iOS 17.0, *) { rec.poseEngine = "vision2d+3dready" }
         } catch {
             rec.analyzed = false
