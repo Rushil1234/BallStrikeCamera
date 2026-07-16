@@ -201,11 +201,20 @@ final class CameraController: NSObject, ObservableObject {
             }
 
             self?.sessionQueue.async { [weak self] in
-                self?.configureSessionIfNeeded()
-                self?.session.startRunning()
+                guard let self else { return }
+                self.configureSessionIfNeeded()
+                // Re-assert 240fps on EVERY start, not just first configure: activeFormat is
+                // shared hardware state on the back camera, and any other capture session on
+                // the same device (Swing Studio pose analysis, the grip-check camera step, QR
+                // scanning) resets it to a 30fps format. Cool phone + "camera running at
+                // 30fps" banner = exactly this.
+                if let device = self.device {
+                    self.reassertHighFPSIfNeeded(device, reason: "session start")
+                }
+                self.session.startRunning()
                 Task { @MainActor in
-                    self?.applyShutter(.oneThousand)
-                    self?.observeThermalState()
+                    self.applyShutter(.oneThousand)
+                    self.observeThermalState()
                 }
             }
         }
@@ -432,6 +441,28 @@ final class CameraController: NSObject, ObservableObject {
         }
     }
 
+    private var _lastFormatReassert: CFTimeInterval = 0
+
+    /// Re-applies the 240fps format + pinned frame durations if the device has drifted off
+    /// them (another session used the camera). No-op when everything is already right, so
+    /// it's safe to call on every session start; 30s cooldown guards the recovery path.
+    private func reassertHighFPSIfNeeded(_ camera: AVCaptureDevice, reason: String) {
+        let maxRate = camera.activeFormat.videoSupportedFrameRateRanges.map(\.maxFrameRate).max() ?? 0
+        let minDur = camera.activeVideoMinFrameDuration
+        let pinned = minDur.value > 0 && Double(minDur.timescale) / Double(minDur.value) >= 239
+        guard maxRate < 240 || !pinned else { return }
+        let now = CACurrentMediaTime()
+        guard now - _lastFormatReassert > 30 else { return }
+        _lastFormatReassert = now
+        print(String(format: "[FPS] device format degraded (max %.0f fps, pinned=%@; %@) — re-applying 240fps configuration",
+                     maxRate, pinned ? "yes" : "no", reason))
+        configureCameraForHighFPS(camera)
+        // A format change resets exposure — re-lock the user's shutter preset on top of it.
+        Task { @MainActor in
+            self.applyShutter(self.selectedShutter)
+        }
+    }
+
     private func configureCameraForHighFPS(_ camera: AVCaptureDevice) {
         do {
             try camera.lockForConfiguration()
@@ -646,10 +677,22 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 _badStatsWindows = 0
             }
             let bad = _badStatsWindows
+            let thermal = ProcessInfo.processInfo.thermalState
+            if bad >= 2, thermal == .nominal || thermal == .fair {
+                // Sustained low fps on a COOL phone isn't throttling — it's the device
+                // format drifting off 240 (another camera user). Recover automatically.
+                sessionQueue.async { [weak self] in
+                    guard let self, let device = self.device else { return }
+                    self.reassertHighFPSIfNeeded(device, reason: "sustained low fps, cool thermals")
+                }
+            }
             Task { @MainActor in
                 if bad >= 2 {
+                    let advice = (thermal == .serious || thermal == .critical)
+                        ? "Let the phone cool / close other apps."
+                        : "Re-locking 240fps…"
                     self.captureHealthWarning = String(
-                        format: "Camera running at %.0f fps — tracking accuracy degraded. Let the phone cool / close other apps.", windowFPS)
+                        format: "Camera running at %.0f fps — tracking accuracy degraded. %@", windowFPS, advice)
                 } else if bad == 0, self.captureHealthWarning?.hasPrefix("Camera running") == true {
                     self.captureHealthWarning = nil
                 }
