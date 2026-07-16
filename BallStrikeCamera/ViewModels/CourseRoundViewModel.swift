@@ -32,65 +32,20 @@ final class CourseRoundViewModel: ObservableObject {
 
     // MARK: - NFC Shot Tracking
 
-    /// Yards from a point to a hole's tee→path→green corridor line — the same geometry the
-    /// history view uses to reject misfiled shots, applied here at RECORD time so they never
-    /// get misfiled in the first place.
-    private func corridorYards(holeNumber: Int, to coord: CLLocationCoordinate2D) -> Double? {
-        guard let hole = selectedCourse?.holes.first(where: { $0.number == holeNumber }),
-              let tee = hole.teeCoordinate?.clCoordinate,
-              let green = hole.greenCenterCoordinate?.clCoordinate else { return nil }
-        var line = [tee]
-        line += (hole.pathCoordinates ?? []).map { $0.clCoordinate }
-        line.append(green)
-        let kLat = 111_320.0
-        let cosLat = cos(tee.latitude * .pi / 180)
-        func en(_ c: CLLocationCoordinate2D) -> (e: Double, n: Double) {
-            ((c.longitude - tee.longitude) * kLat * cosLat, (c.latitude - tee.latitude) * kLat)
-        }
-        let p = en(coord)
-        var best = Double.greatestFiniteMagnitude
-        for i in 0..<(line.count - 1) {
-            let a = en(line[i]), b = en(line[i + 1])
-            let abe = b.e - a.e, abn = b.n - a.n
-            let len2 = abe * abe + abn * abn
-            let t = len2 > 0 ? max(0, min(1, ((p.e - a.e) * abe + (p.n - a.n) * abn) / len2)) : 0
-            let de = p.e - (a.e + abe * t), dn = p.n - (a.n + abn * t)
-            best = min(best, (de * de + dn * dn).squareRoot())
-        }
-        return best * 1.09361
-    }
+    /// The hole a logged shot belongs to is the hole the player is LOOKING AT when they hit
+    /// log — course mode's current hole, full stop. GPS coordinates are recorded as data on
+    /// the shot; they never decide (or second-guess) the hole. A player can be standing on
+    /// hole 8's fairway playing hole 7 after a slice, and the shot is still hole 7's because
+    /// that's the hole on screen.
+    private var onScreenHole: Int { currentHole?.holeNumber ?? (currentHoleIndex + 1) }
 
-    /// The hole the player is PHYSICALLY standing on. Shots used to be filed to whatever
-    /// hole the UI had "current" — a forgotten hole-advance or a late score entry put them
-    /// on neighboring holes ("GPS picking up shots from other holes"). Only overrides when
-    /// the evidence is decisive: far off the current hole's corridor AND close to another's.
-    func gpsCorrectedHole(defaultHole: Int, at coord: CLLocationCoordinate2D) -> Int {
-        guard let course = selectedCourse else { return defaultHole }
-        let currentDist = corridorYards(holeNumber: defaultHole, to: coord) ?? .infinity
-        guard currentDist > 70 else { return defaultHole }
-        var best: (Int, Double)? = nil
-        for hole in course.holes where hole.number != defaultHole {
-            if let d = corridorYards(holeNumber: hole.number, to: coord),
-               best == nil || d < best!.1 {
-                best = (hole.number, d)
-            }
-        }
-        guard let (num, dist) = best, dist < 40 else { return defaultHole }
-        print(String(format: "[CourseGPS] shot is %.0fyd off hole %d's corridor but %.0fyd from hole %d — filing to %d",
-                     currentDist, defaultHole, dist, num, num))
-        return num
-    }
-
-    /// Records an NFC club tap at the user's current GPS position for the active hole.
+    /// Records an NFC club tap at the user's current GPS position for the on-screen hole.
     /// Captures shot number within the hole and distance to the green center.
     func recordNFCShot(club: UserClub) {
         ClubPreference.remember(club)   // app club is the source of truth
         guard var round = activeRound,
               let coord = location.currentLocation else { return }
-        let holeNum = gpsCorrectedHole(
-            defaultHole: currentHole?.holeNumber ?? (currentHoleIndex + 1),
-            at: coord
-        )
+        let holeNum = onScreenHole
         let shotNum   = round.nfcShots.filter { $0.holeNumber == holeNum }.count + 1
 
         var distYards: Double?
@@ -113,6 +68,9 @@ final class CourseRoundViewModel: ObservableObject {
         )
         round.nfcShots.append(shot)
         activeRound = round
+        print(String(format: "[CourseGPS] Hole %d · shot %d logged · %@ · (%.6f, %.6f)%@",
+                     holeNum, shotNum, club.name, coord.latitude, coord.longitude,
+                     distYards.map { String(format: " · %.0fyd to pin", $0) } ?? ""))
     }
 
     // MARK: - Smart Scoring
@@ -435,12 +393,8 @@ final class CourseRoundViewModel: ObservableObject {
     func logManualShot(club: UserClub?, movedOrDropped: Bool) async -> Bool {
         guard let loc = location.currentLocation else { return false }
         let here = Coordinate(latitude: loc.latitude, longitude: loc.longitude)
-        // Same GPS reality check as NFC taps — the log goes to the hole the player is
-        // standing on, not the hole the UI forgot to advance past.
-        let holeNum = gpsCorrectedHole(
-            defaultHole: currentHole?.holeNumber ?? (currentHoleIndex + 1),
-            at: loc
-        )
+        // The log goes to the hole on screen when the button was pressed — see onScreenHole.
+        let holeNum = onScreenHole
 
         // Close the previous open origin into a completed segment.
         if let pending = pendingManualOrigin[holeNum] {
