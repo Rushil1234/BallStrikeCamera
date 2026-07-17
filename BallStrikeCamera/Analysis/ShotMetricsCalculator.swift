@@ -213,12 +213,12 @@ struct ShotMetricsCalculator {
                     frameDifferenceWasUsed: false))
             }
         }
-        if !isPuttShot, unionClubObs.count >= 3 {
-            // No x-monotonicity pass here: the chain already enforces CLOSING DISTANCE to
-            // the ball (isotropic — the real physics). The x-only version misread a curved
-            // approach as backward motion and deleted real picks (measured July 17).
-            clubObservations = unionClubObs
-        } else if isPuttShot {
+        // Union picks and the EBFS path MERGE now instead of either/or: with a <3-pick
+        // threshold, 45 shots silently reverted to the 34%-coverage fallback and threw
+        // away 1-2 GOOD chain picks each. Union wins conflicting frames (6.5px median);
+        // EBFS+v2 fills the frames the chain skipped. Chain output skips x-monotonicity
+        // (its isotropic closing-distance gate is the real physics).
+        if isPuttShot {
             clubObservations = []
         } else {
             let ebfs = clubTracker.track(analysis: analysis,
@@ -262,11 +262,18 @@ struct ShotMetricsCalculator {
             // tight ARC at ~26px/frame near impact, so linear fills landed >15px off —
             // off-target 17→29 with zero coverage gain. Ball gap fill is different: a
             // ballistic ball IS linear over 1-2 frames.)
-            clubObservations = enforceClubMonotonicity(
+            var merged = enforceClubMonotonicity(
                 union,
                 impactFrameIndex: analysis.detectedImpactFrameIndex,
                 ballCenterX: analysis.initialBallCenter?.x ?? analysis.lockedBallRect?.midX
             )
+            if !unionClubObs.isEmpty {
+                let unionFrames = Set(unionClubObs.map(\.frameIndex))
+                merged.removeAll { unionFrames.contains($0.frameIndex) }
+                merged.append(contentsOf: unionClubObs)
+                merged.sort { $0.frameIndex < $1.frameIndex }
+            }
+            clubObservations = merged
         }
         var clubMetrics = calculateClubMetrics(
             clubObservations: clubObservations,

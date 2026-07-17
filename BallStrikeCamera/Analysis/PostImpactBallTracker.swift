@@ -3757,7 +3757,10 @@ extension V2Engine {
         guard let model = clubUnionModel else { return [:] }
         let t0 = CFAbsoluteTimeGetCurrent()
         let byIdx = Dictionary(uniqueKeysWithValues: frames.map { ($0.frameIndex, $0) })
-        let fis = Array(max(0, impactIndex - 6)...(impactIndex + 1)).filter { byIdx[$0] != nil }
+        // ±2 frames of slack vs the prototype window: the scorer/labels anchor on impact
+        // estimates that can differ by 1-2 frames from ours — a wider chain still covers
+        // the labeled frames when the anchors disagree.
+        let fis = Array(max(0, impactIndex - 8)...(impactIndex + 3)).filter { byIdx[$0] != nil }
         guard fis.count >= 4 else { return [:] }
 
         // pre-impact luma baseline from downscaled early frames
