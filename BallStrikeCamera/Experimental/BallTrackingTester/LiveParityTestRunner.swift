@@ -115,7 +115,8 @@ final class LiveParityTestRunner {
         if v2Primary.active {
             observationMap = v2Primary.observations
             effectiveImpactIndex = v2Primary.impactFrameIndex
-            impactDetectionReason = "v2_ball_motion"
+            let v2ImpactNote = v2Primary.v2?.notes.first(where: { $0.hasPrefix("impact=") })
+            impactDetectionReason = v2ImpactNote.map { "v2_" + $0 } ?? "v2_ball_motion"
             print("[V2Primary] track active — \(v2Primary.observations.values.filter { $0.centerX != nil }.count) sightings, impact f\(effectiveImpactIndex)")
         }
 

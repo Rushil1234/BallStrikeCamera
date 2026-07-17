@@ -205,7 +205,9 @@ cv.addEventListener('click', e => {
   const x = (e.clientX - r.left)/S, y = (e.clientY - r.top)/S;
   if (mode === 'ball') { const L = lab(); const rr = (L.ball && L.ball.r) || 8; push({ball:{cx:x, cy:y, r:rr}}); }
   else push({club:{cx:x, cy:y}});
-  mode = null; document.querySelectorAll('button.mode').forEach(b=>b.classList.remove('mode')); draw();
+  // Mode stays STICKY across clicks and frames (Noah: click through back-to-back without
+  // re-selecting the tool every frame). Escape clears it.
+  draw();
 });
 cv.addEventListener('wheel', e => {
   const L = lab();
@@ -245,6 +247,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'x' || e.key === 'X') push({club:null});
   else if (e.key === 'a' || e.key === 'A' || e.key === 'Enter') { push({}); step(1); }
   else if (e.key === 's' || e.key === 'S') document.getElementById('approveShot').click();
+  else if (e.key === 'Escape') setMode(null, null);
 });
 init();
 </script></body></html>"""

@@ -2860,6 +2860,20 @@ final class V2Engine {
                 staticForward.append((b.cx, b.cy, b.r))
             }
         }
+        // ── presence timeline: per-frame "ball still at the lock", from the APPEARANCE
+        // mask (motion: nil — the same mask the rest-lock stage uses). The motion-gated
+        // mask reads a STATIC ball as absent (no inter-frame diff), which silently
+        // disabled the at-lock veto below and let the cone scan fire on pre-launch junk
+        // (measured: impact f11 vs labeled launch f20 on 2026-07-17 shot 082406).
+        var atLock: [Int: Bool] = [:]
+        for fi in idxSorted where fi >= max(0, impactHint - 10) && fi <= impactHint + 9 {
+            guard let pl = planeByIdx[fi] else { continue }
+            let (bright, _, _) = maskFrom(pl, motion: nil, prevLuma: nil)
+            atLock[fi] = bright.contains {
+                $0.circ >= 0.65 && $0.r >= r0 * 0.6 && $0.r <= r0 * 1.7
+                    && hypot($0.cx - lock.x, $0.cy - lock.y) <= r0 * 1.5
+            }
+        }
         outer: for fi in idxSorted where fi >= max(0, impactHint - 8) && fi <= impactHint + 9 {
             guard let pl = planeByIdx[fi] else { continue }
             let (bright, _, _) = maskFrom(pl, motion: motion(for: pl), prevLuma: nil)
@@ -2867,15 +2881,13 @@ final class V2Engine {
             // lock this frame, nothing has launched yet — the "new forward blob" is the
             // arriving CLUBHEAD (measured: fired impact 6 frames early on slow shots, and
             // the junk flight point then direction-locked the real launch out of the track).
-            // Strictly ball-like on purpose: post-departure glare residue and the merged
-            // ball+club blob read bigger/less round and must NOT hold impact detection open
-            // on fast shots.
-            let ballStillAtLock = bright.contains {
-                $0.circ >= 0.7 && $0.r >= r0 * 0.6 && $0.r <= r0 * 1.6
-                    && hypot($0.cx - lock.x, $0.cy - lock.y) <= r0 * 1.5
-            }
-            if ballStillAtLock { continue }
-            for b in bright where b.r >= 2.5 && b.r <= 22 && b.circ >= 0.55 && b.area >= 15 && !b.border {
+            if atLock[fi] == true { continue }
+            // Ball-sized relative to the LOCKED radius, not just absolute: the cone fired
+            // impact 9 frames early on r≈3px junk specks (r0 5.7) at frames where the
+            // appearance mask happened to miss the resting ball (2026-07-17 shots 082406,
+            // 083656, 084259) — a just-launched ball is still lock-sized.
+            for b in bright where b.r >= max(2.5, r0 * 0.5) && b.r <= min(22, r0 * 2.2)
+                && b.circ >= 0.55 && b.area >= 15 && !b.border {
                 let vx = b.cx - lock.x
                 if vx * -1 <= 0 { continue }        // forward is -x
                 // Launch cone: a just-struck ball leaves from LOCK HEIGHT. Vertical headroom
@@ -2892,6 +2904,39 @@ final class V2Engine {
                     break outer
                 }
             }
+        }
+        // ── Ball-departure detector (July 17): the capture trigger routinely fires 1-4
+        // frames AFTER the real launch, and when the forward-blob scan couldn't confirm
+        // (fast exits, glare), impact stayed at the HINT — the flight frames between real
+        // launch and hint+1 were silently discarded on nearly every fast shot (Noah's
+        // labels: launches at f16-19 vs hint f20, on every session). The ball LEAVING its
+        // lock IS the launch: after >=3 frames of a ball-like blob at the lock, the last
+        // present frame before 2 consecutive absent frames is the impact frame.
+        // Scans the WHOLE window (no early exit): a 1-2 frame appearance flicker with the
+        // ball back at the lock afterwards voids the candidate — only the final sustained
+        // absence counts as the departure.
+        var depPresentRun = 0
+        var depAbsentRun = 0
+        var depCandidate: Int? = nil
+        var depLastPresent: Int? = nil
+        for fi in idxSorted where fi >= max(0, impactHint - 10) && fi <= impactHint + 9 {
+            guard let present = atLock[fi] else { continue }
+            if present {
+                depPresentRun += 1
+                depLastPresent = fi
+                depCandidate = nil
+                depAbsentRun = 0
+            } else if depPresentRun >= 3 {
+                if depCandidate == nil { depCandidate = depLastPresent }
+                depAbsentRun += 1
+            }
+        }
+        // Departure overrides the cone scan when both fire: presence-run + sustained
+        // absence is stronger evidence than a single forward blob, and a cone fire during
+        // a presence gap (ball provably back at lock afterwards) is junk by definition.
+        if let dep = depCandidate, depAbsentRun >= 2 {
+            impact = dep
+            impactSrc = String(format: "ball-departure@f%d", dep)
         }
         notes.append("impact=f\(impact)(\(impactSrc))")
 
