@@ -1980,7 +1980,8 @@ code {
 .round .h05 .sim-feature{ display:grid; grid-template-columns:0.72fr 1.28fr; gap:clamp(40px,6vw,80px); align-items:center; }
 /* Solo: no copy, just the live browser-sim demo, centred. */
 .round .h05 .sim-feature.sim-feature-solo{ grid-template-columns:1fr; justify-items:center; }
-.round .h05 .sim-feature-solo .sim-demo{ width:100%; max-width:1040px; }
+.round .h05 .sim-feature-solo .sim-demo{ width:100%; max-width:1040px; transform:none; aspect-ratio:16/9; }
+.round .h05 .sim-feature-solo .sim-demo:hover{ transform:none; }
 .round .h05 h2{ font-family:var(--display); font-weight:400; font-size:clamp(44px,7vw,96px); line-height:.9; letter-spacing:-.03em; margin:0 0 24px; }
 .round .h05 h2 .it{ font-style:italic; color:var(--carry-gold); }
 .round .h05 .deck{ font-family:var(--display); font-style:italic; font-size:clamp(20px,2.2vw,27px); line-height:1.4; max-width:30ch; color:color-mix(in oklab,var(--bone) 88%,transparent); margin:0; }
@@ -2474,6 +2475,12 @@ textarea:focus-visible, [tabindex]:focus-visible{
 .sim-demo-play{ position:absolute; left:18px; bottom:16px; z-index:2; display:inline-flex; align-items:center; gap:8px; color:#ece4d2; font-weight:700; font-size:16px; text-shadow:0 2px 12px rgba(0,0,0,.6); transition:gap .25s; }
 .sim-demo:hover .sim-demo-play{ gap:12px; }
 .sim-demo-play svg{ background:rgba(236,228,210,.95); color:#16201a; border-radius:50%; padding:6px; box-shadow:0 4px 16px rgba(0,0,0,.4); }
+/* Live embed: the poster button and the real sim iframe both fill the card. */
+.sim-demo-load{ position:absolute; inset:0; width:100%; height:100%; margin:0; padding:0; border:none; background:none; cursor:pointer; display:block; }
+.sim-demo-frame{ position:absolute; inset:0; width:100%; height:100%; border:none; display:block; background:#0c130d; }
+.sim-demo:has(.sim-demo-frame)::after{ display:none; }
+.sim-demo-fs{ position:absolute; top:14px; right:14px; z-index:3; font-family:var(--r-mono); font-size:10px; letter-spacing:.14em; text-transform:uppercase; color:#ece4d2; background:rgba(7,14,9,.6); padding:6px 11px; border-radius:999px; text-decoration:none; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); transition:background .2s; }
+.sim-demo-fs:hover{ background:rgba(7,14,9,.85); }
 
 /* ---------- mission page ---------- */
 .mission-page{ min-height:100vh; display:flex; flex-direction:column; background:var(--c-forest-deep,#16201a); color:var(--c-bone,#ece4d2); }

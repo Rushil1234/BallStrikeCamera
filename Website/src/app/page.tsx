@@ -357,7 +357,7 @@ export default function HomePage() {
             </div>
           </div>
           <div className="player">
-            <span className="who">,  You</span>
+            <span className="who">You</span>
             <span className="stamp">live</span>
           </div>
         </aside>
