@@ -2941,22 +2941,56 @@ final class V2Engine {
                 let dt = t - lt
                 return CGPoint(x: lp.x + v.0 * dt, y: lp.y + v.1 * dt)
             }()
+            let v2dbg = ProcessInfo.processInfo.environment["TC_V2_DEBUG"] == "1"
             for b in bright {
-                guard b.r >= 2.0, b.r <= 24, b.area >= 12 else { continue }
+                guard b.r >= 2.0, b.r <= 24, b.area >= 12 else {
+                    if v2dbg, b.area >= 8 {
+                        print(String(format: "[V2dbg] f%02d blob(%.0f,%.0f) r=%.1f a=%.0f REJ size", fi, b.cx, b.cy, b.r, b.area))
+                    }
+                    continue
+                }
                 let vx = b.cx - lock.x, vy = b.cy - lock.y
                 let dist = hypot(vx, vy)
-                if dist >= r0 && vx > 0 { continue }                     // backwards
-                if dist < progress - r0 * 1.5 { continue }               // monotone
+                if dist >= r0 && vx > 0 {
+                    if v2dbg { print(String(format: "[V2dbg] f%02d blob(%.0f,%.0f) REJ backwards", fi, b.cx, b.cy)) }
+                    continue
+                }
+                if dist < progress - r0 * 1.5 {
+                    if v2dbg { print(String(format: "[V2dbg] f%02d blob(%.0f,%.0f) REJ monotone (d=%.0f prog=%.0f)", fi, b.cx, b.cy, dist, progress)) }
+                    continue
+                }
                 if let lp = lastPos, let p = pred {
                     let dLast = hypot(b.cx - lp.x, b.cy - lp.y)
                     let dPred = hypot(p.x - lp.x, p.y - lp.y)
-                    if dLast < r0 && dPred > r0 * 2.5 { continue }       // static junk
+                    if dLast < r0 && dPred > r0 * 2.5 {
+                        if v2dbg { print(String(format: "[V2dbg] f%02d blob(%.0f,%.0f) REJ static-junk", fi, b.cx, b.cy)) }
+                        continue
+                    }
+                }
+                // (A per-frame launch-physics distance cap was tried here and REMOVED: impact
+                // detection lags on fast shots — the real ball was measured 199px out one
+                // frame after detected impact and the cap rejected it, handing the track to
+                // the moving clubhead. The static gate below is what actually kills clutter.)
+                // Static-scenery gate: a flight candidate must DIFFER from the pre-impact
+                // baseline where it stands. Balls littering a range field read mot 2-15
+                // (pure shimmer) and score 0.95+ on shape alone — they beat the real ball
+                // and their bogus distance poisons `progress`, monotone-locking the true
+                // track out. A genuinely flying ball drags bright over new background every
+                // frame (measured mot 56-98 vs clutter 2-15), so 20 splits them cleanly.
+                if b.mot < 20 {
+                    if v2dbg { print(String(format: "[V2dbg] f%02d blob(%.0f,%.0f) REJ static (mot=%.0f)", fi, b.cx, b.cy, b.mot)) }
+                    continue
                 }
                 let feats = ballFeatures(b, lock: lock, r0: r0, pred: pred,
                                          dir: direction, progress: progress, impacted: true)
                 var z = models.ball_scorer.b
                 for i in 0..<min(models.ball_scorer.w.count, feats.count) { z += models.ball_scorer.w[i] * feats[i] }
                 let p = 1.0 / (1.0 + exp(-max(-30, min(30, z))))
+                if v2dbg {
+                    print(String(format: "[V2dbg] f%02d blob(%.0f,%.0f) r=%.1f circ=%.2f elong=%.2f dh=%.0f mot=%.0f p=%.3f %@",
+                                 fi, b.cx, b.cy, b.r, b.circ, b.elong, b.dhMean, b.mot, p,
+                                 p >= models.ball_scorer.threshold ? "PASS" : "rej-score"))
+                }
                 if p >= models.ball_scorer.threshold { cands.append((p, b)) }
             }
             let chosenScored = cands.max(by: { $0.0 < $1.0 })
