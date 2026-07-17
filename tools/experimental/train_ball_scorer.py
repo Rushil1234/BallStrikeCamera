@@ -18,13 +18,22 @@ from golf_context_detector import derive_lock
 
 ARCHIVE = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260712/AllFramesArchive')
 ARCHIVE_0716 = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260716/AllFramesArchive')
+ARCHIVE_0717 = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260717/AllFramesArchive')
 LABELS = json.load(open(os.path.expanduser('~/Documents/TrueCarryTraining/labels/labels.json')))
-CACHE = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_train_cache_v6.json')
+CACHE = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_train_cache_v7.json')
+
+# July-17 shots Noah excluded (foot over ball etc.) — never train on them
+_EXCL_PATH = os.path.expanduser('~/Documents/TrueCarryTraining/session_2026-07-17/excluded_shots.json')
+EXCLUDED = set(json.load(open(_EXCL_PATH))) if os.path.exists(_EXCL_PATH) else set()
+LABELS = {k: v for k, v in LABELS.items() if k not in EXCLUDED}
 
 
 def shot_dir(shot):
-    d = os.path.join(ARCHIVE, shot)
-    return d if os.path.isdir(d) else os.path.join(ARCHIVE_0716, shot)
+    for a in (ARCHIVE, ARCHIVE_0716, ARCHIVE_0717):
+        d = os.path.join(a, shot)
+        if os.path.isdir(d):
+            return d
+    return os.path.join(ARCHIVE, shot)
 OUT = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_scorer.json')
 
 # mot_norm added July 16: a real range field is littered with static balls that score

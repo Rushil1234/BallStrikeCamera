@@ -779,6 +779,10 @@ struct ShotMetricsCalculator {
             .compactMap { observation -> (frameIndex: Int, time: Double, position: SIMD3<Double>, confidence: Double)? in
                 guard let x = observation.centerX ?? observation.leadingEdgeX,
                       let y = observation.centerY ?? observation.leadingEdgeY,
+                      // A clubhead centered this close to the frame border is partly
+                      // off-screen (entering the frame) — its centroid is the centroid of
+                      // the VISIBLE half, which biases the earliest speed samples.
+                      x > 0.03, x < 0.97, y > 0.05, y < 0.95,
                       let position = calibration.positionMeters(centerX: x, centerY: y, depthMeters: assumedDepth) else {
                     return nil
                 }

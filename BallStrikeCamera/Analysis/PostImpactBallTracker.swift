@@ -2865,7 +2865,13 @@ final class V2Engine {
         // mask reads a STATIC ball as absent (no inter-frame diff), which silently
         // disabled the at-lock veto below and let the cone scan fire on pre-launch junk
         // (measured: impact f11 vs labeled launch f20 on 2026-07-17 shot 082406).
+        // Two tiers. STRICT is a clean resting ball — it bounds where the cone scan may
+        // fire. OCCUPIED is any bright footprint still covering the lock: the mid-strike
+        // ball blurs (fails circ), and the arriving clubhead MERGES with the ball into one
+        // big irregular blob — both must read "ball not confirmed gone" or departure fires
+        // 1-2 frames early and drops the labeled impact frame (24/211 white-suite shots).
         var atLock: [Int: Bool] = [:]
+        var atLockOccupied: [Int: Bool] = [:]
         for fi in idxSorted where fi >= max(0, impactHint - 10) && fi <= impactHint + 9 {
             guard let pl = planeByIdx[fi] else { continue }
             let (bright, _, _) = maskFrom(pl, motion: nil, prevLuma: nil)
@@ -2873,15 +2879,22 @@ final class V2Engine {
                 $0.circ >= 0.65 && $0.r >= r0 * 0.6 && $0.r <= r0 * 1.7
                     && hypot($0.cx - lock.x, $0.cy - lock.y) <= r0 * 1.5
             }
+            // Distance from the lock to the blob's (centroid-anchored) bbox: a merged
+            // ball+club blob has its centroid dragged toward the club, but its footprint
+            // still reaches the ball — bbox proximity is what says "something is there".
+            atLockOccupied[fi] = bright.contains { b in
+                let dx = max(abs(lock.x - b.cx) - Double(b.w) / 2, 0)
+                let dy = max(abs(lock.y - b.cy) - Double(b.h) / 2, 0)
+                return hypot(dx, dy) <= r0
+            }
         }
-        outer: for fi in idxSorted where fi >= max(0, impactHint - 8) && fi <= impactHint + 9 {
+        // Last frame the clean resting ball was SEEN at the lock: the cone scan may only
+        // fire after it. This kills cone fires inside a presence flicker (the ball is
+        // provably back at the lock afterwards, so any forward blob in the gap was junk).
+        let lastStrictPresent = atLock.filter { $0.value }.keys.max() ?? -1
+        outer: for fi in idxSorted where fi >= max(0, impactHint - 8) && fi <= impactHint + 9 && fi > lastStrictPresent {
             guard let pl = planeByIdx[fi] else { continue }
             let (bright, _, _) = maskFrom(pl, motion: motion(for: pl), prevLuma: nil)
-            // A launched ball cannot ALSO be at rest: if a BALL-LIKE blob still sits at the
-            // lock this frame, nothing has launched yet — the "new forward blob" is the
-            // arriving CLUBHEAD (measured: fired impact 6 frames early on slow shots, and
-            // the junk flight point then direction-locked the real launch out of the track).
-            if atLock[fi] == true { continue }
             // Ball-sized relative to the LOCKED radius, not just absolute: the cone fired
             // impact 9 frames early on r≈3px junk specks (r0 5.7) at frames where the
             // appearance mask happened to miss the resting ball (2026-07-17 shots 082406,
@@ -2915,12 +2928,15 @@ final class V2Engine {
         // Scans the WHOLE window (no early exit): a 1-2 frame appearance flicker with the
         // ball back at the lock afterwards voids the candidate — only the final sustained
         // absence counts as the departure.
+        // Presence here is the OCCUPIED tier: the blurred mid-strike ball and the merged
+        // ball+club blob both count as "not yet departed", so departure lands ON the
+        // impact frame, not 1-2 before it.
         var depPresentRun = 0
         var depAbsentRun = 0
         var depCandidate: Int? = nil
         var depLastPresent: Int? = nil
         for fi in idxSorted where fi >= max(0, impactHint - 10) && fi <= impactHint + 9 {
-            guard let present = atLock[fi] else { continue }
+            guard let present = atLockOccupied[fi] else { continue }
             if present {
                 depPresentRun += 1
                 depLastPresent = fi
@@ -2931,10 +2947,14 @@ final class V2Engine {
                 depAbsentRun += 1
             }
         }
-        // Departure overrides the cone scan when both fire: presence-run + sustained
-        // absence is stronger evidence than a single forward blob, and a cone fire during
-        // a presence gap (ball provably back at lock afterwards) is junk by definition.
-        if let dep = depCandidate, depAbsentRun >= 2 {
+        // min-combine with the cone scan: the loose tier can read lingering glare residue
+        // (or the arriving clubhead) as "still present" and drag departure late — when the
+        // cone saw genuine forward flight EARLIER, the cone wins. Junk cone fires are
+        // already excluded by the lastStrictPresent bound above.
+        // Only ever moves impact EARLIER: the capture hint fires late when it's wrong
+        // (labeled launches f16-19 vs hint f20, every session), so a departure LATER than
+        // cone/hint means the loose tier latched onto residue, not that impact is late.
+        if let dep = depCandidate, depAbsentRun >= 2, dep < impact {
             impact = dep
             impactSrc = String(format: "ball-departure@f%d", dep)
         }
@@ -3170,8 +3190,15 @@ final class V2Engine {
         // ── metric features (port of metrics_kfold.features_from_track)
         let rLockSub = restRadii.isEmpty ? r0 : restRadii.sorted()[restRadii.count / 2]
         var pts = Array(flight.prefix(5))
-        // club-sized points can't enter the fit (far-field radius filter)
-        let radiusFiltered = pts.filter { $0.r <= rLockSub * 1.35 || hypot($0.x - lock.x, $0.y - lock.y) <= rLockSub * 6 }
+        // club-sized points can't enter the fit (far-field radius filter). The near-lock
+        // exemption is for motion-smeared radius reads, NOT for the ball+club merged blob
+        // at impact+1 — a merged read is fat (≥1.8 rLock) and anchors the whole fit at a
+        // half-club position, so it's skipped: two clean later points beat three with a
+        // poisoned first point.
+        let radiusFiltered = pts.filter {
+            $0.r <= rLockSub * 1.35
+                || (hypot($0.x - lock.x, $0.y - lock.y) <= rLockSub * 6 && $0.r <= rLockSub * 1.8)
+        }
         // Heavy-drop captures leave exactly TWO airborne sightings, and the far one is
         // motion-smeared so its radius reads club-fat — the far-field filter then starved
         // the fit down to one point on shots the tracker followed perfectly (the Simulate
