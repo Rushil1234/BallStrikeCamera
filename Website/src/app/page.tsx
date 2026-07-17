@@ -242,7 +242,7 @@ export default function HomePage() {
                   className={`billing-opt${billing === "yearly" ? " on" : ""}`}
                   onClick={() => setBilling("yearly")}
                 >
-                  Yearly<span className="billing-save">2 months free</span>
+                  Yearly<span className="billing-save">4 months free</span>
                 </button>
                 <button
                   role="tab"

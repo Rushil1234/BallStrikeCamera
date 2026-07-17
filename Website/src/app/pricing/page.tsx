@@ -23,7 +23,7 @@ export default function PricingPage() {
 
         <div className="billing-toggle" role="tablist" aria-label="Billing interval" style={{ margin: "0 0 30px" }}>
           <button role="tab" aria-selected={billing === "yearly"} className={`billing-opt${billing === "yearly" ? " on" : ""}`} onClick={() => setBilling("yearly")}>
-            Yearly<span className="billing-save">2 months free</span>
+            Yearly<span className="billing-save">4 months free</span>
           </button>
           <button role="tab" aria-selected={billing === "monthly"} className={`billing-opt${billing === "monthly" ? " on" : ""}`} onClick={() => setBilling("monthly")}>
             Monthly
