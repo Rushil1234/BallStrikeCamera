@@ -31,7 +31,7 @@ export const PLANS: Plan[] = [
   {
     id: "pro",
     name: "Pro",
-    yearly: "$10",
+    yearly: "$9.99",
     monthly: "$14.99",
     per: "/ month",
     featured: true,
@@ -48,7 +48,7 @@ export const PLANS: Plan[] = [
   {
     id: "atlas",
     name: "Atlas",
-    yearly: "$25",
+    yearly: "$24.99",
     monthly: "$34.99",
     per: "/ month",
     tag: "The whole bag.",
