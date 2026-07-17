@@ -30,7 +30,14 @@ const PRICE_TO_TIER: Record<string, string> = {
   [Deno.env.get("STRIPE_BASIC_MONTHLY_PRICE_ID") ?? ""]: "basic",
   [Deno.env.get("STRIPE_PRO_MONTHLY_PRICE_ID")   ?? ""]: "pro",
   [Deno.env.get("STRIPE_ATLAS_MONTHLY_PRICE_ID") ?? ""]: "unlimited",
+  // Yearly billing (site's default toggle) — without these, a yearly
+  // subscriber would fall through to the "basic" default below.
+  [Deno.env.get("STRIPE_PRO_YEARLY_PRICE_ID")   ?? ""]: "pro",
+  [Deno.env.get("STRIPE_ATLAS_YEARLY_PRICE_ID") ?? ""]: "unlimited",
 };
+// Unset env vars all collapse onto the "" key — make sure that key can never
+// match a real price id lookup.
+delete PRICE_TO_TIER[""];
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {

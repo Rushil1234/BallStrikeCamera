@@ -199,6 +199,7 @@ export function createShot(opts) {
           const nx = dx / dist, ny = dy / dist, nz = dz / dist;
           const vn = sim.vel.x * nx + sim.vel.y * ny + sim.vel.z * nz;
           if (vn >= 0) break; // already exiting sphere, skip re-collision
+          const impactSp = -vn;
           const depth = (canopyR - dist) / canopyR; // 0=edge, 1=center
           // outer fringe = sparse leaves; pass-through probability drops with depth
           const passChance = depth < 0.20 ? 0.60 : depth < 0.50 ? 0.25 : 0;
@@ -216,7 +217,10 @@ export function createShot(opts) {
           sim.vel.y -= (1 + restitution) * vn * ny;
           sim.vel.z -= (1 + restitution) * vn * nz;
           sim.vel.x *= energyRetain; sim.vel.y *= energyRetain; sim.vel.z *= energyRetain;
-          const deflect = depth < 0.35 ? 2.5 : 1.8;
+          // Scale the random deflection by impact speed: a slow ball must not
+          // gain energy from a leaf hit (it could pinball between overlapping
+          // canopies forever — QA 2026-07-16, topped drive into the tree line).
+          const deflect = (depth < 0.35 ? 2.5 : 1.8) * Math.min(1, impactSp / 5);
           sim.vel.x += (Math.random() - 0.5) * deflect;
           sim.vel.z += (Math.random() - 0.5) * deflect;
           sim.events.push({ type: 'tree', pos: { ...sim.pos } });
@@ -357,7 +361,11 @@ export function createShot(opts) {
       if (sim.state === 'fly') stepFly(dt); else stepRoll(dt);
       remaining -= dt;
       sim.age += dt;
-      if (sim.age > 30) { restCheck(); break; }
+      // Hard caps: no shot takes 20s, and a ball still dribbling below
+      // walking pace 10s in is done. Without these a wedged flight freezes
+      // the whole round (QA 2026-07-16).
+      if (sim.age > 20) { restCheck(); break; }
+      if (sim.age > 10 && Math.hypot(sim.vel.x, sim.vel.y, sim.vel.z) < 1.2) { restCheck(); break; }
     }
   };
 

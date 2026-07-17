@@ -40,6 +40,7 @@ function SimContent() {
         key={activeCode}
         src={`/sim/index.html?code=${activeCode}`}
         title="True Carry Live Sim"
+        autoStartOnReady
         backLabel="✕ Change Code"
         onBack={() => {
           setLaunched(false);

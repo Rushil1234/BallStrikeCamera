@@ -7,18 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SAOPass } from 'three/addons/postprocessing/SAOPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-20';
-import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-20';
-import { RANGE, holeLength } from './holes.js?v=gspro-20';
-import { buildCourse } from './terrain.js?v=gspro-20';
-import { makeSky } from './sky.js?v=gspro-20';
-import { loadAssets } from './assets.js?v=gspro-20';
-import { HUD, toParStr } from './ui.js?v=gspro-20';
-import { SFX } from './audio.js?v=gspro-20';
-import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-20';
-import { fetchSimCourses } from './courses.js?v=gspro-20';
-import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-20';
-import { layoutIslandCourse } from './world.js?v=gspro-20';
+import { CLUBS, LIE_EFFECT, fmtYards } from './clubs.js?v=gspro-21';
+import { createShot, simulateCarry, SURF } from './physics.js?v=gspro-21';
+import { RANGE, holeLength } from './holes.js?v=gspro-21';
+import { buildCourse } from './terrain.js?v=gspro-21';
+import { makeSky } from './sky.js?v=gspro-21';
+import { loadAssets } from './assets.js?v=gspro-21';
+import { HUD, toParStr } from './ui.js?v=gspro-21';
+import { SFX } from './audio.js?v=gspro-21';
+import { getLiveCode, connectLive, publishLiveState } from './live.js?v=gspro-21';
+import { fetchSimCourses } from './courses.js?v=gspro-21';
+import { LOCAL_COURSES, getLocalCourse } from './local-courses.js?v=gspro-21';
+import { layoutIslandCourse } from './world.js?v=gspro-21';
 
 // ---------- boot ----------
 
@@ -1253,6 +1253,7 @@ function fire(accuracyRaw) {
   tracerAlpha = 1;
   tracerGeo.setDrawRange(0, 0);
   game.state = 'FLIGHT';
+  game.flightClock = 0;   // arm the stuck-flight watchdog fresh each shot
   setGuides(false);
   SFX.strike(power, !!c.putter, clubKind(c), game.lie === SURF.SAND ? 'sand' : 'fairway');
 
@@ -2247,6 +2248,15 @@ function frame() {
         aimCamera();
         break;
       case 'FLIGHT':
+        // Watchdog: a shot must never wedge the round. If a flight is somehow
+        // still unresolved after 40s of wall clock (QA 2026-07-16: topped drive
+        // into the Augusta tree line froze at STROKE 1 indefinitely), force the
+        // ball to rest where it is and resolve normally.
+        game.flightClock = (game.flightClock || 0) + frameDt;
+        if (game.flightClock > 40 && game.sim &&
+            (game.sim.state === 'fly' || game.sim.state === 'roll')) {
+          game.sim.state = 'rest';
+        }
         updateFlight();
         break;
       case 'HOLE_DONE':
@@ -2602,6 +2612,7 @@ function fireLiveShot({ ballSpeedMph, vlaDegrees, backspinRpm, sidespinRpm, hlaD
   tracerCount = 0;
   tracerGeo.setDrawRange(0, 0);
   game.state = 'FLIGHT';
+  game.flightClock = 0;   // arm the stuck-flight watchdog fresh each shot
   setGuides(false);
   SFX.strike(0.8, false, clubKind(club()), game.lie === SURF.SAND ? 'sand' : 'fairway');
 }

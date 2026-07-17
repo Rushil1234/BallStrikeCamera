@@ -49,10 +49,13 @@ export default function PhoneDemo() {
   const spRef = useRef<HTMLDivElement | null>(null);
 
   // mutable engine state (kept out of React for smooth rAF)
-  const eng = useRef({ idx: 0, target: pick(CLUBS[0]), start: 0, len: 1, jumpTo: -1 });
+  const eng = useRef({ idx: 0, target: pick(CLUBS[0]), start: 0, len: 1, jumpTo: -1, pinned: false });
 
   function jump(idx: number) {
     eng.current.jumpTo = idx;
+    // A deliberate pick holds that club: the loop replays it with fresh numbers
+    // instead of auto-advancing away ~5s later (which read as a broken selector).
+    eng.current.pinned = true;
   }
 
   useEffect(() => {
@@ -108,7 +111,7 @@ export default function PhoneDemo() {
         setShot((s) => s + 1);
         t = 0;
       } else if (t >= 1) {
-        loadClub((eng.current.idx + 1) % CLUBS.length);
+        loadClub(eng.current.pinned ? eng.current.idx : (eng.current.idx + 1) % CLUBS.length);
         eng.current.start = now;
         setShot((s) => s + 1);
         t = 0;
