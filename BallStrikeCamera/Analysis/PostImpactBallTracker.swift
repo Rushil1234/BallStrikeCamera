@@ -2710,7 +2710,12 @@ final class V2Engine {
         return [b.circ, b.elong, min(b.r / max(r0, 1), 3.0) / 3.0,
                 b.dhMean / 255.0, b.border ? 1 : 0,
                 distPred, dev, max(-2, min(step / 10.0, 2.0)), aligned,
-                impacted ? 1 : 0, b.src == "rescue" ? 1 : 0]
+                impacted ? 1 : 0, b.src == "rescue" ? 1 : 0,
+                // mot_norm (July 16): motion vs pre-impact baseline — separates the flying
+                // ball (56-98) from the static balls littering a real range field (2-15).
+                // Trained as the 12th feature; older 11-weight models simply ignore it
+                // (the scorer loop zips min(w.count, feats.count)).
+                min(b.mot, 80.0) / 80.0]
     }
 
     private static func clubFeatures(_ b: Blob, lock: CGPoint, r0: Double, prevClub: CGPoint?) -> [Double] {

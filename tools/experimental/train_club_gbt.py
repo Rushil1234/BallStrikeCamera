@@ -24,8 +24,14 @@ from detector2 import masks_and_blobs, club_feature_vector
 from golf_context_detector import derive_lock
 
 ARCHIVE = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260712/AllFramesArchive')
+ARCHIVE_0716 = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260716/AllFramesArchive')
 LABELS = json.load(open(os.path.expanduser('~/Documents/TrueCarryTraining/labels/labels.json')))
-CACHE = os.path.expanduser('~/Documents/TrueCarryTraining/labels/club_train_cache_v3.json')
+CACHE = os.path.expanduser('~/Documents/TrueCarryTraining/labels/club_train_cache_v5.json')
+
+
+def shot_dir(shot):
+    d = os.path.join(ARCHIVE, shot)
+    return d if os.path.isdir(d) else os.path.join(ARCHIVE_0716, shot)
 OUT = os.path.expanduser('~/Documents/TrueCarryTraining/labels/club_gbt.json')
 
 
@@ -50,7 +56,7 @@ def build():
         return np.array(j['X']), np.array(j['y']), j['days'], j['frame_ids']
     X, y, days, fids = [], [], [], []
     for shot in sorted(LABELS):
-        d = os.path.join(ARCHIVE, shot)
+        d = shot_dir(shot)
         first = cv2.imread(frame_path(d, 0))
         if first is None:
             continue

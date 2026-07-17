@@ -17,12 +17,21 @@ from detector2 import masks_and_blobs
 from golf_context_detector import derive_lock
 
 ARCHIVE = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260712/AllFramesArchive')
+ARCHIVE_0716 = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260716/AllFramesArchive')
 LABELS = json.load(open(os.path.expanduser('~/Documents/TrueCarryTraining/labels/labels.json')))
-CACHE = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_train_cache.json')
+CACHE = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_train_cache_v5.json')
+
+
+def shot_dir(shot):
+    d = os.path.join(ARCHIVE, shot)
+    return d if os.path.isdir(d) else os.path.join(ARCHIVE_0716, shot)
 OUT = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_scorer.json')
 
+# mot_norm added July 16: a real range field is littered with static balls that score
+# 0.95+ on shape; motion-vs-pre-impact-baseline is what separates them from the flying
+# ball (clutter 2-15, real flight 56-98).
 BALL_FEATURES = ['circ', 'elong', 'r_ratio', 'dh_norm', 'border', 'dist_pred', 'dev_dir',
-                 'progress_step', 'aligned_cos', 'impacted', 'is_rescue']
+                 'progress_step', 'aligned_cos', 'impacted', 'is_rescue', 'mot_norm']
 
 
 def ball_feature_vector(b, state, r0, impacted):
@@ -46,13 +55,14 @@ def ball_feature_vector(b, state, r0, impacted):
         b.get('dh_mean', 200) / 255.0, 1.0 if b['border'] else 0.0,
         dist_pred, dev, max(-2, min(step / 10.0, 2.0)), aligned,
         1.0 if impacted else 0.0, 1.0 if b.get('src') == 'rescue' else 0.0,
+        min(b.get('mot', 0.0), 80.0) / 80.0,
     ]
 
 
 def label_state_sequence(shot, frames_lab, lock, r0):
     """Teacher-forced state before each frame, from labeled ball positions."""
     keys = sorted(frames_lab, key=int)
-    ts_p = os.path.join(ARCHIVE, shot, 'timestamps.json')
+    ts_p = os.path.join(shot_dir(shot), 'timestamps.json')
     ts = {}
     if os.path.exists(ts_p):
         ts = {e['frame_index']: e['timestamp'] for e in json.load(open(ts_p)).get('timestamps', [])}
@@ -105,7 +115,7 @@ def build():
         return np.array(j['X']), np.array(j['y']), j['days'], j['frame_ids']
     X, y, days, fids = [], [], [], []
     for shot in sorted(LABELS):
-        d = os.path.join(ARCHIVE, shot)
+        d = shot_dir(shot)
         first = cv2.imread(frame_path(d, 0))
         if first is None:
             continue
@@ -140,6 +150,11 @@ def build():
                 if b['src'] != 'bright' or not (2.0 <= b['r'] <= 24):
                     continue
                 pos = bool(lb) and math.hypot(b['cx']-lb['cx'], b['cy']-lb['cy']) <= max(6, lb.get('r', 8))
+                # Edge rule (Noah, July 16): half-off-screen balls were deliberately NOT
+                # labeled — a near-border blob on a label-less frame may be the real ball,
+                # so it must never be a training negative.
+                if not pos and (b['cx'] < 10 or b['cx'] > Ww - 10 or b['cy'] < 10 or b['cy'] > Hh - 10):
+                    continue
                 if not pos:
                     negs += 1
                     if negs > 20:

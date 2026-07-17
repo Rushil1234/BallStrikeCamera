@@ -21,7 +21,10 @@ from hue_dist_gallery import hue_dist  # noqa: E402
 from golf_context_detector import (  # noqa: E402
     blobs_from_mask, derive_lock, derive_impact, ShotState, FLIGHT_DIR)
 
-ARCHIVE = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260712/AllFramesArchive')
+# TC_ARCHIVE overrides which archive the labeler/scorers read — the July 16 range
+# session lives in its own dir so the 223-shot white sweep stays uncontaminated.
+ARCHIVE = os.path.expanduser(os.environ.get(
+    'TC_ARCHIVE', '~/Documents/TrueCarryFramesArchive_20260712/AllFramesArchive'))
 SESSION = os.path.expanduser('~/Documents/TrueCarryTraining/session_2026-07-12')
 
 
