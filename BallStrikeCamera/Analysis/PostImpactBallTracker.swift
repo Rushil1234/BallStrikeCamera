@@ -2483,7 +2483,7 @@ final class V2Engine {
 
     // MARK: Per-frame planes
 
-    private struct Planes {
+    struct Planes {
         let W: Int, H: Int
         var dh: [UInt8]      // hue-distance channel (the winning separation)
         var v: [UInt8]       // HSV value 0-255
@@ -2492,7 +2492,7 @@ final class V2Engine {
         var h: [UInt8]       // OpenCV-style hue 0-180 — ball color identity (July 16)
     }
 
-    private static func planes(from image: UIImage) -> Planes? {
+    static func planes(from image: UIImage, gain: Double = 1.0) -> Planes? {
         guard let cg = image.cgImage else { return nil }
         let W = cg.width, H = cg.height
         var rgba = [UInt8](repeating: 0, count: W * H * 4)
@@ -2509,7 +2509,12 @@ final class V2Engine {
         var hist = [Int](repeating: 0, count: 181)         // turf-hue histogram (s>=60, v>=60)
 
         for p in 0..<(W * H) {
-            let r = Int(rgba[p * 4]), g = Int(rgba[p * 4 + 1]), b = Int(rgba[p * 4 + 2])
+            var r = Int(rgba[p * 4]), g = Int(rgba[p * 4 + 1]), b = Int(rgba[p * 4 + 2])
+            if gain != 1.0 {
+                r = min(255, Int(Double(r) * gain))
+                g = min(255, Int(Double(g) * gain))
+                b = min(255, Int(Double(b) * gain))
+            }
             let mx = max(r, g, b), mn = min(r, g, b)
             let vv = mx
             let ss = mx == 0 ? 0 : (255 * (mx - mn)) / mx
@@ -2607,7 +2612,8 @@ final class V2Engine {
         var prob: Double = 0
     }
 
-    private static func blobs(mask: [Bool], planes: Planes, motion: [Float]?, src: String, minArea: Double) -> [Blob] {
+    private static func blobs(mask: [Bool], planes: Planes, motion: [Float]?, src: String, minArea: Double,
+                              connectivity8: Bool = false) -> [Blob] {
         let W = planes.W, H = planes.H
         var visited = [Bool](repeating: false, count: W * H)
         var out: [Blob] = []
@@ -2622,7 +2628,12 @@ final class V2Engine {
                 let p = queue[head]; head += 1
                 pix.append(p)
                 let x = p % W, y = p / W
-                for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                // 8-connectivity matches OpenCV connectedComponents (club-union model was
+                // trained on it; thin diagonal club shapes fragment under 4-connectivity).
+                let neigh: [(Int, Int)] = connectivity8
+                    ? [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+                    : [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                for (dx, dy) in neigh {
                     let nx = x + dx, ny = y + dy
                     guard nx >= 0, nx < W, ny >= 0, ny < H else { continue }
                     let np = ny * W + nx
@@ -3547,5 +3558,306 @@ enum V2PrimaryTrack {
         guard !v.isEmpty else { return 0 }
         let s = v.sorted()
         return s[s.count / 2]
+    }
+}
+
+// MARK: - Club union tracker (July 17 port of tools/experimental/club_union_scorer.py)
+//
+// 5-mask union candidates + 19-feature GBT + kinematic DP chain with Noah's priors
+// (comes from behind the ball, monotonically closes, plausible step, terminates at
+// the ball). Validated offline at 83.4% window coverage vs the 34.3% shipped path.
+// Runs on 360px-wide downscales — that's the resolution the model was trained at,
+// and it caps the per-frame cost of the extra masks.
+extension V2Engine {
+
+    struct ClubUnionModel: Decodable {
+        let stumps: [[Double]]
+        let base: Double
+    }
+
+    private static let clubUnionModel: ClubUnionModel? = {
+        guard let url = Bundle.main.url(forResource: "club_union_gbt", withExtension: "json",
+                                        subdirectory: "Models")
+                ?? Bundle.main.url(forResource: "club_union_gbt", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let m = try? JSONDecoder().decode(ClubUnionModel.self, from: data) else {
+            print("[ClubUnion] model json missing — union tracker disabled")
+            return nil
+        }
+        return m
+    }()
+
+    private static func downscaled(_ image: UIImage, toWidth w: Int) -> UIImage {
+        // Archive replays are ALREADY 360px — resampling them blurs gradients (the Sobel
+        // mask starves) and rounds the height, shifting every pixel the model sees. Only
+        // touch genuinely larger (live 1920px) frames.
+        if Int(image.size.width) <= w { return image }
+        let h = max(1, Int(CGFloat(w) * image.size.height / max(image.size.width, 1)))
+        let fmt = UIGraphicsImageRendererFormat.default()
+        fmt.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: fmt).image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+    }
+
+    /// 3x3 Sobel magnitude over luma.
+    private static func sobelMag(_ luma: [Float], W: Int, H: Int) -> [Float] {
+        var out = [Float](repeating: 0, count: W * H)
+        for y in 1..<(H - 1) {
+            for x in 1..<(W - 1) {
+                let p = y * W + x
+                let gx = -luma[p-W-1] - 2*luma[p-1] - luma[p+W-1]
+                       + luma[p-W+1] + 2*luma[p+1] + luma[p+W+1]
+                let gy = -luma[p-W-1] - 2*luma[p-W] - luma[p-W+1]
+                       + luma[p+W-1] + 2*luma[p+W] + luma[p+W+1]
+                out[p] = (gx*gx + gy*gy).squareRoot()
+            }
+        }
+        return out
+    }
+
+    /// Grayscale top-hat: luma − open9(luma), separable min/max.
+    private static func tophat(_ luma: [Float], W: Int, H: Int) -> [Float] {
+        func runMin(_ src: [Float], horizontal: Bool) -> [Float] {
+            var dst = [Float](repeating: 0, count: W * H)
+            let r = 4
+            for y in 0..<H {
+                for x in 0..<W {
+                    var m: Float = .greatestFiniteMagnitude
+                    for d in -r...r {
+                        let xx = horizontal ? x + d : x
+                        let yy = horizontal ? y : y + d
+                        if xx >= 0, xx < W, yy >= 0, yy < H { m = min(m, src[yy*W+xx]) }
+                    }
+                    dst[y*W+x] = m
+                }
+            }
+            return dst
+        }
+        func runMax(_ src: [Float], horizontal: Bool) -> [Float] {
+            var dst = [Float](repeating: 0, count: W * H)
+            let r = 4
+            for y in 0..<H {
+                for x in 0..<W {
+                    var m: Float = -.greatestFiniteMagnitude
+                    for d in -r...r {
+                        let xx = horizontal ? x + d : x
+                        let yy = horizontal ? y : y + d
+                        if xx >= 0, xx < W, yy >= 0, yy < H { m = max(m, src[yy*W+xx]) }
+                    }
+                    dst[y*W+x] = m
+                }
+            }
+            return dst
+        }
+        let opened = runMax(runMax(runMin(runMin(luma, horizontal: true), horizontal: false),
+                                   horizontal: true), horizontal: false)
+        var out = [Float](repeating: 0, count: W * H)
+        for p in 0..<(W * H) { out[p] = luma[p] - opened[p] }
+        return out
+    }
+
+    struct UnionCand {
+        var cx: Double, cy: Double, a: Double, w: Int, h: Int
+        var elong: Double, mot: Double, dh: Double, v: Double
+        var hue: Double, sat: Double, grad: Double, dline: Double
+        var border: Bool, agree: Int, srcIdx: Int   // O,G,T,M,B = 0..4
+        var p: Double = 0
+    }
+
+    /// Candidates for one frame (mirrors python union_cands, incl. shaft-line proxy).
+    private static func unionCands(planes pl: Planes, gained: Planes, base: [Float]) -> [UnionCand] {
+        let W = pl.W, H = pl.H
+        var mot = [Float](repeating: 0, count: W * H)
+        for p in 0..<(W * H) { mot[p] = abs(pl.luma[p] - base[p]) }
+        let grad = sobelMag(pl.luma, W: W, H: H)
+        let th = tophat(pl.luma, W: W, H: H)
+
+        var masks: [(Int, [Bool])] = []
+        var mO = [Bool](repeating: false, count: W * H)
+        var mG = mO, mT = mO, mM = mO, mB = mO
+        for p in 0..<(W * H) {
+            mO[p] = grad[p] >= 60 && mot[p] >= 10
+            mG[p] = mot[p] >= 35
+            mT[p] = th[p] >= 25 && mot[p] >= 10
+            mM[p] = gained.dh[p] >= 160
+            mB[p] = pl.dh[p] >= 120
+        }
+        for (i, var m) in [mO, mG, mT, mM, mB].enumerated() {
+            openClose(&m, W: W, H: H, openK: 3, closeK: 5)
+            masks.append((i, m))
+        }
+
+        // shaft-line proxy: long thin blobs in edges*mot mask → principal-axis endpoints
+        var edgeMask = [Bool](repeating: false, count: W * H)
+        for p in 0..<(W * H) { edgeMask[p] = grad[p] >= 60 && mot[p] >= 8 }
+        openClose(&edgeMask, W: W, H: H, openK: 3, closeK: 5)
+        var lineEnds: [(Double, Double)] = []
+        for b in blobs(mask: edgeMask, planes: pl, motion: mot, src: "line", minArea: 40, connectivity8: true)
+        where max(b.w, b.h) >= 30 && b.elong >= 0.75 {
+            let L = Double(max(b.w, b.h)) / 2
+            lineEnds.append((b.cx + L * cos(b.theta), b.cy + L * sin(b.theta)))
+            lineEnds.append((b.cx - L * cos(b.theta), b.cy - L * sin(b.theta)))
+        }
+
+        var cands: [UnionCand] = []
+        for (srcIdx, m) in masks {
+            for b in blobs(mask: m, planes: pl, motion: mot, src: "u", minArea: 30, connectivity8: true) where b.area <= 4000 {
+                var dline = 200.0
+                for (ex, ey) in lineEnds { dline = min(dline, hypot(b.cx - ex, b.cy - ey)) }
+                // grad mean over bbox
+                let x0 = max(0, Int(b.cx - Double(b.w)/2)), x1 = min(W - 1, Int(b.cx + Double(b.w)/2))
+                let y0 = max(0, Int(b.cy - Double(b.h)/2)), y1 = min(H - 1, Int(b.cy + Double(b.h)/2))
+                var gs = 0.0; var n = 0
+                var yy = y0
+                while yy <= y1 { var xx = x0; while xx <= x1 { gs += Double(grad[yy*W+xx]); n += 1; xx += 1 }; yy += 1 }
+                cands.append(UnionCand(
+                    cx: b.cx, cy: b.cy, a: b.area, w: b.w, h: b.h,
+                    elong: b.elong, mot: b.mot, dh: b.dhMean, v: b.vMean,
+                    hue: b.hMean, sat: b.sMean, grad: n > 0 ? gs / Double(n) : 0,
+                    dline: dline, border: b.border, agree: 1, srcIdx: srcIdx))
+            }
+        }
+        cands.sort { $0.a > $1.a }
+        var kept: [UnionCand] = []
+        for c in cands {
+            var dup = false
+            for i in kept.indices where hypot(c.cx - kept[i].cx, c.cy - kept[i].cy) <= 6 {
+                kept[i].agree += 1
+                dup = true
+                break
+            }
+            if !dup { kept.append(c) }
+        }
+        return Array(kept.prefix(40))
+    }
+
+    /// EXACT feature order of club_union_scorer.py feats().
+    private static func unionFeats(_ c: UnionCand, lock: CGPoint) -> [Double] {
+        let dball = hypot(c.cx - lock.x, c.cy - lock.y)
+        var f: [Double] = [
+            log(max(c.a, 1)),
+            Double(max(c.w, c.h)) / Double(max(1, min(c.w, c.h))),
+            min(c.mot, 80) / 80.0, c.dh / 255.0, c.v / 255.0,
+            min(dball / 120.0, 2.0),
+            c.cx >= lock.x - 10 ? 1.0 : 0.0,
+            c.border ? 1.0 : 0.0,
+            c.elong, c.hue / 180.0, c.sat / 255.0,
+            min(c.grad, 150) / 150.0, min(c.dline, 200) / 200.0,
+            Double(min(c.agree, 5)) / 5.0,
+        ]
+        for i in 0..<5 { f.append(c.srcIdx == i ? 1.0 : 0.0) }
+        return f
+    }
+
+    /// Full pipeline: downscale → candidates → GBT → DP chain. Returns per-frame picks in
+    /// NORMALIZED coordinates for frames [impact-6, impact+1], or [:] when no chain forms.
+    static func clubUnionTrack(frames: [AnalyzedShotFrame], impactIndex: Int,
+                               lockNorm: CGPoint, r0Norm: Double) -> [Int: (cx: Double, cy: Double, conf: Double)] {
+        guard let model = clubUnionModel else { return [:] }
+        let t0 = CFAbsoluteTimeGetCurrent()
+        let byIdx = Dictionary(uniqueKeysWithValues: frames.map { ($0.frameIndex, $0) })
+        let fis = Array(max(0, impactIndex - 6)...(impactIndex + 1)).filter { byIdx[$0] != nil }
+        guard fis.count >= 4 else { return [:] }
+
+        // pre-impact luma baseline from downscaled early frames
+        var preLumas: [[Float]] = []
+        var W = 0, H = 0
+        for fi in stride(from: 0, to: min(14, impactIndex), by: 3) {
+            guard let f = byIdx[fi] ?? frames.first(where: { $0.frameIndex == fi }),
+                  let pl = planes(from: downscaled(f.originalFrame.image, toWidth: 360)) else { continue }
+            preLumas.append(pl.luma); W = pl.W; H = pl.H
+        }
+        guard preLumas.count >= 3, W > 0 else { return [:] }
+        var base = [Float](repeating: 0, count: W * H)
+        for p in 0..<(W * H) {
+            var vals = preLumas.map { $0[p] }
+            vals.sort()
+            base[p] = vals[vals.count / 2]
+        }
+        let lock = CGPoint(x: lockNorm.x * CGFloat(W), y: lockNorm.y * CGFloat(H))
+
+        func gbtP(_ x: [Double]) -> Double {
+            var z = model.base
+            for s in model.stumps where s.count == 4 {
+                z += x[Int(s[0])] <= s[1] ? s[2] : s[3]
+            }
+            return 1.0 / (1.0 + exp(-max(-30, min(30, z))))
+        }
+
+        let cuDbg = ProcessInfo.processInfo.environment["TC_CU_DEBUG"] == "1"
+        var per: [[UnionCand]] = []
+        for fi in fis {
+            guard let f = byIdx[fi],
+                  let pl = planes(from: downscaled(f.originalFrame.image, toWidth: 360)),
+                  let gained = planes(from: downscaled(f.originalFrame.image, toWidth: 360), gain: 2.2) else {
+                per.append([]); continue
+            }
+            var cands = unionCands(planes: pl, gained: gained, base: base)
+            for i in cands.indices { cands[i].p = gbtP(unionFeats(cands[i], lock: lock)) }
+            if cuDbg {
+                for c in cands.sorted(by: { $0.p > $1.p }).prefix(5) {
+                    print(String(format: "[CUdbg] f%02d (%.0f,%.0f) a=%.0f src=%d el=%.2f mot=%.0f dh=%.0f v=%.0f hue=%.0f sat=%.0f gr=%.0f dl=%.0f ag=%d p=%.3f",
+                                 fi, c.cx, c.cy, c.a, c.srcIdx, c.elong, c.mot, c.dh, c.v, c.hue, c.sat, c.grad, c.dline, c.agree, c.p))
+                }
+            }
+            per.append(cands)
+        }
+
+        // DP chain (mirrors python: SKIP -1.2, node 2p-1, step<=75, closing +12 slack)
+        struct Key: Hashable { let i: Int; let j: Int }
+        var best: [Key: (Double, Key?)] = [:]
+        // Weak nodes must lose to SKIP, never anchor a chain: a p=0.01 bag pick at the
+        // window start poisoned monotonicity and collapsed the whole track (measured).
+        for (j, c) in per[0].enumerated() where c.p >= 0.30 { best[Key(i: 0, j: j)] = (2 * c.p - 1, nil) }
+        best[Key(i: 0, j: -1)] = (-1.2, nil)
+        for i in 1..<fis.count {
+            var row: [Key: (Double, Key?)] = [:]
+            for j in -1..<per[i].count {
+                let c: UnionCand? = j >= 0 ? per[i][j] : nil
+                if let cc = c, cc.p < 0.30 { continue }
+                let ns = c.map { 2 * $0.p - 1 } ?? -1.2
+                var top: (Double, Key?)? = nil
+                for (pk, pv) in best where pk.i == i - 1 {
+                    var cs: Double
+                    if let c, pk.j >= 0 {
+                        let pc = per[i-1][pk.j]
+                        let step = hypot(c.cx - pc.cx, c.cy - pc.cy)
+                        if step > 75 { continue }
+                        let d1 = hypot(pc.cx - lock.x, pc.cy - lock.y)
+                        let d2 = hypot(c.cx - lock.x, c.cy - lock.y)
+                        if d2 > d1 + 12 { continue }
+                        cs = pv.0 + ns + 0.6 * (1 - step / 75.0) + (d2 < d1 - 3 ? 0.4 : 0)
+                    } else {
+                        cs = pv.0 + ns
+                    }
+                    if top == nil || cs > top!.0 { top = (cs, pk) }
+                }
+                if let top { row[Key(i: i, j: j)] = top }
+            }
+            best.merge(row) { a, _ in a }
+        }
+        let finals = best.keys.filter { $0.i == fis.count - 1 }
+        func finalScore(_ k: Key) -> Double {
+            var s = best[k]!.0
+            if k.j >= 0 {
+                let c = per[k.i][k.j]
+                let db = hypot(c.cx - lock.x, c.cy - lock.y)
+                s += db < 35 ? 1.5 : (db > 90 ? -1.0 : 0)
+            }
+            return s
+        }
+        guard var cur: Key? = finals.max(by: { finalScore($0) < finalScore($1) }) else { return [:] }
+        var picks: [Int: (Double, Double, Double)] = [:]
+        while let k = cur {
+            if k.j >= 0 {
+                let c = per[k.i][k.j]
+                picks[fis[k.i]] = (c.cx / Double(W), c.cy / Double(H), c.p)
+            }
+            cur = best[k]?.1
+        }
+        print(String(format: "[ClubUnion] %d/%d frames picked in %.2fs", picks.count, fis.count,
+                     CFAbsoluteTimeGetCurrent() - t0))
+        return picks.mapValues { (cx: $0.0, cy: $0.1, conf: $0.2) }
     }
 }

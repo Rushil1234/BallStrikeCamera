@@ -181,7 +181,44 @@ struct ShotMetricsCalculator {
         // Putt/roll shots skip club tracking entirely: the ensemble BFS sweep is the most
         // expensive stage of analysis and putts never produced usable club metrics anyway.
         let clubObservations: [ClubObservation]
-        if isPuttShot {
+        // Club union tracker (July 17): 5-mask union + GBT + kinematic chain, validated
+        // offline at 83.4% window coverage vs 34.3% for the EBFS+GBT union below. When the
+        // chain produces >=3 picks it IS the club track; the old path stays as fallback.
+        var unionClubObs: [ClubObservation] = []
+        if !isPuttShot,
+           let lockRect = analysis.lockedBallRect {
+            let lockNorm = analysis.initialBallCenter ?? CGPoint(x: lockRect.midX, y: lockRect.midY)
+            let picks = V2Engine.clubUnionTrack(
+                frames: analysis.frames,
+                impactIndex: analysis.detectedImpactFrameIndex,
+                lockNorm: lockNorm,
+                r0Norm: Double(lockRect.width) / 2)
+            let frameByIdxU = Dictionary(uniqueKeysWithValues: analysis.frames.map { ($0.frameIndex, $0) })
+            // Keep picks THROUGH impact+1: the chain's terminal prior lands the head at
+            // the ball, and the scored approach window (impact-3..impact+1) includes those
+            // frames. The old "< impact" convention guarded against EBFS post-impact junk —
+            // the chain's picks there are deliberate. (Speed/path fits still slice
+            // pre-impact internally.)
+            for (fi, p) in picks.sorted(by: { $0.key < $1.key })
+            where fi <= analysis.detectedImpactFrameIndex + 1 {
+                guard let f = frameByIdxU[fi] else { continue }
+                unionClubObs.append(ClubObservation(
+                    frameIndex: fi, timestamp: f.timestamp, relativeTime: f.relativeTime,
+                    centerX: CGFloat(p.cx), centerY: CGFloat(p.cy),
+                    leadingEdgeX: CGFloat(p.cx), leadingEdgeY: CGFloat(p.cy),
+                    clubBoundingBox: nil, confidence: p.conf, searchROI: nil,
+                    ballExclusionCenterX: nil, ballExclusionCenterY: nil,
+                    ballExclusionDiameter: nil, debugReason: "club_union_chain",
+                    detectionMode: "union_chain", ballExclusionWasApplied: false,
+                    frameDifferenceWasUsed: false))
+            }
+        }
+        if !isPuttShot, unionClubObs.count >= 3 {
+            // No x-monotonicity pass here: the chain already enforces CLOSING DISTANCE to
+            // the ball (isotropic — the real physics). The x-only version misread a curved
+            // approach as backward motion and deleted real picks (measured July 17).
+            clubObservations = unionClubObs
+        } else if isPuttShot {
             clubObservations = []
         } else {
             let ebfs = clubTracker.track(analysis: analysis,
