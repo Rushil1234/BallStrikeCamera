@@ -209,6 +209,11 @@ struct SwingRecording: Codable, Identifiable {
     /// Hand-center path across the whole swing ([x, y] normalized, ≤150 samples) — the
     /// swing-trail ribbon on replay. Optional so pre-existing saved swings still decode.
     var handTrail: [[Double]]? = nil
+    /// CLUBHEAD path takeaway→impact (down-the-line clips only; rows [x, y, t] —
+    /// normalized position + clip time; consumers may read just the first two).
+    /// DTL hands occlude each other, so the replay ribbon uses this when present.
+    /// Optional so pre-existing saved swings still decode.
+    var clubTrail: [[Double]]? = nil
 }
 
 struct StoredPose: Codable {
@@ -225,9 +230,19 @@ struct SwingPhases: Codable {
     var finish: Int
     var frameCount: Int
     var frameRate: Double
+    /// Exact presentation timestamps (seconds) for [address, takeaway, top, impact, finish].
+    /// Frame indices live in the strided pose-sample timeline, so index ÷ nominal fps drifts —
+    /// these are the real video times. Optional: swings saved before this field still decode.
+    var times: [Double]? = nil
 
-    var backswingSeconds: Double { Double(top - takeaway) / max(frameRate, 1) }
-    var downswingSeconds: Double { Double(impact - top) / max(frameRate, 1) }
+    var backswingSeconds: Double {
+        if let times, times.count == 5 { return times[2] - times[1] }
+        return Double(top - takeaway) / max(frameRate, 1)
+    }
+    var downswingSeconds: Double {
+        if let times, times.count == 5 { return times[3] - times[2] }
+        return Double(impact - top) / max(frameRate, 1)
+    }
     /// Classic tempo ratio (3:1 is the reference).
     var tempoRatio: Double? {
         guard downswingSeconds > 0.01 else { return nil }
@@ -237,6 +252,12 @@ struct SwingPhases: Codable {
     var labelled: [(label: String, frame: Int)] {
         [("Address", address), ("Takeaway", takeaway), ("Top", top),
          ("Impact", impact), ("Finish", finish)]
+    }
+
+    /// Video time for the phase at `labelled` index — exact when available.
+    func seconds(forPhaseAt index: Int) -> Double {
+        if let times, times.count == 5, index < 5 { return times[index] }
+        return Double(labelled[index].frame) / max(frameRate, 1)
     }
 }
 
@@ -248,6 +269,8 @@ enum SwingMetricKind: String, Codable, CaseIterable {
     case leadArmAtTop     = "lead_arm_top"       // lead-arm straightness at top (degrees of bend)
     case finishBalance    = "finish_balance"     // ankle jitter over final 0.5s, % shoulder width
     case shoulderTurn     = "shoulder_turn"      // shoulder-line rotation proxy at top, %
+    case stanceWidth      = "stance_width"       // ankle spread ÷ shoulder width at address, %
+    case weightShift      = "weight_shift"       // pelvis over the lead foot at finish, % (100 = stacked)
     // Down-the-line only (tripod ~6ft behind, camera at hand height):
     case takeawayPath     = "takeaway_path"      // hands vs address plane at hip height going back (− inside / + outside)
     case deliveryPlane    = "delivery_plane"     // hands vs plane at hip height coming down (+ steep / − shallow)
@@ -262,6 +285,8 @@ enum SwingMetricKind: String, Codable, CaseIterable {
         case .leadArmAtTop:     return "Lead Arm"
         case .finishBalance:    return "Balance"
         case .shoulderTurn:     return "Shoulder Turn"
+        case .stanceWidth:      return "Stance Width"
+        case .weightShift:      return "Weight Shift"
         case .takeawayPath:     return "Takeaway Path"
         case .deliveryPlane:    return "Delivery Plane"
         case .earlyExtension:   return "Early Extension"
@@ -271,8 +296,8 @@ enum SwingMetricKind: String, Codable, CaseIterable {
     var unit: String {
         switch self {
         case .tempoRatio:                       return ":1"
-        case .headSway, .hipSlide, .finishBalance, .shoulderTurn,
-             .takeawayPath, .deliveryPlane, .earlyExtension: return "%"
+        case .headSway, .hipSlide, .finishBalance, .shoulderTurn, .stanceWidth,
+             .weightShift, .takeawayPath, .deliveryPlane, .earlyExtension: return "%"
         case .spineTiltAddress, .leadArmAtTop:  return "°"
         }
     }
@@ -304,6 +329,12 @@ enum SwingMetricKind: String, Codable, CaseIterable {
             return value.inBand ? ("Great Width", true) : ("Lead Arm Collapsing", false)
         case .shoulderTurn:
             return value.inBand ? ("Full Turn", true) : ("Short Turn", false)
+        case .stanceWidth:
+            if value.inBand { return ("Shoulder-Width Base", true) }
+            return value.value < value.targetLow ? ("Stance Too Narrow", false) : ("Stance Too Wide", false)
+        case .weightShift:
+            if value.inBand { return ("Weight Into the Lead Side", true) }
+            return value.value < value.targetLow ? ("Hanging Back", false) : ("Over-Shifted", false)
         }
     }
 }

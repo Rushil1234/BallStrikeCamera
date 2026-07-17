@@ -53,6 +53,11 @@ enum SwingPoseExtractor {
         let nominalFPS = Double(try await track.load(.nominalFrameRate))
         let stride = max(1, Int((nominalFPS / 120.0).rounded()))
         let effectiveFPS = nominalFPS / Double(stride)
+        // Camera-roll clips carry a rotation transform (raw buffers are landscape);
+        // app-recorded clips are physically portrait (identity). Tell Vision the real
+        // orientation so poses come back in upright-image coordinates either way.
+        let transform = (try? await track.load(.preferredTransform)) ?? .identity
+        let orientation = Self.orientation(for: transform)
 
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
@@ -71,7 +76,7 @@ enum SwingPoseExtractor {
             let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
 
             let request = VNDetectHumanBodyPoseRequest()
-            let handler = VNImageRequestHandler(cvPixelBuffer: pb, orientation: .up)
+            let handler = VNImageRequestHandler(cvPixelBuffer: pb, orientation: orientation)
             try? handler.perform([request])
 
             var joints: [VNHumanBodyPoseObservation.JointName: SwingJoint] = [:]
@@ -88,7 +93,19 @@ enum SwingPoseExtractor {
         return (smooth(frames), effectiveFPS)
     }
 
-    /// Light EMA smoothing per joint — kills Vision jitter without lagging the fast phases.
+    /// Rotation metadata → the Vision orientation that yields upright-image coordinates.
+    static func orientation(for transform: CGAffineTransform) -> CGImagePropertyOrientation {
+        switch Int(round(atan2(transform.b, transform.a) * 180 / .pi)) {
+        case 90:        return .right
+        case 180, -180: return .down
+        case -90:       return .left
+        default:        return .up
+        }
+    }
+
+    /// Zero-phase EMA smoothing per joint (forward pass, then backward pass) — kills
+    /// Vision jitter WITHOUT lagging the trace. A causal-only EMA shifts the detected
+    /// impact/top a few frames late, which is exactly a "wrong-moment still".
     private static func smooth(_ frames: [SwingPoseFrame]) -> [SwingPoseFrame] {
         guard frames.count > 2 else { return frames }
         var out = frames
@@ -99,6 +116,15 @@ enum SwingPoseExtractor {
                 var j = joint
                 j.point.x = prev.point.x + (joint.point.x - prev.point.x) * alpha
                 j.point.y = prev.point.y + (joint.point.y - prev.point.y) * alpha
+                out[i].joints[name] = j
+            }
+        }
+        for i in stride(from: out.count - 2, through: 0, by: -1) {
+            for (name, joint) in out[i].joints {
+                guard let next = out[i + 1].joints[name] else { continue }
+                var j = joint
+                j.point.x = next.point.x + (joint.point.x - next.point.x) * alpha
+                j.point.y = next.point.y + (joint.point.y - next.point.y) * alpha
                 out[i].joints[name] = j
             }
         }
@@ -128,7 +154,10 @@ enum SwingPhaseSegmenter {
         for i in hand.indices {
             if hand[i] == nil { hand[i] = last } else { last = hand[i] }
         }
-        guard hand.compactMap({ $0 }).count > frames.count / 2, let first = hand.first ?? nil else { return nil }
+        // Backfill leading gaps from the FIRST KNOWN hand — requiring frame 0 to have a
+        // wrist aborted whole clips over one bad opening frame.
+        guard hand.compactMap({ $0 }).count > frames.count / 2,
+              let first = hand.compactMap({ $0 }).first else { return nil }
         let pts = hand.map { $0 ?? first }
 
         // Speed trace (normalized units/sec).
@@ -138,12 +167,16 @@ enum SwingPhaseSegmenter {
             speed[i] = Double(d) * fps
         }
 
-        // Body scale: shoulder width at the start (normalizes thresholds to framing distance).
-        let scale = max(shoulderWidth(frames.first!) ?? 0.12, 0.05)
+        // Body scale for thresholds. Shoulder width COLLAPSES in the down-the-line view
+        // (shoulders point at the camera), so body height carries the scale there —
+        // face-on shoulder width ≈ 0.22 × height, making the two views equivalent.
+        let scale = max(motionScale(frames), 0.05)
         let moveThresh = Double(scale) * 0.9        // units/sec ≈ deliberate takeaway motion
         let stillThresh = Double(scale) * 0.45
 
-        // Takeaway: first index where speed stays above moveThresh for ~0.1s.
+        // Takeaway: first index where speed stays above moveThresh for ~0.1s — then walk
+        // BACK to where motion actually began (the threshold trips a few frames into the
+        // backswing; unrefined, the "takeaway" still shows the club already hip-high).
         let holdFrames = max(2, Int(fps * 0.08))
         var takeaway: Int? = nil
         for i in 1..<(speed.count - holdFrames) {
@@ -151,26 +184,48 @@ enum SwingPhaseSegmenter {
                 takeaway = i; break
             }
         }
-        guard let tk = takeaway else { return nil }
+        guard var tk = takeaway else { return nil }
+        let walkLimit = max(0, tk - Int(fps * 0.5))
+        while tk > walkLimit, speed[tk - 1] > Double(scale) * 0.25 { tk -= 1 }
         let address = max(0, tk - max(1, Int(fps * 0.05)))
 
-        // Top: hand-height maximum in the window after takeaway (Vision y is up).
-        let topSearchEnd = min(pts.count - 2, tk + Int(fps * 2.6))
-        guard topSearchEnd > tk + 2 else { return nil }
+        // Anchor on the SPEED PEAK first — hands move fastest in the downswing, in every
+        // view. A max-height-only "top" search lands on the FINISH down-the-line, where
+        // the wrapped finish carries the hands higher than the top of the backswing.
+        let peakSearchEnd = min(pts.count - 1, tk + Int(fps * 4.5))
+        guard peakSearchEnd > tk + 3 else { return nil }
+        var speedPeak = tk + 1
+        for i in (tk + 1)...peakSearchEnd where speed[i] > speed[speedPeak] { speedPeak = i }
+        guard speedPeak > tk + 2 else { return nil }
+
+        // Top: highest hands between takeaway and the downswing's speed peak.
         var top = tk + 1
-        for i in (tk + 1)...topSearchEnd where pts[i].y > pts[top].y { top = i }
+        for i in (tk + 1)..<speedPeak where pts[i].y > pts[top].y { top = i }
         guard top > tk, top < pts.count - 3 else { return nil }
 
-        // Impact: max speed after top while hands are back near/below address height.
+        // Impact: the hands return to address height at the strike — the first descent
+        // through it after the top is the impact moment. Max hand speed alone lands a
+        // frame or two LATE (peak speed is the release). Fall back to height-gated max
+        // speed, then the raw speed peak — never a garbage top+1 "impact".
         let addressY = pts[address].y
-        let impactSearchEnd = min(pts.count - 1, top + Int(fps * 1.2))
-        var impact = top + 1
-        var bestSpeed = 0.0
-        for i in (top + 1)...impactSearchEnd {
-            let nearAddressHeight = pts[i].y < addressY + CGFloat(scale) * 0.9
-            if nearAddressHeight && speed[i] > bestSpeed { bestSpeed = speed[i]; impact = i }
+        let impactSearchEnd = min(pts.count - 1, max(speedPeak + Int(fps * 0.25), top + 1))
+        var impact = 0
+        for i in (top + 1)...impactSearchEnd where pts[i].y <= addressY + CGFloat(scale) * 0.15 {
+            impact = i; break
+        }
+        if impact == 0 {
+            var bestSpeed = 0.0
+            impact = speedPeak
+            for i in (top + 1)...impactSearchEnd {
+                let nearAddressHeight = pts[i].y < addressY + CGFloat(scale) * 0.9
+                if nearAddressHeight && speed[i] > bestSpeed { bestSpeed = speed[i]; impact = i }
+            }
         }
         guard impact > top else { return nil }
+        // A real downswing drops the hands well below the top by impact. Without this,
+        // a backswing-only demo (lift to the top, hold) reads as a swing whose "impact"
+        // is the fastest moment of the LIFT.
+        guard pts[impact].y < pts[top].y - CGFloat(scale) * 0.5 else { return nil }
 
         // Finish: first index after impact where speed stays below stillThresh for ~0.25s,
         // else the last frame.
@@ -184,18 +239,38 @@ enum SwingPhaseSegmenter {
             }
         }
 
-        let phases = SwingPhases(address: address, takeaway: tk, top: top,
+        var phases = SwingPhases(address: address, takeaway: tk, top: top,
                                  impact: impact, finish: finish,
                                  frameCount: frames.count, frameRate: fps)
-        // Sanity: real swings live inside these envelopes.
-        guard phases.backswingSeconds > 0.25, phases.backswingSeconds < 3.5,
-              phases.downswingSeconds > 0.08, phases.downswingSeconds < 1.5 else { return nil }
+        // Exact video timestamps — replay seeks land on the real moment, not index ÷ fps.
+        phases.times = [address, tk, top, impact, finish].map {
+            frames[min($0, frames.count - 1)].time
+        }
+        // Sanity: real swings live inside these envelopes. Wide enough for deliberate
+        // practice/rehearsal swings — learners copy demonstrations slowly.
+        guard phases.backswingSeconds > 0.25, phases.backswingSeconds < 4.0,
+              phases.downswingSeconds > 0.08, phases.downswingSeconds < 2.0 else { return nil }
         return phases
     }
 
     static func shoulderWidth(_ frame: SwingPoseFrame) -> CGFloat? {
         guard let l = frame.joint(.leftShoulder), let r = frame.joint(.rightShoulder) else { return nil }
         return abs(l.x - r.x)
+    }
+
+    /// View-invariant body scale: shoulder width where it's real (face-on), body height
+    /// × 0.22 where it isn't (down-the-line). Scans the first second for a usable frame.
+    static func motionScale(_ frames: [SwingPoseFrame]) -> CGFloat {
+        var best: CGFloat = 0
+        for frame in frames.prefix(40) {
+            if let w = shoulderWidth(frame) { best = max(best, w) }
+            if let head = frame.joint(.nose) ?? frame.mid(.leftEar, .rightEar) ?? frame.joint(.neck),
+               let ankles = frame.mid(.leftAnkle, .rightAnkle) {
+                best = max(best, abs(head.y - ankles.y) * 0.22)
+            }
+            if best > 0.08 { break }
+        }
+        return best > 0 ? best : 0.12
     }
 }
 
@@ -214,6 +289,10 @@ enum SwingMetricsEngine {
         case .leadArmAtTop:     return loose ? (0, 35)    : (0, 20)      // degrees of bend
         case .finishBalance:    return loose ? (0, 12)    : (0, 7)       // % jitter
         case .shoulderTurn:     return (55, 100)
+        // Ankle centers sit ~a foot-width outside the "insides under the shoulders"
+        // checkpoint, so the target band lives above 100% of shoulder width.
+        case .stanceWidth:      return loose ? (85, 170)  : (95, 155)
+        case .weightShift:      return loose ? (40, 125)  : (55, 115)    // % toward the lead foot
         case .takeawayPath:     return loose ? (-35, 35)  : (-22, 22)    // % shoulder width off plane
         case .deliveryPlane:    return loose ? (-35, 35)  : (-22, 22)
         case .earlyExtension:   return loose ? (0, 35)    : (0, 22)
@@ -343,6 +422,28 @@ enum SwingMetricsEngine {
                 confidence: Double(hipTrace.count) / Double(phases.impact - phases.address + 1))
         }
 
+        // Stance width at address: ankle spread vs shoulder width ("inside of the feet
+        // the same width as your shoulders" — the video's balance/speed/stability base).
+        let addrFrame = frames[phases.address]
+        if let la = addrFrame.joint(.leftAnkle), let ra = addrFrame.joint(.rightAnkle) {
+            let spread = Double(abs(la.x - ra.x))
+            add(.stanceWidth, (spread / scale * 100).rounded(), confidence: 0.7)
+        }
+
+        // Weight shift at the finish: how far the pelvis moved from stance-center toward
+        // a foot (mirror-proof — measured against the nearer ankle). 0% = still centered,
+        // 100% = hips stacked over the lead foot, the "twist AND push" finish.
+        let finFrame = frames[min(phases.finish, frames.count - 1)]
+        if let hips = finFrame.mid(.leftHip, .rightHip),
+           let fla = finFrame.joint(.leftAnkle), let fra = finFrame.joint(.rightAnkle) {
+            let spread = abs(fla.x - fra.x)
+            if spread > 0.02 {
+                let center = (fla.x + fra.x) / 2
+                let t = abs(Double(hips.x - center)) / (Double(spread) / 2)
+                add(.weightShift, min(t * 100, 140).rounded(), confidence: 0.65)
+            }
+        }
+
         // Spine tilt at address: angle of hip-mid → shoulder-mid line from vertical.
         let addr = frames[phases.address]
         if let hip = addr.mid(.leftHip, .rightHip),
@@ -400,9 +501,9 @@ enum SwingScorer {
     }
 
     private static let categoryMap: [SwingMetricKind: String] = [
-        .spineTiltAddress: "setup",
+        .spineTiltAddress: "setup", .stanceWidth: "setup",
         .tempoRatio: "tempo",
-        .headSway: "body", .hipSlide: "body", .leadArmAtTop: "body",
+        .headSway: "body", .hipSlide: "body", .leadArmAtTop: "body", .weightShift: "body",
         .finishBalance: "balance",
         .takeawayPath: "plane", .deliveryPlane: "plane", .earlyExtension: "plane"
     ]
@@ -505,6 +606,301 @@ enum SwingSkeleton {
             return [0, 0, 0]
         })
     }
+
+    // MARK: Live pose angles (face-on overlays)
+
+    struct PoseAngles {
+        var shoulderTilt: Double?    // shoulder line vs horizontal, degrees
+        var hipTilt: Double?         // hip line vs horizontal, degrees
+        var headLean: Double?        // neck→nose vs vertical, degrees
+    }
+
+    /// Angles from a stored pose (jointOrder indices; Vision coords, y up). Tilts are
+    /// only returned when the joint pair is spread enough on screen to be measurable —
+    /// down-the-line, the shoulder/hip lines point at the camera and the number is noise.
+    static func angles(from pose: StoredPose) -> PoseAngles {
+        func pt(_ i: Int) -> CGPoint? {
+            guard i < pose.points.count, pose.points[i][2] > 0.25 else { return nil }
+            return CGPoint(x: pose.points[i][0], y: pose.points[i][1])
+        }
+        // Spread gates are RELATIVE to torso length so a golfer small in a wide frame
+        // still gets gauges, while true down-the-line stays suppressed.
+        var torso: CGFloat = 0.2
+        if let sl = pt(2), let sr = pt(3), let hl = pt(8), let hr = pt(9) {
+            torso = max(0.05, hypot((sl.x + sr.x) / 2 - (hl.x + hr.x) / 2,
+                                    (sl.y + sr.y) / 2 - (hl.y + hr.y) / 2))
+        }
+        func lineTilt(_ a: CGPoint, _ b: CGPoint, minSpread: CGFloat) -> Double? {
+            let dx = b.x - a.x, dy = b.y - a.y
+            guard abs(dx) > minSpread else { return nil }
+            var deg = atan2(Double(dy), Double(dx)) * 180 / .pi
+            if deg > 90 { deg -= 180 }
+            if deg < -90 { deg += 180 }
+            return deg
+        }
+        var out = PoseAngles()
+        if let l = pt(2), let r = pt(3) { out.shoulderTilt = lineTilt(r, l, minSpread: torso * 0.35) }
+        if let l = pt(8), let r = pt(9) { out.hipTilt = lineTilt(r, l, minSpread: torso * 0.22) }
+        if let nose = pt(0), let neck = pt(1), let sl = pt(2), let sr = pt(3),
+           abs(sl.x - sr.x) > torso * 0.35 {   // face-on only — head lean is noise down-the-line
+            let dx = Double(nose.x - neck.x), dy = Double(nose.y - neck.y)
+            if abs(dy) > 0.01 { out.headLean = atan2(dx, dy) * 180 / .pi }
+        }
+        return out
+    }
+}
+
+// MARK: - Clubhead tracer (down-the-line)
+
+/// Traces the CLUBHEAD through takeaway → impact for down-the-line clips. Hands occlude
+/// each other in DTL, so a hand trail reads as noise there — the clubhead is the line the
+/// takeaway lesson actually teaches.
+///
+/// Detection runs on a THREE-FRAME MOTION map (min of |cur−prev| and |next−cur| — the
+/// classic double-difference that isolates the object at the CURRENT frame): static
+/// clutter like grass texture vanishes entirely, and the fast thin shaft is the
+/// strongest ridge radiating from the hands. Rays from the hand center score each
+/// direction; the best ray's far end is the clubhead. The trace stops when motion blur
+/// or occlusion erases the ridge (expected right around impact).
+enum SwingClubTracer {
+
+    struct UprightPlane {
+        var data: [UInt8]
+        let w: Int
+        let h: Int
+    }
+
+    static func trace(videoURL: URL, frames: [SwingPoseFrame], phases: SwingPhases) async -> [[Double]]? {
+        guard let times = phases.times, times.count == 5 else { return nil }
+        let tStart = max(0, times[0] - 0.1)
+        let tEnd = times[3] + 0.2
+
+        let asset = AVURLAsset(url: videoURL)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let reader = try? AVAssetReader(asset: asset) else { return nil }
+        let transform = (try? await track.load(.preferredTransform)) ?? .identity
+        let orientation = SwingPoseExtractor.orientation(for: transform)
+        let nominalFPS = Double((try? await track.load(.nominalFrameRate)) ?? 30)
+        // 240fps capture → 120Hz clubhead samples: smooth slow-motion trail, and the
+        // 3-frame motion difference stays crisp (tiny per-frame displacement).
+        let frameStride = max(1, Int((nominalFPS / 120.0).rounded()))
+
+        reader.timeRange = CMTimeRange(
+            start: CMTime(seconds: tStart, preferredTimescale: 600),
+            end: CMTime(seconds: tEnd, preferredTimescale: 600))
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+        ])
+        output.alwaysCopiesSampleData = false
+        reader.add(output)
+        reader.startReading()
+
+        let handSamples: [(t: Double, p: CGPoint)] = frames.compactMap { f in
+            guard let h = f.mid(.leftWrist, .rightWrist)
+                    ?? f.joint(.leftWrist) ?? f.joint(.rightWrist) else { return nil }
+            return (f.time, h)
+        }
+        guard handSamples.count > 4 else { return nil }
+        func hands(at t: Double) -> CGPoint? {
+            var best: (dt: Double, p: CGPoint)? = nil
+            for s in handSamples {
+                let dt = abs(s.t - t)
+                if best == nil || dt < best!.dt { best = (dt, s.p) }
+            }
+            guard let best, best.dt < 0.2 else { return nil }
+            return best.p
+        }
+
+        // Motion baseline stays ~1/30s regardless of capture rate: at 120Hz sampling the
+        // club moves sub-pixel between ADJACENT samples and the difference signal dies —
+        // so difference against frames `baseline` samples away while still emitting a
+        // point per sample (smooth slow-motion trail).
+        let sampleFPS = nominalFPS / Double(frameStride)
+        let baseline = max(1, Int((sampleFPS / 30.0).rounded()))
+        let windowSize = 2 * baseline + 1
+
+        var window: [(t: Double, plane: UprightPlane)] = []
+        var trail: [[Double]] = []
+        var lastDir: Double? = nil
+        var lastHead: CGPoint? = nil
+        var missStreak = 0
+        var rawIndex = 0
+        while let sample = output.copyNextSampleBuffer() {
+            defer { rawIndex += 1 }
+            if rawIndex % frameStride != 0 { continue }
+            guard let pb = CMSampleBufferGetImageBuffer(sample) else { continue }
+            let t = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+            window.append((t, Self.uprightPlane(from: pb, orientation: orientation)))
+            if window.count < windowSize { continue }
+            if window.count > windowSize { window.removeFirst() }
+            let tCur = window[baseline].t
+            guard let hp = hands(at: tCur) else { continue }
+
+            if let hit = Self.rayClubhead(prev: window[0].plane, cur: window[baseline].plane,
+                                          next: window[2 * baseline].plane, handsUpright: hp,
+                                          preferDir: lastDir), hit.score > 300 {
+                if let last = lastHead, hypot(hit.head.x - last.x, hit.head.y - last.y) > 0.35 {
+                    missStreak += 1
+                } else {
+                    trail.append([Double(hit.head.x), Double(hit.head.y), tCur])
+                    lastHead = hit.head
+                    lastDir = hit.dir
+                    missStreak = 0
+                }
+            } else {
+                missStreak += 1
+            }
+            if missStreak > 8, !trail.isEmpty, tCur > times[2] { break }
+        }
+        reader.cancelReading()
+        guard trail.count >= 6 else { return nil }
+
+        var smoothed = trail
+        for i in trail.indices {
+            let lo = max(0, i - 1), hi = min(trail.count - 1, i + 1)
+            let n = Double(hi - lo + 1)
+            smoothed[i] = [ (lo...hi).map { trail[$0][0] }.reduce(0, +) / n,
+                            (lo...hi).map { trail[$0][1] }.reduce(0, +) / n,
+                            trail[i][2] ]
+        }
+        return smoothed
+    }
+
+    /// Rotate + 2× downsample the Y plane into upright raster space.
+    static func uprightPlane(from pb: CVPixelBuffer, orientation: CGImagePropertyOrientation) -> UprightPlane {
+        CVPixelBufferLockBaseAddress(pb, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
+        let rawW = CVPixelBufferGetWidthOfPlane(pb, 0)
+        let rawH = CVPixelBufferGetHeightOfPlane(pb, 0)
+        let stride = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
+        let buf = CVPixelBufferGetBaseAddressOfPlane(pb, 0)!.assumingMemoryBound(to: UInt8.self)
+
+        // FULL resolution: a 2-3px shaft downsampled 2× smears below a pixel and its
+        // motion signal dies while thick arm edges survive — exactly the wrong bias.
+        let rotated = orientation == .left || orientation == .right
+        let ds = 1
+        let w = (rotated ? rawH : rawW) / ds
+        let h = (rotated ? rawW : rawH) / ds
+        var data = [UInt8](repeating: 0, count: w * h)
+        for py in 0..<h {
+            for px in 0..<w {
+                let ux = px * ds, uy = py * ds
+                let rx: Int, ry: Int
+                switch orientation {
+                case .right: rx = uy;             ry = rawH - 1 - ux
+                case .left:  rx = rawW - 1 - uy;  ry = ux
+                case .down:  rx = rawW - 1 - ux;  ry = rawH - 1 - uy
+                default:     rx = ux;             ry = uy
+                }
+                data[py * w + px] = buf[ry * stride + rx]
+            }
+        }
+        return UprightPlane(data: data, w: w, h: h)
+    }
+
+    /// One frame: strongest thin MOTION ridge radiating from the hands; far end = head.
+    static func rayClubhead(prev: UprightPlane, cur: UprightPlane, next: UprightPlane,
+                            handsUpright: CGPoint, preferDir: Double?) -> (head: CGPoint, dir: Double, score: Double)? {
+        let w = cur.w, h = cur.h
+        guard prev.w == w, next.w == w else { return nil }
+        func motion(_ x: Int, _ y: Int) -> Double {
+            guard x >= 0, y >= 0, x < w, y < h else { return -1 }
+            let i = y * w + x
+            let a = abs(Int(cur.data[i]) - Int(prev.data[i]))
+            let b = abs(Int(next.data[i]) - Int(cur.data[i]))
+            return Double(min(a, b))
+        }
+
+        let hx = Double(handsUpright.x) * Double(w)
+        let hy = (1 - Double(handsUpright.y)) * Double(h)
+
+        let step = max(2.0, Double(h) / 480)
+        let rStart = Double(h) * 0.04
+        let rMax = Double(h) * 0.6
+        let side = max(4.0, Double(h) / 200)
+        let minRidge = 12.0
+        let maxGap = 5
+
+        var best: (score: Double, end: Double, dir: Double, firstHit: Double)? = nil
+        var theta = 0.0
+        while theta < 2 * .pi {
+            defer { theta += .pi / 60 }
+            let dx = cos(theta), dy = sin(theta)
+            let px = -dy, py = dx
+            var score = 0.0
+            var run = 0
+            var gap = 0
+            var end = 0.0
+            var firstHit = -1.0
+            var s = rStart
+            while s < rMax {
+                let cx = hx + dx * s, cy = hy + dy * s
+                let c = motion(Int(cx), Int(cy))
+                if c < 0 { break }
+                let s1 = motion(Int(cx + px * side), Int(cy + py * side))
+                let s2 = motion(Int(cx - px * side), Int(cy - py * side))
+                // Thin moving object: hot center, cool sides. A moving torso is hot
+                // across all three and cancels out.
+                let ridge = c - 0.7 * max(s1, s2)
+                if ridge > minRidge {
+                    score += ridge
+                    run += 1
+                    end = s
+                    gap = 0
+                    if firstHit < 0 { firstHit = s }
+                } else if run > 0 {
+                    // Only gap-break once the run has started: the hands are the
+                    // rotation center, so the shaft is nearly STATIC at the grip and
+                    // motion grows toward the head — the ridge starts mid-shaft.
+                    gap += 1
+                    if gap > maxGap { break }
+                }
+                s += step
+            }
+            guard run >= 6, firstHit < rMax * 0.7 else { continue }
+            if let preferDir {
+                let dd = abs(atan2(sin(theta - preferDir), cos(theta - preferDir)))
+                score *= (dd < 0.6 ? 1.35 : (dd > 2.4 ? 0.7 : 1.0))
+            }
+            if best == nil || score > best!.score { best = (score, end, theta, firstHit) }
+        }
+        guard let best else { return nil }
+
+        // Refinement: re-walk the winning direction with LATERAL RE-CENTERING — at each
+        // step snap to the strongest motion pixel within ±6px perpendicular. A straight
+        // 3°-quantized ray drifts off the thin shaft midway and undershoots the head;
+        // the snake follows the real line to its tip.
+        let dx = cos(best.dir), dy = sin(best.dir)
+        let px = -dy, py = dx
+        var lat = 0.0
+        var head = CGPoint(x: hx + dx * best.end, y: hy + dy * best.end)
+        var misses = 0
+        var s2 = max(rStart, best.firstHit - 2 * step)
+        let latWindow = 6
+        while s2 < rMax {
+            var bestOff = 0
+            var bestVal = -1.0
+            for off in -latWindow...latWindow {
+                let ox = hx + dx * s2 + px * (lat + Double(off))
+                let oy = hy + dy * s2 + py * (lat + Double(off))
+                let v = motion(Int(ox), Int(oy))
+                if v > bestVal { bestVal = v; bestOff = off }
+            }
+            if bestVal > minRidge * 0.8 {
+                lat += Double(bestOff) * 0.6            // ease toward the line, don't jump
+                lat = max(-Double(h) * 0.08, min(Double(h) * 0.08, lat))
+                head = CGPoint(x: hx + dx * s2 + px * lat, y: hy + dy * s2 + py * lat)
+                misses = 0
+            } else {
+                misses += 1
+                if misses > maxGap { break }
+            }
+            s2 += step
+        }
+        let headX = Double(head.x) / Double(w)
+        let headY = 1 - Double(head.y) / Double(h)
+        return (CGPoint(x: headX, y: headY), best.dir, best.score)
+    }
 }
 
 // MARK: - Orchestrator
@@ -550,6 +946,12 @@ enum SwingAnalyzer {
                           ?? frames[i].joint(.leftWrist) ?? frames[i].joint(.rightWrist)
                 else { return nil }
                 return [Double(h.x), Double(h.y)]
+            }
+            // Down-the-line: trace the clubhead for the replay ribbon — in this view the
+            // hands occlude each other and the club IS the story of the takeaway.
+            if rec.viewAngle == .downTheLine {
+                rec.clubTrail = await SwingClubTracer.trace(videoURL: videoURL,
+                                                            frames: frames, phases: phases)
             }
             if #available(iOS 17.0, *) { rec.poseEngine = "vision2d+3dready" }
         } catch {

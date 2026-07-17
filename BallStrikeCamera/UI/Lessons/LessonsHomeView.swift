@@ -65,7 +65,7 @@ struct LessonsHomeView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white)
                     .frame(width: 34, height: 34)
-                    .background(Circle().fill(top.priority > 0 ? TCTheme.gold : TCTheme.cyan))
+                    .background(Circle().fill(top.priority > 0 ? TCTheme.gold : Self.teal))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("COACH SAYS")
                         .font(.system(size: 8.5, weight: .black))
@@ -88,7 +88,7 @@ struct LessonsHomeView: View {
             .background(TCTheme.panelRaised)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder((top.priority > 0 ? TCTheme.gold : TCTheme.cyan).opacity(0.5), lineWidth: 1.4))
+                .strokeBorder((top.priority > 0 ? TCTheme.gold : Self.teal).opacity(0.5), lineWidth: 1.4))
             .contentShape(Rectangle())
             .onTapGesture { selectedRead = top }
         }
@@ -242,29 +242,6 @@ struct LessonsHomeView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: Pro gate
-
-    private var proGateCard: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "figure.golf")
-                .font(.system(size: 40))
-                .foregroundColor(TCTheme.gold)
-            Text("TrueCarry Coach")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundColor(TCTheme.textPrimary)
-            Text("Guided lessons from your first grip to real ball-flight numbers — with camera swing analysis that scores your tempo, balance and body motion, and a plan that adapts to what it sees.")
-                .font(.system(size: 14))
-                .foregroundColor(TCTheme.textMuted)
-                .multilineTextAlignment(.center)
-            TCPrimaryGoldButton(title: "Upgrade to Pro", icon: "lock.open.fill") {
-                UIApplication.shared.open(session.entitlementVM.upgradeURL)
-            }
-        }
-        .padding(.vertical, 28)
-        .frame(maxWidth: .infinity)
-        .tcCard(padding: 20)
-    }
-
     private var intakeBanner: some View {
         Button { showIntake = true } label: {
             HStack(spacing: 12) {
@@ -289,85 +266,6 @@ struct LessonsHomeView: View {
         .buttonStyle(.plain)
     }
 
-    private var intakePromptCard: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "list.clipboard")
-                .font(.system(size: 36))
-                .foregroundColor(TCTheme.sage)
-            Text("Let's build your plan")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(TCTheme.textPrimary)
-            Text("Five quick questions — your answers pick which lessons you see and how your swings are graded.")
-                .font(.system(size: 14))
-                .foregroundColor(TCTheme.textMuted)
-                .multilineTextAlignment(.center)
-            TCPrimaryGoldButton(title: "Start", icon: "arrow.right") { showIntake = true }
-        }
-        .padding(.vertical, 24)
-        .frame(maxWidth: .infinity)
-        .tcCard(padding: 20)
-    }
-
-    // MARK: Continue hero
-
-    @ViewBuilder
-    private var continueHero: some View {
-        if let lesson = library.nextLesson {
-            Button { activeLesson = lesson } label: {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle().fill(TCTheme.goldGradient).frame(width: 46, height: 46)
-                        Image(systemName: lesson.icon)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("CONTINUE · \(library.track(containing: lesson.id)?.title.uppercased() ?? "")")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(TCTheme.gold)
-                            .tracking(1.2)
-                        Text(lesson.title)
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(TCTheme.textPrimary)
-                        Text("\(lesson.subtitle) · \(lesson.minutes) min")
-                            .font(.system(size: 12))
-                            .foregroundColor(TCTheme.textMuted)
-                    }
-                    Spacer()
-                    Image(systemName: "play.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(TCTheme.gold)
-                }
-                .tcCard()
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var analyzeSwingCard: some View {
-        Button { showFreeAnalysis = true } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "video.badge.waveform")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(TCTheme.cyan)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Analyze my swing")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    Text("Tripod + face-on camera · auto-record · instant score")
-                        .font(.system(size: 11))
-                        .foregroundColor(TCTheme.textMuted)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(TCTheme.textUltraMuted)
-            }
-            .tcCard()
-        }
-        .buttonStyle(.plain)
-    }
-
     // MARK: Coach's Read (pose faults × measured ball data)
 
     @ViewBuilder
@@ -384,11 +282,11 @@ struct LessonsHomeView: View {
                         HStack(alignment: .top, spacing: 12) {
                             ZStack {
                                 Circle()
-                                    .fill((read.priority > 0 ? TCTheme.gold : TCTheme.cyan).opacity(0.16))
+                                    .fill((read.priority > 0 ? TCTheme.gold : Self.teal).opacity(0.16))
                                     .frame(width: 38, height: 38)
                                 Image(systemName: read.icon)
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(read.priority > 0 ? TCTheme.gold : TCTheme.cyan)
+                                    .foregroundColor(read.priority > 0 ? TCTheme.gold : Self.teal)
                             }
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(read.title)
@@ -415,69 +313,6 @@ struct LessonsHomeView: View {
                 }
             }
         }
-    }
-
-    // MARK: Your Focus (one designated card per intake answer)
-
-    @ViewBuilder
-    private var focusSection: some View {
-        if let areas = library.profile?.focusAreas, !areas.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                TCSectionHeader(title: "Your Focus")
-                ForEach(areas) { area in
-                    focusCard(area)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func focusCard(_ area: FocusArea) -> some View {
-        let track = library.curriculum.tracks.first { $0.focusAreas.contains(area) }
-        let next = track?.lessons.first {
-            let st = library.status(of: $0)
-            return st == .available || st == .inProgress
-        }
-        Button {
-            if area == .checkup { showFreeAnalysis = true }
-            else if let next { activeLesson = next }
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(TCTheme.sage.opacity(0.14))
-                        .frame(width: 40, height: 40)
-                    Image(systemName: area.icon)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(TCTheme.sage)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(area.displayName)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    if area == .checkup {
-                        Text("Open the Swing Studio anytime — instant score + verdicts")
-                            .font(.system(size: 11)).foregroundColor(TCTheme.textMuted)
-                    } else if let next {
-                        Text("Next up: \(next.title) · \(next.minutes) min")
-                            .font(.system(size: 11)).foregroundColor(TCTheme.textMuted)
-                    } else if track != nil {
-                        Text("Track complete — retake any lesson below")
-                            .font(.system(size: 11)).foregroundColor(TCTheme.sage)
-                    } else {
-                        Text("Program in the works — Coach's Read covers this today")
-                            .font(.system(size: 11)).foregroundColor(TCTheme.textUltraMuted)
-                    }
-                }
-                Spacer()
-                Image(systemName: area == .checkup ? "video.fill" : "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(TCTheme.textUltraMuted)
-            }
-            .tcCard(padding: 12)
-        }
-        .buttonStyle(.plain)
-        .disabled(area != .checkup && next == nil && track != nil)
     }
 
     // MARK: Weaknesses
@@ -531,31 +366,48 @@ struct LessonsHomeView: View {
     private var statsBar: some View {
         let scores = library.playerModel.lastScores.suffix(5)
         let avg = scores.isEmpty ? nil : scores.reduce(0, +) / scores.count
-        return HStack(spacing: 0) {
-            statCell("\(library.completedLessonCount)", "LESSONS", "checkmark.seal.fill", TCTheme.gold)
-            statDivider
-            statCell("\(library.swings.filter(\.analyzed).count)", "SWINGS", "video.fill", TCTheme.cyan)
-            statDivider
-            statCell(avg.map { "\($0)" } ?? "—", "AVG SCORE", "chart.line.uptrend.xyaxis", TCTheme.sage)
+        return HStack(spacing: 8) {
+            statTile("\(library.completedLessonCount)", "LESSONS", "checkmark.seal.fill", TCTheme.gold)
+            statTile("\(library.swings.filter(\.analyzed).count)", "SWINGS", "video.fill", Self.teal)
+            statTile(avg.map { "\($0)" } ?? "—",
+                     avg == nil ? "NO SCORES YET" : "AVG SCORE",
+                     "chart.line.uptrend.xyaxis", TCTheme.sage)
         }
-        .tcCard(padding: 12)
     }
 
-    private var statDivider: some View {
-        Rectangle().fill(Color.white.opacity(0.18)).frame(width: 1, height: 30)
-    }
-
-    private func statCell(_ value: String, _ label: String, _ icon: String, _ tint: Color) -> some View {
-        VStack(spacing: 3) {
-            HStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 11, weight: .bold)).foregroundColor(tint)
-                Text(value).font(.system(size: 17, weight: .black, design: .rounded))
-                    .foregroundColor(.white)
+    /// One stat = one tile: tinted icon chip, big number, label — all in theme ink so it
+    /// reads in BOTH modes (the old bar hardcoded white text onto a white light-mode card).
+    private func statTile(_ value: String, _ label: String, _ icon: String, _ tint: Color) -> some View {
+        VStack(spacing: 6) {
+            ZStack {
+                Circle().fill(tint.opacity(0.16)).frame(width: 30, height: 30)
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(tint)
             }
-            Text(label).font(.system(size: 8.5, weight: .bold)).foregroundColor(.white.opacity(0.75)).tracking(0.8)
+            Text(value)
+                .font(.system(size: 22, weight: .black, design: .rounded))
+                .foregroundColor(TCTheme.textPrimary)
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(TCTheme.textMuted)
+                .tracking(0.8)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(TCTheme.panel)
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(TCTheme.borderMedium, lineWidth: 1))
+        )
     }
+
+    /// Coach's action accent — a real teal that carries white content in BOTH modes
+    /// (TCTheme.cyan flips to light bone in dark mode, which vanished white icons).
+    static let teal = Color(red: 0.18, green: 0.60, blue: 0.72)
 
     // MARK: Roadmap (Duolingo-style winding path of nodes)
 
@@ -767,7 +619,9 @@ struct LessonsHomeView: View {
                     let pt = CGPoint(x: cx + xOffset(i), y: CGFloat(i) * rowH + rowH / 2)
                     if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
                 }
-                ctx.stroke(path, with: .color(TCTheme.border),
+                // Visible in both modes — a hairline-token dotted path disappears into
+                // the background.
+                ctx.stroke(path, with: .color(TCTheme.textUltraMuted.opacity(0.55)),
                            style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [1, 12]))
             }
             VStack(spacing: 0) {
@@ -828,11 +682,11 @@ struct LessonsHomeView: View {
             case .open:     return TCTheme.gold.opacity(0.85)
             case .current:  return TCTheme.gold
             case .done:     return TCTheme.sage
-            case .practice: return TCTheme.cyan
+            case .practice: return LessonsHomeView.teal
             case .trophy:   return Color(red: 0.85, green: 0.62, blue: 0.15)
             }
         }()
-        let iconColor: Color = state == .locked ? TCTheme.textUltraMuted : .white
+        let iconColor: Color = state == .locked ? TCTheme.textMuted : .white
         return Button(action: action) {
             VStack(spacing: 5) {
                 ZStack {
@@ -853,6 +707,12 @@ struct LessonsHomeView: View {
                         .frame(width: 62, height: 62)
                         .offset(y: 4)
                     Circle().fill(fill).frame(width: 62, height: 62)
+                    if state == .locked {
+                        // Locked nodes are panel-on-background — give them an edge so
+                        // they read as slots, not smudges.
+                        Circle().strokeBorder(TCTheme.borderMedium, lineWidth: 1.2)
+                            .frame(width: 62, height: 62)
+                    }
                     Image(systemName: icon)
                         .font(.system(size: 22, weight: .bold))
                         .foregroundColor(iconColor)
@@ -1131,11 +991,11 @@ struct CoachReadDetailView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill((read.priority > 0 ? TCTheme.gold : TCTheme.cyan).opacity(0.16))
+                        .fill((read.priority > 0 ? TCTheme.gold : LessonsHomeView.teal).opacity(0.16))
                         .frame(width: 44, height: 44)
                     Image(systemName: read.icon)
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(read.priority > 0 ? TCTheme.gold : TCTheme.cyan)
+                        .foregroundColor(read.priority > 0 ? TCTheme.gold : LessonsHomeView.teal)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     if read.priority > 0 {
@@ -1184,7 +1044,7 @@ struct CoachReadDetailView: View {
                     .foregroundStyle(TCTheme.sage.opacity(0.12))
                     ForEach(points, id: \.idx) { p in
                         LineMark(x: .value("Swing", p.idx), y: .value("Value", p.value))
-                            .foregroundStyle(TCTheme.cyan)
+                            .foregroundStyle(LessonsHomeView.teal)
                             .interpolationMethod(.monotone)
                         PointMark(x: .value("Swing", p.idx), y: .value("Value", p.value))
                             .foregroundStyle(p.value >= p.low && p.value <= p.high ? TCTheme.sage : TCTheme.gold)
@@ -1226,7 +1086,7 @@ struct CoachReadDetailView: View {
                                 width: .fixed(10))
                             .foregroundStyle(shot.metrics.spinAxisDegrees >= 0
                                              ? Color(red: 0.9, green: 0.45, blue: 0.25)
-                                             : TCTheme.cyan)
+                                             : LessonsHomeView.teal)
                             .cornerRadius(2)
                     }
                 }

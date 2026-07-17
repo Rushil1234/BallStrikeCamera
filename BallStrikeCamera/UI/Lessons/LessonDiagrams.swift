@@ -353,11 +353,20 @@ struct GripDiagram: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            panel(label: "WHERE IT LIES · LEAD HAND") {
-                GripHandIllustration()
-                    .frame(height: 250)
-            }
-            Text("The grip runs diagonally through the fingers — from under the heel pad to the middle of the index finger. The palm never wraps first.")
+            GripHandsDemo()
+                .frame(height: 300)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    Text("TAKE THE GRIP")
+                        .font(.system(size: 9, weight: .black))
+                        .tracking(1.1)
+                        .foregroundColor(.white.opacity(0.55))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(.white.opacity(0.08)))
+                        .padding(8)
+                }
+            Text("Fingers wrap the back of the grip first, thumb pads stack on top, and the trail pinky interlocks the lead index — one unit, 5/10 pressure.")
                 .font(.system(size: 12.5, weight: .medium))
                 .foregroundColor(TCTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -395,142 +404,365 @@ struct GripDiagram: View {
     }
 }
 
-/// Open lead hand (palm to camera, fingers down) with the grip crossing the fingers —
-/// the "palm-and-fingers" money shot every grip lesson is built on.
-private struct GripHandIllustration: View {
-    var body: some View {
-        Canvas { ctx, size in
-            let s = min(size.width / 320, size.height / 250)
-            ctx.translateBy(x: (size.width - 320 * s) / 2, y: (size.height - 250 * s) / 2)
-            ctx.scaleBy(x: s, y: s)
+// MARK: - Ghost hand artwork (visionOS-style translucent hands, parametric)
 
-            let ink = TCTheme.textPrimary
-            let handFill = ink.opacity(0.10)
-            let outline = ink.opacity(0.72)
+/// Shared translucent-hand renderer: an OPEN floating pose (back of hand, fingers up)
+/// and a GRIP pose (hand wrapped on a vertical shaft, thumb down it). Geometry is
+/// parametric — tapered fingers along bending centerlines — with gradient fill,
+/// blurred rim light, tendon hints. Drawn in a local frame the caller transforms.
+enum GhostHandArt {
 
-            // Forearm + glove cuff coming in from the top.
-            var forearm = Path()
-            forearm.move(to: CGPoint(x: 124, y: -4))
-            forearm.addCurve(to: CGPoint(x: 131, y: 62), control1: CGPoint(x: 124, y: 22), control2: CGPoint(x: 128, y: 44))
-            forearm.addLine(to: CGPoint(x: 167, y: 62))
-            forearm.addCurve(to: CGPoint(x: 172, y: -4), control1: CGPoint(x: 170, y: 44), control2: CGPoint(x: 172, y: 22))
-            forearm.closeSubpath()
-            ctx.fill(forearm, with: .color(handFill))
-            ctx.stroke(forearm, with: .color(outline), lineWidth: 1.5)
+    struct Finger {
+        let base: CGPoint
+        let angleDeg: Double      // 0° = straight up, + tilts right
+        let bendDeg: Double       // direction change base→tip
+        let length: CGFloat
+        let baseW: CGFloat
+        let tipW: CGFloat
+    }
 
-            let cuff = Path(roundedRect: CGRect(x: 126, y: 56, width: 46, height: 15), cornerRadius: 6)
-            ctx.fill(cuff, with: .color(handFill))
-            ctx.stroke(cuff, with: .color(outline), lineWidth: 1.5)
-            for i in 1...5 {
-                var knit = Path()
-                knit.move(to: CGPoint(x: 126 + CGFloat(i) * 7.5, y: 59))
-                knit.addLine(to: CGPoint(x: 126 + CGFloat(i) * 7.5, y: 68))
-                ctx.stroke(knit, with: .color(outline.opacity(0.35)), lineWidth: 1)
-            }
+    enum Pose { case open, grip }
 
-            // Palm (left hand, palm facing camera → pinky left, thumb right).
-            var palm = Path()
-            palm.move(to: CGPoint(x: 131, y: 70))
-            palm.addCurve(to: CGPoint(x: 110, y: 122), control1: CGPoint(x: 119, y: 84), control2: CGPoint(x: 111, y: 102))
-            palm.addCurve(to: CGPoint(x: 118, y: 168), control1: CGPoint(x: 109, y: 140), control2: CGPoint(x: 111, y: 156))
-            palm.addCurve(to: CGPoint(x: 180, y: 166), control1: CGPoint(x: 138, y: 176), control2: CGPoint(x: 162, y: 176))
-            palm.addCurve(to: CGPoint(x: 192, y: 126), control1: CGPoint(x: 189, y: 158), control2: CGPoint(x: 192, y: 142))
-            palm.addCurve(to: CGPoint(x: 167, y: 70), control1: CGPoint(x: 192, y: 104), control2: CGPoint(x: 181, y: 82))
-            palm.closeSubpath()
-            ctx.fill(palm, with: .color(handFill))
-            ctx.stroke(palm, with: .color(outline), lineWidth: 1.6)
+    struct Style {
+        let gradient: Gradient
+        let rim: Color
+        let rimOpacity: Double
+        let detail: Bool          // tendon + knuckle sheen passes
 
-            // Heel-pad + lifeline creases.
-            var crease = Path()
-            crease.move(to: CGPoint(x: 122, y: 118))
-            crease.addQuadCurve(to: CGPoint(x: 130, y: 158), control: CGPoint(x: 118, y: 140))
-            ctx.stroke(crease, with: .color(outline.opacity(0.35)), lineWidth: 1.2)
-            var lifeline = Path()
-            lifeline.move(to: CGPoint(x: 178, y: 92))
-            lifeline.addQuadCurve(to: CGPoint(x: 152, y: 156), control: CGPoint(x: 154, y: 116))
-            ctx.stroke(lifeline, with: .color(outline.opacity(0.35)), lineWidth: 1.2)
+        static let realistic = Style(
+            gradient: Gradient(colors: [Color(red: 0.29, green: 0.32, blue: 0.38),
+                                        Color(red: 0.21, green: 0.24, blue: 0.28),
+                                        Color(red: 0.14, green: 0.15, blue: 0.18)]),
+            rim: Color(red: 0.87, green: 0.90, blue: 0.95), rimOpacity: 0.5, detail: true)
 
-            // Fingers, pointing down, slight natural fan. (pinky → index, left → right)
-            let fingers: [(base: CGPoint, angle: Double, len: CGFloat, w: CGFloat)] = [
-                (CGPoint(x: 126, y: 168), -10, 46, 14.5),
-                (CGPoint(x: 143, y: 172),  -4, 60, 15.5),
-                (CGPoint(x: 161, y: 172),   2, 64, 16.0),
-                (CGPoint(x: 178, y: 166),   8, 56, 15.5),
-            ]
-            for f in fingers {
-                let path = fingerCapsule(from: f.base, angleDeg: f.angle, length: f.len, width: f.w)
-                ctx.fill(path, with: .color(handFill))
-                ctx.stroke(path, with: .color(outline), lineWidth: 1.5)
-                // Middle-joint crease.
-                let a = f.angle * .pi / 180
-                let mid = CGPoint(x: f.base.x + CGFloat(sin(a)) * f.len * 0.55,
-                                  y: f.base.y + CGFloat(cos(a)) * f.len * 0.55)
-                var joint = Path()
-                joint.move(to: CGPoint(x: mid.x - f.w * 0.32, y: mid.y))
-                joint.addQuadCurve(to: CGPoint(x: mid.x + f.w * 0.32, y: mid.y),
-                                   control: CGPoint(x: mid.x, y: mid.y + 3))
-                ctx.stroke(joint, with: .color(outline.opacity(0.3)), lineWidth: 1)
-            }
-
-            // Thumb, off to the lower right.
-            let thumb = fingerCapsule(from: CGPoint(x: 190, y: 124), angleDeg: 55, length: 58, width: 17)
-            ctx.fill(thumb, with: .color(handFill))
-            ctx.stroke(thumb, with: .color(outline), lineWidth: 1.5)
-
-            // The grip, laid diagonally ACROSS the fingers (in front of the hand):
-            // under the heel pad on the pinky side, across the index's middle segment.
-            let gripA = CGPoint(x: 84, y: 142)
-            let gripB = CGPoint(x: 252, y: 208)
-            let grip = fingerCapsule(from: gripA, to: gripB, width: 30)
-            ctx.fill(grip, with: .color(ink.opacity(0.22)))
-            ctx.stroke(grip, with: .color(outline.opacity(0.9)), lineWidth: 1.6)
-            // Butt cap poking out past the heel pad.
-            let butt = CGPoint(x: 78, y: 139.6)
-            ctx.fill(Path(ellipseIn: CGRect(x: butt.x - 16, y: butt.y - 16, width: 32, height: 32)),
-                     with: .color(ink.opacity(0.28)))
-            ctx.stroke(Path(ellipseIn: CGRect(x: butt.x - 16, y: butt.y - 16, width: 32, height: 32)),
-                       with: .color(outline), lineWidth: 1.6)
-            ctx.stroke(Path(ellipseIn: CGRect(x: butt.x - 7, y: butt.y - 7, width: 14, height: 14)),
-                       with: .color(outline.opacity(0.5)), lineWidth: 1.2)
-            // Grip texture dots.
-            let dir = CGVector(dx: gripB.x - gripA.x, dy: gripB.y - gripA.y)
-            let len = hypot(dir.dx, dir.dy)
-            let u = CGVector(dx: dir.dx / len, dy: dir.dy / len)
-            let n = CGVector(dx: -u.dy, dy: u.dx)
-            for row in [-1, 0, 1] {
-                for i in stride(from: CGFloat(28), through: len - 14, by: 13) {
-                    let p = CGPoint(x: gripA.x + u.dx * i + n.dx * CGFloat(row) * 8,
-                                    y: gripA.y + u.dy * i + n.dy * CGFloat(row) * 8)
-                    ctx.fill(Path(ellipseIn: CGRect(x: p.x - 1.2, y: p.y - 1.2, width: 2.4, height: 2.4)),
-                             with: .color(ink.opacity(0.28)))
-                }
-            }
-            // Gold guide line along the grip's core — the line to feel.
-            var guide = Path()
-            guide.move(to: gripA)
-            guide.addLine(to: gripB)
-            ctx.stroke(guide, with: .color(TCTheme.gold.opacity(0.85)),
-                       style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 7]))
-
-            // Annotations.
-            annotate(ctx, text: "UNDER THE HEEL PAD", at: CGPoint(x: 92, y: 100),
-                     arrowFrom: CGPoint(x: 96, y: 108), to: CGPoint(x: 106, y: 132))
-            annotate(ctx, text: "ACROSS THE FINGERS", at: CGPoint(x: 236, y: 240),
-                     arrowFrom: CGPoint(x: 230, y: 232), to: CGPoint(x: 212, y: 204))
+        static func tinted(_ c: Color) -> Style {
+            Style(gradient: Gradient(colors: [c.opacity(0.95), c.opacity(0.68)]),
+                  rim: .white, rimOpacity: 0.65, detail: false)
         }
     }
 
-    private func annotate(_ ctx: GraphicsContext, text: String, at point: CGPoint,
-                          arrowFrom: CGPoint, to tip: CGPoint) {
-        ctx.draw(Text(text).font(.system(size: 8.5, weight: .black)).foregroundColor(TCTheme.gold),
-                 at: point)
-        var arrow = Path()
-        arrow.move(to: arrowFrom)
-        arrow.addLine(to: tip)
-        ctx.stroke(arrow, with: .color(TCTheme.gold.opacity(0.7)),
-                   style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
-        ctx.fill(Path(ellipseIn: CGRect(x: tip.x - 2, y: tip.y - 2, width: 4, height: 4)),
-                 with: .color(TCTheme.gold))
+    // Open pose: left hand, back view, fingers up, thumb merged into the palm outline.
+    static let openFingers: [Finger] = [
+        Finger(base: CGPoint(x: -44, y: -24), angleDeg: -17, bendDeg: -5, length: 76, baseW: 20, tipW: 14),
+        Finger(base: CGPoint(x: -23, y: -37), angleDeg: -7, bendDeg: -3, length: 98, baseW: 21.5, tipW: 15),
+        Finger(base: CGPoint(x: 3, y: -41), angleDeg: 1, bendDeg: -2, length: 106, baseW: 22, tipW: 15.5),
+        Finger(base: CGPoint(x: 28, y: -33), angleDeg: 10, bendDeg: 3, length: 94, baseW: 21, tipW: 15),
+    ]
+
+    // Grip pose: shaft runs vertically through local x ≈ +12; back of hand to its left,
+    // four curled finger stubs folding over it, thumb running down the near side.
+    static let gripFingers: [Finger] = [
+        Finger(base: CGPoint(x: 4, y: -30), angleDeg: 92, bendDeg: 72, length: 34, baseW: 19, tipW: 13),
+        Finger(base: CGPoint(x: 8, y: -12), angleDeg: 90, bendDeg: 76, length: 38, baseW: 20, tipW: 13.5),
+        Finger(base: CGPoint(x: 8, y: 6), angleDeg: 90, bendDeg: 76, length: 36, baseW: 20, tipW: 13),
+        Finger(base: CGPoint(x: 4, y: 24), angleDeg: 94, bendDeg: 70, length: 30, baseW: 18, tipW: 12.5),
+        Finger(base: CGPoint(x: 0, y: -30), angleDeg: 176, bendDeg: -8, length: 56, baseW: 22, tipW: 15),
+    ]
+
+    /// Open-pose outline: wrist-left → pinky edge → knuckle arc → web dip → out the
+    /// thumb → thenar → wrist-right. One continuous silhouette so nothing seams.
+    /// Left UNCLOSED: fill implicitly closes across the wrist, stroke stays open.
+    static let openPalm: Path = {
+        var p = Path()
+        p.move(to: CGPoint(x: -28, y: 62))
+        p.addCurve(to: CGPoint(x: -45, y: -26), control1: CGPoint(x: -46, y: 40), control2: CGPoint(x: -52, y: 2))
+        p.addCurve(to: CGPoint(x: -27, y: -42), control1: CGPoint(x: -41, y: -32), control2: CGPoint(x: -35, y: -38))
+        p.addCurve(to: CGPoint(x: 29, y: -38), control1: CGPoint(x: -9, y: -50), control2: CGPoint(x: 14, y: -49))
+        p.addCurve(to: CGPoint(x: 37, y: -16), control1: CGPoint(x: 33, y: -32), control2: CGPoint(x: 35, y: -24))
+        p.addCurve(to: CGPoint(x: 94, y: -52), control1: CGPoint(x: 54, y: -26), control2: CGPoint(x: 76, y: -40))
+        p.addCurve(to: CGPoint(x: 101, y: -37), control1: CGPoint(x: 103, y: -57), control2: CGPoint(x: 111, y: -45))
+        p.addCurve(to: CGPoint(x: 56, y: 8), control1: CGPoint(x: 88, y: -28), control2: CGPoint(x: 70, y: -8))
+        p.addCurve(to: CGPoint(x: 28, y: 62), control1: CGPoint(x: 50, y: 22), control2: CGPoint(x: 42, y: 42))
+        return p
+    }()
+
+    static let gripPalm: Path = {
+        var p = Path()
+        p.move(to: CGPoint(x: -52, y: -30))
+        p.addCurve(to: CGPoint(x: 14, y: -34), control1: CGPoint(x: -30, y: -42), control2: CGPoint(x: 6, y: -42))
+        p.addCurve(to: CGPoint(x: 20, y: 6), control1: CGPoint(x: 20, y: -24), control2: CGPoint(x: 22, y: -8))
+        p.addCurve(to: CGPoint(x: 4, y: 38), control1: CGPoint(x: 18, y: 22), control2: CGPoint(x: 14, y: 32))
+        p.addCurve(to: CGPoint(x: -50, y: 28), control1: CGPoint(x: -14, y: 44), control2: CGPoint(x: -40, y: 40))
+        p.addCurve(to: CGPoint(x: -52, y: -30), control1: CGPoint(x: -56, y: 8), control2: CGPoint(x: -56, y: -14))
+        return p
+    }()
+
+    static let openFingerPaths: [(fill: Path, stroke: Path)] = openFingers.map(fingerPaths)
+    static let gripFingerPaths: [(fill: Path, stroke: Path)] = gripFingers.map(fingerPaths)
+
+    /// Tapered finger along a quadratic-bend centerline. The stroke path skips the
+    /// first samples so finger edges fade out inside the palm instead of seaming.
+    static func fingerPaths(_ f: Finger) -> (fill: Path, stroke: Path) {
+        let samples = 14
+        var centers: [CGPoint] = []
+        var dirs: [Double] = []
+        var x = f.base.x, y = f.base.y
+        let a0 = f.angleDeg * .pi / 180
+        let bend = f.bendDeg * .pi / 180
+        for i in 0...samples {
+            let a = a0 + bend * Double(i) / Double(samples)
+            dirs.append(a)
+            if i > 0 {
+                let step = f.length / CGFloat(samples)
+                x += CGFloat(sin(a)) * step
+                y -= CGFloat(cos(a)) * step
+            }
+            centers.append(CGPoint(x: x, y: y))
+        }
+        var left: [CGPoint] = []
+        var right: [CGPoint] = []
+        for i in 0...samples {
+            let t = CGFloat(i) / CGFloat(samples)
+            let w = (f.baseW + (f.tipW - f.baseW) * t) / 2
+            let n = CGPoint(x: CGFloat(cos(dirs[i])), y: CGFloat(sin(dirs[i])))
+            left.append(CGPoint(x: centers[i].x - n.x * w, y: centers[i].y - n.y * w))
+            right.append(CGPoint(x: centers[i].x + n.x * w, y: centers[i].y + n.y * w))
+        }
+        let aTip = dirs[samples]
+        let tip = centers[samples]
+        let r = f.tipW / 2
+        let u = CGPoint(x: CGFloat(sin(aTip)), y: CGFloat(-cos(aTip)))
+        let n = CGPoint(x: CGFloat(cos(aTip)), y: CGFloat(sin(aTip)))
+        var arc: [CGPoint] = []
+        for i in 0...10 {
+            let th = Double(i) / 10 * .pi
+            arc.append(CGPoint(x: tip.x + n.x * CGFloat(-cos(th)) * r + u.x * CGFloat(sin(th)) * r,
+                               y: tip.y + n.y * CGFloat(-cos(th)) * r + u.y * CGFloat(sin(th)) * r))
+        }
+        var fill = Path()
+        fill.addLines(left + arc + right.reversed())
+        fill.closeSubpath()
+        var stroke = Path()
+        stroke.addLines(Array(left.dropFirst(3)) + arc + Array(right.reversed().dropLast(3)))
+        return (fill, stroke)
+    }
+
+    /// Draw one hand in its local frame (caller applies translate/rotate/scale first).
+    static func draw(_ ctx: GraphicsContext, pose: Pose, style: Style, alpha: Double = 1) {
+        guard alpha > 0.01 else { return }
+        let palm = pose == .open ? openPalm : gripPalm
+        let fingers = pose == .open ? openFingerPaths : gripFingerPaths
+        let shadeSpan: (CGPoint, CGPoint) = pose == .open
+            ? (CGPoint(x: 0, y: -150), CGPoint(x: 0, y: 110))
+            : (CGPoint(x: 0, y: -64), CGPoint(x: 0, y: 64))
+        let shading = GraphicsContext.Shading.linearGradient(
+            style.gradient, startPoint: shadeSpan.0, endPoint: shadeSpan.1)
+
+        var base = ctx
+        base.opacity = alpha
+
+        // Forearm stub fading out (down for open pose, out to the left for grip pose).
+        var stub = base
+        let stubColor = style.gradient.stops.last?.color ?? .black
+        if pose == .open {
+            stub.fill(Path(roundedRect: CGRect(x: -28, y: 54, width: 56, height: 52), cornerRadius: 16),
+                      with: .linearGradient(Gradient(colors: [stubColor, stubColor.opacity(0)]),
+                                            startPoint: CGPoint(x: 0, y: 54), endPoint: CGPoint(x: 0, y: 106)))
+        } else {
+            stub.fill(Path(roundedRect: CGRect(x: -104, y: -24, width: 66, height: 52), cornerRadius: 17),
+                      with: .linearGradient(Gradient(colors: [stubColor.opacity(0), stubColor]),
+                                            startPoint: CGPoint(x: -104, y: 0), endPoint: CGPoint(x: -38, y: 0)))
+        }
+
+        // Fill pass: palm + fingers share one gradient → reads as a single mass.
+        var fillCtx = base
+        fillCtx.addFilter(.blur(radius: 0.6))
+        fillCtx.fill(palm, with: shading)
+        for f in fingers { fillCtx.fill(f.fill, with: shading) }
+
+        // Detail pass: tendons + knuckle sheen.
+        if style.detail {
+            var detail = base
+            detail.addFilter(.blur(radius: 3))
+            if pose == .open {
+                detail.opacity = alpha * 0.07
+                for f in openFingers {
+                    var tendon = Path()
+                    tendon.move(to: CGPoint(x: 2, y: 52))
+                    tendon.addQuadCurve(to: f.base,
+                                        control: CGPoint(x: f.base.x * 0.55, y: f.base.y * 0.4 + 20))
+                    detail.stroke(tendon, with: .color(style.rim), lineWidth: 5)
+                }
+                detail.opacity = alpha * 0.10
+                for f in openFingers {
+                    detail.fill(Path(ellipseIn: CGRect(x: f.base.x - 8, y: f.base.y - 7, width: 16, height: 10)),
+                                with: .color(style.rim))
+                }
+            } else {
+                detail.opacity = alpha * 0.12
+                for k in [CGPoint(x: 8, y: -28), CGPoint(x: 12, y: -10),
+                          CGPoint(x: 12, y: 8), CGPoint(x: 8, y: 26)] {
+                    detail.fill(Path(ellipseIn: CGRect(x: k.x - 7, y: k.y - 5, width: 14, height: 10)),
+                                with: .color(style.rim))
+                }
+            }
+        }
+
+        // Rim-light pass: blurred bright edges (open paths, so no hard seams).
+        var rim = base
+        rim.opacity = alpha * style.rimOpacity
+        rim.addFilter(.blur(radius: 1.4))
+        rim.stroke(palm, with: .color(style.rim), lineWidth: 1.6)
+        for f in fingers { rim.stroke(f.stroke, with: .color(style.rim), lineWidth: 1.4) }
+    }
+}
+
+// MARK: - Grip demo stage (the "hands take the grip" loop for the lesson page)
+
+/// Dark-stage animation: two translucent hands float in open — visionOS style — then
+/// travel onto the club and close around the grip, lead hand first, trail hand stacking
+/// underneath. Loops forever; caption chip narrates each beat.
+struct GripHandsDemo: View {
+    // Stage design space 480×420; the club runs butt → head at address angle.
+    private let butt = CGPoint(x: 118, y: 36)
+    private let head = CGPoint(x: 400, y: 330)
+
+    private func along(_ t: CGFloat) -> CGPoint {
+        CGPoint(x: butt.x + (head.x - butt.x) * t, y: butt.y + (head.y - butt.y) * t)
+    }
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { ctx, size in
+                let s = min(size.width / 480, size.height / 420)
+                ctx.translateBy(x: (size.width - 480 * s) / 2, y: (size.height - 420 * s) / 2)
+                ctx.scaleBy(x: s, y: s)
+
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let p = (t / 6.0).truncatingRemainder(dividingBy: 1)
+                let fadeAll = p > 0.93 ? max(0, (1 - p) / 0.07) : min(1, p / 0.06)
+
+                drawClub(ctx)
+
+                let shaftDeg = Double(atan2(head.y - butt.y, head.x - butt.x)) * 180 / .pi
+                // Lead hand: floats at the left, travels to the top of the grip.
+                drawHand(ctx, t: t, p: p, fadeAll: fadeAll,
+                         travel: (0.10, 0.32),
+                         from: (CGPoint(x: 128, y: 228), -10, 0.44),
+                         to: (along(0.15), shaftDeg - 90, 0.62),
+                         mirrored: false, bobPhase: 0)
+                // Trail hand: floats at the right, stacks snug underneath.
+                drawHand(ctx, t: t, p: p, fadeAll: fadeAll,
+                         travel: (0.36, 0.58),
+                         from: (CGPoint(x: 368, y: 212), 12, 0.44),
+                         to: (along(0.29), shaftDeg - 90, 0.62),
+                         mirrored: true, bobPhase: 1.9)
+
+                // Settle beat: gold "no gap" tick between the stacked hands.
+                if p > 0.62 && p < 0.93 {
+                    let a = min(1, (p - 0.62) / 0.05) * fadeAll
+                    let mid = along(0.22)
+                    var tick = Path()
+                    tick.move(to: CGPoint(x: mid.x + 34, y: mid.y - 26))
+                    tick.addLine(to: CGPoint(x: mid.x + 42, y: mid.y - 18))
+                    tick.addLine(to: CGPoint(x: mid.x + 56, y: mid.y - 36))
+                    ctx.stroke(tick, with: .color(TCTheme.gold.opacity(a)),
+                               style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+                }
+
+                drawCaption(ctx, p: p, fadeAll: fadeAll)
+            }
+        }
+        .background(Color(red: 0.078, green: 0.094, blue: 0.122))
+    }
+
+    private func drawClub(_ ctx: GraphicsContext) {
+        // Ground spotlight.
+        ctx.fill(Path(ellipseIn: CGRect(x: 70, y: 334, width: 380, height: 68)),
+                 with: .radialGradient(Gradient(colors: [Color(red: 0.16, green: 0.19, blue: 0.22).opacity(0.9),
+                                                         Color.clear]),
+                                       center: CGPoint(x: 260, y: 368), startRadius: 0, endRadius: 190))
+        // Shaft (below the grip) with a metallic sheen.
+        var shaft = Path()
+        shaft.move(to: along(0.5))
+        shaft.addLine(to: head)
+        ctx.stroke(shaft, with: .linearGradient(Gradient(colors: [Color(red: 0.54, green: 0.58, blue: 0.64),
+                                                                  Color(red: 0.29, green: 0.31, blue: 0.36)]),
+                                                startPoint: along(0.5), endPoint: head),
+                   style: StrokeStyle(lineWidth: 6, lineCap: .round))
+        // Iron blade at the bottom.
+        let deg = Double(atan2(head.y - butt.y, head.x - butt.x)) * 180 / .pi
+        var blade = Path()
+        blade.move(to: CGPoint(x: -4, y: -7))
+        blade.addCurve(to: CGPoint(x: 22, y: 4), control1: CGPoint(x: 10, y: -9), control2: CGPoint(x: 20, y: -4))
+        blade.addCurve(to: CGPoint(x: 6, y: 11), control1: CGPoint(x: 23, y: 9), control2: CGPoint(x: 16, y: 12))
+        blade.addLine(to: CGPoint(x: -4, y: 7))
+        blade.closeSubpath()
+        blade = blade.applying(CGAffineTransform(translationX: head.x, y: head.y)
+            .rotated(by: CGFloat(deg * .pi / 180)))
+        ctx.fill(blade, with: .color(Color(red: 0.23, green: 0.25, blue: 0.31)))
+        // Grip section: dark rubber with texture rows, butt cap above the hands.
+        var grip = Path()
+        grip.move(to: butt)
+        grip.addLine(to: along(0.5))
+        ctx.stroke(grip, with: .color(Color(red: 0.11, green: 0.12, blue: 0.15)),
+                   style: StrokeStyle(lineWidth: 15, lineCap: .round))
+        ctx.stroke(grip, with: .color(Color(red: 0.23, green: 0.26, blue: 0.31).opacity(0.7)),
+                   style: StrokeStyle(lineWidth: 15, lineCap: .round, dash: [1.5, 6]))
+        ctx.stroke(Path(ellipseIn: CGRect(x: butt.x - 9, y: butt.y - 9, width: 18, height: 18)),
+                   with: .color(Color(red: 0.29, green: 0.32, blue: 0.38)), lineWidth: 2.5)
+    }
+
+    /// One hand across the whole loop: float (bobbing, open) → travel (open, turning
+    /// to the shaft) → crossfade to the grip pose as it lands → hold.
+    private func drawHand(_ ctx: GraphicsContext, t: TimeInterval, p: Double, fadeAll: Double,
+                          travel: (Double, Double),
+                          from: (CGPoint, Double, CGFloat),
+                          to: (CGPoint, Double, CGFloat),
+                          mirrored: Bool, bobPhase: Double) {
+        let progress = min(max((p - travel.0) / (travel.1 - travel.0), 0), 1)
+        let eased = progress * progress * (3 - 2 * progress)   // smoothstep
+        let gripFrac = min(max((progress - 0.7) / 0.3, 0), 1)
+
+        let bob = (1 - eased) * 4 * sin(t * 1.3 + bobPhase)
+        let pos = CGPoint(x: from.0.x + (to.0.x - from.0.x) * CGFloat(eased),
+                          y: from.0.y + (to.0.y - from.0.y) * CGFloat(eased) + CGFloat(bob))
+        let rot = from.1 + (to.1 - from.1) * eased
+        // Settle pulse just after both hands land.
+        let pulse: CGFloat = (0.60...0.68).contains(p) ? 1 + 0.04 * CGFloat(sin(.pi * (p - 0.60) / 0.08)) : 1
+
+        var c = ctx
+        c.translateBy(x: pos.x, y: pos.y)
+        c.rotate(by: .degrees(rot))
+        // The two artworks live at different local sizes (open hand ≈ 256 units tall,
+        // wrapped hand ≈ 90) — the open hand shrinks toward matching VISUAL size while it
+        // travels, and the crossfade dips through transparency so the pose (and the trail
+        // hand's mirror) switches while nearly invisible instead of popping.
+        let openLand = to.2 * (90.0 / 256.0) * 1.2   // slightly larger than the fist it becomes
+        let openScale = (from.2 + (openLand - from.2) * CGFloat(eased)) * pulse
+        let gripScale = to.2 * pulse
+        let openAlpha = (1 - min(1, gripFrac / 0.6)) * fadeAll
+        let gripAlpha = max(0, (gripFrac - 0.4) / 0.6) * fadeAll
+        if openAlpha > 0.01 {
+            var open = c
+            open.scaleBy(x: mirrored ? -openScale : openScale, y: openScale)
+            GhostHandArt.draw(open, pose: .open, style: .realistic, alpha: openAlpha)
+        }
+        if gripAlpha > 0.01 {
+            var grip = c
+            grip.scaleBy(x: gripScale, y: gripScale)
+            grip.translateBy(x: -14, y: 0)   // center the wrapped hand on the shaft line
+            GhostHandArt.draw(grip, pose: .grip, style: .realistic, alpha: gripAlpha)
+        }
+    }
+
+    private func drawCaption(_ ctx: GraphicsContext, p: Double, fadeAll: Double) {
+        let caption: String
+        switch p {
+        case ..<0.34:  caption = "Lead hand first — fingers wrap, thumb pad on top"
+        case ..<0.60:  caption = "Trail hand — thumb covers the lead thumbnail"
+        default:       caption = "Interlock pinky + index — 5/10 pressure"
+        }
+        let text = ctx.resolve(Text(caption).font(.system(size: 15, weight: .bold))
+            .foregroundColor(.white.opacity(0.92)))
+        let sz = text.measure(in: CGSize(width: 440, height: 60))
+        let rect = CGRect(x: 240 - sz.width / 2 - 14, y: 384 - sz.height / 2 - 8,
+                          width: sz.width + 28, height: sz.height + 16)
+        var c = ctx
+        c.opacity = fadeAll
+        c.fill(Path(roundedRect: rect, cornerRadius: rect.height / 2),
+               with: .color(.black.opacity(0.45)))
+        c.draw(text, at: CGPoint(x: 240, y: 384))
     }
 }
 
@@ -584,14 +816,10 @@ private struct GripKnuckleIllustration: View {
                 CGPoint(x: 171, y: 66),
             ]
             let visible = strong ? 3 : 2
-            for (i, k) in knuckles.enumerated() {
+            for k in knuckles.prefix(visible) {
                 let r: CGFloat = 4.5
-                let dot = Path(ellipseIn: CGRect(x: k.x - r, y: k.y - r, width: r * 2, height: r * 2))
-                if i < visible {
-                    ctx.fill(dot, with: .color(TCTheme.gold))
-                } else {
-                    ctx.stroke(dot, with: .color(outline.opacity(0.4)), lineWidth: 1.2)
-                }
+                ctx.fill(Path(ellipseIn: CGRect(x: k.x - r, y: k.y - r, width: r * 2, height: r * 2)),
+                         with: .color(TCTheme.gold))
             }
             ctx.draw(Text("\(visible) KNUCKLES").font(.system(size: 9, weight: .black)).foregroundColor(TCTheme.gold),
                      at: CGPoint(x: 112, y: 40))
@@ -634,9 +862,3 @@ private func fingerCapsule(from p1: CGPoint, to p2: CGPoint, width: CGFloat) -> 
     return path
 }
 
-/// Capsule from a base point at an angle (0° = straight down, + tilts right).
-private func fingerCapsule(from base: CGPoint, angleDeg: Double, length: CGFloat, width: CGFloat) -> Path {
-    let a = angleDeg * .pi / 180
-    let end = CGPoint(x: base.x + CGFloat(sin(a)) * length, y: base.y + CGFloat(cos(a)) * length)
-    return fingerCapsule(from: base, to: end, width: width)
-}

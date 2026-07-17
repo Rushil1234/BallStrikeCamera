@@ -16,15 +16,17 @@ struct SwingStudioView: View {
     @State private var takes: [SwingRecording] = []
     @State private var analyzing = 0
     // Front camera is the default: coach mode is interactive — the player sees themself,
-    // the live skeleton, and the instructions all at once. Back camera stays one tap away.
+    // the live skeleton, and the instructions all at once. Back camera is the labeled
+    // "friend films you" mode.
     @State private var mirrorMode = true
-    /// nil = auto (follow the controller's pose-based detection); set = manual override.
-    @State private var manualView: SwingViewAngle? = nil
     /// The just-analyzed swing — presented automatically so every swing is immediately
     /// followed by its replay + suggestions.
     @State private var reviewSwing: SwingRecording? = nil
+    /// Explicit, persisted camera-angle choice — it decides which metric tracker runs,
+    /// so the player picks it, sees it, and gets exactly that analysis. No auto-guessing.
+    @AppStorage("tc_swing_view_angle") private var viewAngleRaw = SwingViewAngle.faceOn.rawValue
 
-    private var viewAngle: SwingViewAngle { manualView ?? studio.detectedView }
+    private var viewAngle: SwingViewAngle { SwingViewAngle(rawValue: viewAngleRaw) ?? .faceOn }
 
     var body: some View {
         ZStack {
@@ -32,11 +34,16 @@ struct SwingStudioView: View {
             CameraPreviewView(session: studio.session)
                 .ignoresSafeArea()
 
-            // Mirror-mode live skeleton (side-colored bones, Sportsbox-style)
+            // Mirror-mode live skeleton (side-colored bones, Sportsbox-style).
+            // Must share the preview's full-screen coordinate space AND its aspect-fill
+            // mapping, or the skeleton lands beside the body.
             if mirrorMode, let pose = studio.liveSkeleton {
                 GeometryReader { geo in
-                    RichPoseOverlay(pose: pose, trail: nil, spineAngle: nil, size: geo.size)
+                    RichPoseOverlay(pose: pose, trail: nil, spineAngle: nil,
+                                    videoRect: aspectFillRect(content: studio.bufferSize,
+                                                              in: geo.size))
                 }
+                .ignoresSafeArea()
                 .allowsHitTesting(false)
             }
 
@@ -93,62 +100,85 @@ struct SwingStudioView: View {
     }
 
     private var topBar: some View {
-        HStack {
-            Button {
-                studio.stop()
-                onDone()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.55)))
-            }
-            Spacer()
-            // Auto → Face-On → Down-the-Line → Auto. Auto follows the live pose detection,
-            // so most players never touch this.
-            Button {
-                switch manualView {
-                case nil:           manualView = .faceOn
-                case .faceOn:       manualView = .downTheLine
-                case .downTheLine:  manualView = nil
+        VStack(spacing: 10) {
+            HStack {
+                Button {
+                    studio.stop()
+                    onDone()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Color.black.opacity(0.55)))
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: manualView == nil ? "wand.and.stars" : "arrow.triangle.2.circlepath")
-                        .font(.system(size: 13, weight: .bold))
-                    Text(manualView == nil ? "Auto · \(viewAngle.displayName)" : viewAngle.displayName)
-                        .font(.system(size: 16, weight: .bold))
+                Spacer()
+                Button {
+                    NotificationCenter.default.post(name: .tcShowGuide, object: GuideScreen.swingStudio.rawValue)
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Color.black.opacity(0.55)))
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(Capsule().fill(Color.black.opacity(0.55)))
             }
-            Spacer()
-            Button {
-                mirrorMode.toggle()
-                studio.stop()
-                startStudio()
-            } label: {
-                Image(systemName: mirrorMode ? "camera.rotate.fill" : "camera.rotate")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.55)))
-            }
-
-            Button {
-                NotificationCenter.default.post(name: .tcShowGuide, object: GuideScreen.swingStudio.rawValue)
-            } label: {
-                Image(systemName: "questionmark.circle")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Color.black.opacity(0.55)))
+            // Two explicit choices, spelled out: which ANGLE the analysis assumes, and
+            // which CAMERA is filming. The picked angle is exactly the tracker that runs.
+            HStack(spacing: 10) {
+                segmentedPill(
+                    options: [("Face-On", "person.fill"), ("Down-Line", "figure.golf")],
+                    selected: viewAngle == .faceOn ? 0 : 1
+                ) { idx in
+                    let newAngle = idx == 0 ? SwingViewAngle.faceOn : .downTheLine
+                    viewAngleRaw = newAngle.rawValue
+                    // Down-the-line: the phone sits BEHIND you (can't watch the screen
+                    // anyway) and the clubhead tracker wants 240fps — auto-switch to the
+                    // voice-guided high-speed back camera.
+                    if newAngle == .downTheLine, mirrorMode {
+                        mirrorMode = false
+                        studio.stop()
+                        startStudio()
+                    }
+                }
+                segmentedPill(
+                    options: [("Selfie", "iphone"), ("Friend Films", "camera.fill")],
+                    selected: mirrorMode ? 0 : 1
+                ) { idx in
+                    let wantMirror = idx == 0
+                    guard wantMirror != mirrorMode else { return }
+                    mirrorMode = wantMirror
+                    studio.stop()
+                    startStudio()
+                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
+    }
+
+    private func segmentedPill(options: [(String, String)], selected: Int,
+                               action: @escaping (Int) -> Void) -> some View {
+        HStack(spacing: 3) {
+            ForEach(options.indices, id: \.self) { i in
+                Button { action(i) } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: options[i].1)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(options[i].0)
+                            .font(.system(size: 13, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .foregroundColor(i == selected ? .black : .white.opacity(0.85))
+                    .padding(.horizontal, 11).padding(.vertical, 8)
+                    .background(Capsule().fill(i == selected ? Color.white : Color.clear))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Color.black.opacity(0.55)))
     }
 
     // Big banner, not a pill — the player reads this from several feet away.
@@ -293,6 +323,13 @@ struct SwingReplayView: View {
     @State private var player: AVPlayer?
     @State private var selectedPhase: String?
     @State private var showSkeleton = true
+    /// Real pixel size of the clip (transform applied) — the overlay maps poses into the
+    /// video's aspect-FIT rect, not the player's frame, so skeletons sit ON the body.
+    @State private var videoPixelSize = CGSize(width: 1080, height: 1920)
+    /// True capture rate; high-fps clips default to slow-motion playback (240fps shown
+    /// at 30fps = 8× slow — the whole point of capturing DTL at speed).
+    @State private var videoFPS: Double = 30
+    @State private var slowMo = true
 
     var body: some View {
         ZStack {
@@ -314,7 +351,18 @@ struct SwingReplayView: View {
         .navigationTitle("Swing Replay")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            player = AVPlayer(url: library.videoURL(for: swing))
+            let url = library.videoURL(for: swing)
+            player = AVPlayer(url: url)
+            Task {
+                let asset = AVURLAsset(url: url)
+                if let track = try? await asset.loadTracks(withMediaType: .video).first,
+                   let (natural, transform, fps) = try? await track.load(.naturalSize, .preferredTransform, .nominalFrameRate) {
+                    let s = natural.applying(transform)
+                    videoPixelSize = CGSize(width: abs(s.width), height: abs(s.height))
+                    videoFPS = Double(fps)
+                    applyPlaybackRate()
+                }
+            }
         }
     }
 
@@ -329,9 +377,11 @@ struct SwingReplayView: View {
                             GeometryReader { geo in
                                 RichPoseOverlay(
                                     pose: currentPose,
-                                    trail: swing.handTrail,
+                                    trail: swing.clubTrail ?? swing.handTrail,
                                     spineAngle: swing.metrics.first { $0.kind == .spineTiltAddress }?.value,
-                                    size: geo.size
+                                    videoRect: AVMakeRect(aspectRatio: videoPixelSize,
+                                                          insideRect: CGRect(origin: .zero, size: geo.size)),
+                                    trailLabel: swing.clubTrail != nil ? "CLUB PATH" : "HAND PATH"
                                 )
                             }
                             .allowsHitTesting(false)
@@ -339,14 +389,47 @@ struct SwingReplayView: View {
                     }
             }
         }
+        .overlay(alignment: .topLeading) {
+            if let selectedPhase {
+                Text(selectedPhase.uppercased())
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Capsule().fill(Color.black.opacity(0.6)))
+                    .padding(10)
+            }
+        }
         .overlay(alignment: .topTrailing) {
             Button { showSkeleton.toggle() } label: {
                 Image(systemName: showSkeleton ? "figure.walk.circle.fill" : "figure.walk.circle")
-                    .font(.system(size: 24))
+                    .font(.system(size: 26))
                     .foregroundColor(.white)
                     .padding(8)
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            // High-fps clips play slow by default — that's why they were captured fast.
+            if videoFPS >= 100 {
+                Button {
+                    slowMo.toggle()
+                    applyPlaybackRate()
+                } label: {
+                    Text(slowMo ? "\(Int((videoFPS / 30).rounded()))× SLOW" : "1×")
+                        .font(.system(size: 13, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Capsule().fill(Color.black.opacity(0.6)))
+                        .padding(10)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func applyPlaybackRate() {
+        let rate: Float = (slowMo && videoFPS >= 100) ? Float(30 / videoFPS) : 1
+        player?.defaultRate = rate
+        if let player, player.rate != 0 { player.rate = rate }
     }
 
     private var currentPose: StoredPose? {
@@ -362,18 +445,20 @@ struct SwingReplayView: View {
         if let phases = swing.phases {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(phases.labelled, id: \.label) { item in
+                    ForEach(Array(phases.labelled.enumerated()), id: \.element.label) { idx, item in
                         Button {
                             selectedPhase = item.label
-                            let t = Double(item.frame) / max(phases.frameRate, 1)
+                            // Exact stored timestamp — index ÷ nominal fps drifts on slo-mo
+                            // clips and lands the still on the wrong moment.
+                            let t = phases.seconds(forPhaseAt: idx)
                             player?.pause()
                             player?.seek(to: CMTime(seconds: t, preferredTimescale: 600),
                                          toleranceBefore: .zero, toleranceAfter: .zero)
                         } label: {
                             Text(item.label)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .foregroundColor(selectedPhase == item.label ? TCTheme.onPrimary : TCTheme.textMuted)
-                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .padding(.horizontal, 15).padding(.vertical, 10)
                                 .background(selectedPhase == item.label
                                             ? AnyShapeStyle(TCTheme.primaryFill)
                                             : AnyShapeStyle(TCTheme.panel))
@@ -399,10 +484,10 @@ struct SwingReplayView: View {
                 ForEach(verdicts, id: \.1) { verdict, _ in
                     HStack(spacing: 6) {
                         Image(systemName: verdict.good ? "checkmark.circle.fill" : "xmark.circle.fill")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(verdict.good ? TCTheme.sage : Color(red: 0.9, green: 0.35, blue: 0.3))
                         Text(verdict.label)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundColor(TCTheme.textPrimary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
@@ -445,13 +530,15 @@ struct SwingReplayView: View {
                 }
                 HStack(spacing: 8) {
                     ForEach(swing.categoryScores.sorted(by: { $0.key < $1.key }), id: \.key) { cat, val in
-                        VStack(spacing: 2) {
+                        VStack(spacing: 3) {
                             Text("\(val)")
-                                .font(.system(size: 15, weight: .bold, design: .monospaced))
+                                .font(.system(size: 19, weight: .bold, design: .monospaced))
                                 .foregroundColor(TCTheme.textPrimary)
                             Text(cat.uppercased())
-                                .font(.system(size: 8, weight: .bold))
+                                .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(TCTheme.textUltraMuted)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
@@ -461,13 +548,15 @@ struct SwingReplayView: View {
                 }
                 if !swing.headline.isEmpty {
                     Label(swing.headline, systemImage: "hand.thumbsup.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(TCTheme.sage)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if !swing.focusPoint.isEmpty {
                     Label(swing.focusPoint, systemImage: "target")
-                        .font(.system(size: 13))
+                        .font(.system(size: 15))
                         .foregroundColor(TCTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .tcCard(padding: 16)
@@ -496,22 +585,22 @@ struct SwingReplayView: View {
                             .fill(m.inBand ? TCTheme.sage : TCTheme.gold)
                             .frame(width: 8, height: 8)
                         Text(m.kind.displayName)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(TCTheme.textPrimary)
                         Spacer()
                         Text(m.kind == .tempoRatio
                              ? String(format: "%.1f%@", m.value, m.kind.unit)
                              : "\(Int(m.value))\(m.kind.unit)")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
+                            .font(.system(size: 17, weight: .bold, design: .monospaced))
                             .foregroundColor(m.inBand ? TCTheme.sage : TCTheme.gold)
                         Text(m.kind == .tempoRatio
                              ? String(format: "target %.1f–%.1f", m.targetLow, m.targetHigh)
                              : "target \(Int(m.targetLow))–\(Int(m.targetHigh))\(m.kind.unit)")
-                            .font(.system(size: 10))
+                            .font(.system(size: 12))
                             .foregroundColor(TCTheme.textUltraMuted)
-                            .frame(width: 100, alignment: .trailing)
+                            .frame(width: 110, alignment: .trailing)
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 6)
                 }
             }
             .tcCard(padding: 14)
@@ -527,14 +616,14 @@ struct SwingReplayView: View {
                 ForEach(faults) { fault in
                     VStack(alignment: .leading, spacing: 6) {
                         Label(fault.title, systemImage: "exclamationmark.triangle.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundColor(TCTheme.gold)
                         Text(fault.explanation)
-                            .font(.system(size: 13))
+                            .font(.system(size: 15))
                             .foregroundColor(TCTheme.textSecondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Label(fault.drill, systemImage: "figure.golf")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundColor(TCTheme.sage)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -548,14 +637,21 @@ struct SwingReplayView: View {
     }
 }
 
-/// The Sportsbox/SwingVision-style overlay: hand-path trail ribbon, side-colored bones
+/// The Sportsbox/SwingVision-style overlay: hand-path ribbon, side-colored bones
 /// (lead side cool blue, trail side warm red, torso green), glowing joints, and an angle
 /// badge — instead of bare dots.
+///
+/// `videoRect` is the rect the VIDEO PIXELS occupy in this view's coordinates — aspect-FIT
+/// for the replay player, aspect-FILL for the live preview. Poses are normalized to the
+/// video frame, so mapping through the wrong rect is exactly the "skeleton doesn't line up"
+/// bug; every caller must pass the real one.
 struct RichPoseOverlay: View {
     let pose: StoredPose?
     let trail: [[Double]]?
     let spineAngle: Double?
-    let size: CGSize
+    let videoRect: CGRect
+    /// What the ribbon traces — "HAND PATH" face-on, "CLUB PATH" down-the-line.
+    var trailLabel: String = "HAND PATH"
 
     private static let leftJoints: Set<Int> = [2, 4, 6, 8, 10, 12]
     private static let rightJoints: Set<Int> = [3, 5, 7, 9, 11, 13]
@@ -563,21 +659,30 @@ struct RichPoseOverlay: View {
     var body: some View {
         Canvas { ctx, _ in
             func toScreen(_ x: Double, _ y: Double) -> CGPoint {
-                CGPoint(x: x * size.width, y: (1 - y) * size.height)
+                CGPoint(x: videoRect.minX + x * videoRect.width,
+                        y: videoRect.minY + (1 - y) * videoRect.height)
             }
 
-            // ── Swing trail ribbon (cyan→magenta along the path) ──
+            // ── Hand-path ribbon (cyan→magenta), smoothed + labeled so it's clearly
+            // the HANDS being traced, not a clubhead guess ──
             if let trail, trail.count > 3 {
+                let pts = trail.map { toScreen($0[0], $0[1]) }
                 var path = Path()
-                for (i, p) in trail.enumerated() {
-                    let pt = toScreen(p[0], p[1])
-                    if i == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+                path.move(to: pts[0])
+                for i in 1..<pts.count - 1 {
+                    let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2,
+                                      y: (pts[i].y + pts[i + 1].y) / 2)
+                    path.addQuadCurve(to: mid, control: pts[i])
                 }
+                path.addLine(to: pts[pts.count - 1])
                 ctx.stroke(path, with: .linearGradient(
-                    Gradient(colors: [Color.cyan.opacity(0.9), Color(red: 1.0, green: 0.3, blue: 0.9).opacity(0.9)]),
-                    startPoint: toScreen(trail.first![0], trail.first![1]),
-                    endPoint: toScreen(trail.last![0], trail.last![1])),
-                    style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+                    Gradient(colors: [Color.cyan.opacity(0.85), Color(red: 1.0, green: 0.3, blue: 0.9).opacity(0.85)]),
+                    startPoint: pts.first!, endPoint: pts.last!),
+                    style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+                ctx.draw(Text(trailLabel)
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundColor(.cyan.opacity(0.9)),
+                         at: CGPoint(x: pts[0].x, y: min(videoRect.maxY - 8, pts[0].y + 16)))
             }
 
             guard let pose else { return }
@@ -599,8 +704,8 @@ struct RichPoseOverlay: View {
                 }
                 var line = Path()
                 line.move(to: pa); line.addLine(to: pb)
-                ctx.stroke(line, with: .color(color.opacity(0.95)),
-                           style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                ctx.stroke(line, with: .color(color.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
             }
 
             // ── Spine line + angle badge ──
@@ -608,8 +713,8 @@ struct RichPoseOverlay: View {
                 let hip = CGPoint(x: (hipL.x + hipR.x)/2, y: (hipL.y + hipR.y)/2)
                 let sh  = CGPoint(x: (shL.x + shR.x)/2, y: (shL.y + shR.y)/2)
                 var spine = Path(); spine.move(to: hip); spine.addLine(to: sh)
-                ctx.stroke(spine, with: .color(.yellow.opacity(0.9)),
-                           style: StrokeStyle(lineWidth: 3.5, dash: [7, 5]))
+                ctx.stroke(spine, with: .color(.yellow.opacity(0.85)),
+                           style: StrokeStyle(lineWidth: 2.5, dash: [7, 5]))
                 if let spineAngle {
                     let label = Text("\(Int(spineAngle))°")
                         .font(.system(size: 17, weight: .black, design: .rounded))
@@ -625,13 +730,63 @@ struct RichPoseOverlay: View {
                     ? Color(red: 0.35, green: 0.65, blue: 1.0)
                     : Self.rightJoints.contains(i) ? Color(red: 1.0, green: 0.38, blue: 0.35)
                     : Color(red: 0.35, green: 0.9, blue: 0.5)
-                ctx.fill(Path(ellipseIn: CGRect(x: p.x - 7, y: p.y - 7, width: 14, height: 14)),
-                         with: .color(glow.opacity(0.45)))
-                ctx.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)),
+                ctx.fill(Path(ellipseIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)),
+                         with: .color(glow.opacity(0.4)))
+                ctx.fill(Path(ellipseIn: CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6)),
                          with: .color(.white))
+            }
+
+            // ── Live angle read-outs (face-on): shoulder tilt, hip tilt, head lean ──
+            // Each is a solid line through the joints + a dashed horizontal reference,
+            // so the number visibly IS the angle between them.
+            let angles = SwingSkeleton.angles(from: pose)
+            func tiltGauge(_ a: CGPoint, _ b: CGPoint, deg: Double, name: String) {
+                let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
+                let half = max(hypot(b.x - a.x, b.y - a.y) / 2 + 12, 30)
+                let ux = (b.x - a.x) / max(hypot(b.x - a.x, b.y - a.y), 1)
+                let uy = (b.y - a.y) / max(hypot(b.x - a.x, b.y - a.y), 1)
+                var line = Path()
+                line.move(to: CGPoint(x: mid.x - ux * half, y: mid.y - uy * half))
+                line.addLine(to: CGPoint(x: mid.x + ux * half, y: mid.y + uy * half))
+                ctx.stroke(line, with: .color(.white.opacity(0.85)),
+                           style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                var ref = Path()
+                ref.move(to: CGPoint(x: mid.x - half, y: mid.y))
+                ref.addLine(to: CGPoint(x: mid.x + half, y: mid.y))
+                ctx.stroke(ref, with: .color(.white.opacity(0.4)),
+                           style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
+                ctx.draw(Text("\(name) \(abs(Int(deg.rounded())))°")
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundColor(.white),
+                         at: CGPoint(x: mid.x + half + 4, y: mid.y), anchor: .leading)
+            }
+            if let deg = angles.shoulderTilt, let l = pt(2), let r = pt(3) {
+                tiltGauge(r, l, deg: deg, name: "SHLDR")
+            }
+            if let deg = angles.hipTilt, let l = pt(8), let r = pt(9) {
+                tiltGauge(r, l, deg: deg, name: "HIP")
+            }
+            if let deg = angles.headLean, let nose = pt(0) {
+                ctx.draw(Text("HEAD \(abs(Int(deg.rounded())))°")
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundColor(.white),
+                         at: CGPoint(x: nose.x, y: nose.y - 18))
             }
         }
     }
+}
+
+/// Rect a `content`-sized video occupies when aspect-FILLED into `container` (preview
+/// layers crop; the overlay must crop identically).
+private func aspectFillRect(content: CGSize, in container: CGSize) -> CGRect {
+    guard content.width > 0, content.height > 0 else {
+        return CGRect(origin: .zero, size: container)
+    }
+    let s = max(container.width / content.width, container.height / content.height)
+    let size = CGSize(width: content.width * s, height: content.height * s)
+    return CGRect(x: (container.width - size.width) / 2,
+                  y: (container.height - size.height) / 2,
+                  width: size.width, height: size.height)
 }
 
 /// Room-scale framing direction: one giant animated arrow + a single huge word.

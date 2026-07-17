@@ -663,55 +663,29 @@ private struct GripCoachOverlay: View {
         let trailProgress = easeOut((p - 0.32) / 0.26)
         let trailS = 0.72 - (0.72 - (0.14 + Double(span) * 0.95)) * trailProgress
         let trailAlpha = p < 0.30 ? 0 : min(1, (p - 0.30) / 0.1) * fadeAll
-        if trailAlpha > 0.01 {
-            drawGhostHand(ctx, at: along(CGFloat(trailS)), angle: angle, height: handH * pulse,
-                          color: TCTheme.gold, alpha: trailAlpha, flipped: true)
-        }
+        drawGhostHand(ctx, at: along(CGFloat(trailS)), angle: angle, height: handH * pulse,
+                      tint: TCTheme.gold, alpha: trailAlpha)
 
         let leadProgress = easeOut((p - 0.06) / 0.28)
         let leadS = 0.55 - (0.55 - 0.14) * leadProgress
         let leadAlpha = min(1, max(0, (p - 0.04) / 0.1)) * fadeAll
-        if leadAlpha > 0.01 {
-            drawGhostHand(ctx, at: along(CGFloat(leadS)), angle: angle, height: handH * pulse,
-                          color: TCTheme.sageBright, alpha: leadAlpha, flipped: false)
-        }
+        drawGhostHand(ctx, at: along(CGFloat(leadS)), angle: angle, height: handH * pulse,
+                      tint: TCTheme.sageBright, alpha: leadAlpha)
     }
 
-    /// One stylized gripping hand: back-of-glove silhouette, fingertips wrapping past the
-    /// shaft, thumb running down it. Drawn in a local frame where the shaft is vertical.
+    /// One tinted gripping hand from the shared artwork (fingers wrapped over the shaft,
+    /// thumb running down it), drawn in a local frame where the shaft is vertical.
     private func drawGhostHand(_ ctx: GraphicsContext, at point: CGPoint, angle: CGFloat,
-                               height: CGFloat, color: Color, alpha: Double, flipped: Bool) {
+                               height: CGFloat, tint: Color, alpha: Double) {
+        guard alpha > 0.01 else { return }
         var c = ctx
-        c.opacity = alpha
         c.addFilter(.shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2))
         c.translateBy(x: point.x, y: point.y)
         c.rotate(by: Angle(radians: Double(angle) - .pi / 2))
-        let k = height / 80
-        c.scaleBy(x: flipped ? -k : k, y: k)
-
-        // Fingertips peeking past the far side of the shaft.
-        for row in [-26.0, -8.0, 10.0, 28.0] {
-            let tip = ghostCapsule(from: CGPoint(x: 8, y: row), to: CGPoint(x: 30, y: row), width: 13)
-            c.fill(tip, with: .color(color.opacity(0.88)))
-            c.stroke(tip, with: .color(.white.opacity(0.85)), lineWidth: 1.3)
-        }
-
-        // Back of the hand.
-        var palm = Path()
-        palm.move(to: CGPoint(x: -78, y: 6))
-        palm.addCurve(to: CGPoint(x: -24, y: -36), control1: CGPoint(x: -74, y: -22), control2: CGPoint(x: -52, y: -34))
-        palm.addCurve(to: CGPoint(x: 14, y: -12), control1: CGPoint(x: -2, y: -38), control2: CGPoint(x: 12, y: -28))
-        palm.addLine(to: CGPoint(x: 16, y: 16))
-        palm.addCurve(to: CGPoint(x: -34, y: 38), control1: CGPoint(x: 10, y: 34), control2: CGPoint(x: -10, y: 40))
-        palm.addCurve(to: CGPoint(x: -78, y: 6), control1: CGPoint(x: -60, y: 36), control2: CGPoint(x: -76, y: 26))
-        palm.closeSubpath()
-        c.fill(palm, with: .color(color.opacity(0.88)))
-        c.stroke(palm, with: .color(.white.opacity(0.9)), lineWidth: 1.5)
-
-        // Thumb down the shaft.
-        let thumb = ghostCapsule(from: CGPoint(x: -6, y: -28), to: CGPoint(x: 4, y: 18), width: 14)
-        c.fill(thumb, with: .color(color.opacity(0.95)))
-        c.stroke(thumb, with: .color(.white.opacity(0.9)), lineWidth: 1.3)
+        let k = height / 90
+        c.scaleBy(x: k, y: k)
+        c.translateBy(x: -14, y: 0)   // center the wrapped hand on the shaft line
+        GhostHandArt.draw(c, pose: .grip, style: .tinted(tint), alpha: alpha)
     }
 
     /// Gold sweep while we look for the club in frame.
@@ -728,17 +702,6 @@ private struct GripCoachOverlay: View {
                    with: .color(.white.opacity(0.18)),
                    style: StrokeStyle(lineWidth: 1.5, dash: [7, 7]))
     }
-}
-
-private func ghostCapsule(from p1: CGPoint, to p2: CGPoint, width: CGFloat) -> Path {
-    let dx = p2.x - p1.x, dy = p2.y - p1.y
-    let len = max(hypot(dx, dy), 0.001)
-    var path = Path()
-    path.addRoundedRect(in: CGRect(x: 0, y: -width / 2, width: len, height: width),
-                        cornerSize: CGSize(width: width / 2, height: width / 2),
-                        style: .continuous,
-                        transform: CGAffineTransform(translationX: p1.x, y: p1.y).rotated(by: atan2(dy, dx)))
-    return path
 }
 
 /// Distance from a point to a segment, plus where along the segment it lands (0 = a).
@@ -797,9 +760,10 @@ final class GripCheckController: NSObject, ObservableObject, AVCaptureVideoDataO
             _gcHoldStart = nil
             _gcVerified = false
             if session.inputs.isEmpty {
-                // Tripod flow: the phone faces the player, so the BACK camera is the coach.
-                let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-                    ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+                // Tripod flow: the phone faces the player SCREEN-OUT (they watch the ghost
+                // hands + status while gripping), so the FRONT camera is the coach.
+                let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
+                    ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
                 guard let device,
                       let input = try? AVCaptureDeviceInput(device: device),
                       session.canAddInput(input) else {
@@ -855,11 +819,14 @@ final class GripCheckController: NSObject, ObservableObject, AVCaptureVideoDataO
             .perform([handRequest, contourRequest])
 
         var hands: [CGPoint] = []
+        var handSpans: [CGFloat] = []     // wrist↔knuckle size, aspect space — distance proxy
         for obs in handRequest.results ?? [] {
             guard let wrist = try? obs.recognizedPoint(.wrist), wrist.confidence > 0.3 else { continue }
             var center = wrist.location
             if let mcp = try? obs.recognizedPoint(.middleMCP), mcp.confidence > 0.3 {
                 center = CGPoint(x: (center.x + mcp.location.x) / 2, y: (center.y + mcp.location.y) / 2)
+                let w = asp(wrist.location), k = asp(mcp.location)
+                handSpans.append(hypot(w.x - k.x, w.y - k.y))
             }
             hands.append(center)
         }
@@ -884,16 +851,21 @@ final class GripCheckController: NSObject, ObservableObject, AVCaptureVideoDataO
             _gcShaft = nil   // lock survives brief occlusion (hands crossing the shaft)
         }
 
+        // Thresholds scale with apparent hand size, so standing a few steps back from the
+        // tripod (hands small in frame) is just as verifiable as filling the frame.
+        let span = handSpans.isEmpty ? 0.05 : handSpans.reduce(0, +) / CGFloat(handSpans.count)
+        let stackedThresh = min(max(1.9 * span, 0.05), 0.13)
+        let onClubThresh = min(max(1.1 * span, 0.03), 0.08)
         var stacked = false
         var onClub = false
         if hands.count >= 2 {
             let a = asp(hands[0]), b = asp(hands[1])
-            stacked = hypot(a.x - b.x, a.y - b.y) < 0.10
+            stacked = hypot(a.x - b.x, a.y - b.y) < stackedThresh
         }
         if let s = _gcShaft, hands.count >= 2 {
             let a = asp(s.butt), b = asp(s.tip)
             let hits = hands.map { segmentDistance(asp($0), a, b) }
-            onClub = hits.allSatisfy { $0.dist < 0.065 }
+            onClub = hits.allSatisfy { $0.dist < onClubThresh }
                 && (hits.map(\.t).reduce(0, +) / CGFloat(hits.count)) < 0.6   // grip half, not the hosel
         }
 
@@ -930,7 +902,8 @@ final class GripCheckController: NSObject, ObservableObject, AVCaptureVideoDataO
 
     /// The club shaft is the longest thin, straight, tilted contour — scored up when its
     /// upper end sits near the hands. Runs on ≤512px frames at ~5Hz.
-    private nonisolated static func bestShaftCandidate(in observation: VNContoursObservation,
+    /// Internal (not private) so the DEBUG clip harness can exercise it on real footage.
+    nonisolated static func bestShaftCandidate(in observation: VNContoursObservation,
                                                        aspect: CGFloat,
                                                        near handsMid: CGPoint?) -> (butt: CGPoint, tip: CGPoint)? {
         var contours: [VNContour] = []

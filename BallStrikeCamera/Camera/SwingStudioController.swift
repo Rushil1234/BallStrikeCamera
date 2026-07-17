@@ -38,6 +38,9 @@ final class SwingStudioController: NSObject, ObservableObject {
     /// Ordered live skeleton (SwingSkeleton.jointOrder) so the mirror draws bones, not dots.
     @Published var liveSkeleton: StoredPose? = nil
     @Published var captureFPS: Double = 60
+    /// Pixel dimensions of the live buffers (post-rotation) — the mirror overlay needs the
+    /// real aspect to map poses through the aspect-FILL preview without stretching.
+    @Published var bufferSize = CGSize(width: 1080, height: 1920)
     /// Auto-detected camera view from live pose geometry: face-on = shoulders spread wide in
     /// x; down-the-line/behind = shoulders overlap. Smoothed so it can't flicker mid-swing.
     @Published var detectedView: SwingViewAngle = .faceOn
@@ -315,6 +318,7 @@ extension SwingStudioController: AVCaptureVideoDataOutputSampleBufferDelegate {
         if now - _lastLivePose < 0.1 { return }
         _lastLivePose = now
         guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let dims = CGSize(width: CVPixelBufferGetWidth(pb), height: CVPixelBufferGetHeight(pb))
 
         let request = VNDetectHumanBodyPoseRequest()
         try? VNImageRequestHandler(cvPixelBuffer: pb, orientation: .up).perform([request])
@@ -327,6 +331,7 @@ extension SwingStudioController: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
         let frame = SwingPoseFrame(index: 0, time: now, joints: joints)
         Task { @MainActor in
+            if self.bufferSize != dims { self.bufferSize = dims }
             self.handlePose(frame: frame, at: now)
         }
     }
