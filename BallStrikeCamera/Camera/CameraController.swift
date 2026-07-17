@@ -1239,6 +1239,12 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             print("[V2Primary] track active — \(v2Primary.observations.values.filter { $0.centerX != nil }.count) sightings, impact f\(effectiveImpactIndex)")
         }
 
+        // Universal ballistic gap fill (both V2 and legacy tracks) — shared helper so
+        // the live pipeline and the parity sweep measure the same math.
+        observationMap = V2PrimaryTrack.gapFill(observationMap,
+                                                impactIndex: effectiveImpactIndex,
+                                                frames: prelimFrames)
+
         // Step 3 — Merge into final frames
         let finalFrames: [AnalyzedShotFrame] = prelimFrames.map { frame in
             AnalyzedShotFrame(

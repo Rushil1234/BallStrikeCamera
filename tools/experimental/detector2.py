@@ -33,7 +33,7 @@ CONE_HALF_DEG = 60.0
 CLUB_SCORER_PATH = os.path.expanduser('~/Documents/TrueCarryTraining/labels/club_scorer.json')
 
 
-def _blob_features(c, mask_src, W, H, motion, dh, V):
+def _blob_features(c, mask_src, W, H, motion, dh, V, HUE=None, SAT=None):
     area = cv2.contourArea(c)
     if area < 8:
         return None
@@ -59,6 +59,8 @@ def _blob_features(c, mask_src, W, H, motion, dh, V):
         'mot': float(motion[y:y+h, x:x+w].mean()) if motion is not None else 0.0,
         'dh_mean': float(dh[y:y+h, x:x+w].mean()),
         'v_mean': float(V[y:y+h, x:x+w].mean()),
+        'h_mean': float(HUE[y:y+h, x:x+w].mean()) if HUE is not None else 0.0,
+        's_mean': float(SAT[y:y+h, x:x+w].mean()) if SAT is not None else 0.0,
     }
     return b
 
@@ -69,13 +71,14 @@ def masks_and_blobs(bgr, prev_luma, base_luma):
     motion = np.abs(luma - base_luma) if base_luma is not None else None
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
     V, S = hsv[..., 2], hsv[..., 1]
+    HUE = hsv[..., 0]
     H, W = dh.shape
 
     out = []
     def collect(mask, src):
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for c in contours:
-            b = _blob_features(c, src, W, H, motion, dh, V)
+            b = _blob_features(c, src, W, H, motion, dh, V, HUE, SAT=S)
             if b:
                 out.append(b)
 

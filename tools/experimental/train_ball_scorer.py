@@ -19,7 +19,7 @@ from golf_context_detector import derive_lock
 ARCHIVE = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260712/AllFramesArchive')
 ARCHIVE_0716 = os.path.expanduser('~/Documents/TrueCarryFramesArchive_20260716/AllFramesArchive')
 LABELS = json.load(open(os.path.expanduser('~/Documents/TrueCarryTraining/labels/labels.json')))
-CACHE = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_train_cache_v5.json')
+CACHE = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_train_cache_v6.json')
 
 
 def shot_dir(shot):
@@ -30,8 +30,22 @@ OUT = os.path.expanduser('~/Documents/TrueCarryTraining/labels/ball_scorer.json'
 # mot_norm added July 16: a real range field is littered with static balls that score
 # 0.95+ on shape; motion-vs-pre-impact-baseline is what separates them from the flying
 # ball (clutter 2-15, real flight 56-98).
+# hue_sim/sat_sim (July 16 night): identity match to the LOCKED ball's color — a yellow
+# ball can never be confused with the (gray) clubhead or white clutter, and white balls
+# get a free consistency check. Lock color = the rest-ball blob's bbox-mean HSV.
 BALL_FEATURES = ['circ', 'elong', 'r_ratio', 'dh_norm', 'border', 'dist_pred', 'dev_dir',
-                 'progress_step', 'aligned_cos', 'impacted', 'is_rescue', 'mot_norm']
+                 'progress_step', 'aligned_cos', 'impacted', 'is_rescue', 'mot_norm',
+                 'hue_sim', 'sat_sim']
+
+
+def color_sims(b, lock_hs):
+    if not lock_hs:
+        return 0.5, 0.5
+    dh0 = abs(b.get('h_mean', 0) - lock_hs[0])
+    dh0 = min(dh0, 180 - dh0)
+    hue_sim = 1.0 - min(dh0, 45.0) / 45.0
+    sat_sim = 1.0 - min(abs(b.get('s_mean', 0) - lock_hs[1]), 128.0) / 128.0
+    return hue_sim, sat_sim
 
 
 def ball_feature_vector(b, state, r0, impacted):
@@ -56,6 +70,7 @@ def ball_feature_vector(b, state, r0, impacted):
         dist_pred, dev, max(-2, min(step / 10.0, 2.0)), aligned,
         1.0 if impacted else 0.0, 1.0 if b.get('src') == 'rescue' else 0.0,
         min(b.get('mot', 0.0), 80.0) / 80.0,
+        *color_sims(b, state.get('lock_hs')),
     ]
 
 
@@ -128,6 +143,24 @@ def build():
         frames_lab = LABELS[shot]
         states = label_state_sequence(shot, frames_lab, lock, r0)
         li = label_impact(frames_lab)
+        # lock color: blob matched to the FIRST labeled ball (the rest ball)
+        lock_hs = None
+        for k0 in sorted(frames_lab, key=int):
+            lb0 = frames_lab[k0].get('ball')
+            if not lb0:
+                continue
+            bgr0 = cv2.imread(frame_path(d, int(k0)))
+            if bgr0 is None:
+                break
+            blobs0, _, _ = masks_and_blobs(bgr0, None, None)
+            near0 = [b for b in blobs0 if b['src'] == 'bright'
+                     and math.hypot(b['cx']-lb0['cx'], b['cy']-lb0['cy']) <= max(6, lb0.get('r', 8))]
+            if near0:
+                bb = max(near0, key=lambda b: b['area'])
+                lock_hs = (bb.get('h_mean', 0), bb.get('s_mean', 0))
+            break
+        for st in states.values():
+            st['lock_hs'] = lock_hs
         pres = []
         for i in range(0, 14, 3):
             p = frame_path(d, i)

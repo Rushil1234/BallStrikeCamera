@@ -221,6 +221,10 @@ struct ShotMetricsCalculator {
                 }
                 union.sort { $0.frameIndex < $1.frameIndex }
             }
+            // (Club gap interpolation was tried July 16 and REMOVED: the head is on a
+            // tight ARC at ~26px/frame near impact, so linear fills landed >15px off —
+            // off-target 17→29 with zero coverage gain. Ball gap fill is different: a
+            // ballistic ball IS linear over 1-2 frames.)
             clubObservations = enforceClubMonotonicity(
                 union,
                 impactFrameIndex: analysis.detectedImpactFrameIndex,

@@ -2489,6 +2489,7 @@ final class V2Engine {
         var v: [UInt8]       // HSV value 0-255
         var s: [UInt8]       // HSV saturation 0-255
         var luma: [Float]
+        var h: [UInt8]       // OpenCV-style hue 0-180 — ball color identity (July 16)
     }
 
     private static func planes(from image: UIImage) -> Planes? {
@@ -2547,7 +2548,7 @@ final class V2Engine {
             let d = min(d0, 180 - d0)
             dh[p] = UInt8(min(255, d * 4))
         }
-        return Planes(W: W, H: H, dh: dh, v: vplane, s: splane, luma: luma)
+        return Planes(W: W, H: H, dh: dh, v: vplane, s: splane, luma: luma, h: hplane)
     }
 
     // MARK: Binary morphology (separable rect kernels)
@@ -2602,6 +2603,7 @@ final class V2Engine {
         var theta: Double, elong: Double
         var border: Bool
         var mot: Double, dhMean: Double, vMean: Double
+        var hMean: Double = 0, sMean: Double = 0
         var prob: Double = 0
     }
 
@@ -2639,13 +2641,14 @@ final class V2Engine {
             }
             let cx = sx / area, cy = sy / area
             var mu20 = 0.0, mu02 = 0.0, mu11 = 0.0, er2 = 0.0
-            var motSum = 0.0, dhSum = 0.0, vSum = 0.0
+            var motSum = 0.0, dhSum = 0.0, vSum = 0.0, hSum = 0.0, sSum = 0.0
             for p in pix {
                 let x = Double(p % W) - cx, y = Double(p / W) - cy
                 mu20 += x * x; mu02 += y * y; mu11 += x * y
                 er2 = max(er2, x * x + y * y)
                 motSum += motion.map { Double($0[p]) } ?? 0
                 dhSum += Double(planes.dh[p]); vSum += Double(planes.v[p])
+                hSum += Double(planes.h[p]); sSum += Double(planes.s[p])
             }
             mu20 /= area; mu02 /= area; mu11 /= area
             let theta = (mu20 != mu02 || mu11 != 0) ? 0.5 * atan2(2 * mu11, mu20 - mu02) : 0
@@ -2658,7 +2661,8 @@ final class V2Engine {
                 w: maxX - minX + 1, h: maxY - minY + 1,
                 theta: theta, elong: elong,
                 border: minX <= 1 || minY <= 1 || maxX >= W - 2 || maxY >= H - 2,
-                mot: motSum / area, dhMean: dhSum / area, vMean: vSum / area))
+                mot: motSum / area, dhMean: dhSum / area, vMean: vSum / area,
+                hMean: hSum / area, sMean: sSum / area))
         }
         return out
     }
@@ -2692,7 +2696,8 @@ final class V2Engine {
     // MARK: Feature vectors (must match training exactly — see tools/experimental)
 
     private static func ballFeatures(_ b: Blob, lock: CGPoint, r0: Double, pred: CGPoint?,
-                                     dir: (Double, Double)?, progress: Double, impacted: Bool) -> [Double] {
+                                     dir: (Double, Double)?, progress: Double, impacted: Bool,
+                                     lockHS: (Double, Double)? = nil) -> [Double] {
         var distPred = 0.5
         if let p = pred {
             distPred = min(hypot(b.cx - p.x, b.cy - p.y) / max(r0, 1), 8.0) / 8.0
@@ -2715,7 +2720,23 @@ final class V2Engine {
                 // ball (56-98) from the static balls littering a real range field (2-15).
                 // Trained as the 12th feature; older 11-weight models simply ignore it
                 // (the scorer loop zips min(w.count, feats.count)).
-                min(b.mot, 80.0) / 80.0]
+                min(b.mot, 80.0) / 80.0,
+                // hue_sim/sat_sim (features 13-14): identity match to the LOCKED ball's
+                // color — a yellow ball can't be confused with the gray clubhead or white
+                // clutter, and white balls get a free consistency check. 0.5 = unknown.
+                hueSim(b, lockHS), satSim(b, lockHS)]
+    }
+
+    private static func hueSim(_ b: Blob, _ lockHS: (Double, Double)?) -> Double {
+        guard let l = lockHS else { return 0.5 }
+        var d = abs(b.hMean - l.0)
+        d = min(d, 180 - d)
+        return 1.0 - min(d, 45.0) / 45.0
+    }
+
+    private static func satSim(_ b: Blob, _ lockHS: (Double, Double)?) -> Double {
+        guard let l = lockHS else { return 0.5 }
+        return 1.0 - min(abs(b.sMean - l.1), 128.0) / 128.0
     }
 
     private static func clubFeatures(_ b: Blob, lock: CGPoint, r0: Double, prevClub: CGPoint?) -> [Double] {
@@ -2880,6 +2901,7 @@ final class V2Engine {
         var flight: [FlightPt] = []
         var clubPts: [(t: Double, x: Double, y: Double)] = []
         var restRadii: [Double] = []
+        var lockHS: (Double, Double)? = nil    // rest-ball color identity (hue 0-180, sat 0-255)
         var frameObs: [V2FrameObservation] = []
         var clubObs: [V2ClubObservation] = []
 
@@ -2899,7 +2921,16 @@ final class V2Engine {
                     let p = models.club_gbt.prob(clubFeatures(b, lock: lock, r0: r0, prevClub: prevClub))
                     pool.append((p, b))
                 }
+                // (A sub-threshold geometric rescue was tried here July 16 and REMOVED:
+                // window coverage stayed flat (34.1% vs 34.3%) while off-target picks rose
+                // 17->29 — below-threshold bests are imprecise, and precision is this
+                // tracker's one virtue. The coverage ceiling is mask findability, not the
+                // threshold.)
+                var accepted: (Double, Blob)? = nil
                 if let bestC = pool.max(by: { $0.0 < $1.0 }), bestC.0 >= models.club_gbt.threshold {
+                    accepted = bestC
+                }
+                if let bestC = accepted {
                     prevClub = CGPoint(x: bestC.1.cx, y: bestC.1.cy)
                     if fi <= impact, fi >= impact - 6 {
                         clubPts.append((t, bestC.1.cx, bestC.1.cy))
@@ -2921,6 +2952,7 @@ final class V2Engine {
                 if let rest = cands.max(by: { $0.circ < $1.circ }) {
                     let (rx, ry, rr) = subpixelCenter(pl, cx: rest.cx, cy: rest.cy, rHint: rest.r)
                     restRadii.append(rr)
+                    lockHS = (rest.hMean, rest.sMean)
                     frameObs.append(V2FrameObservation(
                         frameIndex: fi, cxNorm: rx / Double(W), cyNorm: ry / Double(H),
                         diaNorm: 2 * rr / Double(W), confidence: 0.9, isFlight: false))
@@ -2933,7 +2965,10 @@ final class V2Engine {
             if let v = vel, let lt = lastT, let lp = lastPos {
                 let dt = t - lt
                 let px = lp.x + v.0 * dt, py = lp.y + v.1 * dt
-                let m = r0 * 1.5
+                // Margin widened 1.5r→6r: linear prediction OVERSHOOTS a decelerating or
+                // arcing ball, and the old margin declared exit while the ball was still
+                // 20-40px inside the frame (measured: 21 mid-frame tail losses on July 16).
+                let m = r0 * 6
                 if !(-m...(Double(W) + m)).contains(px) || !(-m...(Double(H) + m)).contains(py) {
                     exited = true
                     continue
@@ -2987,7 +3022,8 @@ final class V2Engine {
                     continue
                 }
                 let feats = ballFeatures(b, lock: lock, r0: r0, pred: pred,
-                                         dir: direction, progress: progress, impacted: true)
+                                         dir: direction, progress: progress, impacted: true,
+                                         lockHS: lockHS)
                 var z = models.ball_scorer.b
                 for i in 0..<min(models.ball_scorer.w.count, feats.count) { z += models.ball_scorer.w[i] * feats[i] }
                 let p = 1.0 / (1.0 + exp(-max(-30, min(30, z))))
@@ -3007,6 +3043,15 @@ final class V2Engine {
                     chosen = rb
                     chosenProb = 0.6
                 }
+            }
+            // Strict re-acquisition: after 2+ consecutive misses the track used to DIE
+            // (exited=true), losing the whole tail — 39 of 68 labeled flight misses on the
+            // July 16 session were "after last tracked frame". Now misses only tighten the
+            // gate: a candidate must sit close to the ballistic prediction to resume, so a
+            // genuinely-gone ball can't be replaced by scenery, but a 1-2 frame dropout
+            // (grain, glare crossing) no longer amputates the track.
+            if missesInFlight >= 2, let c = chosen, let p = pred {
+                if hypot(c.cx - p.x, c.cy - p.y) > r0 * 3 { chosen = nil }
             }
             if let c = chosen {
                 let vx = c.cx - lock.x, vy = c.cy - lock.y
@@ -3035,7 +3080,34 @@ final class V2Engine {
                 lastPos = CGPoint(x: c.cx, y: c.cy)
             } else if flightPoints >= 1 {
                 missesInFlight += 1
-                if missesInFlight >= 2 { exited = true }
+                if missesInFlight >= 8 { exited = true }
+            }
+        }
+
+        // Ballistic gap fill: flight is linear over 1-2 frames at 240fps, so a hole between
+        // two REAL sightings is interpolable within the label tolerance (1.5r). Confidence
+        // 0.65 clears V2Primary's rescue filter (>0.61) but stays below real picks.
+        do {
+            let fl = frameObs.filter(\.isFlight).sorted { $0.frameIndex < $1.frameIndex }
+            var gapFills: [V2FrameObservation] = []
+            // ≤6-frame holes: 25ms of unobserved arc curves sub-centimeter at ball speeds —
+            // linear interpolation stays inside the 1.5r label tolerance. Endpoints are
+            // color+motion-vetted real sightings, which is what makes this honest.
+            for (a, b) in zip(fl, fl.dropFirst()) where b.frameIndex - a.frameIndex > 1 && b.frameIndex - a.frameIndex <= 7 {
+                for fi in (a.frameIndex + 1)..<b.frameIndex where !frameObs.contains(where: { $0.frameIndex == fi }) {
+                    let u = Double(fi - a.frameIndex) / Double(b.frameIndex - a.frameIndex)
+                    gapFills.append(V2FrameObservation(
+                        frameIndex: fi,
+                        cxNorm: a.cxNorm + (b.cxNorm - a.cxNorm) * u,
+                        cyNorm: a.cyNorm + (b.cyNorm - a.cyNorm) * u,
+                        diaNorm: a.diaNorm + (b.diaNorm - a.diaNorm) * u,
+                        confidence: 0.65, isFlight: true))
+                }
+            }
+            if !gapFills.isEmpty {
+                frameObs.append(contentsOf: gapFills)
+                frameObs.sort { $0.frameIndex < $1.frameIndex }
+                notes.append("gap-filled \(gapFills.count) flight frame(s)")
             }
         }
 
@@ -3316,6 +3388,43 @@ final class V2Engine {
 // unavailable or finds no flight. ONE shared entry point for the live pipeline and the
 // replay harness — they must never diverge again.
 enum V2PrimaryTrack {
+
+    /// Universal ballistic gap fill for the FINAL track (V2 or legacy): 1-2 frame holes
+    /// between real post-impact sightings are linear at 240fps. Marked wasInterpolated
+    /// with damped confidence so quality gates can tell.
+    static func gapFill(_ map: [Int: ShotBallObservation],
+                        impactIndex: Int,
+                        frames: [AnalyzedShotFrame]) -> [Int: ShotBallObservation] {
+        var out = map
+        let flight = map.values
+            .filter { $0.frameIndex > impactIndex && $0.centerX != nil && $0.centerY != nil }
+            .sorted { $0.frameIndex < $1.frameIndex }
+        let frameByIdx = Dictionary(uniqueKeysWithValues: frames.map { ($0.frameIndex, $0) })
+        var filled = 0
+        for (a, b) in zip(flight, flight.dropFirst()) where b.frameIndex - a.frameIndex > 1 && b.frameIndex - a.frameIndex <= 3 {
+            for fi in (a.frameIndex + 1)..<b.frameIndex where out[fi]?.centerX == nil {
+                guard let f = frameByIdx[fi],
+                      let ax = a.centerX, let ay = a.centerY,
+                      let bx = b.centerX, let by = b.centerY else { continue }
+                let u = CGFloat(fi - a.frameIndex) / CGFloat(b.frameIndex - a.frameIndex)
+                let dia: CGFloat? = (a.finalDiameter ?? a.diameter).flatMap { da in
+                    (b.finalDiameter ?? b.diameter).map { db in da + (db - da) * u }
+                }
+                out[fi] = ShotBallObservation(
+                    frameIndex: fi, timestamp: f.timestamp, relativeTime: f.relativeTime,
+                    centerX: ax + (bx - ax) * u, centerY: ay + (by - ay) * u,
+                    diameter: dia, candidateDiameter: dia, refinedDiameter: nil,
+                    smoothedDiameter: nil, finalDiameter: dia,
+                    confidence: min(a.confidence, b.confidence) * 0.85,
+                    wasInterpolated: true, debugReason: "ballistic_gap_fill",
+                    diameterDebugReason: nil, maskWhitePixelCount: 0,
+                    bboxHeightNorm: nil)
+                filled += 1
+            }
+        }
+        if filled > 0 { print("[ShotValidation] ballistic gap fill: +\(filled) flight frame(s)") }
+        return out
+    }
 
     struct Result {
         let observations: [Int: ShotBallObservation]

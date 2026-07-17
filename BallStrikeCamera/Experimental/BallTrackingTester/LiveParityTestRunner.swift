@@ -119,6 +119,11 @@ final class LiveParityTestRunner {
             print("[V2Primary] track active — \(v2Primary.observations.values.filter { $0.centerX != nil }.count) sightings, impact f\(effectiveImpactIndex)")
         }
 
+        // Parity with computeAnalysis: universal ballistic gap fill on the final track.
+        observationMap = V2PrimaryTrack.gapFill(observationMap,
+                                                impactIndex: effectiveImpactIndex,
+                                                frames: prelimFrames)
+
         let finalFrames: [AnalyzedShotFrame] = prelimFrames.map { frame in
             AnalyzedShotFrame(
                 frameIndex: frame.frameIndex,
