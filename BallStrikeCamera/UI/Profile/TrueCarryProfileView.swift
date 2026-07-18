@@ -461,6 +461,20 @@ struct TrueCarryProfileView: View {
 
                 rowDivider
 
+                Button {
+                    GolfProfile.clear()
+                    UserDefaults.standard.set(false, forKey: "tc_welcome_tour_done_v1")
+                    for screen in GuideScreen.allCases {
+                        UserDefaults.standard.set(false, forKey: "tc_tour_seen_\(screen.rawValue)")
+                    }
+                } label: {
+                    settingRow(icon: "arrow.counterclockwise.circle", title: "Replay App Tour",
+                               value: "re-run the welcome walkthrough + page guides")
+                }
+                .buttonStyle(.plain)
+
+                rowDivider
+
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("720p Measurement Capture")

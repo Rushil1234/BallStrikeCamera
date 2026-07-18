@@ -5,6 +5,17 @@ import SwiftUI
 enum TCTab: Int, CaseIterable {
     case home = 0, insights = 1, play = 2, history = 3, locker = 4
 
+    /// Stable ids for welcome-tour spotlight anchors (see .tcGuideTarget).
+    var dockTargetId: String {
+        switch self {
+        case .home: return "home"
+        case .insights: return "insights"
+        case .play: return "play"
+        case .history: return "history"
+        case .locker: return "locker"
+        }
+    }
+
     var label: String {
         switch self {
         case .home:     return "Feed"
@@ -39,8 +50,10 @@ struct TCBottomDock: View {
             ForEach(TCTab.allCases, id: \.rawValue) { tab in
                 if tab.isCenter {
                     centerPlayButton(tab)
+                        .tcGuideTarget("dock.\(tab.dockTargetId)")
                 } else {
                     dockItem(tab)
+                        .tcGuideTarget("dock.\(tab.dockTargetId)")
                 }
             }
         }
@@ -181,6 +194,7 @@ struct TrueCarryAppShell: View {
                        value: roundBeacon.round == nil || roundBeacon.courseViewVisible)
         }
         .background(TCTheme.background.ignoresSafeArea())
+        .tcWelcomeTour()
         .tcAppearance()
         .sheet(isPresented: $showUsernameSetup) {
             NavigationStack { TCEditProfileSheet() }.tcAppearance()
