@@ -756,12 +756,19 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
     nonisolated private func makeCapturedFrame(from pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) -> CapturedFrame? {
         let image = CIImage(cvPixelBuffer: pixelBuffer)
-        let targetWidth: CGFloat = 360
-        let scale = targetWidth / image.extent.width
-        let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        // Dual-resolution capture (July 17): 720px for the measurement stage (subpixel
+        // centroid/diameter → speed and VLA at 2× precision), 360px for every detector —
+        // all trained models and pixel thresholds stay in the validated 360 space.
+        let hiWidth: CGFloat = 720
+        let hiScale = min(1.0, hiWidth / image.extent.width)
+        let hi = image.transformed(by: CGAffineTransform(scaleX: hiScale, y: hiScale))
+        let lo = hi.transformed(by: CGAffineTransform(scaleX: 0.5, y: 0.5))
 
-        guard let cgImage = ciContext.createCGImage(scaled, from: scaled.extent) else { return nil }
-        return CapturedFrame(image: UIImage(cgImage: cgImage), timestamp: timestamp)
+        guard let loCG = ciContext.createCGImage(lo, from: lo.extent) else { return nil }
+        // hi-res render failing (memory pressure) must never cost the frame itself.
+        let hiCG = ciContext.createCGImage(hi, from: hi.extent)
+        return CapturedFrame(image: UIImage(cgImage: loCG), timestamp: timestamp,
+                             hiRes: hiCG.map { UIImage(cgImage: $0) })
     }
 
     @MainActor

@@ -67,6 +67,19 @@ enum ShutterPreset: CaseIterable, Identifiable {
 
 struct CapturedFrame: Identifiable {
     let id = UUID()
+    /// 360px-wide analysis frame — EVERY detector threshold and trained model is
+    /// calibrated in this space; it never changes resolution.
     let image: PlatformImage
     let timestamp: TimeInterval
+    /// 720px-wide copy of the same frame (July 17). Detection stays at 360; the V2
+    /// measurement stage (subpixel centroid + diameter → speed/VLA) refines its picks
+    /// here at 2× precision. nil on legacy 360-only archives and when the render
+    /// pipeline is backlogged — everything degrades to exactly the old behavior.
+    let hiRes: PlatformImage?
+
+    init(image: PlatformImage, timestamp: TimeInterval, hiRes: PlatformImage? = nil) {
+        self.image = image
+        self.timestamp = timestamp
+        self.hiRes = hiRes
+    }
 }

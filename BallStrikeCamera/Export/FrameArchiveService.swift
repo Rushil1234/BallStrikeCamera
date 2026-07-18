@@ -31,7 +31,11 @@ final class FrameArchiveService {
                  lockedBallRect: CGRect? = nil, lockedImpactROI: CGRect? = nil) {
         guard isEnabled, !frames.isEmpty, let root = archiveDir else { return }
         // Snapshot (image, timestamp) off the capture path — UIImage is safe to read across threads.
-        let snapshot: [(Int, UIImage, TimeInterval)] = frames.enumerated().map { ($0.offset, $0.element.image, $0.element.timestamp) }
+        // Archive the 720px hi-res copy when present (July 17): labels and training data
+        // inherit 2× precision; the replay loader rebuilds the 360 analysis frame from it.
+        let snapshot: [(Int, UIImage, TimeInterval)] = frames.enumerated().map {
+            ($0.offset, $0.element.hiRes ?? $0.element.image, $0.element.timestamp)
+        }
         let capturedAt = Date()
         queue.async { [fm] in
             let shotDir = root.appendingPathComponent("shot_\(Self.folderStamp(capturedAt))", isDirectory: true)

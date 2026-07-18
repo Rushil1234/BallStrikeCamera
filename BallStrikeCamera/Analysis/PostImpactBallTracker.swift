@@ -2490,9 +2490,11 @@ final class V2Engine {
         var s: [UInt8]       // HSV saturation 0-255
         var luma: [Float]
         var h: [UInt8]       // OpenCV-style hue 0-180 — ball color identity (July 16)
+        var yel: [Float]     // yellowness r+g-2b — yellow range balls the dh mask misses (July 17)
+        var turfHue: Int     // scene turf hue the dh channel was built against (July 17)
     }
 
-    static func planes(from image: UIImage, gain: Double = 1.0) -> Planes? {
+    static func planes(from image: UIImage, gain: Double = 1.0, turfOverride: Int? = nil) -> Planes? {
         guard let cg = image.cgImage else { return nil }
         let W = cg.width, H = cg.height
         var rgba = [UInt8](repeating: 0, count: W * H * 4)
@@ -2505,6 +2507,7 @@ final class V2Engine {
         var vplane = [UInt8](repeating: 0, count: W * H)
         var splane = [UInt8](repeating: 0, count: W * H)
         var luma = [Float](repeating: 0, count: W * H)
+        var yel = [Float](repeating: 0, count: W * H)      // r+g-2b yellowness (July 17)
         var lime = [Bool](repeating: false, count: W * H)  // collapsed-blue lime-ball signature
         var hist = [Int](repeating: 0, count: 181)         // turf-hue histogram (s>=60, v>=60)
 
@@ -2531,18 +2534,24 @@ final class V2Engine {
             vplane[p] = UInt8(vv)
             splane[p] = UInt8(ss)
             luma[p] = Float(r + g + b) / 3.0
+            yel[p] = Float(r + g - 2 * b)
             // Lime range ball: hue sits only ~25-30 steps from turf, so the hue-distance
             // channel below is blind to it — but its blue channel collapses (b/g 0.18 vs
             // turf 0.60, measured) while staying bright. Mark it directly.
             lime[p] = g - b >= 110 && r < g && r * 2 > g && (r + g + b) / 3 >= 130
             if ss >= 60 && vv >= 60 { hist[Int(h180)] += 1 }
         }
-        // median turf hue from the histogram
-        let total = hist.reduce(0, +)
-        var turf = 60
-        if total > 500 {
-            var acc = 0
-            for (i, c) in hist.enumerated() { acc += c; if acc >= total / 2 { turf = i; break } }
+        // median turf hue from the histogram. A ball-centered CROP has no turf majority —
+        // the ball wins the histogram, its hue-distance collapses to 0, and the subpixel
+        // centroid lands on garbage (synthetic-720 A/B: 0.5%→60.8% speed error). Patch
+        // callers pass the parent frame's turf hue instead.
+        var turf = turfOverride ?? 60
+        if turfOverride == nil {
+            let total = hist.reduce(0, +)
+            if total > 500 {
+                var acc = 0
+                for (i, c) in hist.enumerated() { acc += c; if acc >= total / 2 { turf = i; break } }
+            }
         }
         var dh = [UInt8](repeating: 0, count: W * H)
         for p in 0..<(W * H) {
@@ -2553,7 +2562,8 @@ final class V2Engine {
             let d = min(d0, 180 - d0)
             dh[p] = UInt8(min(255, d * 4))
         }
-        return Planes(W: W, H: H, dh: dh, v: vplane, s: splane, luma: luma, h: hplane)
+        return Planes(W: W, H: H, dh: dh, v: vplane, s: splane, luma: luma, h: hplane, yel: yel,
+                      turfHue: turf)
     }
 
     // MARK: Binary morphology (separable rect kernels)
@@ -2678,9 +2688,19 @@ final class V2Engine {
         return out
     }
 
-    private static func maskFrom(_ planes: Planes, motion: [Float]?, prevLuma: [Float]?) -> (bright: [Blob], dark: [Blob], diff: [Blob]) {
+    private static func maskFrom(_ planes: Planes, motion: [Float]?, prevLuma: [Float]?,
+                                 yelBase: [Float]? = nil) -> (bright: [Blob], dark: [Blob], diff: [Blob]) {
         let W = planes.W, H = planes.H
         var bm = (0..<(W * H)).map { planes.dh[$0] >= 160 }
+        // Yellow-ball boost (July 17): the dh mask missed 30/49 debug-covered flight
+        // frames on yellow range balls — the ball IS visible in baseline-subtracted
+        // yellowness (the same signal the offline oracle labeled with). Only active when
+        // the locked ball measured yellow (yelBase non-nil).
+        if let yb = yelBase, yb.count == W * H {
+            for p in 0..<(W * H) where !bm[p] {
+                bm[p] = planes.yel[p] - yb[p] >= 90 && planes.v[p] >= 80
+            }
+        }
         openClose(&bm, W: W, H: H, openK: 3, closeK: 5)
         let bright = blobs(mask: bm, planes: planes, motion: motion, src: "bright", minArea: 8)
 
@@ -2844,6 +2864,38 @@ final class V2Engine {
             notes.append("lock=capture-metadata")
         }
 
+        // ── yellow range ball? sample absolute yellowness at the lock; when yellow,
+        // build a per-pixel yellowness baseline (median of early frames) so the flight
+        // mask can see the ball the dh channel misses (measured: 30/49 debug-covered
+        // yellow flight misses had NO dh blob at the labeled position).
+        var yelBase: [Float]? = nil
+        if let fi0 = frames.map(\.frameIndex).min(), let pl0 = planeByIdx[fi0] {
+            var acc = 0.0
+            var n = 0
+            let W0 = pl0.W
+            for yy in max(0, Int(lock.y - r0))...min(pl0.H - 1, Int(lock.y + r0)) {
+                for xx in max(0, Int(lock.x - r0))...min(W0 - 1, Int(lock.x + r0))
+                where hypot(Double(xx) - lock.x, Double(yy) - lock.y) <= r0 {
+                    acc += Double(pl0.yel[yy * W0 + xx])
+                    n += 1
+                }
+            }
+            if n > 0, acc / Double(n) >= 150 {
+                var early: [[Float]] = []
+                for fi in [0, 2, 4, 6, 8] { if let pl = planeByIdx[fi] { early.append(pl.yel) } }
+                if early.count >= 3 {
+                    var base = [Float](repeating: 0, count: early[0].count)
+                    for p in 0..<base.count {
+                        var vals = early.map { $0[p] }
+                        vals.sort()
+                        base[p] = vals[vals.count / 2]
+                    }
+                    yelBase = base
+                    notes.append("yellow-mask-boost")
+                }
+            }
+        }
+
         // ── impact: first frame a NEW round blob sits >=1.5 r0 forward of the lock, minus
         // one. "New" is load-bearing: round bright glare that already exists in the earliest
         // frames is scenery — without the exclusion it fired impact 6 frames early on the
@@ -2985,7 +3037,7 @@ final class V2Engine {
             let fi = f.frameIndex
             guard let pl = planeByIdx[fi] else { continue }
             let mot = motion(for: pl)
-            let (bright, dark, diff) = maskFrom(pl, motion: mot, prevLuma: prevLuma)
+            let (bright, dark, diff) = maskFrom(pl, motion: mot, prevLuma: prevLuma, yelBase: yelBase)
             prevLuma = pl.luma
             let t = f.timestamp
             let impacted = fi > impact
@@ -3026,7 +3078,10 @@ final class V2Engine {
                         && hypot($0.cx - lock.x, $0.cy - lock.y) <= r0 * 2.2
                 }
                 if let rest = cands.max(by: { $0.circ < $1.circ }) {
-                    let (rx, ry, rr) = subpixelCenter(pl, cx: rest.cx, cy: rest.cy, rHint: rest.r)
+                    var (rx, ry, rr) = subpixelCenter(pl, cx: rest.cx, cy: rest.cy, rHint: rest.r)
+                    if let refined = refineOnHiRes(f, sx: rx, sy: ry, sr: rr, turfHue: pl.turfHue) {
+                        (rx, ry, rr) = refined
+                    }
                     restRadii.append(rr)
                     lockHS = (rest.hMean, rest.sMean)
                     frameObs.append(V2FrameObservation(
@@ -3052,6 +3107,7 @@ final class V2Engine {
             }
 
             var cands: [(Double, Blob)] = []
+            var subCands: [(Double, Blob)] = []
             let pred: CGPoint? = {
                 guard let v = vel, let lt = lastT, let lp = lastPos else { return nil }
                 let dt = t - lt
@@ -3109,10 +3165,25 @@ final class V2Engine {
                                  p >= models.ball_scorer.threshold ? "PASS" : "rej-score"))
                 }
                 if p >= models.ball_scorer.threshold { cands.append((p, b)) }
+                else if p >= 0.32 { subCands.append((p, b)) }
             }
             let chosenScored = cands.max(by: { $0.0 < $1.0 })
             var chosen = chosenScored?.1
             var chosenProb = chosenScored?.0 ?? 0.6   // rescue picks carry moderate confidence
+            // Sub-threshold acceptance (July 17): the scorer killed 15/49 debug-covered
+            // real flight balls in cascade-broken states (its state features assume an
+            // intact track). A below-threshold candidate is still taken when geometry
+            // vouches for it — on the ballistic prediction, or (before any track exists)
+            // inside the launch cone. conf carries the low score so the fit downweights.
+            // Prediction-vouched ONLY (July 17 night): a launch-cone variant that fired
+            // before any track existed was tried and REVERSED same-session — +10 false
+            // picks and TT speed 15.6→17.9% on July-17. No track, no forcing: exactly
+            // the skip-over-guess policy.
+            if chosen == nil, let best = subCands.max(by: { $0.0 < $1.0 }),
+               let p = pred, hypot(best.1.cx - p.x, best.1.cy - p.y) <= r0 * 2.5 {
+                chosen = best.1
+                chosenProb = best.0
+            }
             if chosen == nil, !exited, rescuesLeft > 0, let p = pred {
                 if let rb = rescueAt(pl, x: p.x, y: p.y, rHint: r0) {
                     rescuesLeft -= 1
@@ -3136,7 +3207,10 @@ final class V2Engine {
                 if dist >= r0 * 2 { direction = (vx / dist, vy / dist) }
                 if dist >= r0 {
                     flightPoints += 1
-                    let (sx, sy, sr) = subpixelCenter(pl, cx: c.cx, cy: c.cy, rHint: c.r)
+                    var (sx, sy, sr) = subpixelCenter(pl, cx: c.cx, cy: c.cy, rHint: c.r)
+                    if let refined = refineOnHiRes(f, sx: sx, sy: sy, sr: sr, turfHue: pl.turfHue) {
+                        (sx, sy, sr) = refined
+                    }
                     flight.append(FlightPt(t: t, x: sx, y: sy, r: sr, fi: fi))
                     frameObs.append(V2FrameObservation(
                         frameIndex: fi, cxNorm: sx / Double(W), cyNorm: sy / Double(H),
@@ -3197,7 +3271,11 @@ final class V2Engine {
         // poisoned first point.
         let radiusFiltered = pts.filter {
             $0.r <= rLockSub * 1.35
-                || (hypot($0.x - lock.x, $0.y - lock.y) <= rLockSub * 6 && $0.r <= rLockSub * 1.8)
+                // 1.8 admitted a 1.68-rLock merged ball+club read at impact+1 (measured:
+                // 146.6 vs TT 91.1 mph on 082923 — the yellow boost surfaces the merge
+                // frame, its dh area is club-fat). Heavy-drop 2-sighting shots keep the
+                // pair via the fallback below.
+                || (hypot($0.x - lock.x, $0.y - lock.y) <= rLockSub * 6 && $0.r <= rLockSub * 1.5)
         }
         // Heavy-drop captures leave exactly TWO airborne sightings, and the far one is
         // motion-smeared so its radius reads club-fat — the far-field filter then starved
@@ -3350,6 +3428,25 @@ final class V2Engine {
         guard tot >= 1 else { return (cx, cy, rHint) }
         let sr = area >= 6 ? sqrt(area / Double.pi) : rHint
         return (sx / tot, sy / tot, sr)
+    }
+
+    /// July 17: re-measure a 360-space pick on the frame's 720px copy. Detection stays
+    /// in the validated 360 space; only the MEASUREMENT (centroid + radius, the inputs
+    /// to speed and VLA) gets the 2x precision. Returns 360-space coordinates.
+    private static func refineOnHiRes(_ frame: AnalyzedShotFrame, sx: Double, sy: Double,
+                                      sr: Double, turfHue: Int) -> (Double, Double, Double)? {
+        guard let hi = frame.originalFrame.hiRes, let cg = hi.cgImage else { return nil }
+        let scale = Double(cg.width) / 360.0
+        guard scale > 1.2 else { return nil }
+        let R = max(14.0, sr * scale * 3)
+        let cx = sx * scale, cy = sy * scale
+        let crop = CGRect(x: cx - R, y: cy - R, width: 2 * R, height: 2 * R)
+            .intersection(CGRect(x: 0, y: 0, width: Double(cg.width), height: Double(cg.height)))
+        guard crop.width > 8, crop.height > 8, let sub = cg.cropping(to: crop),
+              let pl = planes(from: UIImage(cgImage: sub), turfOverride: turfHue) else { return nil }
+        let (rx, ry, rr) = subpixelCenter(pl, cx: cx - crop.minX, cy: cy - crop.minY,
+                                          rHint: sr * scale)
+        return ((rx + Double(crop.minX)) / scale, (ry + Double(crop.minY)) / scale, rr / scale)
     }
 
     private static func subpixelRadius(_ pl: Planes, cx: Double, cy: Double, rHint: Double) -> Double {

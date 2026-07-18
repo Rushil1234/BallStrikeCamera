@@ -29,8 +29,26 @@ final class LiveParityTestRunner {
         let rawTimes = sequence.frames.map { $0.timestamp }
         let degenerate = Set(rawTimes).count < 2
         if degenerate { print("[Replay] timestamps missing — synthesizing 240fps spacing") }
+        // Dual-res reconstruction (July 17): archives written after the 720px migration
+        // hold hi-res frames — rebuild the 360 analysis frame from them (all detector
+        // thresholds live in 360 space) and keep the original as hiRes for the V2
+        // measurement stage. Legacy 360 archives pass through untouched.
+        if let cg0 = sequence.frames.first?.image.cgImage {
+            print("[Replay] frame0 pixel width=\(cg0.width)")
+        }
         let captured: [CapturedFrame] = sequence.frames.enumerated().map { idx, f in
-            CapturedFrame(image: f.image, timestamp: degenerate ? Double(idx) / 240.0 : f.timestamp)
+            let ts = degenerate ? Double(idx) / 240.0 : f.timestamp
+            guard let cg = f.image.cgImage, cg.width > 400 else {
+                return CapturedFrame(image: f.image, timestamp: ts)
+            }
+            let scale = 360.0 / CGFloat(cg.width)
+            let size = CGSize(width: 360, height: CGFloat(cg.height) * scale)
+            let fmt = UIGraphicsImageRendererFormat.default()
+            fmt.scale = 1
+            let lo = UIGraphicsImageRenderer(size: size, format: fmt).image { _ in
+                f.image.draw(in: CGRect(origin: .zero, size: size))
+            }
+            return CapturedFrame(image: lo, timestamp: ts, hiRes: f.image)
         }
 
         // ── Normalize exactly like live (darkened-high-contrast is what tracking scans).
