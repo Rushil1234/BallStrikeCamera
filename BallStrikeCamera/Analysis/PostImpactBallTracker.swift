@@ -2899,12 +2899,21 @@ final class V2Engine {
                 if n > bestN { bestN = n; bestRest = b }
             }
         }
-        if let rest = bestRest, bestN >= 3 {
+        // The observed candidate may REFINE the metadata lock, never RELOCATE it: on
+        // 082406_945 the consensus blob was a r=19.7 white object far from the (correct)
+        // metadata lock — the shot classified white, the yellow path shut off, and the
+        // whole track fell to legacy junk. Same on 084900_726.
+        let hasMetaLock = lockedBallRect != nil
+        if let rest = bestRest, bestN >= 3,
+           !hasMetaLock || (hypot(rest.cx - lock.x, rest.cy - lock.y) <= max(10.0, r0 * 2.5)
+                            && rest.r <= r0 * 2.0 && rest.r >= r0 * 0.4) {
             lock = CGPoint(x: rest.cx, y: rest.cy)
             r0 = max(4.0, rest.r)
             notes.append("lock=observed-rest-ball")
         } else {
-            notes.append("lock=capture-metadata")
+            notes.append(bestRest != nil && bestN >= 3
+                         ? "lock=capture-metadata (observed candidate rejected: too far/size)"
+                         : "lock=capture-metadata")
         }
 
         // ── V3 step 1: classify the ball at the lock, once, up front.
@@ -3867,13 +3876,19 @@ enum V2PrimaryTrack {
         // switch for the whole V2 engine.
         guard !isPutterMode,
               UserDefaults.standard.object(forKey: "tc_v2_metrics") as? Bool ?? true,
-              V2Engine.isAvailable,
-              let v2 = V2Engine.run(frames: prelimFrames,
-                                    lockedBallRect: lockedBallRect,
-                                    impactHint: impactHint),
-              v2.frameObservations.contains(where: { $0.isFlight }) else {
+              V2Engine.isAvailable else {
             return Result(observations: legacyObservations,
                           impactFrameIndex: legacyImpactIndex, v2: nil, active: false)
+        }
+        let v2Try = V2Engine.run(frames: prelimFrames,
+                                 lockedBallRect: lockedBallRect,
+                                 impactHint: impactHint)
+        guard let v2 = v2Try, v2.frameObservations.contains(where: { $0.isFlight }) else {
+            // Keep the engine output even when inactive: its notes say WHY zero flight
+            // points came back (was undebuggable — shots 945/726 fell to legacy junk
+            // with no trace).
+            return Result(observations: legacyObservations,
+                          impactFrameIndex: legacyImpactIndex, v2: v2Try, active: false)
         }
 
         let byIdx = Dictionary(uniqueKeysWithValues: prelimFrames.map { ($0.frameIndex, $0) })
