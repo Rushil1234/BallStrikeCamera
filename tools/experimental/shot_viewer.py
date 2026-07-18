@@ -27,6 +27,31 @@ if os.path.exists(PAIRS):
     for p in json.load(open(PAIRS)):
         pairs[p['shot']] = p
 
+# full TopTracer rows (spin, push/pull, peak height...) keyed by shot number
+TT_CSV = os.environ.get('TC_TT_CSV') or os.path.expanduser(
+    '~/Documents/TrueCarryTraining/session_2026-07-17/swingsync-2026-07-17.csv')
+tt_full = {}
+if os.path.exists(TT_CSV):
+    import csv as _csv
+    with open(TT_CSV) as _f:
+        for _r in _csv.DictReader(_f):
+            try:
+                _n = int(_r['shotNumber'])
+            except (ValueError, KeyError):
+                continue
+            def _fv(k):
+                try:
+                    v = float(_r.get(k, ''))
+                    return None if v == -10000 else v
+                except (TypeError, ValueError):
+                    return None
+            tt_full[_n] = dict(ball_mph=_fv('ballSpeed'), club_mph=_fv('clubSpeed'),
+                               launch=_fv('launchAngle'), carry=_fv('carry'), total=_fv('total'),
+                               backspin=_fv('backSpin'), sidespin=_fv('sideSpin'),
+                               push_pull=_fv('pushPull'), peak=_fv('peakHeight'),
+                               smash=_fv('smashFactor'), descent=_fv('decentAngle'),
+                               club=(_r.get('type') or _r.get('clubName') or ''))
+
 
 def frame_file(shot, fi):
     d = os.path.join(ARCHIVE, shot)
@@ -50,8 +75,13 @@ def shot_payload(sid):
     nframes = len([f for f in os.listdir(os.path.join(ARCHIVE, sid))
                    if f.startswith('frame_')])
     pr = pairs.get(sid, {})
+    tt = dict(pr.get('toptracer') or {})
+    num = tt.get('num')
+    if num in tt_full:
+        merged = dict(tt_full[num]); merged.update({k: v for k, v in tt.items() if v is not None})
+        tt = merged
     return {'name': sid, 'replay': d, 'nframes': nframes,
-            'toptracer': pr.get('toptracer'), 'garmin': pr.get('garmin')}
+            'toptracer': tt or None, 'garmin': pr.get('garmin')}
 
 
 def index_rows():
@@ -63,7 +93,8 @@ def index_rows():
             continue
         m = d.get('metrics') or {}
         pr = pairs.get(sid, {})
-        tt = (pr.get('toptracer') or {}).get('ball_mph')
+        ttp = pr.get('toptracer') or {}
+        tt = ttp.get('ball_mph')
         gm = (pr.get('garmin') or {}).get('ball_mph')
         bs = m.get('ballSpeedMph')
         err = None
@@ -71,15 +102,26 @@ def index_rows():
             err = abs(bs - tt) / tt * 100
         elif bs and gm:
             err = abs(bs - gm) / gm * 100
+        vla_err = None
+        if m.get('vlaDegrees') is not None and ttp.get('launch') is not None:
+            vla_err = abs(m['vlaDegrees'] - ttp['launch'])
+        carry_err = None
+        if m.get('carryYards') and ttp.get('carry'):
+            carry_err = abs(m['carryYards'] - ttp['carry'])
+        total_err = None
+        if m.get('totalYards') and ttp.get('total'):
+            total_err = abs(m['totalYards'] - ttp['total'])
         rows.append({'name': sid, 'verdict': d.get('verdict', '?'),
-                     'ball': bs, 'tt': tt, 'garmin': gm, 'err': err})
+                     'ball': bs, 'tt': tt, 'garmin': gm, 'err': err,
+                     'vla_err': vla_err, 'carry_err': carry_err, 'total_err': total_err,
+                     'club': tt_full.get(ttp.get('num'), {}).get('club', '')})
     return rows
 
 
 PAGE = r"""<!doctype html><html><head><meta charset="utf-8"><title>TrueCarry Shot Viewer</title>
 <style>
  body{margin:0;background:#101312;color:#ddd;font:13px Menlo,monospace;display:flex;height:100vh}
- #list{width:300px;overflow-y:auto;border-right:1px solid #2a2f2d;padding:6px}
+ #list{}
  .shot{padding:5px 7px;border-radius:6px;cursor:pointer;white-space:nowrap}
  .shot:hover{background:#1c211f}.shot.sel{background:#24302a}
  .err-good{color:#6fdd8b}.err-mid{color:#e8c268}.err-bad{color:#e87a68}.disc{color:#777}
@@ -93,7 +135,15 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8"><title>TrueCarry Sho
  #status{color:#9ab;margin-top:6px;min-height:16px}
  .k{color:#789}
 </style></head><body>
-<div id="list"></div>
+<div id="side" style="display:flex;flex-direction:column;width:320px;border-right:1px solid #2a2f2d">
+<div id="summary" style="padding:8px;border-bottom:1px solid #2a2f2d;font-size:12px;color:#9ab"></div>
+<div style="padding:4px 8px;border-bottom:1px solid #2a2f2d">
+ sort: <select id="sortsel" onchange="renderList()" style="background:#232826;color:#ddd;border:1px solid #333">
+ <option value="time">time</option><option value="err">speed err</option>
+ <option value="vla_err">VLA err</option><option value="carry_err">carry err</option></select>
+</div>
+<div id="list" style="flex:1;overflow-y:auto;padding:6px"></div>
+</div>
 <div id="main">
   <canvas id="cv" width="1080" height="609"></canvas>
   <div id="bar">
@@ -114,21 +164,42 @@ const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 const S=3;   // 360x203 -> 1080x609
 
 function cls(e){ if(e==null) return ''; return e<=2?'err-good':(e<=5?'err-mid':'err-bad'); }
-fetch('/shots').then(r=>r.json()).then(d=>{
-  shots=d;
-  const el=document.getElementById('list');
-  el.innerHTML = d.map((s,i)=>{
+function median(a){ if(!a.length) return null; const b=[...a].sort((x,y)=>x-y); return b[Math.floor(b.length/2)]; }
+function summary(){
+  const spd=shots.map(s=>s.err).filter(e=>e!=null);
+  const vla=shots.map(s=>s.vla_err).filter(e=>e!=null);
+  const cy=shots.map(s=>s.carry_err).filter(e=>e!=null);
+  const tot=shots.map(s=>s.total_err).filter(e=>e!=null);
+  const f=(v,d)=>v==null?'&mdash;':v.toFixed(d);
+  document.getElementById('summary').innerHTML =
+    `<b style="color:#ddd">fleet vs TopTracer (${shots.length} shots)</b><br>`+
+    `speed <span class="${cls(median(spd))}">${f(median(spd),1)}%</span> <span class="k">(goal &plusmn;2mph)</span> &middot; `+
+    `VLA <b>${f(median(vla),1)}&deg;</b> <span class="k">(goal 1&deg;)</span><br>`+
+    `carry <b>${f(median(cy),1)}yd</b> <span class="k">(goal 3)</span> &middot; `+
+    `total <b>${f(median(tot),1)}yd</b> <span class="k">(goal 5)</span>`;
+}
+function renderList(){
+  const mode=document.getElementById('sortsel').value;
+  const order=shots.map((s,i)=>i);
+  if(mode!=='time') order.sort((a,b)=>(shots[b][mode]??-1)-(shots[a][mode]??-1));
+  const selName = sel>=0? shots[sel].name : null;
+  document.getElementById('list').innerHTML = order.map(i=>{
+    const s=shots[i];
     const e = s.err==null?'':` <span class="${cls(s.err)}">${s.err.toFixed(1)}%</span>`;
     const v = s.verdict.startsWith('accepted')?'':' <span class="disc">&#10007;</span>';
-    return `<div class="shot" id="sh${i}" onclick="load(${i})">${s.name.slice(14)}${v}${e}</div>`;
+    const c = s.club?` <span class="k" style="font-size:10px">${s.club.replace('_',' ').slice(0,10)}</span>`:'';
+    return `<div class="shot ${s.name===selName?'sel':''}" id="sh${i}" onclick="load(${i})">${s.name.slice(14)}${v}${e}${c}</div>`;
   }).join('');
+}
+fetch('/shots').then(r=>r.json()).then(d=>{
+  shots=d; summary(); renderList();
   if(d.length) load(0);
 });
 
 function load(i){
-  if(sel>=0) document.getElementById('sh'+sel).classList.remove('sel');
-  sel=i; document.getElementById('sh'+i).classList.add('sel');
-  document.getElementById('sh'+i).scrollIntoView({block:'nearest'});
+  sel=i; renderList();
+  const el=document.getElementById('sh'+i);
+  if(el) el.scrollIntoView({block:'nearest'});
   fetch('/shot/'+shots[i].name).then(r=>r.json()).then(d=>{
     cur=d; imgs={};
     fi=Math.max(0, d.replay.impactDetected||0);
@@ -202,15 +273,26 @@ function row(label,ours,tt,gm,fmt){
 }
 function metricsTable(){
   const m=cur.replay.metrics||{}, tt=cur.toptracer||{}, gm=cur.garmin||{};
+  const notes=(cur.replay.v2Notes||[]).join(' | ');
+  const adv=notes.match(/v3heads: speed ([\d.]+)/);
+  const smashOurs=(m.ballSpeedMph&&m.clubSpeedMph)?m.ballSpeedMph/m.clubSpeedMph:null;
   document.getElementById('metrics').innerHTML =
     '<tr><th>stat</th><th>TrueCarry</th><th>TopTracer</th><th>Garmin</th><th>vs TT</th><th>vs Garmin</th></tr>'+
     row('ball speed mph', m.ballSpeedMph, tt.ball_mph, gm.ball_mph)+
+    (adv?row('&nbsp; v3 head (advisory)', +adv[1], tt.ball_mph, gm.ball_mph):'')+
     row('VLA &deg;', m.vlaDegrees, tt.launch, gm.launch)+
+    row('HLA / push-pull &deg;', null, tt.push_pull, gm.launch_dir)+
     row('carry yd', m.carryYards, tt.carry, gm.carry)+
     row('total yd', m.totalYards, tt.total, gm.total)+
     row('club speed mph', m.clubSpeedMph, tt.club_mph, gm.club_mph)+
+    row('smash', smashOurs, tt.smash, gm.smash)+
     row('backspin rpm', null, tt.backspin, gm.backspin)+
-    row('smash', null, tt.smash, gm.smash);
+    row('sidespin rpm', null, tt.sidespin, gm.spin&&gm.backspin?null:null)+
+    row('peak height yd', null, tt.peak, null)+
+    row('descent &deg;', null, tt.descent, null)+
+    `<tr><td style="text-align:left;color:#9ab">meta</td><td colspan=5 style="text-align:left;color:#8a9;font-size:11px">`+
+    `impact f${cur.replay.impactDetected} &middot; ball pts ${m.ballPoints??'?'} &middot; `+
+    `${(cur.replay.impactReason||'').slice(0,44)} &middot; TT club: ${tt.club||'?'} #${tt.num??'?'}</td></tr>`;
 }
 function step(dz){ if(!cur) return; fi=Math.max(0,Math.min(cur.nframes-1,fi+dz)); render(); }
 function togglePlay(){ playing=!playing;
