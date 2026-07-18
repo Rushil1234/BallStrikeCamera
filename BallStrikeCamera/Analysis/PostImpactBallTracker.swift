@@ -3638,12 +3638,16 @@ final class V2Engine {
                 String(format: "%@=%.2f", $0, feat[$0] ?? -999) }.joined(separator: " "))
             let spd = min(max(apply(heads.speed), heads.speedClamp.0), heads.speedClamp.1)
             let vl = min(max(apply(heads.vla), heads.vlaClamp.0), heads.vlaClamp.1)
-            // VLA ONLY: the head beat growth-VLA live (2.5 vs 3.4 deg median, and kills
-            // the +2.2deg pull-side bias). The SPEED head measured WORSE than the
-            // existing physics path fleet-wide (5.4% CV vs 3.2% live median) — it stays
-            // advisory in notes until more paired data closes that gap.
+            // BLEND (July 18, on corrected + realigned pairs, n=113): the physics path
+            // and the head fail differently — physics under-reads blurred fast shots,
+            // the head over-smooths clean ones. Their MEAN kills the tail without
+            // giving up the median: jul17 3.5% median, 3/53 over 10%, max 16% (was
+            // max 50%+ for either alone). VLA takes the head outright (2.2 vs 3.4 deg,
+            // pull-side bias eliminated).
+            ballMphFinal = (ballMph + spd) / 2
             vlaFinal = vl
-            notes.append(String(format: "v3heads: speed %.1f (advisory) vla %.1f", spd, vl))
+            notes.append(String(format: "v3heads: speed %.1f blend %.1f vla %.1f",
+                                spd, ballMphFinal ?? 0, vl))
         }
 
         return V2Output(ballSpeedMph: ballMphFinal, clubSpeedMph: clubMph,
