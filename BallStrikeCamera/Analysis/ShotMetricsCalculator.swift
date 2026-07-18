@@ -321,8 +321,14 @@ struct ShotMetricsCalculator {
                     clubMetrics.method = "v2_arc_fit_head"
                 }
             } else if let speed = v2.ballSpeedMph {
-                v2Warnings.append(String(format: "V2 low-confidence (%d pts): measured %.1f mph — legacy values shown.",
-                                         v2.flightPointCount, speed))
+                // Low-confidence V2 still beats the legacy fallback: legacy on these shots
+                // produced confidently-wrong 19-366 mph values that sailed through as
+                // "accepted" (July-17: 10 junk speeds shown to Noah at the range). Show
+                // V2's physics-clamped measurement, honestly tagged low-confidence —
+                // never a junk number without a warning.
+                v2Warnings.append(String(format: "LOW CONFIDENCE speed (%d flight pts) — treat as approximate.",
+                                         v2.flightPointCount))
+                ballLaunch.ballSpeedMph = speed
             } else {
                 v2Warnings.append("V2 withheld: " + (v2.notes.last ?? "no usable flight track"))
             }
