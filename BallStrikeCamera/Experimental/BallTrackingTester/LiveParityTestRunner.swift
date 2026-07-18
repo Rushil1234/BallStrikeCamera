@@ -253,7 +253,8 @@ final class LiveParityTestRunner {
         )
         dumpReplayJSON(sequence: sequence, result: result, verdict: verdict,
                        lockedBallRect: lockedBallRect, lockedImpactROI: lockedImpactROI,
-                       metrics: metrics, lockAutoDerived: lockAutoDerived)
+                       metrics: metrics, lockAutoDerived: lockAutoDerived,
+                       v2Notes: v2Primary.v2?.notes ?? [])
 
         return Output(result: result, verdict: verdict,
                       lockedBallRect: lockedBallRect, lockUsedAutoDerive: lockAutoDerived)
@@ -268,7 +269,8 @@ final class LiveParityTestRunner {
                                 lockedBallRect: CGRect?,
                                 lockedImpactROI: CGRect?,
                                 metrics: ShotMetricsResult?,
-                                lockAutoDerived: Bool) {
+                                lockAutoDerived: Bool,
+                                v2Notes: [String] = []) {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
         let dir = docs.appendingPathComponent("ReplayResults", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -320,7 +322,8 @@ final class LiveParityTestRunner {
             "lockedImpactROI": rect(lockedImpactROI),
             "frames": frames,
             "club": clubs,
-            "metrics": m
+            "metrics": m,
+            "v2Notes": v2Notes
         ]
         let url = dir.appendingPathComponent("\(sequence.sourceName).json")
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys]) {

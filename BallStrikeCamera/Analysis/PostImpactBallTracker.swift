@@ -2610,6 +2610,49 @@ final class V2Engine {
 
     // MARK: Blobs
 
+    // ── V3 flow, step 1 (Noah's spec, July 17 night): identify the ball COLOR at lock
+    // and record its exact signature. Every later stage keys off this — one ball, one
+    // color, one mask family. No generic scoring of "maybe-balls".
+    enum BallColor: String { case white, yellow, lime }
+    struct BallSignature {
+        let color: BallColor
+        let hue: Double          // OpenCV 0-180 mean inside the rest disk
+        let sat: Double          // 0-255
+        let val: Double          // 0-255
+        let yellowness: Double   // r+g-2b mean inside the rest disk
+        let restRadius: Double   // subpixel disk radius at rest (the VLA anchor)
+    }
+
+    /// Samples the disk at the lock in an early frame and classifies the ball.
+    /// Yellow range ball: strong r+g-2b (measured 278-290 vs turf 29-35, white -12).
+    /// Lime: the existing collapsed-blue signature. Everything else: white.
+    static func classifyBall(_ pl: Planes, lock: CGPoint, r0: Double) -> BallSignature {
+        let W = pl.W, H = pl.H
+        var n = 0.0, hs = 0.0, ss = 0.0, vs = 0.0, ys = 0.0
+        let R = max(2.0, r0 * 0.85)   // stay inside the disk — edges mix background
+        for yy in max(0, Int(lock.y - R))...min(H - 1, Int(lock.y + R)) {
+            for xx in max(0, Int(lock.x - R))...min(W - 1, Int(lock.x + R))
+            where hypot(Double(xx) - lock.x, Double(yy) - lock.y) <= R {
+                let p = yy * W + xx
+                hs += Double(pl.h[p]); ss += Double(pl.s[p]); vs += Double(pl.v[p])
+                ys += Double(pl.yel[p]); n += 1
+            }
+        }
+        guard n > 0 else {
+            return BallSignature(color: .white, hue: 0, sat: 0, val: 200, yellowness: 0, restRadius: r0)
+        }
+        let hue = hs / n, sat = ss / n, val = vs / n, yel = ys / n
+        let color: BallColor
+        if yel >= 150 && hue >= 15 && hue <= 45 {
+            color = .yellow
+        } else if yel >= 150 {
+            color = .lime
+        } else {
+            color = .white
+        }
+        return BallSignature(color: color, hue: hue, sat: sat, val: val, yellowness: yel, restRadius: r0)
+    }
+
     struct Blob {
         var src: String
         var area: Double, circ: Double, r: Double
@@ -2864,6 +2907,15 @@ final class V2Engine {
             notes.append("lock=capture-metadata")
         }
 
+        // ── V3 step 1: classify the ball at the lock, once, up front.
+        var sig: BallSignature? = nil
+        if let fi0 = frames.map(\.frameIndex).min(), let pl0 = planeByIdx[fi0] {
+            let s0 = classifyBall(pl0, lock: lock, r0: r0)
+            sig = s0
+            notes.append(String(format: "ball=%@ hue=%.0f sat=%.0f yel=%.0f rest_r=%.2f",
+                                s0.color.rawValue, s0.hue, s0.sat, s0.yellowness, s0.restRadius))
+        }
+
         // ── yellow range ball? sample absolute yellowness at the lock; when yellow,
         // build a per-pixel yellowness baseline (median of early frames) so the flight
         // mask can see the ball the dh channel misses (measured: 30/49 debug-covered
@@ -2892,6 +2944,52 @@ final class V2Engine {
                     }
                     yelBase = base
                     notes.append("yellow-mask-boost")
+                }
+            }
+        }
+
+        // ── V3 step 2 (Noah's spec): the rest tracker runs until it FAILS — impact is
+        // the frame before the ball moved. Presence = color-pixel count inside the lock
+        // disk vs frame 0. Validated offline: 98.8% within ±1 frame of hand labels
+        // (287/320 exact), replacing the cone-scan/departure machinery as primary.
+        var v3Impact: Int? = nil
+        do {
+            func diskCount(_ pl: Planes) -> Int {
+                let W = pl.W, H = pl.H
+                let R = max(2.0, r0 * 1.1)
+                var n = 0
+                for yy in max(0, Int(lock.y - R))...min(H - 1, Int(lock.y + R)) {
+                    for xx in max(0, Int(lock.x - R))...min(W - 1, Int(lock.x + R))
+                    where hypot(Double(xx) - lock.x, Double(yy) - lock.y) <= R {
+                        let p = yy * W + xx
+                        let isBall: Bool
+                        if let s0 = sig, s0.color != .white {
+                            isBall = pl.yel[p] >= 120
+                        } else {
+                            isBall = pl.luma[p] >= 150 && pl.s[p] < 70
+                        }
+                        if isBall { n += 1 }
+                    }
+                }
+                return n
+            }
+            let ordered = frames.map(\.frameIndex).sorted()
+            if let f0 = ordered.first, let pl0 = planeByIdx[f0] {
+                let baseCount = diskCount(pl0)
+                if baseCount >= 8 {
+                    var lastPresent = f0
+                    var absent = 0
+                    for fi in ordered.dropFirst() {
+                        guard let pl = planeByIdx[fi] else { continue }
+                        if Double(diskCount(pl)) >= Double(baseCount) * 0.45 {
+                            lastPresent = fi
+                            absent = 0
+                        } else {
+                            absent += 1
+                            if absent >= 2 { v3Impact = lastPresent; break }
+                        }
+                    }
+                    if v3Impact == nil, absent >= 1 { v3Impact = lastPresent }
                 }
             }
         }
@@ -3010,6 +3108,10 @@ final class V2Engine {
             impact = dep
             impactSrc = String(format: "ball-departure@f%d", dep)
         }
+        if let v3 = v3Impact {
+            impact = v3
+            impactSrc = String(format: "v3-rest-failure@f%d", v3)
+        }
         notes.append("impact=f\(impact)(\(impactSrc))")
 
         // ── ball track (sequential v2.2 state machine)
@@ -3024,6 +3126,7 @@ final class V2Engine {
         var rescuesLeft = 2
         var prevLuma: [Float]? = nil
         var prevClub: CGPoint? = nil
+        var v3Prev: CGPoint? = nil   // V3 yellow-flight chain anchor
 
         struct FlightPt { let t: Double; var x: Double; var y: Double; var r: Double; let fi: Int }
         var flight: [FlightPt] = []
@@ -3104,6 +3207,30 @@ final class V2Engine {
                     exited = true
                     continue
                 }
+            }
+
+            // ── V3 step 4: yellow shots bypass the scorer entirely — the color-specific
+            // disk-fit search matched 98.9% of labeled flight points offline (V2 state
+            // machine: 66%). White shots keep the validated V2 path.
+            if let s0 = sig, s0.color != .white, let yb = yelBase, impacted {
+                if let v3 = v3YellowPick(pl, baseYel: yb, lock: lock, r0: r0, prev: v3Prev) {
+                    flightPoints += 1
+                    v3Prev = CGPoint(x: v3.0, y: v3.1)
+                    flight.append(FlightPt(t: t, x: v3.0, y: v3.1, r: v3.2, fi: fi))
+                    frameObs.append(V2FrameObservation(
+                        frameIndex: fi, cxNorm: v3.0 / Double(W), cyNorm: v3.1 / Double(H),
+                        diaNorm: 2 * v3.2 / Double(W), confidence: 0.9, isFlight: true))
+                    missesInFlight = 0
+                    if let lt = lastT, t > lt, let lp = lastPos {
+                        vel = ((v3.0 - Double(lp.x)) / (t - lt), (v3.1 - Double(lp.y)) / (t - lt))
+                    }
+                    lastT = t
+                    lastPos = CGPoint(x: v3.0, y: v3.1)
+                } else if flightPoints >= 1 {
+                    missesInFlight += 1
+                    if missesInFlight >= 8 { exited = true }
+                }
+                continue
             }
 
             var cands: [(Double, Blob)] = []
@@ -3231,6 +3358,55 @@ final class V2Engine {
             } else if flightPoints >= 1 {
                 missesInFlight += 1
                 if missesInFlight >= 8 { exited = true }
+            }
+        }
+
+        // ── V3 track-line clean (Noah's #2): a bucket/waiting-area ball tens of px off
+        // the arc breaks the whole fit. Quadratic fit over the flight points; only WILD
+        // deviations (> max(6 r0, 30px)) are junk — perspective curvature must survive.
+        // Validated offline: removes 0 labeled-real points.
+        if let s0 = sig, s0.color != .white, flight.count >= 3 {
+            let t = (0..<flight.count).map(Double.init)
+            func polyfit2(_ ys: [Double]) -> (Double, Double, Double) {
+                let n = Double(t.count)
+                var s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0
+                var sy = 0.0, sty = 0.0, st2y = 0.0
+                for i in 0..<t.count {
+                    let x = t[i], y = ys[i]
+                    s1 += x; s2 += x*x; s3 += x*x*x; s4 += x*x*x*x
+                    sy += y; sty += x*y; st2y += x*x*y
+                }
+                let A = [[n, s1, s2], [s1, s2, s3], [s2, s3, s4]]
+                var b = [sy, sty, st2y]
+                var M = A.map { $0 }
+                for c in 0..<3 {
+                    let piv = M[c][c]
+                    guard abs(piv) > 1e-9 else { return (ys.reduce(0,+)/n, 0, 0) }
+                    for rr in (c+1)..<3 {
+                        let f = M[rr][c] / piv
+                        for cc in c..<3 { M[rr][cc] -= f * M[c][cc] }
+                        b[rr] -= f * b[c]
+                    }
+                }
+                var c2 = b[2] / M[2][2]
+                var c1 = (b[1] - M[1][2]*c2) / M[1][1]
+                var c0 = (b[0] - M[0][1]*c1 - M[0][2]*c2) / M[0][0]
+                if flight.count < 4 { c2 = 0; c1 = (ys.last! - ys.first!) / max(n-1, 1); c0 = ys.first! }
+                return (c0, c1, c2)
+            }
+            let (ax0, ax1, ax2) = polyfit2(flight.map(\.x))
+            let (ay0, ay1, ay2) = polyfit2(flight.map(\.y))
+            let gate = max(6 * r0, 30.0)
+            var junk: [Int] = []
+            for i in 0..<flight.count {
+                let px = ax0 + ax1 * t[i] + ax2 * t[i] * t[i]
+                let py = ay0 + ay1 * t[i] + ay2 * t[i] * t[i]
+                if hypot(flight[i].x - px, flight[i].y - py) > gate { junk.append(flight[i].fi) }
+            }
+            if !junk.isEmpty {
+                flight.removeAll { junk.contains($0.fi) }
+                frameObs.removeAll { junk.contains($0.frameIndex) && $0.isFlight }
+                notes.append("line-clean removed f\(junk)")
             }
         }
 
@@ -3428,6 +3604,73 @@ final class V2Engine {
         guard tot >= 1 else { return (cx, cy, rHint) }
         let sr = area >= 6 ? sqrt(area / Double.pi) : rHint
         return (sx / tot, sy / tot, sr)
+    }
+
+    /// V3 step 4 (Noah's spec): find the yellow ball with a baseline-subtracted
+    /// yellowness mask and DISK-FIT its diameter. Validated offline: 98.9% of labeled
+    /// flight points matched, diameter median |err| 0.79px. Returns 360-space (cx, cy, r).
+    private static func v3YellowPick(_ pl: Planes, baseYel: [Float], lock: CGPoint,
+                                     r0: Double, prev: CGPoint?) -> (Double, Double, Double)? {
+        let W = pl.W, H = pl.H
+        var mask = [Bool](repeating: false, count: W * H)
+        for p in 0..<(W * H) { mask[p] = pl.yel[p] - baseYel[p] >= 70 }
+        // the departed ball's residue at the lock reads positive — exclude the disk
+        let ex = 1.6 * r0
+        for yy in max(0, Int(lock.y - ex))...min(H - 1, Int(lock.y + ex)) {
+            for xx in max(0, Int(lock.x - ex))...min(W - 1, Int(lock.x + ex))
+            where hypot(Double(xx) - lock.x, Double(yy) - lock.y) <= ex {
+                mask[yy * W + xx] = false
+            }
+        }
+        let comps = blobs(mask: mask, planes: pl, motion: nil, src: "v3yel", minArea: 6,
+                          connectivity8: true)
+        var cands = comps.filter { b in
+            b.area <= 2500 && b.cx >= 4 && b.cx <= Double(W) - 4
+                && b.cy >= 4 && b.cy <= Double(H) - 4
+                && (b.cx - lock.x) <= r0        // forward of the lock (play is -x)
+        }
+        guard !cands.isEmpty else { return nil }
+        let pick: Blob
+        if let pv = prev {
+            cands.sort { hypot($0.cx - pv.x, $0.cy - pv.y) < hypot($1.cx - pv.x, $1.cy - pv.y) }
+            let c = cands[0]
+            guard hypot(c.cx - pv.x, c.cy - pv.y) <= max(90.0, r0 * 16) else { return nil }
+            pick = c
+        } else {
+            pick = cands.max(by: { $0.area < $1.area })!
+        }
+        // disk fit on the diff patch: threshold at half the local peak
+        let R = 14
+        let x0 = max(0, Int(pick.cx) - R), x1 = min(W, Int(pick.cx) + R)
+        let y0 = max(0, Int(pick.cy) - R), y1 = min(H, Int(pick.cy) + R)
+        var peak: Float = 0
+        for yy in y0..<y1 { for xx in x0..<x1 {
+            peak = max(peak, pl.yel[yy * W + xx] - baseYel[yy * W + xx]) } }
+        let thr = max(60.0, 0.5 * Double(peak))
+        var n = 0.0, sx = 0.0, sy = 0.0
+        var pts: [(Double, Double)] = []
+        for yy in y0..<y1 { for xx in x0..<x1 {
+            if Double(pl.yel[yy * W + xx] - baseYel[yy * W + xx]) >= thr {
+                n += 1; sx += Double(xx); sy += Double(yy)
+                pts.append((Double(xx), Double(yy)))
+            } } }
+        guard n >= 4 else { return nil }
+        let mx = sx / n, my = sy / n
+        // blur-immune radius: MINOR axis of the pixel cloud — a fast ball streaks along
+        // its motion during exposure and the area-disk radius inflates, poisoning the
+        // depth scale (measured: 139 mph driver read as 78). Perpendicular extent holds.
+        var cxx = 0.0, cyy = 0.0, cxy = 0.0
+        for (px, py) in pts {
+            cxx += (px - mx) * (px - mx); cyy += (py - my) * (py - my)
+            cxy += (px - mx) * (py - my)
+        }
+        cxx /= n; cyy /= n; cxy /= n
+        let tr_ = cxx + cyy
+        let det = cxx * cyy - cxy * cxy
+        let lamMin = tr_ / 2 - (max(tr_ * tr_ / 4 - det, 0)).squareRoot()
+        let rMinor = 2.0 * (max(lamMin, 0.25)).squareRoot()
+        let rArea = (n / Double.pi).squareRoot()
+        return (mx, my, min(rArea, rMinor))
     }
 
     /// July 17: re-measure a 360-space pick on the frame's 720px copy. Detection stays

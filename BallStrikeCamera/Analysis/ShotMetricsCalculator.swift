@@ -783,8 +783,8 @@ struct ShotMetricsCalculator {
         let points = clubObservations
             .filter { $0.frameIndex <= impactFrameIndex && $0.confidence > 0 }
             .compactMap { observation -> (frameIndex: Int, time: Double, position: SIMD3<Double>, confidence: Double)? in
-                guard let x = observation.centerX ?? observation.leadingEdgeX,
-                      let y = observation.centerY ?? observation.leadingEdgeY,
+                guard let x = observation.leadingEdgeX ?? observation.centerX,
+                      let y = observation.leadingEdgeY ?? observation.centerY,
                       // A clubhead centered this close to the frame border is partly
                       // off-screen (entering the frame) — its centroid is the centroid of
                       // the VISIBLE half, which biases the earliest speed samples.
@@ -805,7 +805,21 @@ struct ShotMetricsCalculator {
 
         let velocity: SIMD3<Double>?
         let method: String
-        if points.count >= 3 {
+        // Noah's #3 (July 17): the 1st in-motion frame shows a half-entered club and the
+        // at-impact frame merges with the ball — the 2nd and 3rd frames before impact are
+        // the clean pair. When we have >=4 observations, fit on exactly those two.
+        if points.count >= 4 {
+            let pre = points.filter { $0.frameIndex < impactFrameIndex }
+            if pre.count >= 3 {
+                let sel = [pre[1], pre[2]]
+                let dt = sel[1].time - sel[0].time
+                velocity = dt > 0 ? (sel[1].position - sel[0].position) / dt : nil
+                method = "second_third_frame_delta_assumed_ball_depth"
+            } else {
+                velocity = linearFitVelocity(points.map { ($0.time, $0.position) })
+                method = "linear_fit_\(points.count)_points_assumed_ball_depth"
+            }
+        } else if points.count >= 3 {
             velocity = linearFitVelocity(points.map { ($0.time, $0.position) })
             method = "linear_fit_\(points.count)_points_assumed_ball_depth"
         } else {
