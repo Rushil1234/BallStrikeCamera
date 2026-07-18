@@ -61,3 +61,9 @@ __pycache__/
 # Course-data pipeline artifacts (regenerable outputs, blob backups, dumps)
 tools/artifacts/
 tools/__pycache__/
+
+# Local build/replay artifacts and captured session data (never commit)
+build_replay/
+build_base/
+TrueCarryFrames_*.zip
+ScreenRecording_*.mov
