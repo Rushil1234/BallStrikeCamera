@@ -39,7 +39,7 @@ def status():
     for s in p.get('stages', []):
         n = live_count(s)
         if n is not None:
-            s['done_units'] = n
+            s['done_units'] = s.get('base_units', 0) + n
     p['now'] = time.strftime('%H:%M:%S')
     try:
         p['updated_ago_sec'] = int(time.time() - os.path.getmtime(PIPELINE))
