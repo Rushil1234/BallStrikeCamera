@@ -886,7 +886,11 @@ struct ShotMetricsCalculator {
         }
 
         let avgConfidence = points.map(\.confidence).reduce(0, +) / Double(points.count)
-        let clubSpeedMph = vectorLength(velocity) * 2.23694
+        // Optical scale calibration (July 18): every direct point strategy reads the
+        // club ~14% fast — the head travels nearer the camera than the ball whose
+        // diameter sets the px scale (measured +14.2% median on 51 TT club pairs;
+        // pure bias, spread 9.4% after correction). Divide it out.
+        let clubSpeedMph = vectorLength(velocity) * 2.23694 / 1.142
         let quality = min(1.0, Double(points.count) / 6.0) * avgConfidence * 0.65
 
         return ClubMetrics(

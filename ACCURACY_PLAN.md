@@ -59,6 +59,9 @@ Viewers: :8765 labeler · :8766 shot viewer (frames+tracking+3-way metrics) · :
 - [ ] Club round: coverage ≥80%, club-speed head vs TT club pairs, error ≤5 mph (path to 3)
 - [ ] Backspin model shipped (TT-learned), report in-app; target ≤1000 rpm CV
 - [ ] Sidespin curvature experiment on 720px tracks (measure, don't promise)
+- [ ] Hosel-point retest on 720px (Noah's clubless-speed idea: shaft-head junction as
+      the invariant point; sound geometry, blocked at 360px — shaft detector fired 1/51;
+      at 720px the shaft doubles in apparent width)
 - [ ] Carry/total refit incl. our measured descent/apex features; target ≤5 yd median (path to 2/4)
 - [ ] Full validation: all suites, no regressions; viewer refreshed; committed
 
