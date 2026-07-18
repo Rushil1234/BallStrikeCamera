@@ -146,6 +146,9 @@ struct TrueCarryAppShell: View {
     @State private var didPromptUsername = false
     @EnvironmentObject var session: AuthSessionStore
     @EnvironmentObject var camera: CameraController
+    @ObservedObject private var roundBeacon = ActiveRoundBeacon.shared
+    /// Round opened by tapping the banner — presented from the shell so it works on any tab.
+    @State private var bannerRound: CourseRound?
 
     var body: some View {
         GeometryReader { geo in
@@ -166,11 +169,38 @@ struct TrueCarryAppShell: View {
                 // (Transparent when idle — empty space passes touches through.)
                 GoalCelebrationOverlay()
             }
+            .overlay(alignment: .top) {
+                // "Round in progress" — shown whenever a live round exists and course mode
+                // itself is off screen; tapping jumps back into the round.
+                if let round = roundBeacon.round, !roundBeacon.courseViewVisible {
+                    activeRoundBanner(round)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.32, dampingFraction: 0.8),
+                       value: roundBeacon.round == nil || roundBeacon.courseViewVisible)
         }
         .background(TCTheme.background.ignoresSafeArea())
         .tcAppearance()
         .sheet(isPresented: $showUsernameSetup) {
             NavigationStack { TCEditProfileSheet() }.tcAppearance()
+        }
+        .fullScreenCover(item: $bannerRound) { round in
+            CourseModeGPSHoleView(
+                userId: session.currentUser?.id ?? UUID(),
+                backend: session.backend,
+                initialRound: round
+            )
+        }
+        .task {
+            // Seed the round-in-progress banner on cold start — course mode isn't running
+            // yet to set the beacon itself.
+            guard let uid = session.currentUser?.id, ActiveRoundBeacon.shared.round == nil,
+                  !ActiveRoundBeacon.shared.courseViewVisible else { return }
+            let all = (try? await session.backend.loadCourseRounds(userId: uid)) ?? []
+            if !ActiveRoundBeacon.shared.courseViewVisible {
+                ActiveRoundBeacon.shared.round = all.first(where: { $0.endedAt == nil })
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .tcOpenLiveSim)) { _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
@@ -186,6 +216,40 @@ struct TrueCarryAppShell: View {
         }
         .onAppear(perform: maybePromptUsername)
         .onChange(of: session.userProfile?.username) { _ in maybePromptUsername() }
+    }
+
+    /// Tap-to-return pill for a round in progress. Posting `.tcResumeRound` lands on the
+    /// Play tab, which reloads the unfinished round and reopens course mode fullscreen.
+    private func activeRoundBanner(_ round: CourseRound) -> some View {
+        let holeNumber = round.holes.first(where: { $0.score == nil })?.holeNumber
+        return Button {
+            bannerRound = round
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "flag.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(TCTheme.gold)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(holeNumber.map { "Round in progress · Hole \($0)" } ?? "Round in progress")
+                        .font(.system(size: 12, weight: .heavy, design: .rounded))
+                        .foregroundColor(.white)
+                    Text("\(round.courseName) — tap to return")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.75))
+                        .lineLimit(1)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white.opacity(0.7))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Color(red: 0.10, green: 0.23, blue: 0.13)))
+            .overlay(Capsule().strokeBorder(TCTheme.gold.opacity(0.45), lineWidth: 1))
+            .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
     }
 
     /// One-time-per-launch nudge to pick a username so the app shows @handles instead of email.

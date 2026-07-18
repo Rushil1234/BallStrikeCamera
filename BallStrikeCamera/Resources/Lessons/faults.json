@@ -7,7 +7,12 @@
     "lessonId": "tempo.ratio",
     "videoId": "coach.tempo.v1",
     "metric": "tempo_ratio",
-    "direction": "below"
+    "direction": "below",
+    "drillLadder": [
+      "FEEL: count 'one-and-two' out loud — back on 'one-and', through on 'two'",
+      "DRILL: swing at 80% until the count feels boring, 10 reps",
+      "CONSTRAINT: pause a full second at the top before starting down"
+    ]
   },
   {
     "id": "slow_drift",
@@ -27,7 +32,12 @@
     "lessonId": "contact.lowpoint",
     "videoId": "coach.sway.v1",
     "metric": "head_sway",
-    "direction": "above"
+    "direction": "above",
+    "drillLadder": [
+      "FEEL: finish the backswing with your trail ear over your trail knee — turn, don't drift",
+      "DRILL: back of your trail hip against an alignment stick in the ground; turn without losing contact",
+      "CONSTRAINT: feet-together swings — any sway and you literally tip over"
+    ]
   },
   {
     "id": "hip_slide",
@@ -87,7 +97,12 @@
     "lessonId": "slice.path",
     "videoId": "coach.otc.v1",
     "metric": "delivery_plane",
-    "direction": "above"
+    "direction": "above",
+    "drillLadder": [
+      "FEEL: from the top, feel the club head fall BEHIND you before it swings out",
+      "DRILL: pump drill — top to delivery position twice, then swing through",
+      "CONSTRAINT: headcover just outside the ball line; steep swings hit it"
+    ]
   },
   {
     "id": "shallow_delivery",
@@ -126,7 +141,11 @@
     "drill": "Use the routine: feet together at the ball, take your grip, then step out until the INSIDES of your feet sit under your shoulders.",
     "lessonId": "foundations.setup",
     "metric": "stance_width",
-    "direction": "below"
+    "direction": "below",
+    "drillLadder": [
+      "FEEL: feet together at the ball, take the grip, then one deliberate step out each side",
+      "DRILL: address in front of a mirror or the camera until shoulder-width is automatic"
+    ]
   },
   {
     "id": "wide_stance",
@@ -144,6 +163,11 @@
     "drill": "Club across your shoulders: turn back, then unwind and PUSH into the lead foot until the trail foot rolls onto its tiptoe. Finish with 90% of you on the lead side, hold 3 seconds.",
     "lessonId": "foundations.fullswing",
     "metric": "weight_shift",
-    "direction": "below"
+    "direction": "below",
+    "drillLadder": [
+      "FEEL: finish with your trail shoulder closer to the target than your lead was at address",
+      "DRILL: club across shoulders — twist and push until the trail foot rolls to its tiptoe",
+      "CONSTRAINT: step-through swings — walk toward the target after impact like Gary Player"
+    ]
   }
 ]

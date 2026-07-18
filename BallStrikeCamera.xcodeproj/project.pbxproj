@@ -100,6 +100,7 @@
 		BF0000010000000000000703 /* WindModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000803 /* WindModel.swift */; };
 		BF0000010000000000000704 /* WindService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000804 /* WindService.swift */; };
 		BF0000010000000000000705 /* CaddieEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000805 /* CaddieEngine.swift */; };
+		BF00000100000000000CM901 /* CourseManagementEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF00000100000000000CM902 /* CourseManagementEngine.swift */; };
 		BF0000010000000000000901 /* GroundPlaneMetricsCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000902 /* GroundPlaneMetricsCalculator.swift */; };
 		BF000001000000000000A001 /* CourseLandingMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000B001 /* CourseLandingMapView.swift */; };
 		BF000001000000000000HD02 /* HitDirection.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000HD01 /* HitDirection.swift */; };
@@ -207,6 +208,7 @@
 		CAFE000000000000000000C1 /* SessionSaveSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C0 /* SessionSaveSheet.swift */; };
 		CAFE000000000000000000C3 /* SimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C2 /* SimCameraScreen.swift */; };
 		CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C4 /* SessionDetailView.swift */; };
+		BF00000100000000000ME901 /* RoundHoleMapEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF00000100000000000ME902 /* RoundHoleMapEditor.swift */; };
 		CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C6 /* ShotDetailView.swift */; };
 		CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE000000000000000000C8 /* ShotGIFExporter.swift */; };
 		CAFE00000000000000000101 /* GSProModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE00000000000000000100 /* GSProModels.swift */; };
@@ -363,6 +365,7 @@
 		BF0000010000000000000803 /* WindModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindModel.swift; sourceTree = "<group>"; };
 		BF0000010000000000000804 /* WindService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindService.swift; sourceTree = "<group>"; };
 		BF0000010000000000000805 /* CaddieEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaddieEngine.swift; sourceTree = "<group>"; };
+		BF00000100000000000CM902 /* CourseManagementEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseManagementEngine.swift; sourceTree = "<group>"; };
 		BF0000010000000000000902 /* GroundPlaneMetricsCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroundPlaneMetricsCalculator.swift; sourceTree = "<group>"; };
 		BF000001000000000000B001 /* CourseLandingMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseLandingMapView.swift; sourceTree = "<group>"; };
 		BF000001000000000000HD01 /* HitDirection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HitDirection.swift; sourceTree = "<group>"; };
@@ -470,6 +473,7 @@
 		CAFE000000000000000000C0 /* SessionSaveSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSaveSheet.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C2 /* SimCameraScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimCameraScreen.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C4 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
+		BF00000100000000000ME902 /* RoundHoleMapEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundHoleMapEditor.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C6 /* ShotDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotDetailView.swift; sourceTree = "<group>"; };
 		CAFE000000000000000000C8 /* ShotGIFExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotGIFExporter.swift; sourceTree = "<group>"; };
 		CAFE00000000000000000100 /* GSProModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GSProModels.swift; sourceTree = "<group>"; };
@@ -1014,6 +1018,7 @@
 				BF0000010000000000000803 /* WindModel.swift */,
 				BF0000010000000000000804 /* WindService.swift */,
 				BF0000010000000000000805 /* CaddieEngine.swift */,
+				BF00000100000000000CM902 /* CourseManagementEngine.swift */,
 				BF0000070000000000000011 /* SyncQueue.swift */,
 				BF0000070000000000000012 /* GeometrySimplifier.swift */,
 				BF0000070000000000000013 /* PlatformSeams.swift */,
@@ -1039,6 +1044,7 @@
 			children = (
 				CAFE000000000000000000A0 /* TrueCarryHistoryView.swift */,
 				CAFE000000000000000000C4 /* SessionDetailView.swift */,
+				BF00000100000000000ME902 /* RoundHoleMapEditor.swift */,
 				CAFE000000000000000000C6 /* ShotDetailView.swift */,
 				CAFE0000000000000000FB10 /* ReplayPlayerView.swift */,
 				CAFE000000000000000000C8 /* ShotGIFExporter.swift */,
@@ -1364,6 +1370,7 @@
 				LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */,
 				LIVE00000000000000000005 /* LiveSimCameraScreen.swift in Sources */,
 				CAFE000000000000000000C5 /* SessionDetailView.swift in Sources */,
+				BF00000100000000000ME901 /* RoundHoleMapEditor.swift in Sources */,
 				CAFE000000000000000000C7 /* ShotDetailView.swift in Sources */,
 				CAFE0000000000000000FB11 /* ReplayPlayerView.swift in Sources */,
 				CAFE000000000000000000C9 /* ShotGIFExporter.swift in Sources */,
@@ -1376,6 +1383,7 @@
 				BF0000010000000000000703 /* WindModel.swift in Sources */,
 				BF0000010000000000000704 /* WindService.swift in Sources */,
 				BF0000010000000000000705 /* CaddieEngine.swift in Sources */,
+				BF00000100000000000CM901 /* CourseManagementEngine.swift in Sources */,
 				BF0000080000000000000012 /* SyncQueue.swift in Sources */,
 				BF0000080000000000000013 /* GeometrySimplifier.swift in Sources */,
 				BF0000080000000000000014 /* PlatformSeams.swift in Sources */,

@@ -467,6 +467,9 @@ struct TCRangeFinderDispersion: View {
     struct ShotPoint {
         let carry: Double    // yards (> 0)
         let lateral: Double  // yards, signed: + right, − left (pre-computed landing offset)
+        /// Caller-side identity for tap-to-inspect (index into the caller's metadata array).
+        /// Only tagged points are tappable.
+        var tag: Int? = nil
     }
 
     /// One club's shots for the ALL (top-tracer) view: its own dot color + grouping ellipse.
@@ -481,31 +484,62 @@ struct TCRangeFinderDispersion: View {
     /// nil = single-club mode (dots tiered by how offline they are). Non-nil = ALL mode:
     /// every club at once, each with its own color and its own 2σ grouping ellipse.
     var clubSeries: [ClubSeries]? = nil
+    /// Called with the tapped point's `tag` when the user taps near a tagged dot.
+    var onTapShot: ((Int) -> Void)? = nil
 
     private var valid: [ShotPoint] { shots.filter { $0.carry > 0 } }
 
-    // Remove outliers beyond 3.5 std-devs on either axis (loose — only the wildest mishits)
+    // Remove absurd outliers with median/MAD on both axes. The old mean/σ test let a single
+    // monster save itself (a 200-yd-right putt inflates σ enough to pass 3.5σ) and skipped
+    // small samples entirely — exactly when one bad point wrecks the axes. Bands stay loose
+    // (wild-but-real mishits still plot); only the ridiculous goes, and the axes stop
+    // stretching to fit garbage.
     private var filtered: [ShotPoint] {
-        guard valid.count > 4 else { return valid }
+        guard valid.count > 2 else { return valid }
         let carries  = valid.map { $0.carry }
         let laterals = valid.map { $0.lateral }
-        let meanC = carries.reduce(0, +) / Double(carries.count)
-        let meanL = laterals.reduce(0, +) / Double(laterals.count)
-        let sdC = sqrt(carries.map { pow($0 - meanC, 2) }.reduce(0, +) / Double(carries.count))
-        let sdL = sqrt(laterals.map { pow($0 - meanL, 2) }.reduce(0, +) / Double(laterals.count))
-        let limC = max(sdC * 3.5, 20)
-        let limL = max(sdL * 3.5, 15)
-        return valid.filter { abs($0.carry - meanC) <= limC && abs($0.lateral - meanL) <= limL }
+        let medC = Self.median(carries)
+        let medL = Self.median(laterals)
+        let sC = max(1.4826 * Self.median(carries.map { abs($0 - medC) }), 8)
+        let sL = max(1.4826 * Self.median(laterals.map { abs($0 - medL) }), 6)
+        let limC = max(3.5 * sC, 25)
+        let limL = max(3.5 * sL, 20)
+        return valid.filter { abs($0.carry - medC) <= limC && abs($0.lateral - medL) <= limL }
     }
 
-    private var maxCarry: Double {
-        let m = filtered.map { $0.carry }.max() ?? 150
-        return max(ceil(m / 50) * 50 + 25, 200)
+    private static func median(_ xs: [Double]) -> Double {
+        guard !xs.isEmpty else { return 0 }
+        let s = xs.sorted()
+        let mid = s.count / 2
+        return s.count.isMultiple(of: 2) ? (s[mid - 1] + s[mid]) / 2 : s[mid]
     }
+
+    /// Carry axis window fitted to the shots — a tight wedge cluster gets a close-up, not a
+    /// 0–200 runway of empty turf. Padded, rounded to 25s, minimum 60-yd span so a 4-shot
+    /// group still has arcs and labels to read against; anchors back to 0 when the shots
+    /// already start near the tee (a zoomed 30–90 view of chips would just look broken).
+    private var carryBounds: (lo: Double, hi: Double) {
+        let cs = filtered.map { $0.carry }
+        guard let mn = cs.min(), let mx = cs.max() else { return (0, 200) }
+        var lo = Swift.max(0, mn - 20)
+        var hi = mx + 20
+        let minSpan = 60.0
+        if hi - lo < minSpan {
+            let mid = (hi + lo) / 2
+            lo = Swift.max(0, mid - minSpan / 2)
+            hi = lo + minSpan
+        }
+        lo = floor(lo / 25) * 25
+        hi = ceil(hi / 25) * 25
+        if lo <= 50 { lo = 0 }
+        return (lo, hi)
+    }
+
+    private var maxCarry: Double { carryBounds.hi }
 
     private var maxLateral: Double {
         let m = filtered.map { abs($0.lateral) }.max() ?? 30
-        return max(ceil(m / 10) * 10 + 10, 40)
+        return max(ceil((m + 8) / 5) * 5, 15)
     }
 
     var avgDispersionYds: Double? {
@@ -514,6 +548,7 @@ struct TCRangeFinderDispersion: View {
     }
 
     var body: some View {
+        GeometryReader { geo in
         Canvas { ctx, size in
             let W = size.width, H = size.height
             // Slim side gutters — the grid runs nearly edge-to-edge; carry labels are
@@ -530,7 +565,8 @@ struct TCRangeFinderDispersion: View {
             let plotRight = W - rPad
             let plotBot   = H - bPad
 
-            let mCarry   = maxCarry
+            let (loCarry, mCarry) = carryBounds
+            let carrySpan = max(mCarry - loCarry, 1)
             let mLateral = maxLateral
             let pts      = filtered
 
@@ -538,7 +574,7 @@ struct TCRangeFinderDispersion: View {
                 plotLeft + CGFloat((lat + mLateral) / (2 * mLateral)) * plotW
             }
             func yCG(_ carry: Double) -> CGFloat {
-                plotBot - CGFloat(carry / mCarry) * plotH
+                plotBot - CGFloat((carry - loCarry) / carrySpan) * plotH
             }
 
             // ── Background ─────────────────────────────────────────────────
@@ -554,13 +590,17 @@ struct TCRangeFinderDispersion: View {
             ctx.fill(Path(CGRect(x: fLeft, y: plotTop, width: fRight - fLeft, height: plotH)),
                      with: .color(Color(red: 0.14, green: 0.30, blue: 0.12)))
 
-            // ── Constant-distance lines every 5 yds, labelled every 50 ─────
-            // Same axes/scales as before, but each line is the set of points the same TOTAL
-            // distance from the tee — so it bows downward at the edges (carry = √(d² − lat²)),
-            // since a ball offline at the same distance travelled less forward carry.
-            for rawC in stride(from: 5.0, through: mCarry - 1, by: 5.0) {
+            // ── Constant-distance arcs, adaptive density ───────────────────
+            // Each line is the set of points the same TOTAL distance from the tee — it
+            // bows downward at the edges (carry = √(d² − lat²)). Density follows the
+            // VISIBLE span (the window may be zoomed onto a tight cluster), so a 60-yd
+            // close-up gets 5-yd lines with 25-yd labels and a full-bag view stays sparse.
+            let minorStep: Double = carrySpan <= 100 ? 5 : (carrySpan <= 200 ? 5 : (carrySpan <= 320 ? 10 : 25))
+            let majorStep: Double = carrySpan <= 100 ? 25 : (carrySpan <= 320 ? 50 : 100)
+            let firstArc = (floor(loCarry / minorStep) + 1) * minorStep
+            for rawC in stride(from: firstArc, through: mCarry - 1, by: minorStep) {
                 guard yCG(rawC) > plotTop && yCG(rawC) < plotBot else { continue }
-                let isMajor = Int(rawC) % 50 == 0
+                let isMajor = Int(rawC) % Int(majorStep) == 0
                 let latLimit = min(rawC, mLateral)
                 var ln = Path()
                 let steps = 64
@@ -573,18 +613,27 @@ struct TCRangeFinderDispersion: View {
                 ctx.stroke(ln, with: .color(Color.white.opacity(isMajor ? 0.40 : 0.12)),
                            lineWidth: isMajor ? 1.0 : 0.5)
                 if isMajor {
+                    // Label ON its own arc: the arc dips at the edges, so anchor the
+                    // number to the arc's actual height near the left side — the bold
+                    // line and its label must never separate.
+                    let labelLat = -latLimit * 0.86
+                    let labelCarry = sqrt(max(0, rawC * rawC - labelLat * labelLat))
                     ctx.draw(
                         Text(String(Int(rawC)))
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(Color.white.opacity(0.90)),
-                        at: CGPoint(x: plotLeft + 6, y: yCG(rawC) - 8), anchor: .leading
+                        at: CGPoint(x: xCG(labelLat) + 4, y: yCG(labelCarry) - 8),
+                        anchor: .leading
                     )
                 }
             }
 
-            // ── Vertical lateral lines every 10 yds, all labelled ──────────
-            let latStart = -floor(mLateral / 10.0) * 10.0
-            for rawL in stride(from: latStart, through: mLateral + 0.01, by: 10.0) {
+            // ── Vertical lateral lines: at most ~6 labels each side of center ──
+            // A 100-yard slice used to spawn 20+ fixed-10yd labels; pick a "nice" step
+            // that keeps the count constant no matter how wild the miss.
+            let latStep: Double = ([5.0, 10, 15, 20, 25, 50, 100].first { $0 >= mLateral / 6.0 }) ?? 100
+            let latStart = -floor(mLateral / latStep) * latStep
+            for rawL in stride(from: latStart, through: mLateral + 0.01, by: latStep) {
                 let x = xCG(rawL)
                 guard x >= plotLeft - 1 && x <= plotRight + 1 else { continue }
                 let isCenter = abs(rawL) < 0.1
@@ -669,6 +718,31 @@ struct TCRangeFinderDispersion: View {
             }
 
         }
+        .contentShape(Rectangle())
+        .onTapGesture { loc in handleTap(loc, size: geo.size) }
+        }
+    }
+
+    /// Mirrors the Canvas transform to find the tagged dot nearest the tap (within ~24 pt).
+    private func handleTap(_ loc: CGPoint, size: CGSize) {
+        guard let onTapShot else { return }
+        let lPad: CGFloat = 14, rPad: CGFloat = 14, bPad: CGFloat = 32, tPad: CGFloat = 10
+        let plotW = size.width - lPad - rPad
+        let plotH = size.height - bPad - tPad
+        let plotBot = size.height - bPad
+        let (loC, mC) = carryBounds
+        let span = max(mC - loC, 1)
+        let mL = maxLateral
+        guard plotW > 0, plotH > 0, mL > 0 else { return }
+        var best: (d2: CGFloat, tag: Int)?
+        for sp in filtered {
+            guard let tag = sp.tag else { continue }
+            let x = lPad + CGFloat((sp.lateral + mL) / (2 * mL)) * plotW
+            let y = plotBot - CGFloat((sp.carry - loC) / span) * plotH
+            let d2 = pow(x - loc.x, 2) + pow(y - loc.y, 2)
+            if d2 < (best?.d2 ?? .infinity) { best = (d2, tag) }
+        }
+        if let best, best.d2 <= 24 * 24 { onTapShot(best.tag) }
     }
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PastSessionsView: View {
     @EnvironmentObject var session: AuthSessionStore
+    @ObservedObject private var lessonLibrary = LessonLibrary.shared
 
     @State private var selectedFilter: HistoryFilter = .all
     @State private var showSearch = false
@@ -57,7 +58,6 @@ struct PastSessionsView: View {
                     filterBar
                     summaryStrip
                     handicapCard   // always visible so Scores & Handicap is discoverable pre-rounds
-                    coachSwingsSection   // lessons + analyzed swings from TrueCarry Coach
                     content
                     Spacer(minLength: 140)
                 }
@@ -111,6 +111,9 @@ struct PastSessionsView: View {
                 .tcAppearance()
         }
         .task(id: session.currentUser?.id) {
+            // Coach history lives in LessonLibrary — activate it here too, or History
+            // reads an empty library when Coach hasn't been opened this launch.
+            if let uid = session.currentUser?.id { LessonLibrary.shared.activate(userId: uid) }
             // Seed instantly from the prewarmed cache so counts aren't 0 while loading.
             if !didLoad, !session.cachedShots.isEmpty {
                 shots = session.cachedShots.filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
@@ -490,37 +493,6 @@ struct PastSessionsView: View {
         }
     }
 
-    // MARK: Coach swings (lesson history + analyzed swing videos)
-
-    @ViewBuilder
-    private var coachSwingsSection: some View {
-        let library = LessonLibrary.shared
-        let recent = Array(library.swings.filter(\.analyzed).suffix(3).reversed())
-        if !recent.isEmpty || !library.lessonSessions.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Text("COACH")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(TCTheme.textMuted)
-                        .tracking(1.4)
-                        .fixedSize()
-                    Rectangle().fill(TCTheme.border).frame(height: 1)
-                    Text("\(library.completedLessonCount) lesson\(library.completedLessonCount == 1 ? "" : "s") · \(library.swings.filter(\.analyzed).count) swing\(library.swings.filter(\.analyzed).count == 1 ? "" : "s")")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(TCTheme.textUltraMuted)
-                        .fixedSize()
-                }
-                ForEach(recent) { swing in
-                    NavigationLink { SwingReplayView(swing: swing) } label: {
-                        SwingRowView(swing: swing)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, TCTheme.hPad)
-        }
-    }
-
     private var timelineSection: some View {
         VStack(alignment: .leading, spacing: 18) {
             ForEach(groupedItems, id: \.key) { group in
@@ -605,6 +577,14 @@ struct PastSessionsView: View {
                 NavigationLink(destination: SessionDetailView(item: .course(round),
                                                               onSessionRemoved: removeSession,
                                                               onShotsChanged: updateSessionShots)) {
+                    timelineRow(item)
+                }
+                .buttonStyle(.plain)
+                .highPriorityGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                    beginSelection(item)
+                })
+            case .coach(let record):
+                NavigationLink(destination: CoachSessionDetailView(record: record)) {
                     timelineRow(item)
                 }
                 .buttonStyle(.plain)
@@ -915,6 +895,8 @@ struct PastSessionsView: View {
             case .courseRound(let round):
                 try await backend.deleteCourseRound(roundId: round.id, userId: uid)
                 rounds.removeAll { $0.id == round.id }
+            case .coachSession(let record):
+                LessonLibrary.shared.deleteLessonSession(id: record.id)
             case .shot(let shot):
                 let service = ShotPersistenceService(userId: uid, backend: backend)
                 try await service.deleteShot(id: shot.id)
@@ -933,6 +915,7 @@ struct PastSessionsView: View {
         for s in simSessions  { try? await backend.deleteSimSession(sessionId: s.id, userId: uid) }
         for r in rounds       { try? await backend.deleteCourseRound(roundId: r.id, userId: uid) }
         for sh in shots       { try? await service.deleteShot(id: sh.id) }
+        LessonLibrary.shared.clearLessonSessions()
         rangeSessions = []; simSessions = []; rounds = []; shots = []
     }
 
@@ -957,6 +940,7 @@ struct PastSessionsView: View {
             baseItems = rangeSessions.map(HistoryTimelineItem.range)
                 + simSessions.map(HistoryTimelineItem.sim)
                 + rounds.map(HistoryTimelineItem.course)
+                + lessonLibrary.lessonSessions.map(HistoryTimelineItem.coach)
                 + standaloneShots.map(HistoryTimelineItem.shot)
         case .range:
             baseItems = rangeSessions.map(HistoryTimelineItem.range)
@@ -964,6 +948,8 @@ struct PastSessionsView: View {
             baseItems = simSessions.map(HistoryTimelineItem.sim)
         case .course:
             baseItems = rounds.map(HistoryTimelineItem.course)
+        case .coach:
+            baseItems = lessonLibrary.lessonSessions.map(HistoryTimelineItem.coach)
         case .shots:
             baseItems = shots.map(HistoryTimelineItem.shot)
         }
@@ -981,10 +967,12 @@ struct PastSessionsView: View {
 
     private func count(for filter: HistoryFilter) -> Int {
         switch filter {
-        case .all: return rangeSessions.count + simSessions.count + rounds.count + standaloneShots.count
+        case .all: return rangeSessions.count + simSessions.count + rounds.count
+            + lessonLibrary.lessonSessions.count + standaloneShots.count
         case .range: return rangeSessions.count
         case .sim: return simSessions.count
         case .course: return rounds.count
+        case .coach: return lessonLibrary.lessonSessions.count
         case .shots: return shots.count
         }
     }
@@ -1021,6 +1009,7 @@ struct PastSessionsView: View {
         case .range: return "No range sessions"
         case .sim: return "No sim sessions"
         case .course: return "No course rounds"
+        case .coach: return "No coach sessions"
         case .shots: return "No saved shots"
         }
     }
@@ -1034,6 +1023,8 @@ struct PastSessionsView: View {
             return "Finish a range session, sim session, course round, or save a shot to start building your timeline."
         case .range:
             return "Saved range sessions appear here after you end and save a session."
+        case .coach:
+            return "Lessons and Analyze My Swing sittings land here automatically."
         case .sim:
             return "Sim sessions appear here after you save a simulator session."
         case .course:
@@ -1060,6 +1051,7 @@ struct PastSessionsView: View {
         case range
         case sim
         case course
+        case coach
         case shots
 
         var id: String { rawValue }
@@ -1070,6 +1062,7 @@ struct PastSessionsView: View {
             case .range: return "Range"
             case .sim: return "Sim"
             case .course: return "Course"
+            case .coach: return "Coach"
             case .shots: return "Shots"
             }
         }
@@ -1080,6 +1073,7 @@ struct PastSessionsView: View {
             case .range: return "Range Sessions"
             case .sim: return "Sim Sessions"
             case .course: return "Course Rounds"
+            case .coach: return "Coach Sessions"
             case .shots: return "Saved Shots"
             }
         }
@@ -1090,6 +1084,7 @@ struct PastSessionsView: View {
             case .range: return "scope"
             case .sim: return "display"
             case .course: return "flag.fill"
+            case .coach: return "graduationcap.fill"
             case .shots: return "circle.inset.filled"
             }
         }
@@ -1099,6 +1094,7 @@ struct PastSessionsView: View {
         case rangeSession(PracticeSession)
         case simSession(SimSession)
         case courseRound(CourseRound)
+        case coachSession(LessonSessionRecord)
         case shot(SavedShot)
 
         var id: String {
@@ -1106,6 +1102,7 @@ struct PastSessionsView: View {
             case .rangeSession(let session): return "range-\(session.id.uuidString)"
             case .simSession(let session): return "sim-\(session.id.uuidString)"
             case .courseRound(let round): return "course-\(round.id.uuidString)"
+            case .coachSession(let record): return "coach-\(record.id.uuidString)"
             case .shot(let shot): return "shot-\(shot.id.uuidString)"
             }
         }
@@ -1115,6 +1112,7 @@ struct PastSessionsView: View {
             case .rangeSession: return "range session"
             case .simSession: return "sim session"
             case .courseRound: return "round"
+            case .coachSession: return "coach session"
             case .shot: return "shot"
             }
         }
@@ -1130,6 +1128,7 @@ struct PastSessionsView: View {
         case range(PracticeSession)
         case sim(SimSession)
         case course(CourseRound)
+        case coach(LessonSessionRecord)
         case shot(SavedShot)
 
         var id: String {
@@ -1137,6 +1136,7 @@ struct PastSessionsView: View {
             case .range(let session): return "range-\(session.id.uuidString)"
             case .sim(let session): return "sim-\(session.id.uuidString)"
             case .course(let round): return "course-\(round.id.uuidString)"
+            case .coach(let record): return "coach-\(record.id.uuidString)"
             case .shot(let shot): return "shot-\(shot.id.uuidString)"
             }
         }
@@ -1146,6 +1146,7 @@ struct PastSessionsView: View {
             case .range(let session): return session.endedAt ?? session.startedAt
             case .sim(let session): return session.endedAt ?? session.startedAt
             case .course(let round): return round.endedAt ?? round.startedAt
+            case .coach(let record): return record.endedAt ?? record.startedAt
             case .shot(let shot): return shot.timestamp
             }
         }
@@ -1155,6 +1156,7 @@ struct PastSessionsView: View {
             case .range: return "scope"
             case .sim: return "display"
             case .course: return "flag.fill"
+            case .coach: return "graduationcap.fill"
             case .shot: return "circle.inset.filled"
             }
         }
@@ -1164,6 +1166,7 @@ struct PastSessionsView: View {
             case .range: return TCTheme.sage
             case .sim: return TCTheme.gold
             case .course: return TCTheme.sage
+            case .coach: return TCTheme.sageDeep
             case .shot: return TCTheme.silver
             }
         }
@@ -1176,6 +1179,8 @@ struct PastSessionsView: View {
                 return session.name.isEmpty ? "Sim Session" : session.name
             case .course(let round):
                 return round.name.isEmpty ? round.courseName : round.name
+            case .coach(let record):
+                return record.lessonTitle
             case .shot(let shot):
                 return "\(shot.clubName ?? "Saved") Shot"
             }
@@ -1191,6 +1196,14 @@ struct PastSessionsView: View {
                 return session.sessionDescription?.isEmpty == false ? "\(source) - \(session.sessionDescription!)" : source
             case .course(let round):
                 return "\(round.courseName) - \(round.teeBoxName) tees"
+            case .coach(let record):
+                if record.lessonId == "studio.analyze" {
+                    return "Swing Studio - \(record.swingIds.count) swing\(record.swingIds.count == 1 ? "" : "s") analyzed"
+                }
+                if record.stepCount > 0, record.stepsCompleted < record.stepCount {
+                    return "\(record.trackTitle) - \(record.stepsCompleted)/\(record.stepCount) steps"
+                }
+                return "\(record.trackTitle) - completed"
             case .shot(let shot):
                 var parts = [Self.sourceLabel(for: shot.source)]
                 if let hole = shot.holeNumber { parts.append("Hole \(hole)") }
@@ -1204,6 +1217,9 @@ struct PastSessionsView: View {
             case .range(let session): return "\(session.shotIds.count)"
             case .sim(let session): return "\(session.shotIds.count)"
             case .course(let round): return Self.scoreText(round.scoreSummary)
+            case .coach(let record):
+                if let score = record.score { return "\(score)" }
+                return "\(record.swingIds.count)"
             case .shot(let shot): return Self.yards(shot.metrics.carryYards)
             }
         }
@@ -1212,6 +1228,7 @@ struct PastSessionsView: View {
             switch self {
             case .range, .sim: return "shots"
             case .course: return "score"
+            case .coach(let record): return record.score != nil ? "score" : "swings"
             case .shot: return "carry"
             }
         }
@@ -1236,6 +1253,14 @@ struct PastSessionsView: View {
                     HistoryStat(label: "Putts", value: "\(round.scoreSummary.totalPutts)"),
                     HistoryStat(label: "Holes", value: "\(round.holes.count)")
                 ]
+            case .coach(let record):
+                return [
+                    HistoryStat(label: "Steps", value: record.stepCount > 0
+                                ? "\(record.stepsCompleted)/\(record.stepCount)" : "--"),
+                    HistoryStat(label: "Swings", value: "\(record.swingIds.count)"),
+                    HistoryStat(label: "Duration", value: Self.duration(start: record.startedAt,
+                                                                        end: record.endedAt))
+                ]
             case .shot(let shot):
                 return [
                     HistoryStat(label: "Total", value: Self.yards(shot.metrics.totalYards)),
@@ -1250,6 +1275,7 @@ struct PastSessionsView: View {
             case .range(let session): return .rangeSession(session)
             case .sim(let session): return .simSession(session)
             case .course(let round): return .courseRound(round)
+            case .coach(let record): return .coachSession(record)
             case .shot(let shot): return .shot(shot)
             }
         }
@@ -1259,6 +1285,7 @@ struct PastSessionsView: View {
             case .range: return "Delete Range Session"
             case .sim: return "Delete Sim Session"
             case .course: return "Delete Round"
+            case .coach: return "Delete Coach Session"
             case .shot: return "Delete Shot"
             }
         }
@@ -1308,5 +1335,77 @@ struct PastSessionsView: View {
             let remaining = minutes % 60
             return remaining == 0 ? "\(hours)h" : "\(hours)h \(remaining)m"
         }
+    }
+}
+
+
+// MARK: - Coach session detail (a sitting: its swings, straight into replays)
+
+struct CoachSessionDetailView: View {
+    let record: LessonSessionRecord
+    @ObservedObject private var library = LessonLibrary.shared
+
+    private var sessionSwings: [SwingRecording] {
+        record.swingIds.compactMap { id in library.swings.first { $0.id == id } }
+    }
+
+    var body: some View {
+        ZStack {
+            TrueCarryBackground().ignoresSafeArea()
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: TCTheme.sectionGap) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(record.lessonTitle)
+                            .font(.system(size: 24, weight: .black, design: .rounded))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text(detailLine)
+                            .font(.system(size: 13))
+                            .foregroundColor(TCTheme.textMuted)
+                        if let score = record.score {
+                            Label("Best score \(score)", systemImage: "rosette")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(score >= 70 ? TCTheme.sage : TCTheme.gold)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .tcCard(padding: 16)
+
+                    if !sessionSwings.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            TCSectionHeader(title: "Swings in this session")
+                            ForEach(sessionSwings) { swing in
+                                NavigationLink { SwingReplayView(swing: swing) } label: {
+                                    SwingRowView(swing: swing)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    } else {
+                        Text("No recorded swings in this sitting — lesson steps only.")
+                            .font(.system(size: 13))
+                            .foregroundColor(TCTheme.textUltraMuted)
+                    }
+                    Spacer(minLength: 40)
+                }
+                .padding(.horizontal, TCTheme.hPad)
+                .padding(.top, 10)
+            }
+        }
+        .navigationTitle("Coach Session")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var detailLine: String {
+        let df = DateFormatter()
+        df.dateStyle = .long
+        df.timeStyle = .short
+        var bits = [df.string(from: record.endedAt ?? record.startedAt)]
+        if record.lessonId != "studio.analyze" {
+            bits.append(record.trackTitle)
+            if record.stepCount > 0 {
+                bits.append("\(record.stepsCompleted)/\(record.stepCount) steps")
+            }
+        }
+        return bits.joined(separator: " · ")
     }
 }

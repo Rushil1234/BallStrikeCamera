@@ -465,14 +465,120 @@ private struct DebugSnapshotHarness: View {
                         .padding(20)
                 }
             }
+        case "dispersion":
+            // Noah's bug scenario: one wild 100yd-right shot among normal ones,
+            // plus a long-hitter set — axis labels must stay ≤6 per side.
+            VStack(spacing: 16) {
+                TCRangeFinderDispersion(shots: [
+                    .init(carry: 230, lateral: 8), .init(carry: 245, lateral: -12),
+                    .init(carry: 238, lateral: 15), .init(carry: 250, lateral: -5),
+                    .init(carry: 242, lateral: 3), .init(carry: 55, lateral: 100),
+                    .init(carry: 228, lateral: 22), .init(carry: 251, lateral: -18),
+                ]).frame(height: 300)
+                TCRangeFinderDispersion(shots: [
+                    .init(carry: 330, lateral: 12), .init(carry: 345, lateral: -20),
+                    .init(carry: 355, lateral: 25), .init(carry: 310, lateral: -8),
+                    .init(carry: 362, lateral: 5),
+                ]).frame(height: 300)
+            }
+            .padding(16)
+            .background(Color.black)
         case "coachhome":
             NavigationStack {
                 LessonsHomeView()
                     .environmentObject(AuthSessionStore())
             }
+        case "shotedit":
+            // Hole shots editor: club menus, add-missed-shot form.
+            shotEditSample(addOpen: false)
+        case "shoteditadd":
+            shotEditSample(addOpen: true)
+        case "shotmapedit":
+            // History map editor: numbered shot pins on the hole, tap/move/add on the image.
+            shotMapEditSample
         default:
             Text("Unknown snapshot view: \(name)")
         }
+    }
+
+    private var shotMapEditSample: some View {
+        let uid = UUID()
+        // Pebble-adjacent coastline so the satellite view has real turf to show.
+        let tee   = Coordinate(latitude: 36.5690, longitude: -121.9490)
+        let mid   = Coordinate(latitude: 36.5706, longitude: -121.9477)
+        let edge  = Coordinate(latitude: 36.5718, longitude: -121.9463)
+        let green = Coordinate(latitude: 36.5720, longitude: -121.9460)
+        var gh = GolfHole(number: 7, par: 4)
+        gh.teeCoordinate = tee
+        gh.greenCenterCoordinate = green
+        gh.pathCoordinates = [tee, mid, green]
+        func shot(_ idx: Int, _ s: Coordinate, _ e: Coordinate, _ club: String,
+                  _ cat: ShotClub.ClubCategory) -> TrackedShot {
+            var t = TrackedShot(roundId: UUID(), holeNumber: 7, shotIndex: idx, userId: uid,
+                                startCoordinate: s, endCoordinate: e,
+                                club: ShotClub(clubId: nil, name: club, category: cat))
+            t.recomputeDistance()
+            return t
+        }
+        var round = CourseRound(userId: uid, courseId: "sample", courseName: "Sample Links",
+                                teeBoxName: "White")
+        round.holes = [RoundHole(holeNumber: 7, par: 4, score: 5, putts: 2, trackedShots: [
+            shot(1, tee, mid, "Driver", .driver),
+            shot(2, mid, edge, "7 Iron", .iron),
+            shot(3, edge, green, "Putter", .putter),
+        ])]
+        let clubs = [
+            UserClub(userId: uid, name: "Driver", type: .driver, expectedCarryYards: 250, expectedTotalYards: 270),
+            UserClub(userId: uid, name: "7 Iron", type: .iron, expectedCarryYards: 160, expectedTotalYards: 168),
+            UserClub(userId: uid, name: "Putter", type: .putter, expectedCarryYards: 0, expectedTotalYards: 0),
+        ]
+        return ShotMapEditHarness(round: round, clubs: clubs, hole: gh)
+    }
+
+    private struct ShotMapEditHarness: View {
+        @State var round: CourseRound
+        let clubs: [UserClub]
+        let hole: GolfHole
+        var body: some View {
+            RoundHoleMapEditSheet(round: $round, holeNumber: 7, clubs: clubs,
+                                  hole: hole, teeBoxName: "White")
+        }
+    }
+
+    private func shotEditSample(addOpen: Bool) -> some View {
+        let uid = UUID(), rid = UUID()
+        let tee   = Coordinate(latitude: 37.0000, longitude: -122.0000)
+        let mid   = Coordinate(latitude: 37.0020, longitude: -122.0000)
+        let green = Coordinate(latitude: 37.0036, longitude: -121.9990)
+        func shot(_ idx: Int, _ s: Coordinate, _ e: Coordinate, _ club: String, _ cat: ShotClub.ClubCategory, _ lie: ShotLie) -> TrackedShot {
+            var t = TrackedShot(roundId: rid, holeNumber: 7, shotIndex: idx, userId: uid,
+                                startCoordinate: s, endCoordinate: e,
+                                club: ShotClub(clubId: nil, name: club, category: cat), lie: lie)
+            t.recomputeDistance()
+            return t
+        }
+        let clubs = [
+            UserClub(userId: uid, name: "Driver", type: .driver, expectedCarryYards: 250, expectedTotalYards: 270),
+            UserClub(userId: uid, name: "3 Wood", type: .fairwayWood, expectedCarryYards: 225, expectedTotalYards: 240),
+            UserClub(userId: uid, name: "7 Iron", type: .iron, expectedCarryYards: 160, expectedTotalYards: 168),
+            UserClub(userId: uid, name: "Pitching Wedge", type: .wedge, expectedCarryYards: 115, expectedTotalYards: 118),
+        ]
+        return HoleShotsEditSheet(
+            holeNumber: 7, par: 4, score: 5,
+            shots: [
+                // Forgot to log the tee shot: shot "1" was really the approach, so its
+                // origin sits 250 yds down the fairway — the add-form's tee slot has span.
+                shot(1, mid, green, "7 Iron", .iron, .fairway),
+                shot(2, green, green, "Pitching Wedge", .wedge, .green),
+            ],
+            clubs: clubs,
+            teeCoordinate: tee,
+            greenCoordinate: green,
+            onDelete: { _ in },
+            onChangeClub: { _, _ in },
+            onAddShot: { _, _, _, _ in },
+            startWithAddForm: addOpen
+        )
     }
 }
 #endif

@@ -5,7 +5,17 @@ import Combine
 @MainActor
 final class CourseRoundViewModel: ObservableObject {
 
-    @Published var activeRound: CourseRound?
+    @Published var activeRound: CourseRound? {
+        didSet {
+            // Keep the app-wide "round in progress" beacon current so the shell can show a
+            // return banner when the player browses the rest of the app mid-round.
+            if let r = activeRound, r.endedAt == nil {
+                ActiveRoundBeacon.shared.round = r
+            } else {
+                ActiveRoundBeacon.shared.round = nil
+            }
+        }
+    }
     @Published var selectedCourse: GolfCourse?
     @Published var selectedTeeBox: TeeBox?
     @Published var currentHoleIndex: Int = 0
@@ -327,11 +337,237 @@ final class CourseRoundViewModel: ObservableObject {
         round.holes[holeIndex].fairwayHit = fairwayHit
         round.holes[holeIndex].greenInRegulation = gir
         round.scoreSummary = computeSummary(round)
+        // Entering the score may verify the hole — normalize its tee shot onto the line.
+        if let snapped = Self.autoSnapVerifiedTeeShots(in: round, course: selectedCourse,
+                                                       teeBoxName: selectedTeeBox?.name) {
+            round = snapped
+        }
         activeRound = round
         await saveRoundOfflineSafe(round)
     }
 
     // MARK: - Tracked shots (GPS)
+
+    /// Remove ONE tracked shot (the accidental duplicate tee tap): renumber the rest,
+    /// fix the mirrored NFC log, take the stroke off the hole score, refresh totals.
+    /// Static so History can run the same fix on already-submitted rounds.
+    static func removeTrackedShot(_ shotId: UUID, from original: CourseRound) -> CourseRound? {
+        var round = original
+        guard let h = round.holes.firstIndex(where: { $0.trackedShots.contains { $0.id == shotId } }),
+              let sIdx = round.holes[h].trackedShots.firstIndex(where: { $0.id == shotId })
+        else { return nil }
+        let removedNumber = round.holes[h].trackedShots[sIdx].shotIndex
+        let holeNumber = round.holes[h].holeNumber
+
+        round.holes[h].trackedShots.remove(at: sIdx)
+        for i in round.holes[h].trackedShots.indices
+        where round.holes[h].trackedShots[i].shotIndex > removedNumber {
+            round.holes[h].trackedShots[i].shotIndex -= 1
+        }
+        // The NFC tap log carries the same hole/shot numbering — keep it in lockstep.
+        if let n = round.nfcShots.firstIndex(where: {
+            $0.holeNumber == holeNumber && $0.shotNumber == removedNumber }) {
+            round.nfcShots.remove(at: n)
+        }
+        for i in round.nfcShots.indices
+        where round.nfcShots[i].holeNumber == holeNumber
+            && round.nfcShots[i].shotNumber > removedNumber {
+            round.nfcShots[i].shotNumber -= 1
+        }
+        // One less stroke on the card.
+        if let score = round.holes[h].score {
+            round.holes[h].score = max(1, score - 1)
+        }
+        // Totals follow (same rules as computeSummary).
+        let scored = round.holes.filter { $0.score != nil }
+        round.scoreSummary = RoundScoreSummary(
+            totalScore:  scored.compactMap { $0.score }.reduce(0, +),
+            totalPar:    scored.map { $0.par }.reduce(0, +),
+            fairwaysHit: scored.filter { $0.fairwayHit == true }.count,
+            greensInReg: scored.filter { $0.greenInRegulation == true }.count,
+            totalPutts:  scored.compactMap { $0.putts }.reduce(0, +)
+        )
+        return round
+    }
+
+    /// In-round delete + persist.
+    func deleteTrackedShot(_ shotId: UUID) async {
+        guard let round = activeRound,
+              let updated = Self.removeTrackedShot(shotId, from: round) else { return }
+        activeRound = updated
+        await saveRoundOfflineSafe(updated)
+    }
+
+    /// Change the club on a logged shot ("logged driver, hit 3-wood"). Pure so the
+    /// post-round fix sheet can run it on its own copy of the round.
+    static func updateTrackedShotClub(_ shotId: UUID, club: ShotClub?,
+                                      in round: CourseRound) -> CourseRound? {
+        var round = round
+        for h in round.holes.indices {
+            if let s = round.holes[h].trackedShots.firstIndex(where: { $0.id == shotId }) {
+                round.holes[h].trackedShots[s].club = club
+                return round
+            }
+        }
+        return nil
+    }
+
+    /// In-round club change + persist.
+    func updateTrackedShotClub(_ shotId: UUID, club: ShotClub?) async {
+        guard let round = activeRound,
+              let updated = Self.updateTrackedShotClub(shotId, club: club, in: round) else { return }
+        activeRound = updated
+        await saveRoundOfflineSafe(updated)
+    }
+
+    /// Insert a forgotten shot after position `afterIndex` on a hole (0 = before the first
+    /// logged shot). The neighbors re-chain — the shot before it must have landed where this
+    /// one was hit from — numbering shifts up, the stroke is added, and totals refresh.
+    /// Pure so the post-round fix sheet can run it on its own copy of the round.
+    static func insertTrackedShot(club: ShotClub?, start: Coordinate, end: Coordinate?,
+                                  afterIndex: Int, holeNumber: Int,
+                                  in round: CourseRound) -> CourseRound? {
+        var round = round
+        guard let h = round.holes.firstIndex(where: { $0.holeNumber == holeNumber }) else { return nil }
+        var shots = round.holes[h].trackedShots.sorted { $0.shotIndex < $1.shotIndex }
+        let at = min(max(afterIndex, 0), shots.count)
+        let nextStart = at < shots.count ? shots[at].startCoordinate : nil
+        var shot = TrackedShot(
+            roundId: round.id,
+            holeNumber: holeNumber,
+            shotIndex: at + 1,
+            userId: round.userId,
+            startCoordinate: start,
+            endCoordinate: end ?? nextStart ?? start,
+            club: club
+        )
+        shot.recomputeDistance()
+        if at > 0 {
+            shots[at - 1].endCoordinate = start
+            shots[at - 1].recomputeDistance()
+        }
+        shots.insert(shot, at: at)
+        for i in shots.indices { shots[i].shotIndex = i + 1 }
+        round.holes[h].trackedShots = shots
+        // The NFC tap log carries the same hole/shot numbering — keep it in lockstep.
+        for i in round.nfcShots.indices
+        where round.nfcShots[i].holeNumber == holeNumber && round.nfcShots[i].shotNumber > at {
+            round.nfcShots[i].shotNumber += 1
+        }
+        // One more stroke on the card (only once the hole has a score at all).
+        if let score = round.holes[h].score {
+            round.holes[h].score = score + 1
+        }
+        let scored = round.holes.filter { $0.score != nil }
+        round.scoreSummary = RoundScoreSummary(
+            totalScore:  scored.compactMap { $0.score }.reduce(0, +),
+            totalPar:    scored.map { $0.par }.reduce(0, +),
+            fairwaysHit: scored.filter { $0.fairwayHit == true }.count,
+            greensInReg: scored.filter { $0.greenInRegulation == true }.count,
+            totalPutts:  scored.compactMap { $0.putts }.reduce(0, +)
+        )
+        return round
+    }
+
+    /// In-round insert + persist.
+    func insertTrackedShot(club: ShotClub?, start: Coordinate, end: Coordinate?,
+                           afterIndex: Int, holeNumber: Int) async {
+        guard let round = activeRound,
+              let updated = Self.insertTrackedShot(club: club, start: start, end: end,
+                                                   afterIndex: afterIndex, holeNumber: holeNumber,
+                                                   in: round) else { return }
+        activeRound = updated
+        await saveRoundOfflineSafe(updated)
+    }
+
+    // MARK: - Hole centerline (cart-logging position fix)
+
+    private static func lineMeters(_ a: Coordinate, _ b: Coordinate) -> Double {
+        CLLocation(latitude: a.latitude, longitude: a.longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+    }
+
+    private static func lineLerp(_ a: Coordinate, _ b: Coordinate, _ t: Double) -> Coordinate {
+        Coordinate(latitude:  a.latitude  + (b.latitude  - a.latitude)  * t,
+                   longitude: a.longitude + (b.longitude - a.longitude) * t)
+    }
+
+    /// Tee→green centerline for a hole: the OSM hole path when present, else straight
+    /// tee→green. Always ordered tee first, green center last.
+    func holeCenterline(holeNumber: Int) -> [Coordinate]? {
+        guard let hole = selectedCourse?.holes.first(where: { $0.number == holeNumber }) else { return nil }
+        return Self.holeCenterline(hole: hole, teeBoxName: selectedTeeBox?.name)
+    }
+
+    static func holeCenterline(hole: GolfHole, teeBoxName: String?) -> [Coordinate]? {
+        guard let green = hole.greenCenterCoordinate else { return nil }
+        var pts: [Coordinate]
+        if let path = hole.pathCoordinates, path.count >= 2 {
+            pts = path
+            // OSM ways are undirected — make sure the line runs tee → green.
+            if lineMeters(pts.first!, green) < lineMeters(pts.last!, green) { pts.reverse() }
+        } else {
+            let tee = teeBoxName.flatMap { hole.teeCoordinateByTeeBox?[$0] } ?? hole.teeCoordinate
+            guard let tee else { return nil }
+            pts = [tee]
+        }
+        if let last = pts.last, lineMeters(last, green) > 5 { pts.append(green) }
+        return pts.count >= 2 ? pts : nil
+    }
+
+    /// The point on the centerline at the same distance to the green as `coord` — the shot
+    /// only moves LATERALLY onto the line, its yardage to the pin stays what the GPS said.
+    static func pointOnLine(_ line: [Coordinate], atGreenDistanceOf coord: Coordinate) -> Coordinate? {
+        guard line.count >= 2, let green = line.last else { return nil }
+        let d = lineMeters(coord, green)
+        // Walk backward from the green until a vertex is at least `d` out — that segment
+        // brackets the answer.
+        var nearer: Coordinate = green
+        var farther: Coordinate?
+        for v in line.dropLast().reversed() {
+            if lineMeters(v, green) >= d { farther = v; break }
+            nearer = v
+        }
+        guard let far = farther else { return line.first }   // beyond the tee — clamp to tee
+        var lo = 0.0, hi = 1.0                                // t=0 at far (≥ d), t=1 at nearer (< d)
+        for _ in 0..<24 {
+            let mid = (lo + hi) / 2
+            if lineMeters(lineLerp(far, nearer, mid), green) >= d { lo = mid } else { hi = mid }
+        }
+        return lineLerp(far, nearer, (lo + hi) / 2)
+    }
+
+    /// Tee-shot line normalization — Noah's rule: ONLY the first shot of a VERIFIED hole
+    /// moves onto the hole's line (you log the tee shot standing by the cart or tee box, so
+    /// its position is noisy; later shots start wherever the ball actually finished). Keeps
+    /// distance-to-green. Runs automatically when a hole verifies — in-round at score entry,
+    /// and in History after edits. Returns nil when nothing needed to move.
+    static func autoSnapVerifiedTeeShots(in original: CourseRound,
+                                         course: GolfCourse?,
+                                         teeBoxName: String?) -> CourseRound? {
+        guard let course else { return nil }
+        var round = original
+        var changed = false
+        for h in round.holes.indices {
+            let hole = round.holes[h]
+            guard RoundShotVerifier.isVerified(hole),
+                  let first = hole.trackedShots.min(by: { $0.shotIndex < $1.shotIndex }),
+                  first.club?.category != .putter,
+                  let gh = course.holes.first(where: { $0.number == hole.holeNumber }),
+                  let line = holeCenterline(hole: gh, teeBoxName: teeBoxName),
+                  let snapped = pointOnLine(line, atGreenDistanceOf: first.startCoordinate)
+            else { continue }
+            // Only correct a real offset; a tee shot already on the line stays put.
+            guard lineMeters(first.startCoordinate, snapped) > 5,
+                  let sIdx = round.holes[h].trackedShots.firstIndex(where: { $0.id == first.id })
+            else { continue }
+            round.holes[h].trackedShots[sIdx].startCoordinate = snapped
+            round.holes[h].trackedShots[sIdx].recomputeDistance()
+            changed = true
+        }
+        return changed ? round : nil
+    }
+
 
     /// All tracked shots for the current hole, in order.
     var currentHoleTrackedShots: [TrackedShot] {
@@ -408,18 +644,7 @@ final class CourseRoundViewModel: ObservableObject {
             )
         }
 
-        let shotClub = club.map { c -> ShotClub in
-            let category: ShotClub.ClubCategory
-            switch c.type {
-            case .driver:      category = .driver
-            case .fairwayWood: category = .wood
-            case .hybrid:      category = .hybrid
-            case .iron:        category = .iron
-            case .wedge:       category = .wedge
-            case .putter:      category = .putter
-            }
-            return ShotClub(clubId: c.id, name: c.name, category: category)
-        }
+        let shotClub = club.map { ShotClub(userClub: $0) }
         pendingManualOrigin[holeNum] = (here, shotClub)
         // Feed smart scoring exactly like an NFC tap would.
         if let club { recordNFCShot(club: club) }
@@ -695,4 +920,22 @@ final class CourseRoundViewModel: ObservableObject {
         )
     }
 
+}
+
+// MARK: - ActiveRoundBeacon
+
+/// App-wide "a round is in progress" signal. Course mode keeps it current while a round is
+/// live; the app shell shows a tap-to-return banner whenever a round exists and course mode
+/// itself is off screen. Survives the course view being dismissed (the round is persisted —
+/// leaving the screen doesn't end it).
+@MainActor
+final class ActiveRoundBeacon: ObservableObject {
+    static let shared = ActiveRoundBeacon()
+
+    /// The live (unfinished) round, when one exists.
+    @Published var round: CourseRound?
+    /// True while CourseModeGPSHoleView is on screen — the shell hides the banner then.
+    @Published var courseViewVisible = false
+
+    private init() {}
 }

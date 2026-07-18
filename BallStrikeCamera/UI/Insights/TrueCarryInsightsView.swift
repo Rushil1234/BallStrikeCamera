@@ -18,6 +18,35 @@ struct TrueCarryInsightsView: View {
     @State private var allMode = false
     @State private var showProfile = false
     @State private var dispersionMetric: DispersionMetric = .carry
+    /// Range/Sim vs On-Course — the whole page shows ONE world at a time, never a blend.
+    @AppStorage("tc_insights_source") private var insightsSourceRaw: String = InsightsSource.range.rawValue
+    /// Rounds by id so a tapped course shot can name the round it came from.
+    @State private var roundsById: [UUID: CourseRound] = [:]
+    /// Course shot picked on the dispersion chart (course source only).
+    @State private var selectedShotMeta: CourseShotMeta?
+
+    private enum InsightsSource: String, CaseIterable {
+        case range = "Range & Sim", course = "On-Course"
+    }
+
+    private struct CourseShotMeta {
+        let roundId: UUID?
+        let holeNumber: Int?
+        let yards: Double
+        let club: String?
+    }
+
+    private var insightsSource: InsightsSource {
+        InsightsSource(rawValue: insightsSourceRaw) ?? .range
+    }
+
+    private func isCourseShot(_ s: SavedShot) -> Bool {
+        s.mode == .course || s.roundId != nil
+    }
+
+    private func matchesSource(_ s: SavedShot) -> Bool {
+        insightsSource == .course ? isCourseShot(s) : !isCourseShot(s)
+    }
 
     // MARK: - Club list
 
@@ -34,7 +63,8 @@ struct TrueCarryInsightsView: View {
     private func shotsFor(_ club: String) -> [SavedShot] {
         let clubIds = Set(clubs.filter { $0.name == club }.map(\.id))
         return shots.filter { shot in
-            guard !shot.isBadShot, shot.metrics.carryYards > 0 else { return false }
+            guard !shot.isBadShot, shot.metrics.carryYards > 0,
+                  matchesSource(shot) else { return false }
             if shot.clubName == club { return true }
             guard let clubId = shot.clubId else { return false }
             return clubIds.contains(clubId)
@@ -46,6 +76,8 @@ struct TrueCarryInsightsView: View {
     }
 
     private func roundShotsFor(_ club: String) -> [VerifiedRoundShot] {
+        // Verified GPS round shots belong to the On-Course world only.
+        guard insightsSource == .course else { return [] }
         let clubIds = Set(clubs.filter { $0.name == club }.map(\.id))
         return roundShots.filter { rs in
             if rs.clubName == club { return true }
@@ -111,6 +143,7 @@ struct TrueCarryInsightsView: View {
                     }
                     VStack(spacing: TCTheme.sectionGap) {
                         pageTitleSection
+                        sourceToggle
                         clubPicker
                         if !gappingRows.isEmpty { gappingSection }
                         if availableClubs.isEmpty {
@@ -146,6 +179,7 @@ struct TrueCarryInsightsView: View {
         .onReceive(NotificationCenter.default.publisher(for: .tcDataChanged)) { _ in
             Task { await reloadData() }
         }
+        .onChange(of: selectedClub) { _ in selectedShotMeta = nil }
     }
 
     private func reloadData() async {
@@ -156,6 +190,7 @@ struct TrueCarryInsightsView: View {
         shots = (await s ?? []).filter { !$0.isBadShot && $0.metrics.carryYards > 0 }
         clubs = await c ?? []
         let rounds = await r ?? []
+        roundsById = Dictionary(rounds.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         roundShots = rounds.flatMap { round in
             RoundShotVerifier.verifiedShots(
                 round: round,
@@ -179,6 +214,22 @@ struct TrueCarryInsightsView: View {
                 .foregroundColor(TCTheme.textMuted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Source toggle (Range & Sim vs On-Course)
+
+    /// One world at a time: launch-monitor captures from range/sim sessions, or shots hit
+    /// during real rounds (camera captures + verified GPS shots). Never blended.
+    private var sourceToggle: some View {
+        Picker("Shot source", selection: Binding(
+            get: { insightsSource },
+            set: { insightsSourceRaw = $0.rawValue; selectedShotMeta = nil }
+        )) {
+            ForEach(InsightsSource.allCases, id: \.self) { src in
+                Text(src.rawValue).tag(src)
+            }
+        }
+        .pickerStyle(.segmented)
     }
 
     // MARK: - Club Picker
@@ -386,15 +437,14 @@ struct TrueCarryInsightsView: View {
 
     // MARK: - ALL mode (top-tracer: every club, colored clusters)
 
-    /// One series per club with any plottable shots — camera shots always, verified
-    /// on-course shots folded in when the Total toggle is active.
+    /// One series per club with any plottable shots. Camera shots follow the page's
+    /// Range/Sim vs On-Course source; verified GPS round shots join in On-Course mode
+    /// (roundShotsFor is empty otherwise).
     private var allClubSeries: [TCRangeFinderDispersion.ClubSeries] {
         availableClubs.enumerated().compactMap { index, club in
             var pts = shotsFor(club).compactMap { rangePoint(for: $0) }
-            if dispersionMetric == .total {
-                pts += roundShotsFor(club).map {
-                    TCRangeFinderDispersion.ShotPoint(carry: $0.distanceYards, lateral: $0.lateralYards)
-                }
+            pts += roundShotsFor(club).map {
+                TCRangeFinderDispersion.ShotPoint(carry: $0.distanceYards, lateral: $0.lateralYards)
             }
             guard !pts.isEmpty else { return nil }
             return TCRangeFinderDispersion.ClubSeries(
@@ -670,16 +720,39 @@ struct TrueCarryInsightsView: View {
     }
 
     private func dispersionCard(_ shots: [SavedShot]) -> some View {
-        var rangePoints = shots.compactMap { rangePoint(for: $0) }
-        // Verified on-course shots are total-distance points (GPS start → end, roll included),
-        // so they join the chart in Total view — with the real measured lateral miss.
-        let courseShots = selectedRoundShots
-        if dispersionMetric == .total {
-            rangePoints += courseShots.map {
-                TCRangeFinderDispersion.ShotPoint(carry: $0.distanceYards, lateral: $0.lateralYards)
+        // In On-Course mode every dot is tappable: tags index into `meta` so a tap can say
+        // which round/hole the shot came from and its exact yardage.
+        let tappable = insightsSource == .course
+        var rangePoints: [TCRangeFinderDispersion.ShotPoint] = []
+        var meta: [CourseShotMeta] = []
+        for shot in shots {
+            guard var p = rangePoint(for: shot) else { continue }
+            if tappable {
+                p.tag = meta.count
+                meta.append(CourseShotMeta(
+                    roundId: shot.roundId, holeNumber: shot.holeNumber,
+                    yards: p.carry, club: shot.clubName))
             }
+            rangePoints.append(p)
         }
-        let dispersion = TCRangeFinderDispersion(shots: rangePoints)
+        // Verified on-course shots are total-distance points (GPS start → end, roll
+        // included) with the real measured lateral miss — On-Course mode only.
+        let courseShots = selectedRoundShots
+        for rs in courseShots {
+            var p = TCRangeFinderDispersion.ShotPoint(carry: rs.distanceYards, lateral: rs.lateralYards)
+            p.tag = meta.count
+            meta.append(CourseShotMeta(
+                roundId: rs.roundId, holeNumber: rs.holeNumber,
+                yards: rs.distanceYards, club: rs.clubName))
+            rangePoints.append(p)
+        }
+        let metaSnapshot = meta
+        let dispersion = TCRangeFinderDispersion(
+            shots: rangePoints,
+            onTapShot: tappable ? { tag in
+                if metaSnapshot.indices.contains(tag) { selectedShotMeta = metaSnapshot[tag] }
+            } : nil
+        )
 
         let avgDispStr: String = {
             guard let d = dispersion.avgDispersionYds else { return "—" }
@@ -720,8 +793,14 @@ struct TrueCarryInsightsView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
 
-            if dispersionMetric == .total && !courseShots.isEmpty {
-                Text("Includes \(courseShots.count) verified on-course shot\(courseShots.count == 1 ? "" : "s") (GPS distance + lateral miss).")
+            if let sel = selectedShotMeta, insightsSource == .course {
+                courseShotDetailRow(sel)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
+
+            if !courseShots.isEmpty {
+                Text("Includes \(courseShots.count) verified on-course shot\(courseShots.count == 1 ? "" : "s") (GPS distance + lateral miss). Tap a dot to see its round, hole, and yardage.")
                     .font(.system(size: 10))
                     .foregroundColor(TCTheme.textUltraMuted)
                     .padding(.horizontal, 16)
@@ -736,6 +815,46 @@ struct TrueCarryInsightsView: View {
         )
         // Break out of the parent's horizontal padding so the card fills edge-to-edge
         .padding(.horizontal, -TCTheme.hPad)
+    }
+
+    /// Detail strip for a tapped on-course dot: which round, which hole, exact yardage.
+    private func courseShotDetailRow(_ meta: CourseShotMeta) -> some View {
+        let round = meta.roundId.flatMap { roundsById[$0] }
+        let roundLabel = round.map {
+            "\($0.courseName) · \($0.startedAt.formatted(.dateTime.month(.abbreviated).day()))"
+        } ?? "On-course shot"
+        var detailParts: [String] = []
+        if let h = meta.holeNumber { detailParts.append("Hole \(h)") }
+        detailParts.append("\(Int(meta.yards.rounded())) yds")
+        if let c = meta.club, !c.isEmpty { detailParts.append(c) }
+        return HStack(spacing: 10) {
+            Image(systemName: "flag.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(TCTheme.gold)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(roundLabel)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(TCTheme.textPrimary)
+                    .lineLimit(1)
+                Text(detailParts.joined(separator: " · "))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(TCTheme.textMuted)
+            }
+            Spacer()
+            Button { selectedShotMeta = nil } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(TCTheme.textMuted)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(TCTheme.border.opacity(0.5)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .background(TCTheme.sage.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(TCTheme.sage.opacity(0.35), lineWidth: 1))
     }
 
     // MARK: - Main Metrics

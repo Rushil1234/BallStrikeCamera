@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 /// Compact white score-entry popup. Transparent-green buttons, dark-green
 /// text/icons. Score/Putts seed from the predicted values; the tee club and
@@ -319,5 +320,317 @@ struct ScoreEntryView: View {
         for d in 4...9 where n.contains("\(d) iron") || n.contains("\(d)i") { return "\(d)i" }
         if n.contains("wood") { return "3W" }
         return nil
+    }
+}
+
+
+// MARK: - Hole shots editor (fix the accidental double-tap before OR after submitting)
+
+struct HoleShotsEditSheet: View {
+    let holeNumber: Int
+    let par: Int
+    let score: Int?
+    let shots: [TrackedShot]
+    /// Bag for the club-change menu; empty hides club editing.
+    var clubs: [UserClub] = []
+    /// Hole geometry hints. Tee enables "add the forgotten tee shot"; green anchors the
+    /// after-last-shot slot and the to-green yardages. Nil hides those pieces.
+    var teeCoordinate: Coordinate? = nil
+    var greenCoordinate: Coordinate? = nil
+    let onDelete: (UUID) -> Void
+    var onChangeClub: ((UUID, ShotClub?) -> Void)? = nil
+    /// (club, afterIndex, start, end) — insert a forgotten shot. afterIndex 0 = before shot 1.
+    var onAddShot: ((ShotClub?, Int, Coordinate, Coordinate?) -> Void)? = nil
+    /// Snapshot-harness only: open the add-missed-shot form immediately.
+    var startWithAddForm: Bool = false
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var showAddForm  = false
+    @State private var addSlotIndex = 0
+    @State private var addClubId: UUID?
+    @State private var addFraction: Double = 0.5
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                TrueCarryBackground().ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(captionText)
+                            .font(.system(size: 12))
+                            .foregroundColor(TCTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ForEach(shots) { shot in
+                            shotRow(shot)
+                        }
+                        if shots.isEmpty {
+                            Text("No logged shots on this hole.")
+                                .font(.system(size: 13))
+                                .foregroundColor(TCTheme.textUltraMuted)
+                        }
+                        if onAddShot != nil && !addSlots.isEmpty {
+                            addShotSection
+                        }
+                        Spacer(minLength: 30)
+                    }
+                    .padding(.horizontal, TCTheme.hPad)
+                    .padding(.top, 12)
+                }
+            }
+            .navigationTitle("Hole \(holeNumber) Shots\(score.map { " · \($0)" } ?? "")")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }.foregroundColor(TCTheme.sage)
+                }
+            }
+            .onAppear {
+                if startWithAddForm, !addSlots.isEmpty {
+                    addSlotIndex = addSlots.first?.afterIndex ?? 0
+                    addFraction  = addSlotIndex == 0 ? 0.05 : 0.5
+                    showAddForm  = true
+                }
+            }
+        }
+    }
+
+    private var captionText: String {
+        var parts = ["Deleting a shot renumbers the rest and takes one stroke off the hole — totals update everywhere."]
+        if onChangeClub != nil, !clubs.isEmpty {
+            parts.append("Tap a club name to change it.")
+        }
+        return parts.joined(separator: " ")
+    }
+
+    // MARK: Rows
+
+    private func shotRow(_ shot: TrackedShot) -> some View {
+        HStack(spacing: 12) {
+            Text("\(shot.shotIndex)")
+                .font(.system(size: 14, weight: .black, design: .monospaced))
+                .foregroundColor(TCTheme.gold)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(TCTheme.gold.opacity(0.14)))
+            VStack(alignment: .leading, spacing: 2) {
+                if let onChangeClub, !clubs.isEmpty {
+                    Menu {
+                        ForEach(clubs) { c in
+                            Button(c.name) { onChangeClub(shot.id, ShotClub(userClub: c)) }
+                        }
+                        Button("No club") { onChangeClub(shot.id, nil) }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(shot.club?.name ?? "Pick club")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(TCTheme.textPrimary)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(TCTheme.sage)
+                        }
+                    }
+                } else {
+                    Text(shot.club?.name ?? "Shot")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(TCTheme.textPrimary)
+                }
+                // Putts never show a yardage — distances are to the green CENTER, and the
+                // pin moves daily; a "20 yd putt" may have been a tap-in. The putt's dot
+                // still matters: it marks where the shot before it finished.
+                Text(shot.club?.category == .putter
+                     ? "\(shot.lie.displayName) · putt"
+                     : "\(shot.lie.displayName)\(shot.distanceYards > 0 ? " · \(Int(shot.distanceYards)) yd" : "")")
+                    .font(.system(size: 11))
+                    .foregroundColor(TCTheme.textMuted)
+            }
+            Spacer()
+            Button {
+                onDelete(shot.id)
+                if shots.count <= 1 { dismiss() }
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(TCTheme.danger)
+                    .frame(width: 34, height: 34)
+                    .background(Circle().fill(TCTheme.danger.opacity(0.12)))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(TCTheme.border, lineWidth: 1))
+    }
+
+    // MARK: Add a missed shot
+
+    /// A place the forgotten shot can slot into. The span (`from`→`to`) is where its origin
+    /// can sit: before shot 1 it's tee→shot 1; between shots it's along the recorded segment
+    /// the forgotten shot split in two; after the last it's last landing→green.
+    private struct AddSlot: Identifiable {
+        let afterIndex: Int
+        let label: String
+        let from: Coordinate
+        let to: Coordinate
+        var id: Int { afterIndex }
+    }
+
+    private var addSlots: [AddSlot] {
+        var slots: [AddSlot] = []
+        if let tee = teeCoordinate,
+           let to = shots.first?.startCoordinate ?? greenCoordinate {
+            slots.append(AddSlot(afterIndex: 0,
+                                 label: shots.isEmpty ? "Tee shot" : "Before shot 1 — off the tee",
+                                 from: tee, to: to))
+        }
+        if shots.count >= 2 {
+            for i in 1..<shots.count {
+                slots.append(AddSlot(afterIndex: i,
+                                     label: "Between shot \(i) and \(i + 1)",
+                                     from: shots[i - 1].startCoordinate,
+                                     to:   shots[i - 1].endCoordinate))
+            }
+        }
+        if let last = shots.last {
+            slots.append(AddSlot(afterIndex: shots.count,
+                                 label: "After shot \(shots.count)",
+                                 from: last.endCoordinate,
+                                 to:   greenCoordinate ?? last.endCoordinate))
+        }
+        return slots
+    }
+
+    private var currentSlot: AddSlot? {
+        addSlots.first { $0.afterIndex == addSlotIndex } ?? addSlots.first
+    }
+
+    private var addShotSection: some View {
+        Group {
+            if showAddForm {
+                addForm
+            } else {
+                Button {
+                    addSlotIndex = addSlots.first?.afterIndex ?? 0
+                    addFraction  = addSlotIndex == 0 ? 0.05 : 0.5
+                    showAddForm  = true
+                } label: {
+                    Label("Add a missed shot", systemImage: "plus.circle.fill")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(TCTheme.sage)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(TCTheme.sage.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(TCTheme.sage.opacity(0.4), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var addForm: some View {
+        if let slot = currentSlot {
+            let span = yards(slot.from, slot.to)
+            let point = lerp(slot.from, slot.to, span > 3 ? addFraction : 0)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("ADD A MISSED SHOT")
+                    .font(.system(size: 11, weight: .heavy, design: .rounded))
+                    .foregroundColor(TCTheme.textMuted)
+                    .kerning(1.1)
+
+                Menu {
+                    ForEach(addSlots) { s in
+                        Button(s.label) {
+                            addSlotIndex = s.afterIndex
+                            addFraction  = s.afterIndex == 0 ? 0.05 : 0.5
+                        }
+                    }
+                } label: {
+                    formRow(title: "Where", value: slot.label)
+                }
+                Menu {
+                    ForEach(clubs) { c in
+                        Button(c.name) { addClubId = c.id }
+                    }
+                    Button("No club") { addClubId = nil }
+                } label: {
+                    formRow(title: "Club", value: clubs.first { $0.id == addClubId }?.name ?? "None")
+                }
+
+                if span > 3 {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Slider(value: $addFraction, in: 0...1)
+                            .tint(TCTheme.sage)
+                        HStack {
+                            Text("\(Int(yards(slot.from, point))) yd past the spot before")
+                            Spacer()
+                            if let g = greenCoordinate {
+                                Text("\(Int(yards(point, g))) yd to green")
+                            }
+                        }
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(TCTheme.textMuted)
+                    }
+                }
+
+                HStack {
+                    Button("Cancel") { showAddForm = false }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(TCTheme.textMuted)
+                    Spacer()
+                    Button {
+                        let end: Coordinate? = slot.afterIndex >= shots.count ? greenCoordinate : nil
+                        let club = clubs.first { $0.id == addClubId }.map { ShotClub(userClub: $0) }
+                        onAddShot?(club, slot.afterIndex, point, end)
+                        showAddForm = false
+                    } label: {
+                        Text("Add Shot")
+                            .font(.system(size: 13, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 9)
+                            .background(Capsule().fill(TCTheme.sage))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(12)
+            .background(TCTheme.panel)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(TCTheme.sage.opacity(0.35), lineWidth: 1))
+        }
+    }
+
+    private func formRow(title: String, value: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(TCTheme.textMuted)
+            Spacer()
+            Text(value)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(TCTheme.textPrimary)
+                .multilineTextAlignment(.trailing)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(TCTheme.sage)
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+    }
+
+    // MARK: Geo helpers
+
+    private func yards(_ a: Coordinate, _ b: Coordinate) -> Double {
+        CLLocation(latitude: a.latitude, longitude: a.longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude)) * 1.09361
+    }
+
+    private func lerp(_ a: Coordinate, _ b: Coordinate, _ t: Double) -> Coordinate {
+        Coordinate(latitude:  a.latitude  + (b.latitude  - a.latitude)  * t,
+                   longitude: a.longitude + (b.longitude - a.longitude) * t)
     }
 }

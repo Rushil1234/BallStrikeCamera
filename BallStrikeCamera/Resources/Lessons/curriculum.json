@@ -22,10 +22,14 @@
           "steps": [
             {
               "id": "clubs.video",
-              "kind": "video",
-              "title": "Watch: a tour of the bag",
-              "videoId": "coach.clubs.v1",
-              "body": "A 2-minute walk through every club type and when you'd pull it. The full written guide follows."
+              "kind": "explainer",
+              "title": "The bag in 30 seconds",
+              "body": "One family of clubs, one trade: the longer the club, the farther and lower the ball goes — and the harder it is to hit. Everything else in the bag is that dial turned somewhere between driver and putter.",
+              "points": [
+                "Long clubs = distance dial up, control dial down",
+                "Short clubs = the reverse. Wedges are your scoring clubs",
+                "The full guide below tells you when to pull each one"
+              ]
             },
             {
               "id": "clubs.read",
@@ -307,9 +311,8 @@
             },
             {
               "id": "tk.video",
-              "kind": "video",
+              "kind": "explainer",
               "title": "Watch: the one-piece takeaway",
-              "videoId": "coach.takeaway.v1",
               "body": "A 90-second demonstration. (Video drops in soon — the key positions are illustrated until then.)"
             },
             {
@@ -774,6 +777,196 @@
         }
       ],
       "kind": "core"
+    },
+    {
+      "id": "putting",
+      "title": "Putting",
+      "subtitle": "Half your strokes live here",
+      "icon": "flag.circle",
+      "focusAreas": [
+        "scoring"
+      ],
+      "kind": "core",
+      "lessons": [
+        {
+          "id": "putt.startline",
+          "title": "Start Line Is Everything",
+          "subtitle": "The face sends it",
+          "icon": "arrow.up.circle",
+          "minutes": 8,
+          "prerequisites": [],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "putt.sl.why",
+              "kind": "explainer",
+              "title": "90% face, 10% path",
+              "body": "A putt starts almost exactly where the face points at contact — even more than a full shot. Aim the face, then make ANY reasonable stroke, and the ball starts on line.",
+              "points": [
+                "Pick a spot 12 inches ahead on your line — roll the ball over the spot",
+                "Square the face to the SPOT, not the hole",
+                "The putt engine measures your start line — use it as your grader on the mat",
+                "Ladder drill: 10, 20, 30 feet — one ball each, walk after each putt"
+              ]
+            },
+            {
+              "id": "putt.sl.quiz",
+              "kind": "quiz",
+              "title": "Quick check",
+              "quiz": [
+                {
+                  "question": "What matters most for where a putt STARTS?",
+                  "answers": [
+                    "The face angle at contact",
+                    "How hard you hit it",
+                    "The putter brand"
+                  ],
+                  "correctIndex": 0,
+                  "why": "Start direction is ~90% face angle — squaring the face is the whole game."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "putt.pace",
+          "title": "Pace Beats Line",
+          "subtitle": "Three-putts die here",
+          "icon": "speedometer",
+          "minutes": 8,
+          "prerequisites": [
+            "putt.startline"
+          ],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "putt.pace.why",
+              "kind": "explainer",
+              "title": "Dead weight",
+              "body": "Good pace turns a missed line into a tap-in. Bad pace turns a good line into a three-putt. Pros read PACE first, line second.",
+              "points": [
+                "Goal: every putt finishes inside a 3-foot circle past the hole",
+                "Long putts: look at the hole, feel the distance with a practice stroke, then match it",
+                "Uphill = firm and straight. Downhill = die it at the edge",
+                "Clock drill: 3, 6, 9 feet around a hole — pace changes, stroke doesn't"
+              ]
+            },
+            {
+              "id": "putt.pace.quiz",
+              "kind": "quiz",
+              "title": "Quick check",
+              "quiz": [
+                {
+                  "question": "Where should a lag putt finish?",
+                  "answers": [
+                    "Short — never past",
+                    "Inside 3 feet past the hole",
+                    "Doesn't matter"
+                  ],
+                  "correctIndex": 1,
+                  "why": "Dying it just past the hole gives the ball a chance AND leaves a tap-in."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "wedges",
+      "title": "Wedge Distance Control",
+      "subtitle": "Own your scoring yardages",
+      "icon": "scope",
+      "focusAreas": [
+        "distance",
+        "scoring"
+      ],
+      "kind": "core",
+      "lessons": [
+        {
+          "id": "wedge.clock",
+          "title": "The Clock System",
+          "subtitle": "Three swings per wedge",
+          "icon": "clock",
+          "minutes": 10,
+          "prerequisites": [],
+          "focusMetrics": [
+            "tempo_ratio"
+          ],
+          "steps": [
+            {
+              "id": "wedge.clock.why",
+              "kind": "explainer",
+              "title": "Backswing length = distance",
+              "body": "Distance control comes from backswing LENGTH, not effort. Picture a clock face: hands to 9 o'clock, 10:30, and full — three repeatable distances per wedge, nine total yardages.",
+              "points": [
+                "Same tempo for all three lengths — the clock changes, the rhythm doesn't",
+                "The launch monitor gives you carry for each — write your three numbers down",
+                "Range goal: 5 balls at your 9-o'clock number, carry within ±5 yards"
+              ]
+            },
+            {
+              "id": "wedge.clock.capture",
+              "kind": "swingCapture",
+              "title": "Groove the 9 o'clock swing",
+              "body": "Three smooth 9-o'clock swings — tempo is graded, effort is not.",
+              "swingCount": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "strategy",
+      "title": "Course Strategy",
+      "subtitle": "Score without changing your swing",
+      "icon": "map",
+      "focusAreas": [
+        "scoring"
+      ],
+      "kind": "fix",
+      "lessons": [
+        {
+          "id": "strat.tee",
+          "title": "Play the Percentages",
+          "subtitle": "Aim where the miss is safe",
+          "icon": "flag.fill",
+          "minutes": 7,
+          "prerequisites": [],
+          "focusMetrics": [],
+          "steps": [
+            {
+              "id": "strat.tee.why",
+              "kind": "explainer",
+              "title": "Your shot pattern is an oval, not a dot",
+              "body": "Every club you own produces a scatter oval. Course strategy is placing that whole OVAL where nothing terrible lives — not aiming the perfect shot.",
+              "points": [
+                "Tee shots: aim so your normal curve finishes in the fairway — not your perfect one",
+                "Approach: middle of the green beats flag-hunting for anyone over a 5 handicap",
+                "Short-side is jail: miss on the FAT side of the pin, always",
+                "Par 5s: your third shot from your favorite wedge number beats a hero 3-wood"
+              ]
+            },
+            {
+              "id": "strat.tee.quiz",
+              "kind": "quiz",
+              "title": "Quick check",
+              "quiz": [
+                {
+                  "question": "The pin is cut 4 paces from the right edge. Where do you aim?",
+                  "answers": [
+                    "At the pin",
+                    "Middle of the green",
+                    "Right edge"
+                  ],
+                  "correctIndex": 1,
+                  "why": "Middle of the green: your scatter oval covers the pin AND avoids the short-side."
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }

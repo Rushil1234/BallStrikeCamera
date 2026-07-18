@@ -397,6 +397,20 @@ private enum DispersionMetric: String, CaseIterable {
     case carry = "Carry", total = "Total"
 }
 
+/// Which shots feed the on-course dispersion overlay — everything, range/sim captures only,
+/// or only shots hit during real rounds. Mirrors the Insights source toggle.
+enum DispersionShotSource: String, CaseIterable {
+    case all = "All", range = "Range & Sim", course = "On-Course"
+
+    func includes(_ s: SavedShot) -> Bool {
+        switch self {
+        case .all:    return true
+        case .course: return s.mode == .course || s.roundId != nil
+        case .range:  return s.mode != .course && s.roundId == nil
+        }
+    }
+}
+
 /// Per-shot (plotted distance, signed lateral yards) — same model the insights dispersion
 /// chart uses, reused to place the on-course dispersion overlay. `metric` selects whether the
 /// returned distance is the carry (first landing) or total (after roll) yardage; the lateral
@@ -1152,13 +1166,13 @@ private struct SatelliteMapBackground: UIViewRepresentable {
         // Each entry keeps its ORIGINAL activeAimPoints index — the filter can drop earlier
         // points, and drag callbacks must report the original index or overrides land on the
         // wrong waypoint (and the flag-spawned waypoint gets mistaken for a base one).
-        // Live GPS on the hole = single direct player→pin line, exactly like the reference
-        // GPS apps. Waypoint segments (tee → aim → green) are a PLANNING aid drawn only when
-        // there's no live fix (previewing another hole, GPS off) — mixing them with a live
-        // player position produced stale rings and criss-crossing lines mid-hole.
-        var drawnAim: [(idx: Int, coord: CLLocationCoordinate2D)] = userCoord != nil
-            ? []
-            : aimPoints.enumerated().prefix(3).map { ($0.offset, $0.element) }
+        // Waypoints draw with OR without a live fix — suppressing them under live GPS made
+        // every dogleg render as a straight player→pin line ("the waypoints never showed").
+        // The stale-ring/criss-cross fears are already handled by the two HARD RULES below:
+        // anything behind the player is dropped, and segments are drawn sorted toward the
+        // green — so a live fix simply becomes the first point of the waypoint chain.
+        var drawnAim: [(idx: Int, coord: CLLocationCoordinate2D)] =
+            aimPoints.enumerated().prefix(3).map { ($0.offset, $0.element) }
         if let u = lineStart, let g = effectiveGreen {
             let startToGreen = MKMapPoint(u).distance(to: MKMapPoint(g))
             drawnAim = drawnAim.filter {
@@ -1764,6 +1778,7 @@ struct CourseModeGPSHoleView: View {
     @State private var showCaddie = false
     @State private var caddieLoading = false
     @State private var caddieResult: CaddieEngine.Suggestion?
+    @State private var caddiePlan: CourseManagementEngine.Plan?
     @State private var caddieMessage: String?
 
     @State private var clubs: [UserClub] = []
@@ -1773,12 +1788,24 @@ struct CourseModeGPSHoleView: View {
     @State private var showFinalScorecard = false
     @State private var showFinishAlert = false
     @State private var showDeleteRoundConfirm = false
+    @State private var showLeaveDialog = false
+    // In-round logged-shots editor (opened by tapping a hole on the scorecard).
+    @State private var editingShotsHole: Int?
+
+    private struct EditingShotsHole: Identifiable {
+        let number: Int
+        var id: Int { number }
+    }
     @State private var gpsOn           = true
     @State private var dispersionClubIds: [UUID] = []          // empty = overlay off; multiple = multi-club
     @State private var dispersionShotsByClub: [UUID: [SavedShot]] = [:]
     @State private var showDispersionPicker = false
     @State private var slopeAdjustDots = false     // shift dispersion dots by slope (plays-like)
     @State private var dispersionMetric: DispersionMetric = .carry   // plot dots at carry or total
+    @State private var dispersionSource: DispersionShotSource = .all // all / range+sim / on-course shots
+    /// Aggressive per-club outlier trim (median±band) so the overlay shows the NORMAL number.
+    /// Off = every shot, chunks and all.
+    @State private var dispersionExcludeOutliers = true
     @State private var infoMessage: String?
     @State private var roundStartTime  = Date()
     @State private var recenterToken   = 0
@@ -2029,6 +2056,7 @@ struct CourseModeGPSHoleView: View {
 
     private func openCaddie() {
         caddieResult = nil
+        caddiePlan = nil
         caddieMessage = nil
         caddieLoading = true
         showCaddie = true
@@ -2079,19 +2107,37 @@ struct CourseModeGPSHoleView: View {
             return 16
         }()
 
-        let stats = await loadClubStats(uid: uid)
-        guard !stats.isEmpty else {
+        let data = await loadCaddieData(uid: uid)
+        guard !data.stats.isEmpty else {
             caddieMessage = "Not enough tracked shots yet — log a few with each club to unlock suggestions."
             return
         }
 
-        if let s = CaddieEngine.suggest(playingYards: playing, baseYards: baseYards,
-                                        slopeDelta: slopeDelta, windDelta: windDelta,
-                                        greenDepthYards: greenDepth, greenWidthYards: 18,
-                                        aimAdvice: aimAdvice, windSummary: windSummary,
-                                        clubs: stats) {
-            caddieResult = s
-            if s.isLayup {
+        // Live position drives hazards and the off-line note; the tee stands in when planning.
+        let liveCoord = userIsNearCurrentHole ? vm.location.currentLocation : nil
+        let origin = liveCoord ?? gh.teeCoordinate?.clCoordinate
+
+        var input = CourseManagementEngine.Input(
+            playingYards: playing, baseYards: baseYards,
+            slopeDelta: slopeDelta, windDelta: windDelta,
+            greenDepthYards: greenDepth, greenWidthYards: 18,
+            aimAdvice: aimAdvice, windSummary: windSummary,
+            clubs: data.stats)
+        input.origin = origin
+        input.green = green
+        input.centerline = currentHolePathCoordinates
+        input.bunkers = gh.bunkerPolygons.map(\.clCoordinates)
+        input.waters = gh.waterPolygons.map(\.clCoordinates)
+        input.approach = data.approach
+        input.avgPutts = data.avgPutts
+        input.courseSamples = data.courseSamples
+        input.totalSamples = data.totalSamples
+        input.originIsLive = liveCoord != nil
+
+        if let plan = CourseManagementEngine.plan(input) {
+            caddiePlan = plan
+            caddieResult = plan.suggestion
+            if plan.suggestion.isLayup {
                 caddieMessage = "No club holds the green from \(Int(playing.rounded())) yds — smart advance instead."
             }
         } else {
@@ -2099,8 +2145,20 @@ struct CourseModeGPSHoleView: View {
         }
     }
 
-    /// Reduces the golfer's shot history to per-club (carry, lateral, total) dispersion stats.
-    private func loadClubStats(uid: UUID) async -> [CaddieEngine.ClubStat] {
+    private struct CaddieData {
+        var stats: [CaddieEngine.ClubStat] = []
+        var approach: CourseManagementEngine.ApproachSuccessModel?
+        var avgPutts: Double?
+        var courseSamples = 0
+        var totalSamples = 0
+    }
+
+    /// Per-club (carry, lateral, total) distributions from EVERYTHING the golfer has hit —
+    /// launch-monitor captures plus verified on-course GPS shots — each club aggressively
+    /// outlier-trimmed so a chunked 120 never drags a 180 club's number. Also learns their
+    /// real approach-success curve and putts-per-hole from round history.
+    private func loadCaddieData(uid: UUID) async -> CaddieData {
+        var data = CaddieData()
         let svc = ShotPersistenceService(userId: uid, backend: session.backend)
         let all = (try? await svc.loadShots(limit: 600)) ?? []
         var byClub: [String: [CaddieEngine.ShotSample]] = [:]
@@ -2111,7 +2169,46 @@ struct CourseModeGPSHoleView: View {
             byClub[key, default: []].append(
                 CaddieEngine.ShotSample(carry: p.carry, lateral: p.lateral, total: total))
         }
-        return byClub.compactMap { CaddieEngine.stat(name: $0.key, shots: $0.value) }
+
+        // Verified on-course shots: real GPS distance + lateral, plus the golfer's actual
+        // green-hit rate by distance and their putts per scored hole.
+        var approachBuckets: [Int: (hits: Int, n: Int)] = [:]
+        var puttsTotal = 0, puttsHoles = 0
+        let rounds = (try? await session.backend.loadCourseRounds(userId: uid)) ?? []
+        for round in rounds {
+            let course = OSMGolfService.shared.loadCached(courseId: round.courseId)
+            for h in round.holes {
+                if let p = h.putts { puttsTotal += p; puttsHoles += 1 }
+            }
+            for vs in RoundShotVerifier.verifiedShots(round: round, course: course) {
+                guard let hole = course?.holes.first(where: { $0.number == vs.holeNumber }),
+                      let greenCL = hole.greenCenterCoordinate?.clCoordinate else { continue }
+                let fromYds = vs.start.yards(to: greenCL)
+                let endYds  = vs.end.yards(to: greenCL)
+                if fromYds > 30 {
+                    var b = approachBuckets[Int(fromYds / 25)] ?? (0, 0)
+                    b.n += 1
+                    if endYds <= 14 { b.hits += 1 }
+                    approachBuckets[Int(fromYds / 25)] = b
+                }
+                if let name = vs.clubName, !name.lowercased().contains("putt"),
+                   vs.distanceYards > 25 {
+                    byClub[name, default: []].append(CaddieEngine.ShotSample(
+                        carry: vs.distanceYards, lateral: vs.lateralYards,
+                        total: vs.distanceYards))
+                    data.courseSamples += 1
+                }
+            }
+        }
+
+        data.stats = byClub.compactMap { name, samples in
+            let kept = ClubDistanceModel.trim(samples)
+            data.totalSamples += kept.count
+            return CaddieEngine.stat(name: name, shots: kept)
+        }
+        data.approach = CourseManagementEngine.ApproachSuccessModel(buckets: approachBuckets)
+        data.avgPutts = puttsHoles > 0 ? Double(puttsTotal) / Double(puttsHoles) : nil
+        return data
     }
 
     // MARK: - Dispersion overlay (#7)
@@ -2157,8 +2254,16 @@ struct CourseModeGPSHoleView: View {
             // Club identity color is keyed by selection order, so it matches the selector and is
             // only meaningful when several clubs are overlaid at once.
             let clubColor = UIColor(TCDispersionColor.club(selectionIndex))
-            for shot in dispersionShotsByClub[clubId] ?? [] {
-                guard let p = ShotDispersion.point(for: shot, metric: dispersionMetric) else { continue }
+            // Aggressive per-club outlier trim (on the plotted distance) when "normal shots
+            // only" is on — a chunked 120 among 180s shouldn't shape the pattern you aim with.
+            var points = (dispersionShotsByClub[clubId] ?? []).compactMap {
+                ShotDispersion.point(for: $0, metric: dispersionMetric)
+            }
+            if dispersionExcludeOutliers {
+                let keep = Set(ClubDistanceModel.keptIndices(distances: points.map(\.carry)))
+                points = points.enumerated().filter { keep.contains($0.offset) }.map(\.element)
+            }
+            for p in points {
                 var carry = p.carry
                 var lateral = p.lateral
                 if let originElev {
@@ -2208,13 +2313,22 @@ struct CourseModeGPSHoleView: View {
     /// Loads a club's past shots to project on the course (stored per club for multi-club overlay).
     private func loadDispersionShots(clubId: UUID, clubName: String?) {
         guard let uid = session.currentUser?.id else { return }
+        let source = dispersionSource
         Task {
             let svc = ShotPersistenceService(userId: uid, backend: session.backend)
             let all = (try? await svc.loadShots(limit: 600)) ?? []
             let filtered = all.filter { s in
                 s.clubId == clubId || (clubName != nil && s.clubName == clubName)
             }.filter { $0.metrics.carryYards > 0 && !$0.isBadShot }
+            .filter { source.includes($0) }
             await MainActor.run { dispersionShotsByClub[clubId] = filtered }
+        }
+    }
+
+    /// Re-pulls every selected club's shots — used when the source filter changes.
+    private func reloadDispersionShots() {
+        for id in dispersionClubIds {
+            loadDispersionShots(clubId: id, clubName: clubs.first { $0.id == id }?.name)
         }
     }
 
@@ -2595,9 +2709,10 @@ struct CourseModeGPSHoleView: View {
     }
 
     private var scoreToParColor: Color {
+        // Over par is MOST rounds — muted gray made the number disappear on the map HUD.
         scoreToPar < 0 ? Color(red: 0.22, green: 0.78, blue: 0.42)
             : scoreToPar == 0 ? Color(red: 0.42, green: 0.72, blue: 0.98)
-            : TCTheme.textMuted
+            : .white
     }
 
     private func pushWidgetData() {
@@ -3022,6 +3137,17 @@ struct CourseModeGPSHoleView: View {
         .ignoresSafeArea(edges: .bottom)
         .navigationBarHidden(true)
         // Alerts
+        .confirmationDialog("Leave the course?", isPresented: $showLeaveDialog,
+                            titleVisibility: .visible) {
+            Button("Back to app — round stays active") {
+                // The round is already persisted; a tap-to-return banner shows app-wide.
+                dismiss()
+            }
+            Button("Finish or delete round…") { showFinishAlert = true }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You can use the rest of the app and jump back into your round from the banner at the top.")
+        }
         .alert("Finish Round?", isPresented: $showFinishAlert) {
             Button("Finish & Save") {
                 Task {
@@ -3110,14 +3236,51 @@ struct CourseModeGPSHoleView: View {
         .sheet(isPresented: $showScorecard) {
             if let round = vm.activeRound {
                 NavigationStack {
-                    ScorecardView(round: round)
+                    ScorecardView(round: round, onEditShots: { holeNumber in
+                        showScorecard = false
+                        // Same-frame dismiss+present silently drops the second sheet —
+                        // wait out the dismissal animation before opening the editor.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            editingShotsHole = holeNumber
+                        }
+                    })
                 }
+                .tcAppearance()
+            }
+        }
+        .sheet(item: Binding(
+            get: { editingShotsHole.map { EditingShotsHole(number: $0) } },
+            set: { editingShotsHole = $0?.number }
+        )) { editing in
+            if let round = vm.activeRound,
+               let hole = round.holes.first(where: { $0.holeNumber == editing.number }) {
+                let line = vm.holeCenterline(holeNumber: hole.holeNumber)
+                HoleShotsEditSheet(
+                    holeNumber: hole.holeNumber, par: hole.par,
+                    score: hole.score, shots: hole.trackedShots,
+                    clubs: clubs,
+                    teeCoordinate: line?.first,
+                    greenCoordinate: line?.last,
+                    onDelete: { shotId in
+                        Task { await vm.deleteTrackedShot(shotId) }
+                    },
+                    onChangeClub: { shotId, club in
+                        Task { await vm.updateTrackedShotClub(shotId, club: club) }
+                    },
+                    onAddShot: { club, after, start, end in
+                        Task {
+                            await vm.insertTrackedShot(club: club, start: start, end: end,
+                                                       afterIndex: after,
+                                                       holeNumber: hole.holeNumber)
+                        }
+                    }
+                )
                 .tcAppearance()
             }
         }
         // Final flow after hole 18: editable scorecard → post / save privately / delete → home.
         .fullScreenCover(isPresented: $showFinalScorecard) {
-            FinalRoundReviewView(vm: vm) { action in
+            FinalRoundReviewView(vm: vm, clubs: clubs) { action in
                 Task {
                     switch action {
                     case .postPublic:   await vm.finishRound(shareToFeed: true)
@@ -3193,8 +3356,10 @@ struct CourseModeGPSHoleView: View {
             registerWatchRoundControls()
             loadElevationForHole()
             OrientationManager.shared.lockPortrait()
+            ActiveRoundBeacon.shared.courseViewVisible = true
         }
         .onDisappear {
+            ActiveRoundBeacon.shared.courseViewVisible = false
             WatchConnectivityBridge.shared.unregisterRoundCommandHandler()
             OrientationManager.shared.unlockAllButUpsideDown()
         }
@@ -3365,7 +3530,7 @@ struct CourseModeGPSHoleView: View {
 
     private var topBar: some View {
         HStack(spacing: 0) {
-            Button { showFinishAlert = true } label: {
+            Button { showLeaveDialog = true } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.white.opacity(0.95))
@@ -3652,6 +3817,30 @@ struct CourseModeGPSHoleView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+
+                    // Where the dots come from: range/sim captures, real-round shots, or both.
+                    Picker("Shot source", selection: $dispersionSource) {
+                        ForEach(DispersionShotSource.allCases, id: \.self) { src in
+                            Text(src.rawValue).tag(src)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: dispersionSource) { _ in reloadDispersionShots() }
+
+                    // Normal shots vs every shot: an aggressive median±band trim per club, so
+                    // the overlay answers "what do I usually hit", not "what's ever happened".
+                    Toggle(isOn: $dispersionExcludeOutliers) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Hide outliers")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(TCTheme.textPrimary)
+                            Text("Show your normal number — drop chunks & one-off bombs")
+                                .font(.system(size: 11))
+                                .foregroundColor(TCTheme.textMuted)
+                        }
+                    }
+                    .tint(TCTheme.sage)
+                    .padding(.horizontal, 2)
                     .padding(.bottom, 6)
 
                     if clubs.isEmpty {
@@ -3789,11 +3978,25 @@ struct CourseModeGPSHoleView: View {
                             .foregroundColor(TCTheme.textMuted)
                         Spacer()
                     } else if let s = caddieResult {
-                        // Scrolls so the layered card (odds + swing note + tightest pick) is
-                        // never clipped at the medium detent.
+                        // Scrolls so the layered plan (odds + strategy + hazards + position)
+                        // is never clipped at the medium detent.
                         ScrollView(showsIndicators: false) {
-                            caddieResultCard(s)
-                                .padding(.bottom, 24)
+                            VStack(spacing: 14) {
+                                caddieResultCard(s)
+                                if let plan = caddiePlan {
+                                    if !plan.strategy.isEmpty { caddieStrategyCard(plan) }
+                                    if !plan.hazardNotes.isEmpty { caddieHazardCard(plan.hazardNotes) }
+                                    if let note = plan.positionNote { caddiePositionCard(note) }
+                                    if !plan.basis.isEmpty {
+                                        Text(plan.basis)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(TCTheme.textUltraMuted)
+                                            .multilineTextAlignment(.center)
+                                            .padding(.horizontal, 30)
+                                    }
+                                }
+                            }
+                            .padding(.bottom, 24)
                         }
                     } else {
                         Spacer()
@@ -3812,7 +4015,7 @@ struct CourseModeGPSHoleView: View {
                 }
                 .padding(.top, 20)
             }
-            .navigationTitle("Club Suggestion")
+            .navigationTitle("Caddie")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -3820,6 +4023,99 @@ struct CourseModeGPSHoleView: View {
                 }
             }
         }
+    }
+
+    /// Go-vs-layup, ranked by the golfer's OWN expected strokes from here.
+    private func caddieStrategyCard(_ plan: CourseManagementEngine.Plan) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label("STRATEGY", systemImage: "map")
+                .font(.system(size: 10, weight: .black))
+                .tracking(1.0)
+                .foregroundColor(TCTheme.textMuted)
+            ForEach(Array(plan.strategy.enumerated()), id: \.offset) { i, opt in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: i == 0 ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(i == 0 ? TCTheme.sage : TCTheme.textUltraMuted)
+                        .padding(.top, 1)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(opt.title)
+                                .font(.system(size: 14, weight: .heavy, design: .rounded))
+                                .foregroundColor(TCTheme.textPrimary)
+                            Spacer()
+                            Text(String(format: "%.1f strokes", opt.expectedStrokes))
+                                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                .foregroundColor(i == 0 ? TCTheme.sage : TCTheme.textMuted)
+                        }
+                        Text(opt.detail)
+                            .font(.system(size: 12))
+                            .foregroundColor(TCTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 10) {
+                            Text(opt.title.hasPrefix("Go")
+                                 ? "\(opt.successPercent)% on green"
+                                 : "\(opt.successPercent)% on with next")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(TCTheme.gold)
+                            if opt.hazardPercent > 4 {
+                                Text("\(opt.hazardPercent)% hazard risk")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.orange)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+            if let note = plan.strategyNote {
+                Text(note)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(TCTheme.sage)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .tcCard()
+        .padding(.horizontal, TCTheme.hPad)
+    }
+
+    private func caddieHazardCard(_ notes: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("TROUBLE", systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 10, weight: .black))
+                .tracking(1.0)
+                .foregroundColor(.orange)
+            ForEach(notes, id: \.self) { n in
+                Text(n)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .tcCard()
+        .padding(.horizontal, TCTheme.hPad)
+    }
+
+    private func caddiePositionCard(_ note: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("YOUR POSITION", systemImage: "location.north.line.fill")
+                .font(.system(size: 10, weight: .black))
+                .tracking(1.0)
+                .foregroundColor(TCTheme.gold)
+            Text(note)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(TCTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .tcCard()
+        .padding(.horizontal, TCTheme.hPad)
     }
 
     private func caddieResultCard(_ s: CaddieEngine.Suggestion) -> some View {
@@ -4525,8 +4821,10 @@ enum FinalRoundAction { case postPublic, savePrivate, delete }
 
 struct FinalRoundReviewView: View {
     @ObservedObject var vm: CourseRoundViewModel
+    var clubs: [UserClub] = []
     let onAction: (FinalRoundAction) -> Void
     @State private var editingHoleIndex: Int?
+    @State private var editingShotsHoleIndex: Int?
     @State private var confirmDelete = false
 
     var body: some View {
@@ -4589,6 +4887,36 @@ struct FinalRoundReviewView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This cannot be undone.")
+        }
+        .sheet(item: Binding(
+            get: { editingShotsHoleIndex.map { EditingHole(index: $0) } },
+            set: { editingShotsHoleIndex = $0?.index }
+        )) { editing in
+            if let round = vm.activeRound, editing.index < round.holes.count {
+                let hole = round.holes[editing.index]
+                let line = vm.holeCenterline(holeNumber: hole.holeNumber)
+                HoleShotsEditSheet(
+                    holeNumber: hole.holeNumber, par: hole.par,
+                    score: hole.score, shots: hole.trackedShots,
+                    clubs: clubs,
+                    teeCoordinate: line?.first,
+                    greenCoordinate: line?.last,
+                    onDelete: { shotId in
+                        Task { await vm.deleteTrackedShot(shotId) }
+                    },
+                    onChangeClub: { shotId, club in
+                        Task { await vm.updateTrackedShotClub(shotId, club: club) }
+                    },
+                    onAddShot: { club, after, start, end in
+                        Task {
+                            await vm.insertTrackedShot(club: club, start: start, end: end,
+                                                       afterIndex: after,
+                                                       holeNumber: hole.holeNumber)
+                        }
+                    }
+                )
+                .tcAppearance()
+            }
         }
         .sheet(item: Binding(
             get: { editingHoleIndex.map { EditingHole(index: $0) } },
@@ -4722,6 +5050,14 @@ struct FinalRoundReviewView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .contextMenu {
+                            // Fix the accidental double-logged shot without re-scoring.
+                            Button {
+                                editingShotsHoleIndex = tappable[i]
+                            } label: {
+                                Label("Edit logged shots", systemImage: "figure.golf")
+                            }
+                        }
                     } else {
                         Text(values[i]).frame(maxWidth: .infinity)
                     }

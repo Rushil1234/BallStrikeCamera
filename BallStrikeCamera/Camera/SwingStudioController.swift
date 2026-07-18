@@ -238,7 +238,11 @@ final class SwingStudioController: NSObject, ObservableObject {
             if framed {
                 state = .waitingForAddress
                 stillSince = nil
-                announce("Great. Take your address and hold still — recording starts by itself.")
+                if let focusCue {
+                    announce("Great. Take your address. This time: \(focusCue).")
+                } else {
+                    announce("Great. Take your address and hold still — recording starts by itself.")
+                }
             }
         case .waitingForAddress:
             guard framed else {
@@ -295,6 +299,17 @@ final class SwingStudioController: NSObject, ObservableObject {
             .appendingPathComponent("swing_\(Int(Date().timeIntervalSince1970)).mov")
         try? FileManager.default.removeItem(at: url)
         movieOutput.startRecording(to: url, recordingDelegate: self)
+    }
+
+    /// The one swing thought the coach speaks right before each swing ("This time:
+    /// quiet head") — set by the studio from the player's worst confident metric.
+    var focusCue: String?
+
+    /// Speak regardless of camera mode — post-swing reactions are useful in the mirror too.
+    func say(_ text: String) {
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.rate = 0.5
+        speech.speak(utterance)
     }
 
     private func announce(_ text: String) {

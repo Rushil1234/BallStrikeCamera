@@ -5,8 +5,14 @@ import SwiftUI
 // strike point) with sliders and one-tap example presets. The captions rewrite
 // themselves as the sliders move, so every position IS a worked example.
 
+/// A fault card can open the Lab pre-set to the physics of THAT miss.
+enum LabPreset {
+    case slice, hook, balloon, toeStrike
+}
+
 struct CoachLabView: View {
     let onDone: () -> Void
+    var initialPreset: LabPreset? = nil
 
     @State private var faceDeg: Double = 4
     @State private var pathDeg: Double = -3
@@ -17,6 +23,15 @@ struct CoachLabView: View {
     var body: some View {
         ZStack {
             TrueCarryBackground().ignoresSafeArea()
+                .onAppear {
+                    switch initialPreset {
+                    case .slice:     faceDeg = 5;  pathDeg = -5
+                    case .hook:      faceDeg = -6; pathDeg = 2
+                    case .balloon:   launchDeg = 32; spinRPM = 9500
+                    case .toeStrike: strike = 0.8
+                    case nil: break
+                    }
+                }
             ScrollView(showsIndicators: false) {
                 VStack(spacing: TCTheme.sectionGap) {
                     header

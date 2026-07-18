@@ -5,6 +5,9 @@ struct ScorecardView: View {
 
     let round: CourseRound
     var backButtonTitle: String = "Back to Hole"
+    /// When set, hole rows become tappable and hand back the hole number — course mode uses
+    /// this to open the logged-shots editor mid-round.
+    var onEditShots: ((Int) -> Void)? = nil
 
     // MARK: - Computed
 
@@ -41,6 +44,14 @@ struct ScorecardView: View {
                         // Scorecard grid
                         scorecardGrid
                             .padding(.horizontal, TCTheme.hPad)
+
+                        if onEditShots != nil {
+                            Text("Tap a hole to edit its logged shots — change the club, fix a cart-logged position, or add one you missed.")
+                                .font(.system(size: 12))
+                                .foregroundColor(TCTheme.textMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, TCTheme.hPad)
+                        }
 
                         // Summary strip
                         summaryStrip
@@ -157,7 +168,16 @@ struct ScorecardView: View {
 
             // Hole rows
             ForEach(Array(round.holes.enumerated()), id: \.element.id) { idx, hole in
-                scorecardHoleRow(hole: hole)
+                Group {
+                    if let onEditShots {
+                        Button { onEditShots(hole.holeNumber) } label: {
+                            scorecardHoleRow(hole: hole)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        scorecardHoleRow(hole: hole)
+                    }
+                }
                 if idx < round.holes.count - 1 {
                     Divider().background(Color(white: 0.80))
                 }

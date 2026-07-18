@@ -58,7 +58,13 @@ struct LessonPlayerView: View {
     private var header: some View {
         VStack(spacing: 8) {
             HStack {
-                Button { onClose() } label: {
+                Button {
+                    // Partial work still counts as a session — history keeps it.
+                    if let record = sessionRecord, stepIndex > 0 {
+                        library.abandonLesson(session: record, stepsCompleted: stepIndex)
+                    }
+                    onClose()
+                } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(TCTheme.textMuted)
@@ -102,7 +108,14 @@ struct LessonPlayerView: View {
     }
 
     private var continueTitle: String {
-        if step.kind == .swingCapture && !stepSatisfied { return "Record your swings first" }
+        if step.kind == .swingCapture && !stepSatisfied {
+            if (step.swingCount ?? 1) >= 3, !lesson.focusMetrics.isEmpty {
+                let st = library.streak(for: lesson.id)
+                return st.current > 0 ? "\(st.current) of 3 in a row — keep going"
+                                      : "Pass 3 in a row to master this"
+            }
+            return "Record your swings first"
+        }
         if step.kind == .check3D && !stepSatisfied { return "Show the camera (or tick the checklist)" }
         return isLast ? "Finish Lesson" : "Continue"
     }
@@ -114,6 +127,11 @@ struct LessonPlayerView: View {
         case .check3D:
             return check3DPassed
         case .swingCapture:
+            // Rep-based mastery: multi-swing graded steps pass on 3 IN-BAND swings in a
+            // row, not on attendance. Small holds (1-2 swings) keep the count rule.
+            if (step.swingCount ?? 1) >= 3, !lesson.focusMetrics.isEmpty {
+                return library.streak(for: lesson.id).current >= 3
+            }
             return capturedThisStep.count >= (step.swingCount ?? 1)
         case .quiz:
             return step.quiz.allSatisfy { quizSelections[$0.question] == $0.correctIndex }

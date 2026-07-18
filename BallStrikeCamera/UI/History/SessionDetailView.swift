@@ -120,6 +120,10 @@ struct SessionDetailView: View {
                             if case .range(let rs) = item { rangeStatsCard(rs) }
                             if case .course(let r)  = item { courseStatsCard(r) }
                             if case .course = item { attestSection }
+                            if case .course(let r) = item,
+                               r.holes.contains(where: { !$0.trackedShots.isEmpty }) {
+                                editShotsSection(r)
+                            }
                             if case .course(let r)  = item {
                                 let hasMap = !r.nfcShots.isEmpty
                                     || r.holes.contains { !$0.trackedShots.isEmpty }
@@ -381,6 +385,42 @@ struct SessionDetailView: View {
     }
 
     // MARK: Header
+
+    @State private var fixingRound: CourseRound? = nil
+
+    /// Fix a mis-logged shot AFTER submitting: same mutation as in-round, then the round
+    /// re-saves and History refreshes.
+    private func editShotsSection(_ round: CourseRound) -> some View {
+        Button { fixingRound = round } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "pencil.and.list.clipboard")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(TCTheme.sage)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Fix logged shots")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text("Delete duplicates, change clubs, or add shots you forgot to log — scores and totals update")
+                        .font(.system(size: 11))
+                        .foregroundColor(TCTheme.textMuted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.textUltraMuted)
+            }
+            .padding(12)
+            .background(TCTheme.panel)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(TCTheme.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .sheet(item: $fixingRound) { r in
+            RoundShotsFixSheet(round: r, backend: session.backend)
+                .tcAppearance()
+        }
+    }
 
     /// Course rounds record shots as GPS-tracked shots + NFC taps on the round itself, not as
     /// camera SavedShots — counting only SavedShots showed "0 SHOTS" for every scored round.
@@ -768,5 +808,165 @@ struct SessionDetailView: View {
         let ordered = ids.compactMap { id in all.first(where: { $0.id == id }) }
         shots = ordered
         isLoading = false
+    }
+}
+
+
+// MARK: - Post-submit shots fixer (hole picker → delete → re-save the round)
+
+struct RoundShotsFixSheet: View {
+    @State var round: CourseRound
+    let backend: AppBackend
+    @Environment(\.dismiss) private var dismiss
+    @State private var saving = false
+    @State private var savedTick = false
+    @State private var clubs: [UserClub] = []
+    /// Cached OSM course for tee/green/centerline geometry (nil = position tools hidden).
+    @State private var geoCourse: GolfCourse?
+    @State private var editingHole: Int?
+
+    private struct FixEditingHole: Identifiable {
+        let number: Int
+        var id: Int { number }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                TrueCarryBackground().ignoresSafeArea()
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Tap the trash on any accidental shot, or open a hole to change clubs, fix a cart-logged position, and add shots you forgot. Scores and totals update immediately; History refreshes when you're done.")
+                            .font(.system(size: 12))
+                            .foregroundColor(TCTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        ForEach(round.holes) { hole in
+                            VStack(alignment: .leading, spacing: 8) {
+                                Button { editingHole = hole.holeNumber } label: {
+                                    HStack {
+                                        Text("HOLE \(hole.holeNumber)")
+                                            .font(.system(size: 11, weight: .black))
+                                            .foregroundColor(TCTheme.textMuted).tracking(1.2)
+                                        Spacer()
+                                        if let score = hole.score {
+                                            Text("Score \(score) · Par \(hole.par)")
+                                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                                .foregroundColor(TCTheme.textSecondary)
+                                        }
+                                        Image(systemName: "square.and.pencil")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(TCTheme.sage)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                ForEach(hole.trackedShots) { shot in
+                                    HStack(spacing: 10) {
+                                        Text("\(shot.shotIndex)")
+                                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                                            .foregroundColor(TCTheme.gold)
+                                            .frame(width: 22, height: 22)
+                                            .background(Circle().fill(TCTheme.gold.opacity(0.14)))
+                                        Text(shot.club?.name ?? "Shot")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(TCTheme.textPrimary)
+                                        Text(shot.lie.displayName)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(TCTheme.textMuted)
+                                        Spacer()
+                                        Button {
+                                            if let updated = CourseRoundViewModel.removeTrackedShot(shot.id, from: round) {
+                                                round = updated
+                                            }
+                                        } label: {
+                                            Image(systemName: "trash")
+                                                .font(.system(size: 13, weight: .semibold))
+                                                .foregroundColor(TCTheme.danger)
+                                                .frame(width: 30, height: 30)
+                                                .background(Circle().fill(TCTheme.danger.opacity(0.12)))
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                if hole.trackedShots.isEmpty {
+                                    Text("No logged shots — tap to add them.")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(TCTheme.textUltraMuted)
+                                }
+                            }
+                            .padding(12)
+                            .background(TCTheme.panel)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(TCTheme.border, lineWidth: 1))
+                        }
+                        Spacer(minLength: 30)
+                    }
+                    .padding(.horizontal, TCTheme.hPad)
+                    .padding(.top, 12)
+                }
+            }
+            .sheet(item: Binding(
+                get: { editingHole.map { FixEditingHole(number: $0) } },
+                set: { editingHole = $0?.number }
+            )) { editing in
+                // Shots are edited ON the hole itself: numbered pins where each was hit
+                // from — tap to change club / move / delete, or place a forgotten one.
+                RoundHoleMapEditSheet(
+                    round: $round,
+                    holeNumber: editing.number,
+                    clubs: clubs,
+                    hole: geoCourse?.holes.first { $0.number == editing.number },
+                    teeBoxName: round.teeBoxName,
+                    onMutate: { applyAutoSnap() }
+                )
+                .tcAppearance()
+            }
+            .task {
+                clubs = (try? await backend.loadClubs(userId: round.userId)) ?? []
+                geoCourse = OSMGolfService.shared.loadCached(courseId: round.courseId)
+                // Self-heal: holes that verified before this rule existed get their tee
+                // shot normalized onto the line and quietly resaved.
+                if let snapped = CourseRoundViewModel.autoSnapVerifiedTeeShots(
+                    in: round, course: geoCourse, teeBoxName: round.teeBoxName) {
+                    round = snapped
+                    try? await backend.saveRound(round)
+                    NotificationCenter.default.post(name: .tcDataChanged, object: nil)
+                }
+            }
+            .navigationTitle("Fix Shots · \(round.scoreSummary.totalScore)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }.foregroundColor(TCTheme.textMuted)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        saving = true
+                        Task {
+                            try? await backend.saveRound(round)
+                            NotificationCenter.default.post(name: .tcDataChanged, object: nil)
+                            saving = false
+                            savedTick = true
+                            dismiss()
+                        }
+                    } label: {
+                        if saving { ProgressView() } else {
+                            Text("Save").fontWeight(.bold).foregroundColor(TCTheme.sage)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Tee-shot-only line normalization (Noah's rule): whenever an edit verifies a hole,
+    /// its FIRST shot moves onto the hole's line at the same green distance. Later shots
+    /// stay exactly where the ball really was.
+    private func applyAutoSnap() {
+        if let snapped = CourseRoundViewModel.autoSnapVerifiedTeeShots(
+            in: round, course: geoCourse, teeBoxName: round.teeBoxName) {
+            round = snapped
+        }
     }
 }

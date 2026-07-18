@@ -1,5 +1,6 @@
 import SwiftUI
 import AVKit
+import AudioToolbox
 
 // MARK: - TrueCarry Coach: Swing Studio (capture screen)
 
@@ -22,6 +23,10 @@ struct SwingStudioView: View {
     /// The just-analyzed swing — presented automatically so every swing is immediately
     /// followed by its replay + suggestions.
     @State private var reviewSwing: SwingRecording? = nil
+    /// Rep-based mastery: consecutive in-band swings this sitting (3 = lesson passes).
+    @State private var currentStreak = 0
+    @State private var showReport = false
+    @State private var sessionRecorded = false
     /// Explicit, persisted camera-angle choice — it decides which metric tracker runs,
     /// so the player picks it, sees it, and gets exactly that analysis. No auto-guessing.
     @AppStorage("tc_swing_view_angle") private var viewAngleRaw = SwingViewAngle.faceOn.rawValue
@@ -58,6 +63,7 @@ struct SwingStudioView: View {
                 topBar
                 Spacer()
                 statusPill
+                streakRow
                 takesRow
                 bottomBar
             }
@@ -90,13 +96,63 @@ struct SwingStudioView: View {
             }
             .tcAppearance()
         }
+        .sheet(isPresented: $showReport) {
+            SessionReportView(takes: takes, streak: currentStreak, cue: studio.focusCue) {
+                sessionRecorded = true
+                library.recordStudioSession(swingIds: takes.map(\.id),
+                                            bestScore: takes.compactMap(\.overallScore).max())
+                library.logJournal("session", "Studio session: \(takes.count) swings, best \(takes.compactMap(\.overallScore).max() ?? 0).")
+                showReport = false
+                onDone()
+            }
+            .tcAppearance()
+        }
         .tcGuide(.swingStudio, showButton: false)
     }
 
     private func startStudio() {
+        studio.focusCue = focusCueText()
         studio.start(source: mirrorMode ? .frontMirror : .backGuided) { clipURL in
             ingest(clipURL: clipURL)
         }
+    }
+
+    /// The ONE thought for this session — worst confident tendency, in coach words.
+    private func focusCueText() -> String? {
+        let cues: [String: String] = [
+            "head_sway": "quiet head", "hip_slide": "turn, don't slide",
+            "tempo_ratio": "smooth tempo", "lead_arm_top": "long lead arm",
+            "delivery_plane": "let the club drop shallow", "takeaway_path": "one-piece takeaway",
+            "early_extension": "stay in your posture", "weight_shift": "finish on the lead side",
+            "stance_width": "shoulder-width base", "transition_seq": "hips start the downswing",
+            "finish_balance": "hold the finish", "spine_tilt_address": "athletic posture",
+        ]
+        let mobility = library.profile?.limitedMobility ?? false
+        // Lesson focus first, then whatever the player model says is most off.
+        let candidates: [String]
+        if let lessonId, let lesson = library.lesson(lessonId), !lesson.focusMetrics.isEmpty {
+            candidates = lesson.focusMetrics
+        } else {
+            candidates = Array(library.playerModel.metricAverages.keys)
+        }
+        for key in candidates {
+            guard let kind = SwingMetricKind(rawValue: key),
+                  let avg = library.playerModel.metricAverages[key] else { continue }
+            let band = SwingMetricsEngine.targetBand(kind, skill: library.effectiveSkill,
+                                                     limitedMobility: mobility)
+            if avg < band.0 || avg > band.1, let cue = cues[key] { return cue }
+        }
+        return nil
+    }
+
+    /// A rep counts when the lesson's focus metrics all land in band (or, with no
+    /// lesson attached, when the overall score clears 70).
+    private func isGoodRep(_ swing: SwingRecording) -> Bool {
+        if let lessonId, let lesson = library.lesson(lessonId), !lesson.focusMetrics.isEmpty {
+            let graded = swing.metrics.filter { lesson.focusMetrics.contains($0.kind.rawValue) }
+            return !graded.isEmpty && graded.allSatisfy(\.inBand)
+        }
+        return (swing.overallScore ?? 0) >= 70
     }
 
     private var topBar: some View {
@@ -104,6 +160,12 @@ struct SwingStudioView: View {
             HStack {
                 Button {
                     studio.stop()
+                    // Walking out mid-session still counts — the sitting goes to history.
+                    if lessonId == nil, !takes.isEmpty, !sessionRecorded {
+                        sessionRecorded = true
+                        library.recordStudioSession(swingIds: takes.map(\.id),
+                                                    bestScore: takes.compactMap(\.overallScore).max())
+                    }
                     onDone()
                 } label: {
                     Image(systemName: "xmark")
@@ -203,11 +265,32 @@ struct SwingStudioView: View {
         if analyzing > 0 { return "Analyzing your swing…" }
         switch studio.state {
         case .idle, .starting:     return "Starting camera…"
-        case .framing:             return "Step back until your WHOLE body is in frame"
-        case .waitingForAddress:   return "Get set up and hold still — recording starts by itself"
+        case .framing:             return "Step back for full-body analysis — or just tap record"
+        case .waitingForAddress:   return "Hold still and it records itself — or tap the button"
         case .recording:           return "Recording — swing when ready (club optional)"
         case .saving:              return "Saving…"
         case .failed(let msg):     return msg
+        }
+    }
+
+    /// Rep-mastery streak: three big dots — fill them in a row to pass the lesson.
+    @ViewBuilder
+    private var streakRow: some View {
+        if lessonId != nil {
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle()
+                        .fill(i < min(currentStreak, 3) ? TCTheme.sage : Color.black.opacity(0.45))
+                        .frame(width: 18, height: 18)
+                        .overlay(Circle().strokeBorder(Color.white.opacity(0.6), lineWidth: 1.5))
+                }
+                Text(currentStreak >= 3 ? "MASTERED" : "\(min(currentStreak, 3)) OF 3 IN A ROW")
+                    .font(.system(size: 15, weight: .black, design: .rounded))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 9)
+            .background(Capsule().fill(currentStreak >= 3 ? TCTheme.sage.opacity(0.5) : Color.black.opacity(0.55)))
+            .padding(.bottom, 6)
         }
     }
 
@@ -242,21 +325,26 @@ struct SwingStudioView: View {
 
     private var bottomBar: some View {
         HStack(spacing: 12) {
-            if mirrorMode {
-                Button { studio.manualToggleRecord() } label: {
-                    ZStack {
-                        Circle().strokeBorder(Color.white, lineWidth: 3).frame(width: 64, height: 64)
-                        RoundedRectangle(cornerRadius: studio.state == .recording ? 5 : 26)
-                            .fill(Color.red)
-                            .frame(width: studio.state == .recording ? 26 : 52,
-                                   height: studio.state == .recording ? 26 : 52)
-                    }
+            // The record button is ALWAYS here, both cameras. Auto-capture is a
+            // convenience on top — framing detection must never strand someone who
+            // just wants to tap record and swing.
+            Button { studio.manualToggleRecord() } label: {
+                ZStack {
+                    Circle().strokeBorder(Color.white, lineWidth: 3).frame(width: 64, height: 64)
+                    RoundedRectangle(cornerRadius: studio.state == .recording ? 5 : 26)
+                        .fill(Color.red)
+                        .frame(width: studio.state == .recording ? 26 : 52,
+                               height: studio.state == .recording ? 26 : 52)
                 }
             }
             if takes.count >= requiredSwings && analyzing == 0 {
                 Button {
                     studio.stop()
-                    onDone()
+                    if lessonId == nil, !takes.isEmpty {
+                        showReport = true       // free analysis: report card, then out
+                    } else {
+                        onDone()
+                    }
                 } label: {
                     Text("Done — \(takes.count) swing\(takes.count == 1 ? "" : "s") captured")
                         .font(.system(size: 15, weight: .bold))
@@ -294,19 +382,44 @@ struct SwingStudioView: View {
         takes.append(rec)
         analyzing += 1
 
-        let skill = library.profile?.skillLevel ?? .beginner
+        let skill = library.effectiveSkill      // auto-promoted from rolling scores
         let lefty = hitHandRaw == "L"
         let faults = library.faults
+        let mobility = library.profile?.limitedMobility ?? false
         Task {
             let analyzed = await SwingAnalyzer.analyze(recording: rec, videoURL: dest,
-                                                       skill: skill, isLefty: lefty, faults: faults)
+                                                       skill: skill, isLefty: lefty,
+                                                       faults: faults, limitedMobility: mobility)
             await MainActor.run {
                 library.updateSwing(analyzed)
                 if let i = takes.firstIndex(where: { $0.id == analyzed.id }) { takes[i] = analyzed }
                 analyzing -= 1
-                // Every swing is immediately followed by its replay + suggestions — the
-                // feedback loop IS the product; nobody should have to dig for it.
                 if analyzed.analyzed {
+                    // Instant verdict from 10 feet away: tone + haptic the moment the
+                    // analysis lands, then the coach reacts out loud.
+                    let good = isGoodRep(analyzed)
+                    AudioServicesPlaySystemSound(good ? 1057 : 1053)
+                    UINotificationFeedbackGenerator().notificationOccurred(good ? .success : .warning)
+                    if let lessonId {
+                        currentStreak = library.recordRep(lessonId: lessonId, good: good)
+                    } else {
+                        currentStreak = good ? currentStreak + 1 : 0
+                    }
+                    if good {
+                        studio.say(currentStreak >= 3 ? "That's three in a row. Mastered."
+                                   : "Good rep. \(currentStreak) in a row.")
+                    } else if let cue = studio.focusCue {
+                        studio.say("Reset. Remember: \(cue).")
+                    }
+                    // Every swing is immediately followed by its replay + suggestions —
+                    // the feedback loop IS the product.
+                    reviewSwing = analyzed
+                } else {
+                    // Analysis failed. SILENCE here is the worst outcome — say so, out
+                    // loud, and show the retake screen with what to fix.
+                    AudioServicesPlaySystemSound(1053)
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    studio.say("Couldn't read that swing. Make sure your whole body stays in the frame, then go again.")
                     reviewSwing = analyzed
                 }
             }
@@ -330,16 +443,24 @@ struct SwingReplayView: View {
     /// at 30fps = 8× slow — the whole point of capturing DTL at speed).
     @State private var videoFPS: Double = 30
     @State private var slowMo = true
+    @State private var showGhost = true
+    /// nil = view default (club for down-the-line, hands face-on); user toggle overrides.
+    @State private var preferClubTrail: Bool? = nil
+    @State private var showNoteEntry = false
+    @State private var noteDraft = ""
 
     var body: some View {
         ZStack {
             TrueCarryBackground().ignoresSafeArea()
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: TCTheme.sectionGap) {
+                    oneThoughtCard
+                    vsLastCard
                     videoSection
                     phaseChips
-                    verdictChips
                     scoreSection
+                    consistencySection
+                    verdictChips
                     metricsSection
                     faultsSection
                     Spacer(minLength: 60)
@@ -366,6 +487,168 @@ struct SwingReplayView: View {
         }
     }
 
+    /// Coaches give ONE thought. The worst confident miss leads; everything else is
+    /// below the fold.
+    @ViewBuilder
+    private var oneThoughtCard: some View {
+        if let worst = swing.metrics.filter({ !$0.inBand && $0.confidence >= 0.4 })
+            .max(by: { severity($0) < severity($1) }) {
+            let verdict = worst.kind.verdict(for: worst)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("ONE THOUGHT")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundColor(TCTheme.gold).tracking(1.4)
+                Text(verdict.label)
+                    .font(.system(size: 22, weight: .black, design: .rounded))
+                    .foregroundColor(TCTheme.textPrimary)
+                if let fault = library.faults.first(where: { $0.metric == worst.kind.rawValue }) {
+                    Text(library.currentDrill(for: fault))
+                        .font(.system(size: 14))
+                        .foregroundColor(TCTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .tcCard(padding: 16)
+        } else if swing.analyzed, let s = swing.overallScore, s >= 70 {
+            Label("Everything in the window — groove THIS feel.", systemImage: "checkmark.seal.fill")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundColor(TCTheme.sage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .tcCard(padding: 14)
+        }
+    }
+
+    /// The iterate loop: THIS swing against the one before it — score delta plus the
+    /// biggest metric moves, so every swing is a comparison, not an island.
+    @ViewBuilder
+    private var vsLastCard: some View {
+        if swing.analyzed,
+           let prev = library.swings
+               .filter({ $0.analyzed && $0.id != swing.id && $0.viewAngle == swing.viewAngle
+                         && $0.recordedAt < swing.recordedAt })
+               .max(by: { $0.recordedAt < $1.recordedAt }),
+           let score = swing.overallScore, let prevScore = prev.overallScore {
+            let delta = score - prevScore
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("VS LAST SWING")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundColor(TCTheme.textUltraMuted).tracking(1.2)
+                    HStack(spacing: 6) {
+                        Image(systemName: delta >= 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
+                            .foregroundColor(delta >= 0 ? TCTheme.sage : TCTheme.gold)
+                        Text(delta == 0 ? "Same score" : "\(delta > 0 ? "+" : "")\(delta)")
+                            .font(.system(size: 17, weight: .black, design: .rounded))
+                            .foregroundColor(TCTheme.textPrimary)
+                    }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 3) {
+                    ForEach(metricDeltas(vs: prev).prefix(2), id: \.0) { name, better in
+                        HStack(spacing: 4) {
+                            Text(name)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(TCTheme.textMuted)
+                            Image(systemName: better ? "arrow.up" : "arrow.down")
+                                .font(.system(size: 9, weight: .black))
+                                .foregroundColor(better ? TCTheme.sage : TCTheme.gold)
+                        }
+                    }
+                }
+            }
+            .tcCard(padding: 14)
+        }
+    }
+
+    /// Metric moves vs the previous swing, biggest change first (true = improved).
+    private func metricDeltas(vs prev: SwingRecording) -> [(String, Bool)] {
+        var out: [(name: String, better: Bool, magnitude: Double)] = []
+        for m in swing.metrics {
+            guard let pm = prev.metrics.first(where: { $0.kind == m.kind }) else { continue }
+            func miss(_ v: SwingMetricValue) -> Double {
+                let width = max(v.targetHigh - v.targetLow, 0.001)
+                let over = v.value > v.targetHigh ? v.value - v.targetHigh
+                         : v.value < v.targetLow ? v.targetLow - v.value : 0
+                return over / width
+            }
+            let change = miss(pm) - miss(m)          // + = closer to the band now
+            guard abs(change) > 0.12 else { continue }
+            out.append((m.kind.displayName, change > 0, abs(change)))
+        }
+        return out.sorted { $0.magnitude > $1.magnitude }.map { ($0.name, $0.better) }
+    }
+
+    private func severity(_ m: SwingMetricValue) -> Double {
+        let width = max(m.targetHigh - m.targetLow, 0.001)
+        let over = m.value > m.targetHigh ? m.value - m.targetHigh : m.targetLow - m.value
+        return over / width * m.confidence
+    }
+
+    private var usingClubTrail: Bool {
+        preferClubTrail ?? (swing.viewAngle == .downTheLine && swing.clubTrail != nil)
+            && swing.clubTrail != nil
+    }
+
+    private var activeTrail: [[Double]]? {
+        usingClubTrail ? swing.clubTrail : (swing.handTrail ?? swing.clubTrail)
+    }
+
+    /// Your best other swing from the SAME view — the ghost under this one.
+    private var ghostTrail: [[Double]]? {
+        guard showGhost else { return nil }
+        return library.swings
+            .filter { $0.analyzed && $0.id != swing.id && $0.viewAngle == swing.viewAngle
+                      && $0.handTrail != nil }
+            .max { ($0.overallScore ?? 0) < ($1.overallScore ?? 0) }?
+            .handTrail
+    }
+
+    /// Head-travel box, drawn red only when sway actually missed on THIS swing.
+    private var headBox: CGRect? {
+        guard let sway = swing.metrics.first(where: { $0.kind == .headSway }), !sway.inBand,
+              let trail = swing.headTrail, trail.count > 4 else { return nil }
+        let xs = trail.map(\.[0]), ys = trail.map(\.[1])
+        guard let x0 = xs.min(), let x1 = xs.max(), let y0 = ys.min(), let y1 = ys.max()
+        else { return nil }
+        return CGRect(x: x0 - 0.01, y: y0 - 0.01, width: (x1 - x0) + 0.02, height: (y1 - y0) + 0.02)
+    }
+
+    /// Repeatability: the last 5 same-view hand paths on one canvas — coaches care about
+    /// the spread more than any single swing.
+    @ViewBuilder
+    private var consistencySection: some View {
+        let trails = library.swings
+            .filter { $0.analyzed && $0.viewAngle == swing.viewAngle && $0.handTrail != nil }
+            .suffix(5)
+            .compactMap(\.handTrail)
+        if trails.count >= 3 {
+            VStack(alignment: .leading, spacing: 8) {
+                TCSectionHeader(title: "Repeatability — last \(trails.count) swings")
+                Canvas { ctx, size in
+                    for (i, trail) in trails.enumerated() {
+                        guard trail.count > 3 else { continue }
+                        let alpha = 0.25 + 0.75 * Double(i + 1) / Double(trails.count)
+                        var path = Path()
+                        for (j, pt) in trail.enumerated() {
+                            let p = CGPoint(x: pt[0] * size.width, y: (1 - pt[1]) * size.height)
+                            if j == 0 { path.move(to: p) } else { path.addLine(to: p) }
+                        }
+                        ctx.stroke(path, with: .color(TCTheme.sage.opacity(alpha)),
+                                   style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    }
+                }
+                .frame(height: 170)
+                .background(TCTheme.panelDeep.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                Text("Tight bundle = a repeating swing. The brightest line is this one.")
+                    .font(.system(size: 11))
+                    .foregroundColor(TCTheme.textUltraMuted)
+            }
+            .tcCard(padding: 14)
+        }
+    }
+
     private var videoSection: some View {
         ZStack {
             if let player {
@@ -377,11 +660,13 @@ struct SwingReplayView: View {
                             GeometryReader { geo in
                                 RichPoseOverlay(
                                     pose: currentPose,
-                                    trail: swing.clubTrail ?? swing.handTrail,
+                                    trail: activeTrail,
                                     spineAngle: swing.metrics.first { $0.kind == .spineTiltAddress }?.value,
                                     videoRect: AVMakeRect(aspectRatio: videoPixelSize,
                                                           insideRect: CGRect(origin: .zero, size: geo.size)),
-                                    trailLabel: swing.clubTrail != nil ? "CLUB PATH" : "HAND PATH"
+                                    trailLabel: usingClubTrail ? "CLUB PATH" : "HAND PATH",
+                                    ghostTrail: usingClubTrail ? nil : ghostTrail,
+                                    headBox: headBox
                                 )
                             }
                             .allowsHitTesting(false)
@@ -406,6 +691,32 @@ struct SwingReplayView: View {
                     .foregroundColor(.white)
                     .padding(8)
             }
+        }
+        .overlay(alignment: .bottomLeading) {
+            HStack(spacing: 8) {
+                // Both paths exist → let the player flip between club and hands.
+                if swing.clubTrail != nil, swing.handTrail != nil {
+                    Button { preferClubTrail = !usingClubTrail } label: {
+                        Text(usingClubTrail ? "CLUB" : "HANDS")
+                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .foregroundColor(.cyan)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Capsule().fill(Color.black.opacity(0.6)))
+                    }
+                    .buttonStyle(.plain)
+                }
+                if !usingClubTrail, ghostTrail != nil || !showGhost {
+                    Button { showGhost.toggle() } label: {
+                        Text(showGhost ? "GHOST ON" : "GHOST OFF")
+                            .font(.system(size: 11, weight: .black, design: .rounded))
+                            .foregroundColor(showGhost ? Color(red: 1.0, green: 0.85, blue: 0.4) : .white.opacity(0.7))
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Capsule().fill(Color.black.opacity(0.6)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(10)
         }
         .overlay(alignment: .bottomTrailing) {
             // High-fps clips play slow by default — that's why they were captured fast.
@@ -558,8 +869,36 @@ struct SwingReplayView: View {
                         .foregroundColor(TCTheme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                if let note = swing.note, !note.isEmpty {
+                    Label("\u{201C}\(note)\u{201D}", systemImage: "quote.opening")
+                        .font(.system(size: 14, weight: .medium).italic())
+                        .foregroundColor(TCTheme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Button {
+                        noteDraft = ""
+                        showNoteEntry = true
+                    } label: {
+                        Label("Add how it felt", systemImage: "square.and.pencil")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(TCTheme.sage)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .tcCard(padding: 16)
+            .alert("How did that swing feel?", isPresented: $showNoteEntry) {
+                TextField("felt like the lead arm stayed straight…", text: $noteDraft)
+                Button("Save") {
+                    var updated = swing
+                    updated.note = noteDraft
+                    library.updateSwing(updated)
+                    library.logJournal("note", "Player on a \(swing.overallScore ?? 0)-score swing: \u{201C}\(noteDraft)\u{201D}")
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Your words become part of your coaching notes.")
+            }
         } else if !swing.analyzed {
             VStack(spacing: 8) {
                 Text(swing.headline.isEmpty ? "Not analyzed yet" : swing.headline)
@@ -574,11 +913,25 @@ struct SwingReplayView: View {
         }
     }
 
+    @State private var showAllMetrics = false
+
     @ViewBuilder
     private var metricsSection: some View {
         if !swing.metrics.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                TCSectionHeader(title: "Measurements")
+                Button {
+                    withAnimation { showAllMetrics.toggle() }
+                } label: {
+                    HStack {
+                        TCSectionHeader(title: "All Measurements")
+                        Spacer()
+                        Image(systemName: showAllMetrics ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(TCTheme.textUltraMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                if showAllMetrics {
                 ForEach(swing.metrics) { m in
                     HStack {
                         Circle()
@@ -601,6 +954,7 @@ struct SwingReplayView: View {
                             .frame(width: 110, alignment: .trailing)
                     }
                     .padding(.vertical, 6)
+                }
                 }
             }
             .tcCard(padding: 14)
@@ -652,6 +1006,10 @@ struct RichPoseOverlay: View {
     let videoRect: CGRect
     /// What the ribbon traces — "HAND PATH" face-on, "CLUB PATH" down-the-line.
     var trailLabel: String = "HAND PATH"
+    /// A second, fainter trail (your BEST swing) for ghost comparison.
+    var ghostTrail: [[Double]]? = nil
+    /// Normalized (Vision coords) box drawn in red — the head-travel band on a sway miss.
+    var headBox: CGRect? = nil
 
     private static let leftJoints: Set<Int> = [2, 4, 6, 8, 10, 12]
     private static let rightJoints: Set<Int> = [3, 5, 7, 9, 11, 13]
@@ -661,6 +1019,35 @@ struct RichPoseOverlay: View {
             func toScreen(_ x: Double, _ y: Double) -> CGPoint {
                 CGPoint(x: videoRect.minX + x * videoRect.width,
                         y: videoRect.minY + (1 - y) * videoRect.height)
+            }
+
+            // ── Ghost: your best swing's path, faint gold underneath ──
+            if let ghostTrail, ghostTrail.count > 3 {
+                let pts = ghostTrail.map { toScreen($0[0], $0[1]) }
+                var path = Path()
+                path.move(to: pts[0])
+                for q in pts.dropFirst() { path.addLine(to: q) }
+                ctx.stroke(path, with: .color(Color(red: 1.0, green: 0.85, blue: 0.4).opacity(0.55)),
+                           style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [6, 5]))
+                ctx.draw(Text("BEST SWING")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.4)),
+                         at: CGPoint(x: pts[0].x, y: max(videoRect.minY + 8, pts[0].y - 12)))
+            }
+
+            // ── Fault, drawn on the video: the box the head traveled through ──
+            if let headBox {
+                let r = CGRect(x: videoRect.minX + headBox.minX * videoRect.width,
+                               y: videoRect.minY + (1 - headBox.maxY) * videoRect.height,
+                               width: headBox.width * videoRect.width,
+                               height: headBox.height * videoRect.height)
+                ctx.stroke(Path(roundedRect: r, cornerRadius: 6),
+                           with: .color(.red.opacity(0.85)),
+                           style: StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+                ctx.draw(Text("HEAD TRAVEL")
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundColor(.red.opacity(0.9)),
+                         at: CGPoint(x: r.midX, y: max(videoRect.minY + 8, r.minY - 10)))
             }
 
             // ── Hand-path ribbon (cyan→magenta), smoothed + labeled so it's clearly
@@ -845,3 +1232,80 @@ struct FramingGuideOverlay: View {
     }
 }
 
+
+
+// MARK: - Session report card (what a coach hands you as you leave)
+
+struct SessionReportView: View {
+    let takes: [SwingRecording]
+    let streak: Int
+    let cue: String?
+    let onDone: () -> Void
+
+    var body: some View {
+        ZStack {
+            TrueCarryBackground().ignoresSafeArea()
+            VStack(spacing: 20) {
+                Text("Session Report")
+                    .font(.system(size: 26, weight: .black, design: .rounded))
+                    .foregroundColor(TCTheme.textPrimary)
+                    .padding(.top, 26)
+
+                HStack(spacing: 10) {
+                    reportStat("\(takes.count)", "SWINGS")
+                    reportStat(avgScore.map { "\($0)" } ?? "—", "AVG")
+                    reportStat(takes.compactMap(\.overallScore).max().map { "\($0)" } ?? "—", "BEST")
+                    reportStat("\(streak)", "STREAK")
+                }
+                .padding(.horizontal, TCTheme.hPad)
+
+                if let headline = takes.compactMap({ $0.headline.isEmpty ? nil : $0.headline }).last {
+                    Label(headline, systemImage: "hand.thumbsup.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(TCTheme.sage)
+                        .multilineTextAlignment(.leading)
+                        .padding(.horizontal, TCTheme.hPad)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("NEXT TIME")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(TCTheme.gold).tracking(1.4)
+                    Text(cue.map { "One thought: \($0)." }
+                         ?? "Keep stacking reps — consistency is the next skill.")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .tcCard(padding: 16)
+                .padding(.horizontal, TCTheme.hPad)
+
+                Spacer()
+                TCPrimaryGoldButton(title: "Done", icon: "checkmark") { onDone() }
+                    .padding(.horizontal, TCTheme.hPad)
+                    .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private var avgScore: Int? {
+        let scores = takes.compactMap(\.overallScore)
+        guard !scores.isEmpty else { return nil }
+        return scores.reduce(0, +) / scores.count
+    }
+
+    private func reportStat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .foregroundColor(TCTheme.textPrimary)
+            Text(label)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(TCTheme.textMuted).tracking(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(TCTheme.panel)
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(TCTheme.borderMedium, lineWidth: 1)))
+    }
+}

@@ -20,6 +20,7 @@ final class LessonLibrary: ObservableObject {
     @Published private(set) var swings: [SwingRecording] = []
     @Published private(set) var lessonSessions: [LessonSessionRecord] = []
     @Published private(set) var playerModel = PlayerSwingModel()
+    @Published private(set) var journal: [CoachJournalEntry] = []
 
     private var userId: UUID?
 
@@ -70,9 +71,130 @@ final class LessonLibrary: ObservableObject {
         swings         = Self.read(dir(userId), "swings.json") ?? []
         lessonSessions = Self.read(dir(userId), "sessions.json") ?? []
         playerModel    = Self.read(dir(userId), "player_model.json") ?? PlayerSwingModel()
+        journal        = Self.read(dir(userId), "journal.json") ?? []
     }
 
     var hasCompletedIntake: Bool { profile != nil }
+
+    // MARK: Auto-promoting skill bands
+
+    /// The bar rises (or eases) with the player: rolling swing scores promote/demote the
+    /// intake skill level, so targets quietly get stricter as they improve — like a coach
+    /// expecting more without announcing it.
+    var effectiveSkill: SkillLevel {
+        let base = profile?.skillLevel ?? .beginner
+        let recent = playerModel.lastScores.suffix(10)
+        guard recent.count >= 6 else { return base }
+        let avg = Double(recent.reduce(0, +)) / Double(recent.count)
+        let order: [SkillLevel] = [.newcomer, .beginner, .improver, .intermediate, .advanced]
+        guard var idx = order.firstIndex(of: base) else { return base }
+        if avg >= 86 { idx += 2 } else if avg >= 76 { idx += 1 } else if avg < 50 { idx -= 1 }
+        return order[max(0, min(order.count - 1, idx))]
+    }
+
+    // MARK: Rep-based mastery
+
+    /// One graded rep: in-band = streak grows, a miss resets it. 3 in a row = mastered.
+    /// Returns the current streak.
+    @discardableResult
+    func recordRep(lessonId: String, good: Bool) -> Int {
+        var p = progress[lessonId] ?? LessonProgress(lessonId: lessonId, status: .inProgress)
+        let streak = good ? (p.currentStreak ?? 0) + 1 : 0
+        p.currentStreak = streak
+        if streak > (p.bestStreak ?? 0) { p.bestStreak = streak }
+        if streak >= 3, p.status == .completed { p.status = .mastered }
+        progress[lessonId] = p
+        persist(progress, "progress.json")
+        if streak == 3 {
+            logJournal("mastery", "3 in-band swings in a row on \(lesson(lessonId)?.title ?? lessonId).")
+        }
+        return streak
+    }
+
+    func streak(for lessonId: String) -> (current: Int, best: Int) {
+        let p = progress[lessonId]
+        return (p?.currentStreak ?? 0, p?.bestStreak ?? 0)
+    }
+
+    // MARK: Rust + spaced re-checks
+
+    /// Days since the player last did ANY coach work (swing or lesson).
+    var daysSinceLastWork: Int? {
+        let lastSwing = swings.map(\.recordedAt).max()
+        let lastLesson = lessonSessions.compactMap(\.endedAt).max()
+        guard let last = [lastSwing, lastLesson].compactMap({ $0 }).max() else { return nil }
+        return Calendar.current.dateComponents([.day], from: last, to: Date()).day
+    }
+
+    /// The most recently worked lesson — what a rusty player warms back up with.
+    var lastWorkedLesson: Lesson? {
+        let byDate = progress.values
+            .filter { $0.status == .completed || $0.status == .mastered || $0.status == .inProgress }
+            .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+        return byDate.compactMap { lesson($0.lessonId) }.first
+    }
+
+    /// Passed lessons whose focus metrics have DRIFTED back out of band — coaches always
+    /// circle back. Powers the refresher card on the roadmap.
+    var regressedLessons: [Lesson] {
+        let mobility = profile?.limitedMobility ?? false
+        return allLessons.filter { lesson in
+            guard !lesson.focusMetrics.isEmpty,
+                  let p = progress[lesson.id],
+                  p.status == .completed || p.status == .mastered,
+                  let completedAt = p.completedAt,
+                  Date().timeIntervalSince(completedAt) > 5 * 86_400 else { return false }
+            return lesson.focusMetrics.contains { key in
+                guard let kind = SwingMetricKind(rawValue: key),
+                      let avg = playerModel.metricAverages[key] else { return false }
+                let band = SwingMetricsEngine.targetBand(kind, skill: effectiveSkill,
+                                                         limitedMobility: mobility)
+                return avg < band.0 || avg > band.1
+            }
+        }
+    }
+
+    // MARK: Graduation goals (body unit → measurable ball goal on the range)
+
+    /// After a unit passes, Coach hands the player to the launch monitor with a target
+    /// the ball data can actually grade — closing the body→ball loop.
+    func rangeGoal(for track: LessonTrack) -> String? {
+        switch track.id {
+        case "foundations": return "Range goal: 5 of 10 shots with smash factor over 1.25 — proof the strike is finding the center."
+        case "contact":     return "Range goal: carry spread under 15 yards across 10 shots with one club."
+        case "tempo":       return "Range goal: 8 of 10 shots inside ±5° launch direction — tempo shows up as tighter dispersion."
+        case "slice":       return "Range goal: spin axis under +3° on 5 of 10 measured balls."
+        case "hook":        return "Range goal: spin axis inside −3° on 5 of 10 measured balls."
+        default:            return nil
+        }
+    }
+
+    // MARK: Free tier (one analyzed swing a week = the taste)
+
+    var freeSwingAvailable: Bool {
+        let weekAgo = Date().addingTimeInterval(-7 * 86_400)
+        return !swings.contains { $0.analyzed && $0.recordedAt > weekAgo }
+    }
+
+    // MARK: Coaching journal
+
+    func logJournal(_ kind: String, _ text: String) {
+        journal.append(CoachJournalEntry(kind: kind, text: text))
+        if journal.count > 300 { journal.removeFirst(journal.count - 300) }
+        persist(journal, "journal.json")
+    }
+
+    /// The drill rung to coach for a fault right now (ladder escalation), logging
+    /// rotations so the journal reads like a coach's notebook.
+    func currentDrill(for fault: SwingFault) -> String {
+        let streak = playerModel.activeFaults[fault.id] ?? 0
+        let drill = fault.drill(forPersistence: streak)
+        if let ladder = fault.drillLadder, ladder.count > 1, streak > 0, streak % 3 == 2,
+           journal.last(where: { $0.kind == "drill" })?.text.contains(drill) != true {
+            logJournal("drill", "\(fault.title) persisting — moving to: \(drill)")
+        }
+        return drill
+    }
 
     func saveProfile(_ p: LessonProfile) {
         var updated = p
@@ -171,6 +293,43 @@ final class LessonLibrary: ObservableObject {
         record.stepsCompleted = lesson.steps.count
         record.score = score
         lessonSessions.append(record)
+        persist(lessonSessions, "sessions.json")
+        logJournal("lesson", "Finished \(lesson.title)\(score.map { " — scored \($0)" } ?? "").")
+    }
+
+    /// Persist a partial lesson sitting (user closed mid-lesson). Sessions used to be
+    /// recorded ONLY on completion — abandoned work vanished from history.
+    func abandonLesson(session: LessonSessionRecord, stepsCompleted: Int) {
+        guard stepsCompleted > 0 else { return }
+        var record = session
+        record.endedAt = Date()
+        record.stepsCompleted = stepsCompleted
+        lessonSessions.append(record)
+        persist(lessonSessions, "sessions.json")
+    }
+
+    /// Persist a free-analysis studio sitting (no lesson attached) so it shows in history.
+    func recordStudioSession(swingIds: [UUID], bestScore: Int?) {
+        guard !swingIds.isEmpty else { return }
+        var record = LessonSessionRecord(userId: userId ?? UUID(),
+                                         lessonId: "studio.analyze",
+                                         lessonTitle: "Swing Analysis",
+                                         trackTitle: "Studio",
+                                         stepCount: 0)
+        record.endedAt = Date()
+        record.swingIds = swingIds
+        record.score = bestScore
+        lessonSessions.append(record)
+        persist(lessonSessions, "sessions.json")
+    }
+
+    func deleteLessonSession(id: UUID) {
+        lessonSessions.removeAll { $0.id == id }
+        persist(lessonSessions, "sessions.json")
+    }
+
+    func clearLessonSessions() {
+        lessonSessions = []
         persist(lessonSessions, "sessions.json")
     }
 
@@ -274,11 +433,59 @@ enum CoachAdvisor {
                 recent.count)
     }
 
+    /// "32% → 21% over your last N swings" — the delta copy, from the same numbers the
+    /// deep-dive charts already plot.
+    @MainActor
+    private static func trend(_ kind: SwingMetricKind, library: LessonLibrary) -> String? {
+        let values = library.swings.filter(\.analyzed)
+            .compactMap { s in s.metrics.first { $0.kind == kind }?.value }
+            .suffix(12)
+        guard values.count >= 8 else { return nil }
+        let arr = Array(values)
+        let half = arr.count / 2
+        let older = arr.prefix(half).reduce(0, +) / Double(half)
+        let newer = arr.suffix(arr.count - half).reduce(0, +) / Double(arr.count - half)
+        guard abs(older - newer) > max(2, abs(older) * 0.15) else { return nil }
+        let unit = kind.unit == ":1" ? "" : kind.unit
+        return String(format: "%.0f%@ → %.0f%@ over your last %d swings", older, unit, newer, unit, arr.count)
+    }
+
     @MainActor
     static func suggestions(model: PlayerSwingModel, shots: [SavedShot],
                             library: LessonLibrary) -> [CoachSuggestion] {
         var out: [CoachSuggestion] = []
         let ball = ballTendency(shots)
+
+        // ── Freshness: a big session TODAY gets read today, not whenever ────────
+        let todayShots = shots.filter { Date().timeIntervalSince($0.timestamp) < 12 * 3600
+            && !$0.isBadShot && $0.metrics.ballSpeedMph > 0 }
+        if todayShots.count >= 15 {
+            let axis = todayShots.map { $0.metrics.spinAxisDegrees }.reduce(0, +) / Double(todayShots.count)
+            if abs(axis) > 4 {
+                let dir = axis > 0 ? "right" : "left"
+                out.append(CoachSuggestion(
+                    title: "I watched today's \(todayShots.count) shots",
+                    detail: "The ball is curving \(dir) (avg spin axis \(axis > 0 ? "+" : "")\(Int(axis))°) — path is the story of today's session. One focused fix beats another bucket.",
+                    icon: "clock.badge.checkmark", lessonId: axis > 0 ? "slice.diagnose" : "hook.diagnose",
+                    priority: 1))
+            }
+        }
+
+        // ── Improvement attribution: lesson dates × measured ball data ──────────
+        for (lessonId, trackId) in [("slice.path", "slice"), ("hook.release", "hook")] {
+            guard let p = library.progress[lessonId], let doneAt = p.completedAt else { continue }
+            let before = shots.filter { $0.timestamp < doneAt && !$0.isBadShot && $0.metrics.ballSpeedMph > 0 }.suffix(15)
+            let after = shots.filter { $0.timestamp > doneAt && !$0.isBadShot && $0.metrics.ballSpeedMph > 0 }.suffix(15)
+            guard before.count >= 6, after.count >= 6 else { continue }
+            let b = before.map { abs($0.metrics.spinAxisDegrees) }.reduce(0, +) / Double(before.count)
+            let a = after.map { abs($0.metrics.spinAxisDegrees) }.reduce(0, +) / Double(after.count)
+            if b > 2, (b - a) / b > 0.2 {
+                out.append(CoachSuggestion(
+                    title: "The \(trackId) work is showing up in the ball",
+                    detail: "Since finishing \(library.lesson(lessonId)?.title ?? lessonId), your average curve dropped \(Int((b - a) / b * 100))% (\(String(format: "%.1f", b))° → \(String(format: "%.1f", a))°). Keep the reps coming.",
+                    icon: "chart.line.downtrend.xyaxis", lessonId: nil, priority: 1))
+            }
+        }
         let avg = model.metricAverages
         let steep    = (avg[SwingMetricKind.deliveryPlane.rawValue] ?? 0) > 22
         let shallow  = (avg[SwingMetricKind.deliveryPlane.rawValue] ?? 0) < -22
@@ -311,9 +518,10 @@ enum CoachAdvisor {
                 return (inconsistent.map { ($0 - m) * ($0 - m) }.reduce(0, +) / Double(inconsistent.count)).squareRoot()
             }()
             if sd > 0.12 {
+                let t = trend(.headSway, library: library).map { " Sway trend: \($0)." } ?? ""
                 out.append(CoachSuggestion(
                     title: "Confirmed: sway is costing you contact",
-                    detail: "Your head moves laterally on camera AND your smash factor varies shot to shot (±\(String(format: "%.2f", sd))) — the classic sway signature. Low-point control drills will tighten both.",
+                    detail: "Your head moves laterally on camera AND your smash factor varies shot to shot (±\(String(format: "%.2f", sd))) — the classic sway signature.\(t) Low-point control drills will tighten both.",
                     icon: "circle.dotted", lessonId: "contact.lowpoint", priority: 1,
                     metricKinds: ["head_sway"]))
             }
@@ -321,8 +529,10 @@ enum CoachAdvisor {
 
         // ── Single-signal reads ──────────────────────────────────────────────
         if out.isEmpty {
-            if steep { out.append(CoachSuggestion(title: "Club steep at delivery",
-                detail: "Camera shows the hands above the address plane coming down. Feel the club drop behind you from the top before it swings out.",
+            if steep {
+                let t = trend(.deliveryPlane, library: library).map { " Trend: \($0)." } ?? ""
+                out.append(CoachSuggestion(title: "Club steep at delivery",
+                detail: "Camera shows the hands above the address plane coming down.\(t) Feel the club drop behind you from the top before it swings out.",
                 icon: "arrow.down.right.circle", lessonId: "slice.path", priority: 0, metricKinds: ["delivery_plane"])) }
             if inside { out.append(CoachSuggestion(title: "Takeaway working inside",
                 detail: "The hands pull inside the plane line in the first move. One-piece takeaway reps will neutralize it.",
@@ -349,7 +559,7 @@ enum CoachAdvisor {
         for faultId in model.persistentFaults.prefix(2) {
             guard let f = library.fault(faultId),
                   !out.contains(where: { $0.lessonId == f.lessonId }) else { continue }
-            out.append(CoachSuggestion(title: f.title, detail: f.drill,
+            out.append(CoachSuggestion(title: f.title, detail: library.currentDrill(for: f),
                                        icon: "exclamationmark.triangle.fill",
                                        lessonId: f.lessonId, priority: 0))
         }

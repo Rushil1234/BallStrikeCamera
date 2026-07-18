@@ -51,7 +51,9 @@ enum SwingPoseExtractor {
                           userInfo: [NSLocalizedDescriptionKey: "No video track"])
         }
         let nominalFPS = Double(try await track.load(.nominalFrameRate))
-        let stride = max(1, Int((nominalFPS / 120.0).rounded()))
+        // 60Hz pose sampling: half the Vision calls of 120Hz for the SAME phase quality
+        // (stored phase times are exact; ±8ms beats waiting twice as long for a score).
+        let stride = max(1, Int((nominalFPS / 60.0).rounded()))
         let effectiveFPS = nominalFPS / Double(stride)
         // Camera-roll clips carry a rotation transform (raw buffers are landscape);
         // app-recorded clips are physically portrait (identity). Tell Vision the real
@@ -210,7 +212,7 @@ enum SwingPhaseSegmenter {
         let addressY = pts[address].y
         let impactSearchEnd = min(pts.count - 1, max(speedPeak + Int(fps * 0.25), top + 1))
         var impact = 0
-        for i in (top + 1)...impactSearchEnd where pts[i].y <= addressY + CGFloat(scale) * 0.15 {
+        for i in (top + 1)...impactSearchEnd where pts[i].y <= addressY + CGFloat(scale) * 0.4 {
             impact = i; break
         }
         if impact == 0 {
@@ -230,9 +232,11 @@ enum SwingPhaseSegmenter {
         // Finish: first index after impact where speed stays below stillThresh for ~0.25s,
         // else the last frame.
         let finishHold = max(2, Int(fps * 0.2))
-        var finish = pts.count - 1
+        // Cap the search: the held finish lives within ~1.2s of impact — searching past
+        // that finds the relaxed walk-away, not the pose.
+        var finish = min(pts.count - 1, impact + Int(fps * 1.2))
         if impact + 1 < speed.count - finishHold {
-            for i in (impact + 1)..<(speed.count - finishHold) {
+            for i in (impact + 1)..<min(speed.count - finishHold, impact + Int(fps * 1.2)) {
                 if (i..<(i + finishHold)).allSatisfy({ speed[$0] < stillThresh }) {
                     finish = i; break
                 }
@@ -278,8 +282,18 @@ enum SwingPhaseSegmenter {
 
 enum SwingMetricsEngine {
 
-    /// Skill-banded target windows (low, high) per metric.
-    static func targetBand(_ kind: SwingMetricKind, skill: SkillLevel) -> (Double, Double) {
+    /// Skill-banded target windows (low, high) per metric. `limitedMobility` relaxes
+    /// turn/posture demands — a real coach asks about the body before demanding 90°.
+    static func targetBand(_ kind: SwingMetricKind, skill: SkillLevel,
+                           limitedMobility: Bool = false) -> (Double, Double) {
+        if limitedMobility {
+            switch kind {
+            case .shoulderTurn:     return (40, 100)
+            case .spineTiltAddress: return (20, 48)
+            case .leadArmAtTop:     return (0, 45)
+            default: break
+            }
+        }
         let loose = skill == .newcomer || skill == .beginner
         switch kind {
         case .tempoRatio:       return loose ? (2.2, 4.0) : (2.6, 3.4)
@@ -293,6 +307,7 @@ enum SwingMetricsEngine {
         // checkpoint, so the target band lives above 100% of shoulder width.
         case .stanceWidth:      return loose ? (85, 170)  : (95, 155)
         case .weightShift:      return loose ? (40, 125)  : (55, 115)    // % toward the lead foot
+        case .transitionSeq:    return loose ? (-80, 320) : (0, 250)     // ms hips lead arms
         case .takeawayPath:     return loose ? (-35, 35)  : (-22, 22)    // % shoulder width off plane
         case .deliveryPlane:    return loose ? (-35, 35)  : (-22, 22)
         case .earlyExtension:   return loose ? (0, 35)    : (0, 22)
@@ -301,10 +316,13 @@ enum SwingMetricsEngine {
 
     static func compute(frames: [SwingPoseFrame], phases: SwingPhases,
                         skill: SkillLevel, isLefty: Bool,
-                        viewAngle: SwingViewAngle = .faceOn) -> [SwingMetricValue] {
+                        viewAngle: SwingViewAngle = .faceOn,
+                        limitedMobility: Bool = false) -> [SwingMetricValue] {
         viewAngle == .downTheLine
-            ? computeDownTheLine(frames: frames, phases: phases, skill: skill)
-            : computeFaceOn(frames: frames, phases: phases, skill: skill, isLefty: isLefty)
+            ? computeDownTheLine(frames: frames, phases: phases, skill: skill,
+                                 limitedMobility: limitedMobility)
+            : computeFaceOn(frames: frames, phases: phases, skill: skill, isLefty: isLefty,
+                            limitedMobility: limitedMobility)
     }
 
     /// Down-the-line (tripod ~6ft behind, looking at the target): swing-plane proxies.
@@ -312,14 +330,15 @@ enum SwingMetricsEngine {
     /// hands' horizontal offset from that reference when they pass hip height — the same visual
     /// call the plane-line apps draw, measured instead of eyeballed.
     private static func computeDownTheLine(frames: [SwingPoseFrame], phases: SwingPhases,
-                                           skill: SkillLevel) -> [SwingMetricValue] {
+                                           skill: SkillLevel,
+                                           limitedMobility: Bool = false) -> [SwingMetricValue] {
         var out: [SwingMetricValue] = []
         let addr = frames[phases.address]
         let scale = Double(SwingPhaseSegmenter.shoulderWidth(addr) ?? 0.10)
         guard scale > 0.015 else { return out }
 
         func add(_ kind: SwingMetricKind, _ value: Double, confidence: Double) {
-            let band = targetBand(kind, skill: skill)
+            let band = targetBand(kind, skill: skill, limitedMobility: limitedMobility)
             out.append(SwingMetricValue(kind: kind, value: value,
                                         targetLow: band.0, targetHigh: band.1,
                                         confidence: confidence))
@@ -385,13 +404,14 @@ enum SwingMetricsEngine {
     }
 
     private static func computeFaceOn(frames: [SwingPoseFrame], phases: SwingPhases,
-                                      skill: SkillLevel, isLefty: Bool) -> [SwingMetricValue] {
+                                      skill: SkillLevel, isLefty: Bool,
+                                      limitedMobility: Bool = false) -> [SwingMetricValue] {
         var out: [SwingMetricValue] = []
         let scale = Double(SwingPhaseSegmenter.shoulderWidth(frames[phases.address]) ?? 0.12)
         guard scale > 0.02 else { return out }
 
         func add(_ kind: SwingMetricKind, _ value: Double, confidence: Double) {
-            let band = targetBand(kind, skill: skill)
+            let band = targetBand(kind, skill: skill, limitedMobility: limitedMobility)
             out.append(SwingMetricValue(kind: kind, value: value,
                                         targetLow: band.0, targetHigh: band.1,
                                         confidence: confidence))
@@ -441,6 +461,31 @@ enum SwingMetricsEngine {
                 let center = (fla.x + fra.x) / 2
                 let t = abs(Double(hips.x - center)) / (Double(spread) / 2)
                 add(.weightShift, min(t * 100, 140).rounded(), confidence: 0.65)
+            }
+        }
+
+        // Transition sequence: the pros' downswing starts from the ground up — the
+        // pelvis reverses toward the target BEFORE the arms leave the top. Positive ms
+        // = hips first (good); negative = arms first (the over-the-top precursor).
+        if let topTime = phases.times?[2] ?? Optional(Double(phases.top) / max(phases.frameRate, 1)) {
+            let hipXs: [(t: Double, x: CGFloat)] = frames.compactMap { f in
+                guard let h = f.mid(.leftHip, .rightHip) else { return nil }
+                return (f.time, h.x)
+            }
+            // Hip direction during the late backswing, then the first sustained reversal.
+            let pre = hipXs.filter { $0.t > topTime - 0.45 && $0.t < topTime - 0.1 }
+            let win = hipXs.filter { $0.t > topTime - 0.35 && $0.t < topTime + 0.35 }
+            if pre.count >= 4, win.count >= 6, let first = pre.first, let last = pre.last {
+                let backDir: CGFloat = last.x >= first.x ? 1 : -1   // hips drift this way going back
+                var reversal: Double? = nil
+                for i in 1..<(win.count - 1) {
+                    let v1 = (win[i].x - win[i - 1].x) * backDir
+                    let v2 = (win[i + 1].x - win[i].x) * backDir
+                    if v1 < 0 && v2 < 0 { reversal = win[i].t; break }   // sustained turn-around
+                }
+                if let reversal {
+                    add(.transitionSeq, ((topTime - reversal) * 1000).rounded(), confidence: 0.5)
+                }
             }
         }
 
@@ -504,6 +549,7 @@ enum SwingScorer {
         .spineTiltAddress: "setup", .stanceWidth: "setup",
         .tempoRatio: "tempo",
         .headSway: "body", .hipSlide: "body", .leadArmAtTop: "body", .weightShift: "body",
+        .transitionSeq: "tempo",
         .finishBalance: "balance",
         .takeawayPath: "plane", .deliveryPlane: "plane", .earlyExtension: "plane"
     ]
@@ -673,7 +719,7 @@ enum SwingClubTracer {
     static func trace(videoURL: URL, frames: [SwingPoseFrame], phases: SwingPhases) async -> [[Double]]? {
         guard let times = phases.times, times.count == 5 else { return nil }
         let tStart = max(0, times[0] - 0.1)
-        let tEnd = times[3] + 0.2
+        let tEnd = times[3] + 0.2      // through impact; follow-through extension is future work
 
         let asset = AVURLAsset(url: videoURL)
         guard let track = try? await asset.loadTracks(withMediaType: .video).first,
@@ -723,6 +769,7 @@ enum SwingClubTracer {
         var trail: [[Double]] = []
         var lastDir: Double? = nil
         var lastHead: CGPoint? = nil
+        var prevHead: CGPoint? = nil
         var missStreak = 0
         var rawIndex = 0
         while let sample = output.copyNextSampleBuffer() {
@@ -739,31 +786,85 @@ enum SwingClubTracer {
             if let hit = Self.rayClubhead(prev: window[0].plane, cur: window[baseline].plane,
                                           next: window[2 * baseline].plane, handsUpright: hp,
                                           preferDir: lastDir), hit.score > 300 {
-                if let last = lastHead, hypot(hit.head.x - last.x, hit.head.y - last.y) > 0.35 {
-                    missStreak += 1
-                } else {
+                // Continuity gate: within a club-speed-scaled jump of the last point.
+                // (A tight constant-velocity prediction gate REJECTS real fast motion —
+                // at 30fps the head legitimately moves 0.25+/sample mid-swing.)
+                let accept = lastHead.map {
+                    hypot(Double(hit.head.x - $0.x), Double(hit.head.y - $0.y)) < 0.35
+                } ?? true
+                if accept {
                     trail.append([Double(hit.head.x), Double(hit.head.y), tCur])
+                    prevHead = lastHead
                     lastHead = hit.head
                     lastDir = hit.dir
                     missStreak = 0
+                } else {
+                    missStreak += 1
                 }
             } else {
                 missStreak += 1
             }
+            // Keep hunting through impact blur — the club reappears in the
+            // follow-through and the spline bridges the gap. Bail only when it's
+            // been gone a long time past the strike.
             if missStreak > 8, !trail.isEmpty, tCur > times[2] { break }
         }
         reader.cancelReading()
         guard trail.count >= 6 else { return nil }
+        return polish(trail, impactTime: times[3])
+    }
 
-        var smoothed = trail
-        for i in trail.indices {
-            let lo = max(0, i - 1), hi = min(trail.count - 1, i + 1)
-            let n = Double(hi - lo + 1)
-            smoothed[i] = [ (lo...hi).map { trail[$0][0] }.reduce(0, +) / n,
-                            (lo...hi).map { trail[$0][1] }.reduce(0, +) / n,
-                            trail[i][2] ]
+    /// Broadcast-tracer finish: reject outliers against neighbor continuity, inject the
+    /// one point physics guarantees (the clubhead is AT THE BALL at impact — bridging
+    /// the motion-blur gap with truth instead of a chord), then resample through a
+    /// Catmull-Rom spline. The drawn line should read as a swing plane, not a seismograph.
+    private static func polish(_ raw: [[Double]], impactTime: Double) -> [[Double]] {
+        var pts = raw.sorted { $0[2] < $1[2] }
+
+        // Impact anchor: the address clubhead position ≈ the ball. Only inject when the
+        // tracker has nothing near impact (blur gap).
+        if let ball = pts.first, !pts.contains(where: { abs($0[2] - impactTime) < 0.08 }) {
+            let anchor = [ball[0], ball[1], impactTime]
+            let idx = pts.firstIndex(where: { $0[2] > impactTime }) ?? pts.count
+            if idx > 0, idx < pts.count { pts.insert(anchor, at: idx) }
         }
-        return smoothed
+
+        // Spike rejection (two passes): drop a point only when the path goes far OUT
+        // AND BACK through it (detour ≫ chord). A chord-deviation test would also kill
+        // legitimate sharp curvature — i.e., the top of the swing.
+        for _ in 0..<2 {
+            guard pts.count > 4 else { break }
+            var keep = [pts[0]]
+            for i in 1..<(pts.count - 1) {
+                let a = pts[i - 1], b = pts[i], c = pts[i + 1]
+                let detour = hypot(b[0] - a[0], b[1] - a[1]) + hypot(c[0] - b[0], c[1] - b[1])
+                let chord = hypot(c[0] - a[0], c[1] - a[1])
+                if detour < max(chord * 2.2, 0.06) { keep.append(b) }
+            }
+            keep.append(pts[pts.count - 1])
+            pts = keep
+        }
+        guard pts.count >= 4 else { return pts }
+
+        // Catmull-Rom resample (6 samples per segment) — the smooth broadcast line.
+        func cr(_ p0: [Double], _ p1: [Double], _ p2: [Double], _ p3: [Double],
+                _ t: Double) -> [Double] {
+            let t2 = t * t, t3 = t2 * t
+            func comp(_ i: Int) -> Double {
+                0.5 * ((2 * p1[i]) + (-p0[i] + p2[i]) * t
+                       + (2 * p0[i] - 5 * p1[i] + 4 * p2[i] - p3[i]) * t2
+                       + (-p0[i] + 3 * p1[i] - 3 * p2[i] + p3[i]) * t3)
+            }
+            return [comp(0), comp(1), comp(2)]
+        }
+        var out: [[Double]] = []
+        for i in 0..<(pts.count - 1) {
+            let p0 = pts[max(0, i - 1)], p1 = pts[i]
+            let p2 = pts[i + 1], p3 = pts[min(pts.count - 1, i + 2)]
+            for k in 0..<6 { out.append(cr(p0, p1, p2, p3, Double(k) / 6)) }
+        }
+        out.append(pts[pts.count - 1])
+        return out
     }
 
     /// Rotate + 2× downsample the Y plane into upright raster space.
@@ -911,7 +1012,7 @@ enum SwingAnalyzer {
     /// (analyzed stays false when no swing could be segmented — UI shows a retake prompt).
     static func analyze(recording: SwingRecording, videoURL: URL,
                         skill: SkillLevel, isLefty: Bool,
-                        faults: [SwingFault]) async -> SwingRecording {
+                        faults: [SwingFault], limitedMobility: Bool = false) async -> SwingRecording {
         var rec = recording
         do {
             let (frames, fps) = try await SwingPoseExtractor.extract(videoURL: videoURL)
@@ -923,7 +1024,8 @@ enum SwingAnalyzer {
             }
             let metrics = SwingMetricsEngine.compute(frames: frames, phases: phases,
                                                      skill: skill, isLefty: isLefty,
-                                                     viewAngle: rec.viewAngle)
+                                                     viewAngle: rec.viewAngle,
+                                                     limitedMobility: limitedMobility)
             let result = SwingScorer.score(metrics: metrics, faults: faults)
             rec.analyzed = true
             rec.fps = fps
@@ -937,6 +1039,13 @@ enum SwingAnalyzer {
             rec.keyPoses = phases.labelled.map { _, frameIdx in
                 SwingSkeleton.stored(from: frames[min(frameIdx, frames.count - 1)], at: frameIdx)
             }
+            // Head trail address→impact — powers the drawn-on-video sway box.
+            let headRange = phases.address...min(phases.impact, frames.count - 1)
+            rec.headTrail = headRange.compactMap { i -> [Double]? in
+                guard let h = frames[i].joint(.nose) ?? frames[i].mid(.leftEar, .rightEar)
+                else { return nil }
+                return [Double(h.x), Double(h.y)]
+            }
             // Hand trail: address→finish, downsampled to ≤150 points for the replay ribbon.
             let trailRange = phases.address...min(phases.finish, frames.count - 1)
             let trailStride = max(1, trailRange.count / 150)
@@ -947,12 +1056,11 @@ enum SwingAnalyzer {
                 else { return nil }
                 return [Double(h.x), Double(h.y)]
             }
-            // Down-the-line: trace the clubhead for the replay ribbon — in this view the
-            // hands occlude each other and the club IS the story of the takeaway.
-            if rec.viewAngle == .downTheLine {
-                rec.clubTrail = await SwingClubTracer.trace(videoURL: videoURL,
-                                                            frames: frames, phases: phases)
-            }
+            // Clubhead trace for BOTH views: down-the-line it IS the ribbon (hands
+            // occlude each other); face-on it's the optional second view next to the
+            // hand path — the replay lets the player flip between them.
+            rec.clubTrail = await SwingClubTracer.trace(videoURL: videoURL,
+                                                        frames: frames, phases: phases)
             if #available(iOS 17.0, *) { rec.poseEngine = "vision2d+3dready" }
         } catch {
             rec.analyzed = false

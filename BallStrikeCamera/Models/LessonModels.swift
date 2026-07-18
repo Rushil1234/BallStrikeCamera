@@ -68,6 +68,12 @@ struct LessonProfile: Codable {
     var hasTripod = false
     var createdAt = Date()
     var updatedAt = Date()
+    /// The ONE outcome everything anchors to (roadmap order, read priorities).
+    /// Optional so pre-existing profiles still decode.
+    var primaryGoal: FocusArea? = nil
+    /// Limited flexibility / injury — turn and posture targets are relaxed rather than
+    /// demanding a range the body can't give. Optional for decode safety.
+    var limitedMobility: Bool? = nil
 }
 
 // MARK: Curriculum schema (decoded from curriculum.json)
@@ -149,6 +155,10 @@ struct LessonProgress: Codable {
     var completedSteps: [String] = []
     var completedAt: Date? = nil
     var attempts: Int = 0
+    /// Rep-based mastery: consecutive in-band swings right now / best run ever.
+    /// Optional so pre-existing progress files still decode.
+    var currentStreak: Int? = nil
+    var bestStreak: Int? = nil
 }
 
 /// One sitting of lesson work — the History record.
@@ -214,6 +224,11 @@ struct SwingRecording: Codable, Identifiable {
     /// DTL hands occlude each other, so the replay ribbon uses this when present.
     /// Optional so pre-existing saved swings still decode.
     var clubTrail: [[Double]]? = nil
+    /// Head-center path address→impact ([x, y] normalized) — draws the head-travel box
+    /// on sway faults. Optional so pre-existing saved swings still decode.
+    var headTrail: [[Double]]? = nil
+    /// The player's own words about the swing ("felt like the lead arm stayed straight").
+    var note: String? = nil
 }
 
 struct StoredPose: Codable {
@@ -269,6 +284,7 @@ enum SwingMetricKind: String, Codable, CaseIterable {
     case leadArmAtTop     = "lead_arm_top"       // lead-arm straightness at top (degrees of bend)
     case finishBalance    = "finish_balance"     // ankle jitter over final 0.5s, % shoulder width
     case shoulderTurn     = "shoulder_turn"      // shoulder-line rotation proxy at top, %
+    case transitionSeq    = "transition_seq"     // hips reverse before arms at the top, ms (+ = hips first)
     case stanceWidth      = "stance_width"       // ankle spread ÷ shoulder width at address, %
     case weightShift      = "weight_shift"       // pelvis over the lead foot at finish, % (100 = stacked)
     // Down-the-line only (tripod ~6ft behind, camera at hand height):
@@ -285,6 +301,7 @@ enum SwingMetricKind: String, Codable, CaseIterable {
         case .leadArmAtTop:     return "Lead Arm"
         case .finishBalance:    return "Balance"
         case .shoulderTurn:     return "Shoulder Turn"
+        case .transitionSeq:    return "Hips Lead"
         case .stanceWidth:      return "Stance Width"
         case .weightShift:      return "Weight Shift"
         case .takeawayPath:     return "Takeaway Path"
@@ -298,6 +315,7 @@ enum SwingMetricKind: String, Codable, CaseIterable {
         case .tempoRatio:                       return ":1"
         case .headSway, .hipSlide, .finishBalance, .shoulderTurn, .stanceWidth,
              .weightShift, .takeawayPath, .deliveryPlane, .earlyExtension: return "%"
+        case .transitionSeq:                    return "ms"
         case .spineTiltAddress, .leadArmAtTop:  return "°"
         }
     }
@@ -335,6 +353,10 @@ enum SwingMetricKind: String, Codable, CaseIterable {
         case .weightShift:
             if value.inBand { return ("Weight Into the Lead Side", true) }
             return value.value < value.targetLow ? ("Hanging Back", false) : ("Over-Shifted", false)
+        case .transitionSeq:
+            if value.inBand { return ("Hips Lead the Downswing", true) }
+            return value.value < value.targetLow ? ("Arms First From the Top", false)
+                                                 : ("Hips Racing Ahead", false)
         }
     }
 }
@@ -362,6 +384,24 @@ struct SwingFault: Codable, Identifiable {
     /// Detection rule: metric + out-of-band direction ("above" | "below").
     var metric: String
     var direction: String
+    /// Escalating progression (feel → drill → constraint). When a fault persists,
+    /// coaching rotates DOWN this ladder instead of repeating the same line.
+    var drillLadder: [String]? = nil
+
+    /// The rung to coach right now, given how long the fault has persisted.
+    func drill(forPersistence streak: Int) -> String {
+        guard let ladder = drillLadder, !ladder.isEmpty else { return drill }
+        return ladder[min(max(0, (streak - 2) / 3), ladder.count - 1)]
+    }
+}
+
+/// One line in the coach's notebook — what was tried, when, what happened. Persistent
+/// memory beyond the metric EMAs; future reads cite it.
+struct CoachJournalEntry: Codable, Identifiable {
+    var id = UUID()
+    var date = Date()
+    var kind: String        // "mastery" | "drill" | "note" | "lesson" | "session"
+    var text: String
 }
 
 // MARK: Player model (rolling weaknesses; local-first)
