@@ -2621,6 +2621,10 @@ final class V2Engine {
         let val: Double          // 0-255
         let yellowness: Double   // r+g-2b mean inside the rest disk
         let restRadius: Double   // subpixel disk radius at rest (the VLA anchor)
+        // Mask-path eligibility is a SIGNAL question, not a color question: warm-lit
+        // WHITE balls carry real yellowness (y90 90-133) and track 16/16 on the yellow
+        // path where the V2 white machinery drops points. Heads still route by color.
+        var useYellowPath: Bool = false
     }
 
     /// Samples the disk at the lock in an early frame and classifies the ball.
@@ -2652,14 +2656,21 @@ final class V2Engine {
         let y90 = yels[min(yels.count - 1, (yels.count * 9) / 10)]
         let sat = ss / n, val = vs / n, yel = ys / n
         let color: BallColor
-        if hue >= 15 && hue <= 46 && y90 >= 90 {
+        // Rule v3 (361/366): saturation separates warm-lit whites (sat<=107) from true
+        // yellows (sat>=114); 5 deep-shade yellows fall to white — the GRACEFUL side now
+        // that white has its own heads and flight path.
+        if hue >= 15 && hue <= 46 && (sat >= 110 || y90 >= 150) {
             color = .yellow
-        } else if y90 >= 90 && hue > 46 && hue <= 70 {
+        } else if y90 >= 150 && hue > 46 && hue <= 70 {
             color = .lime
         } else {
             color = .white
         }
-        return BallSignature(color: color, hue: hue, sat: sat, val: val, yellowness: yel, restRadius: r0)
+        // Path == true color. (A signal-eligibility route for warm-lit whites was tried
+        // and reverted: the 96.58% white baseline had them on plain V2 machinery all
+        // along — the yellow mask sees them too weakly and drifted picks off-target.)
+        return BallSignature(color: color, hue: hue, sat: sat, val: val, yellowness: yel,
+                             restRadius: r0, useYellowPath: color != .white)
     }
 
     struct Blob {
@@ -2913,9 +2924,12 @@ final class V2Engine {
         // metadata lock — the shot classified white, the yellow path shut off, and the
         // whole track fell to legacy junk. Same on 084900_726.
         let hasMetaLock = lockedBallRect != nil
+        // Reject only WILD relocations: the 082406 failure was a r=19.7 blob (3.4x
+        // size) far from the lock; the first guard (2.5 r0) also vetoed 16 LEGITIMATE
+        // metadata-lock corrections on whites, drifting 9 shots' entire tracks.
         if let rest = bestRest, bestN >= 3,
-           !hasMetaLock || (hypot(rest.cx - lock.x, rest.cy - lock.y) <= max(10.0, r0 * 2.5)
-                            && rest.r <= r0 * 2.0 && rest.r >= r0 * 0.4) {
+           !hasMetaLock || (hypot(rest.cx - lock.x, rest.cy - lock.y) <= max(15.0, r0 * 6.0)
+                            && rest.r <= r0 * 2.2 && rest.r >= r0 * 0.45) {
             lock = CGPoint(x: rest.cx, y: rest.cy)
             r0 = max(4.0, rest.r)
             notes.append("lock=observed-rest-ball")
@@ -2950,7 +2964,7 @@ final class V2Engine {
                     n += 1
                 }
             }
-            if n > 0, acc / Double(n) >= 150 {
+            if n > 0, acc / Double(n) >= 150 || (sig?.useYellowPath ?? false) {
                 var early: [[Float]] = []
                 for fi in [0, 2, 4, 6, 8] { if let pl = planeByIdx[fi] { early.append(pl.yel) } }
                 if early.count >= 3 {
@@ -2981,7 +2995,7 @@ final class V2Engine {
                     where hypot(Double(xx) - lock.x, Double(yy) - lock.y) <= R {
                         let p = yy * W + xx
                         let isBall: Bool
-                        if let s0 = sig, s0.color != .white {
+                        if let s0 = sig, s0.useYellowPath {
                             isBall = pl.yel[p] >= 120
                         } else {
                             isBall = pl.luma[p] >= 150 && pl.s[p] < 70
@@ -3126,7 +3140,14 @@ final class V2Engine {
             impact = dep
             impactSrc = String(format: "ball-departure@f%d", dep)
         }
-        if let v3 = v3Impact {
+        // Yellow/lime only: the white diskCount presence gates (luma>=150, sat<70)
+        // break under warm evening light — impact shifted up to ±14 frames on 42 white
+        // shots and collapsed tracks that were 16/16 (white keeps its proven
+        // cone/departure machinery until the white presence test earns validation).
+        // Impact by TRUE color only: warm whites are path-eligible for the flight MASK
+        // (their yellowness sees the flying ball) but too weak for the rest-presence
+        // test (yel 90-130 at lock -> flaky diskCount -> impact shifted, off-target 2x).
+        if let v3 = v3Impact, let s0 = sig, s0.color != .white {
             impact = v3
             impactSrc = String(format: "v3-rest-failure@f%d", v3)
         }
@@ -3230,7 +3251,7 @@ final class V2Engine {
             // ── V3 step 4: yellow shots bypass the scorer entirely — the color-specific
             // disk-fit search matched 98.9% of labeled flight points offline (V2 state
             // machine: 66%). White shots keep the validated V2 path.
-            if let s0 = sig, s0.color != .white, let yb = yelBase, impacted {
+            if let s0 = sig, s0.useYellowPath, let yb = yelBase, impacted {
                 if let v3 = v3YellowPick(pl, baseYel: yb, lock: lock, r0: r0, prev: v3Prev) {
                     flightPoints += 1
                     v3Prev = CGPoint(x: v3.0, y: v3.1)
@@ -3383,7 +3404,7 @@ final class V2Engine {
         // the arc breaks the whole fit. Quadratic fit over the flight points; only WILD
         // deviations (> max(6 r0, 30px)) are junk — perspective curvature must survive.
         // Validated offline: removes 0 labeled-real points.
-        if let s0 = sig, s0.color != .white, flight.count >= 3 {
+        if let s0 = sig, s0.useYellowPath, flight.count >= 3 {
             let t = (0..<flight.count).map(Double.init)
             func polyfit2(_ ys: [Double]) -> (Double, Double, Double) {
                 let n = Double(t.count)
@@ -3602,7 +3623,7 @@ final class V2Engine {
         // insight — the head carries r_excess/hla_proxy features for exactly that).
         var ballMphFinal = ballMph
         var vlaFinal = vla
-        if let s0 = sig, s0.color != .white, flight.count >= 3,
+        if let s0 = sig, flight.count >= 3,
            let heads = v3Heads {
             let use = Array(flight.prefix(6))
             let t0 = use[0].t
@@ -3645,8 +3666,21 @@ final class V2Engine {
             }
             notes.append("v3feat: " + heads.speed.features.map {
                 String(format: "%@=%.2f", $0, feat[$0] ?? -999) }.joined(separator: " "))
-            let spd = min(max(apply(heads.speed), heads.speedClamp.0), heads.speedClamp.1)
-            let vl = min(max(apply(heads.vla), heads.vlaClamp.0), heads.vlaClamp.1)
+            // per-color heads: whites train on TT-NORMALIZED Garmin targets (Noah's
+            // cross-calibration: TT = 0.912*G - 3.88 for launch, identity for speed —
+            // measured on 54 dual-paired swings, launch residual 5.97 -> 0.81 deg)
+            let speedHead = s0.color == .white ? heads.speedWhite : heads.speed
+            let vlaHead = s0.color == .white ? heads.vlaWhite : heads.vla
+            guard let sh = speedHead, let vh = vlaHead else {
+                notes.append("v3feat-only (no \(s0.color.rawValue) heads)")
+                return V2Output(ballSpeedMph: ballMphFinal, clubSpeedMph: clubMph,
+                                vlaDegrees: vlaFinal, confident: confident,
+                                flightPointCount: pts.count, notes: notes,
+                                impactFrameIndex: impact, frameObservations: frameObs,
+                                clubObservations: clubObs)
+            }
+            let spd = min(max(apply(sh), heads.speedClamp.0), heads.speedClamp.1)
+            let vl = min(max(apply(vh), heads.vlaClamp.0), heads.vlaClamp.1)
             // BLEND (July 18, on corrected + realigned pairs, n=113): the physics path
             // and the head fail differently — physics under-reads blurred fast shots,
             // the head over-smooths clean ones. Their MEAN kills the tail without
@@ -3675,6 +3709,7 @@ final class V2Engine {
     }
     struct V3Heads {
         let speed: V3Head, vla: V3Head
+        var speedWhite: V3Head? = nil, vlaWhite: V3Head? = nil
         let speedClamp: (Double, Double), vlaClamp: (Double, Double)
     }
     static var sessionR0s: [Double] = []
@@ -3693,7 +3728,10 @@ final class V2Engine {
               let vl = head(j["vla"] as? [String: Any]) else { return nil }
         let sc = j["speed_clamp"] as? [Double] ?? [10, 210]
         let vc = j["vla_clamp"] as? [Double] ?? [0.5, 55]
-        return V3Heads(speed: sp, vla: vl, speedClamp: (sc[0], sc[1]), vlaClamp: (vc[0], vc[1]))
+        return V3Heads(speed: sp, vla: vl,
+                       speedWhite: head(j["speed_white"] as? [String: Any]),
+                       vlaWhite: head(j["vla_white"] as? [String: Any]),
+                       speedClamp: (sc[0], sc[1]), vlaClamp: (vc[0], vc[1]))
     }()
 
     private static func polyfit1(_ t: [Double], _ y: [Double]) -> Double {
