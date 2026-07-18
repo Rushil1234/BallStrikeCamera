@@ -759,7 +759,10 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         // Dual-resolution capture (July 17): 720px for the measurement stage (subpixel
         // centroid/diameter → speed and VLA at 2× precision), 360px for every detector —
         // all trained models and pixel thresholds stay in the validated 360 space.
-        let hiWidth: CGFloat = 720
+        // Field kill-switch (July 18): if 720 capture causes frame drops at the range,
+        // set UserDefaults "tc_capture_720" = false to revert to 360-only mid-session.
+        let use720 = UserDefaults.standard.object(forKey: "tc_capture_720") as? Bool ?? true
+        let hiWidth: CGFloat = use720 ? 720 : 360
         let hiScale = min(1.0, hiWidth / image.extent.width)
         let hi = image.transformed(by: CGAffineTransform(scaleX: hiScale, y: hiScale))
         let lo = hi.transformed(by: CGAffineTransform(scaleX: 0.5, y: 0.5))

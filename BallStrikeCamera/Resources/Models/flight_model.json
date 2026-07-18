@@ -1,6 +1,6 @@
 {
  "version": "toptracer-v1-20260715",
- "createdAt": "2026-07-17T03:10:49.857369+00:00",
+ "createdAt": "2026-07-18T19:59:08.197880+00:00",
  "sourceCsv": "swingsync-2026-07-12.csv (TopTracer, 119 range shots, full bag)",
  "carryModel": {
   "features": [
@@ -13,42 +13,42 @@
    "ideal_carry_yards"
   ],
   "means": {
-   "ball_speed": 103.11485055475221,
-   "vla": 16.681782608695652,
-   "ball_speed_sq": 11230.042486586692,
-   "vla_sq": 341.85251086956526,
-   "speed_times_vla": 1610.3488524582615,
-   "sin_2vla": 0.5243408985945625,
-   "ideal_carry_yards": 121.35168295810723
+   "ball_speed": 102.84621246470934,
+   "vla": 16.53961937716263,
+   "ball_speed_sq": 11166.037365304119,
+   "vla_sq": 341.64454152249135,
+   "speed_times_vla": 1581.9176828824004,
+   "sin_2vla": 0.5182424893727489,
+   "ideal_carry_yards": 118.35252695592544
   },
   "stds": {
-   "ball_speed": 24.44115548941608,
-   "vla": 7.973119832649232,
-   "ball_speed_sq": 4870.620573147891,
-   "vla_sq": 402.16249199985776,
-   "speed_times_vla": 508.66636725159645,
-   "sin_2vla": 0.18114789841833176,
-   "ideal_carry_yards": 49.4363474987703
+   "ball_speed": 24.263016031977227,
+   "vla": 8.251395783810022,
+   "ball_speed_sq": 4845.842070599948,
+   "vla_sq": 424.7681756203659,
+   "speed_times_vla": 503.44024846140684,
+   "sin_2vla": 0.18426288002268928,
+   "ideal_carry_yards": 48.07817487002159
   },
   "imputationMedians": {
-   "ball_speed": 103.80748200200001,
-   "vla": 15.38,
-   "ball_speed_sq": 10775.993319595556,
-   "vla_sq": 236.54440000000002,
-   "speed_times_vla": 1622.1587816770098,
-   "sin_2vla": 0.5114430730037861,
-   "ideal_carry_yards": 118.73118284757244
+   "ball_speed": 103.064322286,
+   "vla": 14.91,
+   "ball_speed_sq": 10622.254528272477,
+   "vla_sq": 222.3081,
+   "speed_times_vla": 1598.49350053312,
+   "sin_2vla": 0.4972768380299461,
+   "ideal_carry_yards": 113.9974604437657
   },
   "coefficients": {
-   "ball_speed": 29.18235075053227,
-   "vla": 16.638684187728,
-   "ball_speed_sq": 23.45555428285771,
-   "vla_sq": -12.926531911897532,
-   "speed_times_vla": -8.161067944387977,
-   "sin_2vla": 15.639978676627507,
-   "ideal_carry_yards": 11.006212236538481
+   "ball_speed": 32.25655690343542,
+   "vla": 17.867513667594515,
+   "ball_speed_sq": 21.53571172213861,
+   "vla_sq": -12.62186995506049,
+   "speed_times_vla": -9.968490472503717,
+   "sin_2vla": 16.653977342155915,
+   "ideal_carry_yards": 11.02892649112695
   },
-  "intercept": 132.27279517565225
+  "intercept": 131.3092607647059
  },
  "rollModel": {
   "features": [
@@ -63,55 +63,55 @@
    "backspin"
   ],
   "means": {
-   "ball_speed": 103.11485055475221,
-   "vla": 16.681782608695652,
-   "ball_speed_sq": 11230.042486586692,
-   "vla_sq": 341.85251086956526,
-   "speed_times_vla": 1610.3488524582615,
-   "sin_2vla": 0.5243408985945625,
-   "ideal_carry_yards": 121.35168295810723,
-   "carry_yards": 132.27279517565225,
-   "backspin": 2867.817391304348
+   "ball_speed": 102.84621246470934,
+   "vla": 16.53961937716263,
+   "ball_speed_sq": 11166.037365304119,
+   "vla_sq": 341.64454152249135,
+   "speed_times_vla": 1581.9176828824004,
+   "sin_2vla": 0.5182424893727489,
+   "ideal_carry_yards": 118.35252695592544,
+   "carry_yards": 131.3092607647059,
+   "backspin": 2990.529411764706
   },
   "stds": {
-   "ball_speed": 24.44115548941608,
-   "vla": 7.973119832649232,
-   "ball_speed_sq": 4870.620573147891,
-   "vla_sq": 402.16249199985776,
-   "speed_times_vla": 508.66636725159645,
-   "sin_2vla": 0.18114789841833176,
-   "ideal_carry_yards": 49.4363474987703,
-   "carry_yards": 53.87840090775588,
-   "backspin": 1330.8906307438972
+   "ball_speed": 24.263016031977227,
+   "vla": 8.251395783810022,
+   "ball_speed_sq": 4845.842070599948,
+   "vla_sq": 424.7681756203659,
+   "speed_times_vla": 503.44024846140684,
+   "sin_2vla": 0.18426288002268928,
+   "ideal_carry_yards": 48.07817487002159,
+   "carry_yards": 53.08737366999752,
+   "backspin": 1410.2294887970058
   },
   "imputationMedians": {
-   "ball_speed": 103.80748200200001,
-   "vla": 15.38,
-   "ball_speed_sq": 10775.993319595556,
-   "vla_sq": 236.54440000000002,
-   "speed_times_vla": 1622.1587816770098,
-   "sin_2vla": 0.5114430730037861,
-   "ideal_carry_yards": 118.73118284757244,
-   "carry_yards": 131.3972415,
-   "backspin": 2678.0
+   "ball_speed": 103.064322286,
+   "vla": 14.91,
+   "ball_speed_sq": 10622.254528272477,
+   "vla_sq": 222.3081,
+   "speed_times_vla": 1598.49350053312,
+   "sin_2vla": 0.4972768380299461,
+   "ideal_carry_yards": 113.9974604437657,
+   "carry_yards": 130.577034,
+   "backspin": 2740.0
   },
   "coefficients": {
-   "ball_speed": 17.49950565814202,
-   "vla": -2.9220594941645754,
-   "ball_speed_sq": 5.52917809005206,
-   "vla_sq": 0.4640212346822321,
-   "speed_times_vla": 1.3297888398803328,
-   "sin_2vla": -1.4927262069348715,
-   "ideal_carry_yards": -7.995125954251555,
-   "carry_yards": -17.156450840923583,
-   "backspin": -4.957087551998876
+   "ball_speed": 17.82513952662491,
+   "vla": -2.9969480248269216,
+   "ball_speed_sq": 4.934319500028239,
+   "vla_sq": 0.5464771253859199,
+   "speed_times_vla": 1.2209415454354362,
+   "sin_2vla": -1.7696021686655847,
+   "ideal_carry_yards": -6.3504986460606485,
+   "carry_yards": -18.191562464389637,
+   "backspin": -5.023811706664523
   },
-  "intercept": 24.33657881260871
+  "intercept": 24.191599229411764
  },
  "metrics": {
-  "carry_mae": 7.56,
-  "roll_mae": 5.43,
-  "total_mae": 6.84,
-  "n_shots": 230.0
+  "carry_mae": 7.74,
+  "roll_mae": 5.61,
+  "total_mae": 6.78,
+  "n_shots": 289.0
  }
 }

@@ -20,6 +20,7 @@ struct TrueCarryProfileView: View {
     @AppStorage("tc_feed_autoshare_enabled") private var autoShareFeed = true
     @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
     @AppStorage(FrameArchiveService.enabledKey) private var saveAllFrames = false
+    @AppStorage("tc_capture_720") private var capture720 = true
 
     // Frame-archive export (developer testing tool)
     @State private var frameExportURL: URL?
@@ -452,6 +453,26 @@ struct TrueCarryProfileView: View {
                     }
                     Spacer()
                     Toggle("", isOn: $saveAllFrames)
+                        .tint(Color(red: 1, green: 0.6, blue: 0))
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+
+                rowDivider
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("720p Measurement Capture")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text("2x precision for speed/VLA. Turn OFF if you see frame-drop warnings at the range.")
+                            .font(.system(size: 11))
+                            .foregroundColor(TCTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $capture720)
                         .tint(Color(red: 1, green: 0.6, blue: 0))
                         .labelsHidden()
                 }
