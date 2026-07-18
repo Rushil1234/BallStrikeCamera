@@ -118,31 +118,34 @@ final class SwingStudioController: NSObject, ObservableObject {
         }
         session.addInput(input)
 
-        // Highest-fps format: prefer ≥180fps (slo-mo tempo math), else the best available.
-        var fps: Double = 60
-        if useBack {
+        // Chase frame rate on BOTH cameras — analysis quality scales directly with how many
+        // samples of the hands/club we get. Back prefers high-speed (≥120, slow-mo playback
+        // + tempo math); the FRONT camera explicitly configures 60fps too — its default
+        // format often runs 30, which starves the tracker.
+        var fps: Double = 30
+        func bestFormat(minRate: Double) -> (format: AVCaptureDevice.Format, rate: Double)? {
             var best: (format: AVCaptureDevice.Format, rate: Double)? = nil
             for format in device.formats {
                 let dims = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
                 guard dims.height >= 720 else { continue }
-                for range in format.videoSupportedFrameRateRanges {
-                    let rate = range.maxFrameRate
-                    if rate >= 120, rate > (best?.rate ?? 0) {
-                        best = (format, rate)
+                for range in format.videoSupportedFrameRateRanges where range.maxFrameRate >= minRate {
+                    if range.maxFrameRate > (best?.rate ?? 0) {
+                        best = (format, range.maxFrameRate)
                     }
                 }
             }
-            if let best {
-                do {
-                    try device.lockForConfiguration()
-                    device.activeFormat = best.format
-                    let clamped = min(best.rate, 240)
-                    device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: Int32(clamped))
-                    device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: Int32(clamped))
-                    device.unlockForConfiguration()
-                    fps = clamped
-                } catch { fps = 60 }
-            }
+            return best
+        }
+        if let best = (useBack ? bestFormat(minRate: 120) : nil) ?? bestFormat(minRate: 60) {
+            do {
+                try device.lockForConfiguration()
+                device.activeFormat = best.format
+                let clamped = min(best.rate, useBack ? 240 : 60)
+                device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: Int32(clamped))
+                device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: Int32(clamped))
+                device.unlockForConfiguration()
+                fps = clamped
+            } catch { fps = 30 }
         }
 
         if session.canAddOutput(movieOutput) { session.addOutput(movieOutput) }

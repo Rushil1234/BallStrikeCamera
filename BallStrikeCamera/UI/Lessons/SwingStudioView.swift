@@ -446,6 +446,8 @@ struct SwingReplayView: View {
     @State private var showGhost = true
     /// nil = view default (club for down-the-line, hands face-on); user toggle overrides.
     @State private var preferClubTrail: Bool? = nil
+    /// nil = per-view default (PATH down-the-line, SKELETON face-on).
+    @State private var overlayMode: SwingOverlayMode? = nil
     @State private var showNoteEntry = false
     @State private var noteDraft = ""
 
@@ -590,6 +592,21 @@ struct SwingReplayView: View {
             && swing.clubTrail != nil
     }
 
+    /// One analysis at a time. Down-the-line defaults to the club path (the tracer view);
+    /// face-on defaults to the skeleton.
+    private var activeOverlayMode: SwingOverlayMode {
+        overlayMode ?? (swing.viewAngle == .downTheLine && swing.clubTrail != nil
+                        ? .path : .skeleton)
+    }
+
+    /// Address anchors for the LINES-mode shaft plane: first club-trail point (clubhead at
+    /// address) through the first hand-trail point (hands at address).
+    private var planeAnchors: (hands: [Double], club: [Double])? {
+        guard let club = swing.clubTrail?.first, club.count >= 2,
+              let hands = swing.handTrail?.first, hands.count >= 2 else { return nil }
+        return (hands, club)
+    }
+
     private var activeTrail: [[Double]]? {
         usingClubTrail ? swing.clubTrail : (swing.handTrail ?? swing.clubTrail)
     }
@@ -664,9 +681,12 @@ struct SwingReplayView: View {
                                     spineAngle: swing.metrics.first { $0.kind == .spineTiltAddress }?.value,
                                     videoRect: AVMakeRect(aspectRatio: videoPixelSize,
                                                           insideRect: CGRect(origin: .zero, size: geo.size)),
+                                    mode: activeOverlayMode,
                                     trailLabel: usingClubTrail ? "CLUB PATH" : "HAND PATH",
                                     ghostTrail: usingClubTrail ? nil : ghostTrail,
-                                    headBox: headBox
+                                    headBox: headBox,
+                                    planeAnchors: planeAnchors,
+                                    isFaceOn: swing.viewAngle == .faceOn
                                 )
                             }
                             .allowsHitTesting(false)
@@ -693,27 +713,46 @@ struct SwingReplayView: View {
             }
         }
         .overlay(alignment: .bottomLeading) {
-            HStack(spacing: 8) {
-                // Both paths exist → let the player flip between club and hands.
-                if swing.clubTrail != nil, swing.handTrail != nil {
-                    Button { preferClubTrail = !usingClubTrail } label: {
-                        Text(usingClubTrail ? "CLUB" : "HANDS")
-                            .font(.system(size: 11, weight: .black, design: .rounded))
-                            .foregroundColor(.cyan)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(Capsule().fill(Color.black.opacity(0.6)))
+            // The analysis picker: exactly one overlay at a time, like the reference apps'
+            // Contour / Clubhead / Path tabs. Sub-toggles only appear for the active mode.
+            VStack(alignment: .leading, spacing: 6) {
+                if activeOverlayMode == .path {
+                    HStack(spacing: 8) {
+                        if swing.clubTrail != nil, swing.handTrail != nil {
+                            Button { preferClubTrail = !usingClubTrail } label: {
+                                Text(usingClubTrail ? "CLUB" : "HANDS")
+                                    .font(.system(size: 11, weight: .black, design: .rounded))
+                                    .foregroundColor(.cyan)
+                                    .padding(.horizontal, 10).padding(.vertical, 6)
+                                    .background(Capsule().fill(Color.black.opacity(0.6)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if !usingClubTrail, ghostTrail != nil || !showGhost {
+                            Button { showGhost.toggle() } label: {
+                                Text(showGhost ? "GHOST ON" : "GHOST OFF")
+                                    .font(.system(size: 11, weight: .black, design: .rounded))
+                                    .foregroundColor(showGhost ? Color(red: 1.0, green: 0.85, blue: 0.4) : .white.opacity(0.7))
+                                    .padding(.horizontal, 10).padding(.vertical, 6)
+                                    .background(Capsule().fill(Color.black.opacity(0.6)))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
-                if !usingClubTrail, ghostTrail != nil || !showGhost {
-                    Button { showGhost.toggle() } label: {
-                        Text(showGhost ? "GHOST ON" : "GHOST OFF")
-                            .font(.system(size: 11, weight: .black, design: .rounded))
-                            .foregroundColor(showGhost ? Color(red: 1.0, green: 0.85, blue: 0.4) : .white.opacity(0.7))
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(Capsule().fill(Color.black.opacity(0.6)))
+                HStack(spacing: 6) {
+                    ForEach(SwingOverlayMode.allCases, id: \.self) { m in
+                        Button { overlayMode = m } label: {
+                            Text(m.rawValue)
+                                .font(.system(size: 10, weight: .black, design: .rounded))
+                                .foregroundColor(activeOverlayMode == m ? .black : .white.opacity(0.85))
+                                .padding(.horizontal, 9).padding(.vertical, 6)
+                                .background(Capsule().fill(activeOverlayMode == m
+                                                           ? Color.white.opacity(0.92)
+                                                           : Color.black.opacity(0.6)))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(10)
@@ -744,11 +783,14 @@ struct SwingReplayView: View {
     }
 
     private var currentPose: StoredPose? {
-        guard let selectedPhase,
-              let phases = swing.phases,
-              let idx = phases.labelled.firstIndex(where: { $0.label == selectedPhase }),
-              idx < swing.keyPoses.count else { return nil }
-        return swing.keyPoses[idx]
+        if let selectedPhase,
+           let phases = swing.phases,
+           let idx = phases.labelled.firstIndex(where: { $0.label == selectedPhase }),
+           idx < swing.keyPoses.count {
+            return swing.keyPoses[idx]
+        }
+        // No phase picked yet → address pose, so SKELETON / LINES / ANGLES aren't blank.
+        return swing.keyPoses.first
     }
 
     @ViewBuilder
@@ -999,20 +1041,40 @@ struct SwingReplayView: View {
 /// for the replay player, aspect-FILL for the live preview. Poses are normalized to the
 /// video frame, so mapping through the wrong rect is exactly the "skeleton doesn't line up"
 /// bug; every caller must pass the real one.
+/// Which single analysis the overlay draws. One at a time — stacking them all (skeleton +
+/// gauges + trails + boxes) made the video unreadable. Modeled on the reference tools:
+/// skeleton apps, plane-line compare apps, tracer apps, and posture-angle apps each show
+/// exactly one idea, drawn big and clean.
+enum SwingOverlayMode: String, CaseIterable {
+    case skeleton = "SKELETON"   // clean cyan skeleton + joint dots
+    case lines    = "LINES"      // shaft plane (address), spine, shoulder line
+    case path     = "PATH"       // club/hand trace loop (+ ghost)
+    case angles   = "ANGLES"     // posture angles with arcs and degree badges
+}
+
 struct RichPoseOverlay: View {
     let pose: StoredPose?
     let trail: [[Double]]?
     let spineAngle: Double?
     let videoRect: CGRect
+    var mode: SwingOverlayMode = .skeleton
     /// What the ribbon traces — "HAND PATH" face-on, "CLUB PATH" down-the-line.
     var trailLabel: String = "HAND PATH"
     /// A second, fainter trail (your BEST swing) for ghost comparison.
     var ghostTrail: [[Double]]? = nil
     /// Normalized (Vision coords) box drawn in red — the head-travel band on a sway miss.
     var headBox: CGRect? = nil
+    /// Address anchors for the LINES mode shaft plane: [hands, clubhead] normalized.
+    var planeAnchors: (hands: [Double], club: [Double])? = nil
+    /// Face-on gauges vs down-the-line hinge/flex arcs in ANGLES mode.
+    var isFaceOn: Bool = true
 
-    private static let leftJoints: Set<Int> = [2, 4, 6, 8, 10, 12]
-    private static let rightJoints: Set<Int> = [3, 5, 7, 9, 11, 13]
+    // Reference-app palette: one hue per idea, not per body part.
+    private static let boneColor  = Color(red: 0.25, green: 0.90, blue: 1.0)    // cyan
+    private static let jointColor = Color(red: 1.0, green: 0.90, blue: 0.25)    // yellow
+    private static let planeColor = Color(red: 1.0, green: 0.30, blue: 0.25)    // red
+    private static let spineColor = Color(red: 1.0, green: 0.85, blue: 0.20)    // gold
+    private static let bodyLineColor = Color(red: 0.35, green: 0.95, blue: 0.45) // green
 
     var body: some View {
         Canvas { ctx, _ in
@@ -1020,123 +1082,159 @@ struct RichPoseOverlay: View {
                 CGPoint(x: videoRect.minX + x * videoRect.width,
                         y: videoRect.minY + (1 - y) * videoRect.height)
             }
-
-            // ── Ghost: your best swing's path, faint gold underneath ──
-            if let ghostTrail, ghostTrail.count > 3 {
-                let pts = ghostTrail.map { toScreen($0[0], $0[1]) }
-                var path = Path()
-                path.move(to: pts[0])
-                for q in pts.dropFirst() { path.addLine(to: q) }
-                ctx.stroke(path, with: .color(Color(red: 1.0, green: 0.85, blue: 0.4).opacity(0.55)),
-                           style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [6, 5]))
-                ctx.draw(Text("BEST SWING")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.4)),
-                         at: CGPoint(x: pts[0].x, y: max(videoRect.minY + 8, pts[0].y - 12)))
-            }
-
-            // ── Fault, drawn on the video: the box the head traveled through ──
-            if let headBox {
-                let r = CGRect(x: videoRect.minX + headBox.minX * videoRect.width,
-                               y: videoRect.minY + (1 - headBox.maxY) * videoRect.height,
-                               width: headBox.width * videoRect.width,
-                               height: headBox.height * videoRect.height)
-                ctx.stroke(Path(roundedRect: r, cornerRadius: 6),
-                           with: .color(.red.opacity(0.85)),
-                           style: StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
-                ctx.draw(Text("HEAD TRAVEL")
-                            .font(.system(size: 10, weight: .black))
-                            .foregroundColor(.red.opacity(0.9)),
-                         at: CGPoint(x: r.midX, y: max(videoRect.minY + 8, r.minY - 10)))
-            }
-
-            // ── Hand-path ribbon (cyan→magenta), smoothed + labeled so it's clearly
-            // the HANDS being traced, not a clubhead guess ──
-            if let trail, trail.count > 3 {
-                let pts = trail.map { toScreen($0[0], $0[1]) }
-                var path = Path()
-                path.move(to: pts[0])
-                for i in 1..<pts.count - 1 {
-                    let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2,
-                                      y: (pts[i].y + pts[i + 1].y) / 2)
-                    path.addQuadCurve(to: mid, control: pts[i])
-                }
-                path.addLine(to: pts[pts.count - 1])
-                ctx.stroke(path, with: .linearGradient(
-                    Gradient(colors: [Color.cyan.opacity(0.85), Color(red: 1.0, green: 0.3, blue: 0.9).opacity(0.85)]),
-                    startPoint: pts.first!, endPoint: pts.last!),
-                    style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
-                ctx.draw(Text(trailLabel)
-                            .font(.system(size: 10, weight: .black))
-                            .foregroundColor(.cyan.opacity(0.9)),
-                         at: CGPoint(x: pts[0].x, y: min(videoRect.maxY - 8, pts[0].y + 16)))
-            }
-
-            guard let pose else { return }
             func pt(_ i: Int) -> CGPoint? {
-                guard i < pose.points.count, pose.points[i][2] > 0.25 else { return nil }
+                guard let pose, i < pose.points.count, pose.points[i][2] > 0.3 else { return nil }
                 return toScreen(pose.points[i][0], pose.points[i][1])
             }
 
-            // ── Bones, colored by body side ──
-            for (a, b) in SwingSkeleton.bones {
-                guard let pa = pt(a), let pb = pt(b) else { continue }
-                let color: Color
-                if Self.leftJoints.contains(a) && Self.leftJoints.contains(b) {
-                    color = Color(red: 0.35, green: 0.65, blue: 1.0)      // lead/left side
-                } else if Self.rightJoints.contains(a) && Self.rightJoints.contains(b) {
-                    color = Color(red: 1.0, green: 0.38, blue: 0.35)      // trail/right side
-                } else {
-                    color = Color(red: 0.35, green: 0.9, blue: 0.5)       // torso/head
-                }
-                var line = Path()
-                line.move(to: pa); line.addLine(to: pb)
-                ctx.stroke(line, with: .color(color.opacity(0.9)),
-                           style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+            switch mode {
+            case .skeleton: drawSkeleton(ctx, pt: pt, toScreen: toScreen)
+            case .lines:    drawLines(ctx, pt: pt, toScreen: toScreen)
+            case .path:     drawPath(ctx, toScreen: toScreen)
+            case .angles:   drawAngles(ctx, pt: pt)
             }
+        }
+    }
 
-            // ── Spine line + angle badge ──
-            if let hipL = pt(8), let hipR = pt(9), let shL = pt(2), let shR = pt(3) {
-                let hip = CGPoint(x: (hipL.x + hipR.x)/2, y: (hipL.y + hipR.y)/2)
-                let sh  = CGPoint(x: (shL.x + shR.x)/2, y: (shL.y + shR.y)/2)
-                var spine = Path(); spine.move(to: hip); spine.addLine(to: sh)
-                ctx.stroke(spine, with: .color(.yellow.opacity(0.85)),
-                           style: StrokeStyle(lineWidth: 2.5, dash: [7, 5]))
-                if let spineAngle {
-                    let label = Text("\(Int(spineAngle))°")
-                        .font(.system(size: 17, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                    ctx.draw(label, at: CGPoint(x: hip.x + 34, y: (hip.y + sh.y)/2))
-                }
+    // MARK: SKELETON — one color, thick smooth bones, small joint dots. Nothing else.
+
+    private func drawSkeleton(_ ctx: GraphicsContext,
+                              pt: (Int) -> CGPoint?,
+                              toScreen: (Double, Double) -> CGPoint) {
+        if let headBox {
+            let r = CGRect(x: videoRect.minX + headBox.minX * videoRect.width,
+                           y: videoRect.minY + (1 - headBox.maxY) * videoRect.height,
+                           width: headBox.width * videoRect.width,
+                           height: headBox.height * videoRect.height)
+            ctx.stroke(Path(roundedRect: r, cornerRadius: 6),
+                       with: .color(.red.opacity(0.85)),
+                       style: StrokeStyle(lineWidth: 2.5, dash: [6, 4]))
+            ctx.draw(Text("HEAD TRAVEL")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundColor(.red.opacity(0.9)),
+                     at: CGPoint(x: r.midX, y: max(videoRect.minY + 8, r.minY - 10)))
+        }
+        guard pose != nil else { return }
+        var bones = Path()
+        for (a, b) in SwingSkeleton.bones {
+            guard let pa = pt(a), let pb = pt(b) else { continue }
+            bones.move(to: pa)
+            bones.addLine(to: pb)
+        }
+        // Dark halo under the cyan so the skeleton reads on bright grass and pale sky alike.
+        ctx.stroke(bones, with: .color(.black.opacity(0.35)),
+                   style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+        ctx.stroke(bones, with: .color(Self.boneColor.opacity(0.95)),
+                   style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+        for i in 0..<14 {
+            guard let p = pt(i) else { continue }
+            ctx.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)),
+                     with: .color(Self.jointColor))
+            ctx.stroke(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)),
+                       with: .color(.black.opacity(0.5)), lineWidth: 1)
+        }
+    }
+
+    // MARK: LINES — three ideas max: address shaft plane (static), spine, shoulder line.
+
+    private func drawLines(_ ctx: GraphicsContext,
+                           pt: (Int) -> CGPoint?,
+                           toScreen: (Double, Double) -> CGPoint) {
+        func extended(_ a: CGPoint, _ b: CGPoint, by factor: CGFloat) -> (CGPoint, CGPoint) {
+            let dx = b.x - a.x, dy = b.y - a.y
+            return (CGPoint(x: a.x - dx * factor, y: a.y - dy * factor),
+                    CGPoint(x: b.x + dx * factor, y: b.y + dy * factor))
+        }
+        func stroke(_ a: CGPoint, _ b: CGPoint, _ color: Color, width: CGFloat, dash: [CGFloat] = []) {
+            var line = Path()
+            line.move(to: a); line.addLine(to: b)
+            ctx.stroke(line, with: .color(.black.opacity(0.3)),
+                       style: StrokeStyle(lineWidth: width + 2.5, lineCap: .round, dash: dash))
+            ctx.stroke(line, with: .color(color.opacity(0.95)),
+                       style: StrokeStyle(lineWidth: width, lineCap: .round, dash: dash))
+        }
+        // Shaft plane from ADDRESS (clubhead → hands, extended) — the line the club should
+        // live around. Static through the whole swing, like the compare apps.
+        if let anchors = planeAnchors, anchors.hands.count >= 2, anchors.club.count >= 2 {
+            let hands = toScreen(anchors.hands[0], anchors.hands[1])
+            let club  = toScreen(anchors.club[0], anchors.club[1])
+            if hypot(hands.x - club.x, hands.y - club.y) > 20 {
+                let (a, b) = extended(club, hands, by: 1.6)
+                stroke(a, b, Self.planeColor, width: 3)
             }
-
-            // ── Joints: white core + colored glow ──
-            for i in pose.points.indices {
-                guard let p = pt(i) else { continue }
-                let glow: Color = Self.leftJoints.contains(i)
-                    ? Color(red: 0.35, green: 0.65, blue: 1.0)
-                    : Self.rightJoints.contains(i) ? Color(red: 1.0, green: 0.38, blue: 0.35)
-                    : Color(red: 0.35, green: 0.9, blue: 0.5)
-                ctx.fill(Path(ellipseIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)),
-                         with: .color(glow.opacity(0.4)))
-                ctx.fill(Path(ellipseIn: CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6)),
-                         with: .color(.white))
+        }
+        // Spine: hips → shoulders, solid gold, with the degree badge.
+        if let hipL = pt(8), let hipR = pt(9), let shL = pt(2), let shR = pt(3) {
+            let hip = CGPoint(x: (hipL.x + hipR.x) / 2, y: (hipL.y + hipR.y) / 2)
+            let sh  = CGPoint(x: (shL.x + shR.x) / 2, y: (shL.y + shR.y) / 2)
+            let (a, b) = extended(hip, sh, by: 0.25)
+            stroke(a, b, Self.spineColor, width: 3)
+            if let spineAngle {
+                ctx.draw(Text("\(Int(spineAngle))°")
+                            .font(.system(size: 16, weight: .black, design: .rounded))
+                            .foregroundColor(.white),
+                         at: CGPoint(x: hip.x + 34, y: (hip.y + sh.y) / 2))
             }
+            // Shoulder line, extended — the turn read.
+            let (sa, sb) = extended(shL, shR, by: 0.9)
+            stroke(sa, sb, Self.bodyLineColor, width: 2.5)
+        }
+    }
 
-            // ── Live angle read-outs (face-on): shoulder tilt, hip tilt, head lean ──
-            // Each is a solid line through the joints + a dashed horizontal reference,
-            // so the number visibly IS the angle between them.
+    // MARK: PATH — the trace loop only, thick and smooth, with the ghost underneath.
+
+    private func drawPath(_ ctx: GraphicsContext, toScreen: (Double, Double) -> CGPoint) {
+        if let ghostTrail, ghostTrail.count > 3 {
+            let pts = ghostTrail.map { toScreen($0[0], $0[1]) }
+            var path = Path()
+            path.move(to: pts[0])
+            for q in pts.dropFirst() { path.addLine(to: q) }
+            ctx.stroke(path, with: .color(Color(red: 1.0, green: 0.85, blue: 0.4).opacity(0.5)),
+                       style: StrokeStyle(lineWidth: 3, lineCap: .round, dash: [6, 5]))
+            ctx.draw(Text("BEST SWING")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundColor(Color(red: 1.0, green: 0.85, blue: 0.4)),
+                     at: CGPoint(x: pts[0].x, y: max(videoRect.minY + 8, pts[0].y - 12)))
+        }
+        guard let trail, trail.count > 3 else { return }
+        let pts = trail.map { toScreen($0[0], $0[1]) }
+        var path = Path()
+        path.move(to: pts[0])
+        for i in 1..<pts.count - 1 {
+            let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2,
+                              y: (pts[i].y + pts[i + 1].y) / 2)
+            path.addQuadCurve(to: mid, control: pts[i])
+        }
+        path.addLine(to: pts[pts.count - 1])
+        ctx.stroke(path, with: .color(.black.opacity(0.3)),
+                   style: StrokeStyle(lineWidth: 6.5, lineCap: .round, lineJoin: .round))
+        ctx.stroke(path, with: .linearGradient(
+            Gradient(colors: [Color.cyan.opacity(0.9), Color(red: 1.0, green: 0.3, blue: 0.9).opacity(0.9)]),
+            startPoint: pts.first!, endPoint: pts.last!),
+            style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+        ctx.draw(Text(trailLabel)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundColor(.cyan.opacity(0.9)),
+                 at: CGPoint(x: pts[0].x, y: min(videoRect.maxY - 8, pts[0].y + 16)))
+    }
+
+    // MARK: ANGLES — posture numbers with visible geometry, nothing else.
+
+    private func drawAngles(_ ctx: GraphicsContext, pt: (Int) -> CGPoint?) {
+        guard let pose else { return }
+        if isFaceOn {
+            // Face-on: shoulder tilt + hip tilt gauges, head lean badge.
             let angles = SwingSkeleton.angles(from: pose)
             func tiltGauge(_ a: CGPoint, _ b: CGPoint, deg: Double, name: String) {
                 let mid = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
-                let half = max(hypot(b.x - a.x, b.y - a.y) / 2 + 12, 30)
-                let ux = (b.x - a.x) / max(hypot(b.x - a.x, b.y - a.y), 1)
-                let uy = (b.y - a.y) / max(hypot(b.x - a.x, b.y - a.y), 1)
+                let len = max(hypot(b.x - a.x, b.y - a.y), 1)
+                let half = max(len / 2 + 12, 30)
+                let ux = (b.x - a.x) / len, uy = (b.y - a.y) / len
                 var line = Path()
                 line.move(to: CGPoint(x: mid.x - ux * half, y: mid.y - uy * half))
                 line.addLine(to: CGPoint(x: mid.x + ux * half, y: mid.y + uy * half))
-                ctx.stroke(line, with: .color(.white.opacity(0.85)),
-                           style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                ctx.stroke(line, with: .color(.white.opacity(0.9)),
+                           style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 var ref = Path()
                 ref.move(to: CGPoint(x: mid.x - half, y: mid.y))
                 ref.addLine(to: CGPoint(x: mid.x + half, y: mid.y))
@@ -1158,6 +1256,56 @@ struct RichPoseOverlay: View {
                             .font(.system(size: 11, weight: .black))
                             .foregroundColor(.white),
                          at: CGPoint(x: nose.x, y: nose.y - 18))
+            }
+        } else {
+            // Down-the-line: hip hinge + knee flex, the posture-app read — red joint
+            // chain with an arc wedge and the degree at each vertex.
+            func angleAt(_ vertex: CGPoint, _ a: CGPoint, _ b: CGPoint) -> Double {
+                let v1 = CGVector(dx: a.x - vertex.x, dy: a.y - vertex.y)
+                let v2 = CGVector(dx: b.x - vertex.x, dy: b.y - vertex.y)
+                let dot = v1.dx * v2.dx + v1.dy * v2.dy
+                let mags = max(hypot(v1.dx, v1.dy) * hypot(v2.dx, v2.dy), 1)
+                return acos(max(-1, min(1, dot / mags))) * 180 / .pi
+            }
+            func wedge(at vertex: CGPoint, toward a: CGPoint, and b: CGPoint, deg: Double) {
+                let r: CGFloat = 26
+                let a1 = atan2(a.y - vertex.y, a.x - vertex.x)
+                let a2 = atan2(b.y - vertex.y, b.x - vertex.x)
+                var arc = Path()
+                arc.move(to: vertex)
+                arc.addArc(center: vertex, radius: r,
+                           startAngle: .radians(a1), endAngle: .radians(a2),
+                           clockwise: {
+                               var d = a2 - a1
+                               while d < 0 { d += 2 * .pi }
+                               return d > .pi
+                           }())
+                arc.closeSubpath()
+                ctx.fill(arc, with: .color(Self.planeColor.opacity(0.30)))
+                ctx.draw(Text("\(Int(deg.rounded()))°")
+                            .font(.system(size: 13, weight: .black, design: .rounded))
+                            .foregroundColor(.white),
+                         at: CGPoint(x: vertex.x + 40, y: vertex.y), anchor: .leading)
+            }
+            // Use whichever side reads best (camera-side hip/knee/ankle).
+            let sh = pt(2) ?? pt(3), hip = pt(8) ?? pt(9)
+            let knee = pt(10) ?? pt(11), ankle = pt(12) ?? pt(13)
+            if let sh, let hip, let knee, let ankle {
+                var chain = Path()
+                chain.move(to: sh)
+                chain.addLine(to: hip)
+                chain.addLine(to: knee)
+                chain.addLine(to: ankle)
+                ctx.stroke(chain, with: .color(.black.opacity(0.3)),
+                           style: StrokeStyle(lineWidth: 5.5, lineCap: .round, lineJoin: .round))
+                ctx.stroke(chain, with: .color(Self.planeColor.opacity(0.95)),
+                           style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                for p in [sh, hip, knee, ankle] {
+                    ctx.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)),
+                             with: .color(Self.jointColor))
+                }
+                wedge(at: hip, toward: sh, and: knee, deg: angleAt(hip, sh, knee))
+                wedge(at: knee, toward: hip, and: ankle, deg: angleAt(knee, hip, ankle))
             }
         }
     }
