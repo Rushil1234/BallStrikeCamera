@@ -1154,8 +1154,10 @@ struct RichPoseOverlay: View {
                        style: StrokeStyle(lineWidth: width, lineCap: .round, dash: dash))
         }
         // Shaft plane from ADDRESS (clubhead → hands, extended) — the line the club should
-        // live around. Static through the whole swing, like the compare apps.
-        if let anchors = planeAnchors, anchors.hands.count >= 2, anchors.club.count >= 2 {
+        // live around. DTL ONLY: face-on has no meaningful shaft plane (it degenerates to a
+        // horizontal line through the hands). Static through the whole swing.
+        if !isFaceOn, let anchors = planeAnchors,
+           anchors.hands.count >= 2, anchors.club.count >= 2 {
             let hands = toScreen(anchors.hands[0], anchors.hands[1])
             let club  = toScreen(anchors.club[0], anchors.club[1])
             if hypot(hands.x - club.x, hands.y - club.y) > 20 {
@@ -1178,6 +1180,11 @@ struct RichPoseOverlay: View {
             // Shoulder line, extended — the turn read.
             let (sa, sb) = extended(shL, shR, by: 0.9)
             stroke(sa, sb, Self.bodyLineColor, width: 2.5)
+            // Face-on adds the hip line — turn + tilt at a glance, like the compare apps.
+            if isFaceOn {
+                let (ha, hb) = extended(hipL, hipR, by: 0.9)
+                stroke(ha, hb, Self.planeColor, width: 2.5)
+            }
         }
     }
 
@@ -1263,9 +1270,11 @@ struct RichPoseOverlay: View {
             func angleAt(_ vertex: CGPoint, _ a: CGPoint, _ b: CGPoint) -> Double {
                 let v1 = CGVector(dx: a.x - vertex.x, dy: a.y - vertex.y)
                 let v2 = CGVector(dx: b.x - vertex.x, dy: b.y - vertex.y)
-                let dot = v1.dx * v2.dx + v1.dy * v2.dy
-                let mags = max(hypot(v1.dx, v1.dy) * hypot(v2.dx, v2.dy), 1)
-                return acos(max(-1, min(1, dot / mags))) * 180 / .pi
+                // Explicit Double: CGFloat + untyped literals left `acos` ambiguous on
+                // the CI toolchain (x86_64) while resolving locally.
+                let dot = Double(v1.dx * v2.dx + v1.dy * v2.dy)
+                let mags = max(Double(hypot(v1.dx, v1.dy) * hypot(v2.dx, v2.dy)), 1.0)
+                return acos(max(-1.0, min(1.0, dot / mags))) * 180.0 / .pi
             }
             func wedge(at vertex: CGPoint, toward a: CGPoint, and b: CGPoint, deg: Double) {
                 let r: CGFloat = 26
