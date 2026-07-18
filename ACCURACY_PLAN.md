@@ -65,6 +65,23 @@ Viewers: :8765 labeler · :8766 shot viewer (frames+tracking+3-way metrics) · :
 - [ ] Carry/total refit incl. our measured descent/apex features; target ≤5 yd median (path to 2/4)
 - [ ] Full validation: all suites, no regressions; viewer refreshed; committed
 
+## Ball type decoupling (range vs premium — Noah, July 18)
+
+Range balls fly shorter than real balls; all 289 TT rows are RANGE balls. Design:
+- Tag is ball TYPE not color (future yellow ProV1!). Session-level `ball_type:
+  range|premium` via in-app per-session picker + tc_lab ingest flag; near-term
+  default: Range mode -> range, home/net -> ask once.
+- Measurement pipeline (speed/VLA/spin/tracking) is ball-agnostic — pooled training.
+- FLIGHT layer splits: the physics engine keeps two aero param sets. Range set =
+  today's TT fit. Premium set = literature seed, then fit from home Garmin carry
+  rows (radar carry on real balls = valid truth; grows with every home session).
+- Display: range sessions show range carry, premium show premium; sim passes raw
+  launch numbers through (sim does its own flight). Future: range->premium
+  "equivalent flight" toggle needs same-swing paired data (alternating-ball
+  Garmin experiment).
+- TOMORROW: tag the range session `range`, home whites `premium` if hitting real
+  balls (tell tc_lab which).
+
 ## Standing lessons (do not re-learn)
 
 - Alignment: DP-with-skips only; TT is the sole club-truth; verify with club sequence.
