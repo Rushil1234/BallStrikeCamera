@@ -1,7 +1,7 @@
 {
- "version": "toptracer-v1-20260715",
+ "version": "toptracer-v2-20260718",
  "createdAt": "2026-07-18T19:59:08.197880+00:00",
- "sourceCsv": "swingsync-2026-07-12.csv (TopTracer, 119 range shots, full bag)",
+ "sourceCsv": "swingsync 2026-07-12 + 07-16 + 07-17 (TopTracer, 289 range shots, full bag)",
  "carryModel": {
   "features": [
    "ball_speed",
