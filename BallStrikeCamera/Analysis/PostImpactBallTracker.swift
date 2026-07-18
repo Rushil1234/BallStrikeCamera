@@ -3586,11 +3586,131 @@ final class V2Engine {
         notes.append(String(format: "v=%.0fpx/s phys=%.1fmph pts=%d chi=%.1f agree=%.2f",
                             vPx, physMph, pts.count, fit.chiMax, agree2pt))
 
-        return V2Output(ballSpeedMph: ballMph, clubSpeedMph: clubMph,
-                        vlaDegrees: vla, confident: confident,
+        // ── V3 heads (July 18): speed+VLA ridge trained on CORRECTED TT pairs over V3
+        // tracks. Fixes both _614 failure modes at once: the old ball_head lifting a
+        // 62mph physics read to 87 (TT: 70.6), and growth-only VLA doubling on pulled
+        // shots because HLA-approach growth reads as height (Noah's FOV-coupling
+        // insight — the head carries r_excess/hla_proxy features for exactly that).
+        var ballMphFinal = ballMph
+        var vlaFinal = vla
+        if let s0 = sig, s0.color != .white, flight.count >= 3,
+           let heads = v3Heads {
+            let use = Array(flight.prefix(6))
+            let t0 = use[0].t
+            let T = use.map { $0.t - t0 }
+            let vxs = polyfit1(T, use.map(\.x))
+            let vys = polyfit1(T, use.map(\.y))
+            let rsl = polyfit1(T, use.map(\.r))
+            // rLockSub is dh-based and half-blind to yellow (read ~2px on a 5.4px ball →
+            // v_mps inflated 2.7x → the head extrapolated 194mph on _614). The V3
+            // signature radius is measured on the yellowness channel — the right scale.
+            let r0m = s0.restRadius
+            V2Engine.sessionR0s.append(r0m)
+            if V2Engine.sessionR0s.count > 40 { V2Engine.sessionR0s.removeFirst() }
+            let sorted0 = V2Engine.sessionR0s.sorted()
+            let r0sess = sorted0[sorted0.count / 2]
+            let vpx = (vxs * vxs + vys * vys).squareRoot()
+            var curve = 0.0
+            if use.count >= 4 {
+                curve = polyfit2a(T, use.map(\.y))
+            }
+            let feat: [String: Double] = [
+                "v_px": vpx, "vx": vxs, "vy": vys,
+                "pxang": atan2(-vys, -vxs) * 180 / .pi,
+                "r_slope": rsl,
+                "r_excess": rsl - (-abs(vxs) * r0m / 360.0),
+                "r_norm": rsl / max(abs(vxs), 1.0) * 100.0,
+                "hla_proxy": abs(rsl) / max(vpx, 1.0) * 100.0,
+                "v_mps": vpx * 0.04267 / (2 * r0m),
+                "r0": r0m, "r1": use[0].r, "y0": use[0].y,
+                "npts": Double(use.count), "curve": curve,
+                "r0_sess": r0sess, "r0_rel": r0m / max(r0sess, 1e-6)
+            ]
+            func apply(_ h: V3Head) -> Double {
+                var z = h.intercept
+                for i in 0..<h.features.count {
+                    let x = feat[h.features[i]] ?? 0
+                    z += (x - h.mu[i]) / h.sd[i] * h.w[i]
+                }
+                return z
+            }
+            notes.append("v3feat: " + heads.speed.features.map {
+                String(format: "%@=%.2f", $0, feat[$0] ?? -999) }.joined(separator: " "))
+            let spd = min(max(apply(heads.speed), heads.speedClamp.0), heads.speedClamp.1)
+            let vl = min(max(apply(heads.vla), heads.vlaClamp.0), heads.vlaClamp.1)
+            // VLA ONLY: the head beat growth-VLA live (2.5 vs 3.4 deg median, and kills
+            // the +2.2deg pull-side bias). The SPEED head measured WORSE than the
+            // existing physics path fleet-wide (5.4% CV vs 3.2% live median) — it stays
+            // advisory in notes until more paired data closes that gap.
+            vlaFinal = vl
+            notes.append(String(format: "v3heads: speed %.1f (advisory) vla %.1f", spd, vl))
+        }
+
+        return V2Output(ballSpeedMph: ballMphFinal, clubSpeedMph: clubMph,
+                        vlaDegrees: vlaFinal, confident: confident,
                         flightPointCount: pts.count, notes: notes,
                         impactFrameIndex: impact, frameObservations: frameObs,
                         clubObservations: clubObs)
+    }
+
+    // MARK: V3 heads (speed/VLA ridge over V3-track features)
+
+    struct V3Head {
+        let features: [String]
+        let mu: [Double], sd: [Double], w: [Double]
+        let intercept: Double
+    }
+    struct V3Heads {
+        let speed: V3Head, vla: V3Head
+        let speedClamp: (Double, Double), vlaClamp: (Double, Double)
+    }
+    static var sessionR0s: [Double] = []
+    static let v3Heads: V3Heads? = {
+        guard let url = Bundle.main.url(forResource: "v3_heads", withExtension: "json", subdirectory: "Models")
+                    ?? Bundle.main.url(forResource: "v3_heads", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        func head(_ d: [String: Any]?) -> V3Head? {
+            guard let d, let f = d["features"] as? [String],
+                  let mu = d["mu"] as? [Double], let sd = d["sd"] as? [Double],
+                  let w = d["w"] as? [Double], let b = d["intercept"] as? Double else { return nil }
+            return V3Head(features: f, mu: mu, sd: sd, w: w, intercept: b)
+        }
+        guard let sp = head(j["speed"] as? [String: Any]),
+              let vl = head(j["vla"] as? [String: Any]) else { return nil }
+        let sc = j["speed_clamp"] as? [Double] ?? [10, 210]
+        let vc = j["vla_clamp"] as? [Double] ?? [0.5, 55]
+        return V3Heads(speed: sp, vla: vl, speedClamp: (sc[0], sc[1]), vlaClamp: (vc[0], vc[1]))
+    }()
+
+    private static func polyfit1(_ t: [Double], _ y: [Double]) -> Double {
+        let n = Double(t.count)
+        let st = t.reduce(0, +), sy = y.reduce(0, +)
+        var stt = 0.0, sty = 0.0
+        for i in 0..<t.count { stt += t[i] * t[i]; sty += t[i] * y[i] }
+        let d = n * stt - st * st
+        return abs(d) < 1e-12 ? 0 : (n * sty - st * sy) / d
+    }
+
+    private static func polyfit2a(_ t: [Double], _ y: [Double]) -> Double {
+        // quadratic coefficient via least squares (small n)
+        let n = Double(t.count)
+        var s1 = 0.0, s2 = 0.0, s3 = 0.0, s4 = 0.0, sy = 0.0, sty = 0.0, st2y = 0.0
+        for i in 0..<t.count {
+            let x = t[i], v = y[i]
+            s1 += x; s2 += x*x; s3 += x*x*x; s4 += x*x*x*x
+            sy += v; sty += x*v; st2y += x*x*v
+        }
+        var M = [[n, s1, s2, sy], [s1, s2, s3, sty], [s2, s3, s4, st2y]]
+        for c in 0..<3 {
+            let piv = M[c][c]
+            guard abs(piv) > 1e-12 else { return 0 }
+            for r in (c+1)..<3 {
+                let f = M[r][c] / piv
+                for k in c..<4 { M[r][k] -= f * M[c][k] }
+            }
+        }
+        return abs(M[2][2]) < 1e-12 ? 0 : M[2][3] / M[2][2]
     }
 
     // MARK: Subpixel + rescue helpers

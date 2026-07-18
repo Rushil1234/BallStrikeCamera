@@ -329,6 +329,15 @@ struct ShotMetricsCalculator {
                 v2Warnings.append(String(format: "LOW CONFIDENCE speed (%d flight pts) — treat as approximate.",
                                          v2.flightPointCount))
                 ballLaunch.ballSpeedMph = speed
+                // V3-head VLA rides along even at low confidence: growth-only VLA
+                // conflates HLA-approach with height (+2.2deg on pulls, measured) —
+                // the head's signed-growth features are strictly better information.
+                if let vla = v2.vlaDegrees {
+                    ballLaunch.vlaLegacyDegrees = ballLaunch.vlaDegrees
+                    ballLaunch.vlaFinalDegrees = vla
+                    ballLaunch.vlaDegrees = vla
+                    ballLaunch.vlaModelUsed = "v2_low_conf_head"
+                }
             } else {
                 v2Warnings.append("V2 withheld: " + (v2.notes.last ?? "no usable flight track"))
             }
