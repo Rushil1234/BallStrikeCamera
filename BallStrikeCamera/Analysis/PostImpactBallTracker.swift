@@ -2628,24 +2628,33 @@ final class V2Engine {
     /// Lime: the existing collapsed-blue signature. Everything else: white.
     static func classifyBall(_ pl: Planes, lock: CGPoint, r0: Double) -> BallSignature {
         let W = pl.W, H = pl.H
-        var n = 0.0, hs = 0.0, ss = 0.0, vs = 0.0, ys = 0.0
+        var n = 0.0, ss = 0.0, vs = 0.0, ys = 0.0
+        var hues: [Double] = []
+        var yels: [Double] = []
         let R = max(2.0, r0 * 0.85)   // stay inside the disk — edges mix background
         for yy in max(0, Int(lock.y - R))...min(H - 1, Int(lock.y + R)) {
             for xx in max(0, Int(lock.x - R))...min(W - 1, Int(lock.x + R))
             where hypot(Double(xx) - lock.x, Double(yy) - lock.y) <= R {
                 let p = yy * W + xx
-                hs += Double(pl.h[p]); ss += Double(pl.s[p]); vs += Double(pl.v[p])
+                hues.append(Double(pl.h[p])); yels.append(Double(pl.yel[p]))
+                ss += Double(pl.s[p]); vs += Double(pl.v[p])
                 ys += Double(pl.yel[p]); n += 1
             }
         }
         guard n > 0 else {
             return BallSignature(color: .white, hue: 0, sat: 0, val: 200, yellowness: 0, restRadius: r0)
         }
-        let hue = hs / n, sat = ss / n, val = vs / n, yel = ys / n
+        // Median hue + P90 yellowness (validated offline 362/366; the first-draft
+        // mean-yel>=150 rule misread 8 dim evening yellows as white, silently shutting
+        // the whole V3 pipeline off). Yellow hue is tightly 31-35; white scatters 42-116.
+        hues.sort(); yels.sort()
+        let hue = hues[hues.count / 2]
+        let y90 = yels[min(yels.count - 1, (yels.count * 9) / 10)]
+        let sat = ss / n, val = vs / n, yel = ys / n
         let color: BallColor
-        if yel >= 150 && hue >= 15 && hue <= 45 {
+        if hue >= 15 && hue <= 46 && y90 >= 90 {
             color = .yellow
-        } else if yel >= 150 {
+        } else if y90 >= 90 && hue > 46 && hue <= 70 {
             color = .lime
         } else {
             color = .white
