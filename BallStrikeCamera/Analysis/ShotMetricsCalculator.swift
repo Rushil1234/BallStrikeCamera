@@ -65,6 +65,26 @@ struct ShotMetricsResult {
 }
 
 struct ShotMetricsCalculator {
+    /// Per-club median smash from 289 TopTracer rows (v3_heads.json: smash_by_club).
+    static let smashByClub: [String: Double]? = {
+        guard let url = Bundle.main.url(forResource: "v3_heads", withExtension: "json", subdirectory: "Models")
+                    ?? Bundle.main.url(forResource: "v3_heads", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return j["smash_by_club"] as? [String: Double]
+    }()
+
+    /// Common user club-name variants -> TT table keys.
+    static func aliasClub(_ k: String) -> String {
+        let map: [String: String] = [
+            "pw": "pitching_wedge", "sw": "sand_wedge", "gw": "gap_wedge",
+            "lw": "sand_wedge", "3w": "3_wood", "5w": "3_wood",
+            "4h": "4_hybrid", "5h": "5_hybrid", "1w": "driver", "d": "driver",
+            "9i": "9_iron", "8i": "8_iron", "7i": "7_iron", "6i": "6_iron", "5i": "6_iron"
+        ]
+        return map[k] ?? k
+    }
+
     struct Configuration {
         var minimumBallPoints: Int = 2
         var preferredBallPointLimit: Int = 6
@@ -340,6 +360,24 @@ struct ShotMetricsCalculator {
                 }
             } else {
                 v2Warnings.append("V2 withheld: " + (v2.notes.last ?? "no usable flight track"))
+            }
+        }
+
+        // ── Smash-based club speed (July 18): clubSpeed = ballSpeed / smash(club).
+        // Our ball speed is 3.5% accurate and per-club smash is tight (±2.5-6.7% across
+        // 289 TT rows) — measured 2.4 mph median vs TT club truth, versus 14.2 mph from
+        // direct optical club tracking (the head's apparent scale/rotation bias). The
+        // user's selected club comes from ClubPreference; unknown clubs keep the
+        // direct estimate.
+        if !isPutterMode,
+           let ball = ballLaunch.ballSpeedMph,
+           let clubName = UserDefaults.standard.string(forKey: "lastUsedClubName") {
+            let key = clubName.lowercased()
+                .replacingOccurrences(of: " ", with: "_")
+                .replacingOccurrences(of: "-", with: "_")
+            if let table = Self.smashByClub, let sm = table[key] ?? table[Self.aliasClub(key)] {
+                clubMetrics.clubSpeedMph = ball / sm
+                clubMetrics.method = "smash_from_ball_speed(\(key))"
             }
         }
 

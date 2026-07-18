@@ -1,5 +1,5 @@
 {
- "version": "v3heads-color-20260718",
+ "version": "v3heads-smash-20260718",
  "speed": {
   "features": [
    "v_px",
@@ -264,5 +264,18 @@
   ],
   "intercept": 12.786203753580102,
   "n": 24
+ },
+ "smash_by_club": {
+  "pitching_wedge": 1.2156,
+  "9_iron": 1.284,
+  "8_iron": 1.2995,
+  "7_iron": 1.3227,
+  "6_iron": 1.3359,
+  "5_hybrid": 1.353,
+  "4_hybrid": 1.3639,
+  "3_wood": 1.4502,
+  "driver": 1.5284,
+  "sand_wedge": 1.0269,
+  "gap_wedge": 1.0713
  }
 }

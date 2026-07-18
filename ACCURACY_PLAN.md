@@ -8,10 +8,10 @@
 |---|---|---|---|
 | Ball speed | ±2 mph (~2%) | 3.5% (~3 mph) | 720px capture + ~100 new TT pairs + mishit guard |
 | VLA | ±1° | 2.8° | 720px doubles diameter precision (binding constraint) |
-| Club speed | ±3 mph | **14.5 mph — weakest pipeline** | needs its own round: coverage 72%→85%+, club head vs TT club pairs, leading-edge consistency |
+| Club speed | ±3 mph | **2.4 mph via smash ✓ SHIPPED** | clubSpeed = ballSpeed/smash(club), per-club table from 289 TT rows; direct tracking stays fallback (14.2→ calibratable to ~9%) |
 | Backspin | ±1000 rpm | not yet reported in-app | learn from 288 TT rows (est. CV ~1045 → under 1000 with new rows) |
 | Sidespin | ±200 rpm | not measured | needs lateral curvature — 720px 6-point experiment |
-| Carry | ±2 yd | 9.3 yd | see "TT function" note below |
+| Carry | ±2 yd | 9.3 yd live; **physics ODE: 3.3 yd median on TT's own inputs** | ballistic drag/lift fit (tools/experimental/tt_physics.py) beats all regressions; Swift port next |
 | Total | ±4 yd | 8.7 yd | same |
 
 Tracking state: yellow flight 100% (jul17) / 98.0% (jul16), white 97.67% (all-time high).
