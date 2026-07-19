@@ -73,12 +73,33 @@ Deno.serve(async (req: Request) => {
     return json({ error: `Unknown tier/interval: ${tier}/${billingInterval}` }, 400);
   }
 
-  // Look up or keep existing Stripe customer
+  // Look up the caller's current entitlement (customer + premium status).
   const { data: entRow } = await supabase
     .from("user_entitlements")
-    .select("stripe_customer_id")
+    .select("stripe_customer_id, tier, payment_status, comp_pro_until")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  // Guard: never open a new subscription checkout for someone who already has
+  // premium access. Without this a subscribed user (or a comped/founder account)
+  // who clicks "Get the app" would be charged for a SECOND subscription. This
+  // mirrors the website's hasPremiumAccess() so both sides agree.
+  const compActive =
+    Boolean(entRow?.comp_pro_until) &&
+    new Date(entRow!.comp_pro_until as string) > new Date();
+  const stripeActive =
+    (entRow?.tier ?? "free") !== "free" &&
+    ["active", "trialing"].includes((entRow?.payment_status as string) ?? "");
+  if (compActive || stripeActive) {
+    return json(
+      {
+        alreadySubscribed: true,
+        tier: entRow?.tier ?? null,
+        reason: compActive ? "comp_pro" : "active_subscription",
+      },
+      200
+    );
+  }
 
   const existingCustomer = entRow?.stripe_customer_id as string | undefined;
 
