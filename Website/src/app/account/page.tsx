@@ -228,13 +228,23 @@ export default function AccountPage() {
             <span className={`badge ${premium ? "badge-sage" : ""}`}>{tierDisplay} plan</span>
             <strong>{premium ? "Premium access active" : "Free access"}</strong>
             <span>
-              {periodEnd
+              {premium && !entitlement?.stripe_customer_id && periodEnd
+                ? `Complimentary through ${periodEnd}`
+                : periodEnd
                 ? `${entitlement?.cancel_at_period_end ? "Cancels" : "Renews"} ${periodEnd}`
                 : compUntil
                 ? `Referral Pro until ${compUntil}`
                 : "Billing status syncs after checkout completes."}
             </span>
-            {premium ? (
+            {premium && !entitlement?.stripe_customer_id ? (
+              /* Complimentary/special accounts have no Stripe objects — the billing
+                 portal 400s ("Please subscribe first") and funnels them into checkout.
+                 There is nothing to manage or cancel; say so instead. */
+              <span className="account-renewal-note">
+                Complimentary access{periodEnd ? ` — active through ${periodEnd}` : ""}. No
+                billing to manage.
+              </span>
+            ) : premium ? (
               <>
                 <button className="btn btn-outline" onClick={handleManageBilling} disabled={portalLoading}>
                   {portalLoading ? "Opening..." : "Manage Billing"}
