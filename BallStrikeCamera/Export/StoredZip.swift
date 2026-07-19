@@ -8,19 +8,55 @@ enum StoredZip {
 
     enum ZipError: LocalizedError {
         case cannotCreateFile
-        var errorDescription: String? { "Failed to create ZIP archive" }
+        case insufficientSpace(needed: Int64, available: Int64)
+
+        var errorDescription: String? {
+            switch self {
+            case .cannotCreateFile:
+                return "Failed to create ZIP archive"
+            case let .insufficientSpace(needed, available):
+                let f = ByteCountFormatter.string(fromByteCount:countStyle:)
+                return "Not enough space to export: needs about \(f(needed, .file)), "
+                     + "but only \(f(available, .file)) is free. Free up space and try again."
+            }
+        }
     }
 
     /// Zip every file under `directory` (recursively) into `outputURL`.
+    ///
+    /// NOTE: writes go through `write(contentsOf:)` (the throwing API). The legacy
+    /// `write(_:)` raises an Objective-C `NSFileHandleOperationException` when the
+    /// volume fills up, which Swift `try` cannot catch — that hard-crashed the app.
+    /// We also pre-flight the space requirement so the common case fails cleanly.
     static func zip(directory: URL, to outputURL: URL) throws {
         let fm = FileManager.default
         let files = try enumerateFiles(under: directory)
             .sorted { $0.relativePath < $1.relativePath }
 
+        // Pre-flight: payload + per-file local header + central directory + EOCD.
+        let payload = files.reduce(Int64(0)) { sum, f in
+            sum + Int64((try? f.url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        }
+        let overhead = files.reduce(Int64(22)) { sum, f in
+            sum + Int64(30 + 46 + (f.relativePath.utf8.count * 2))
+        }
+        let needed = payload + overhead
+        let available = (try? outputURL.deletingLastPathComponent()
+            .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage ?? Int64.max
+        if needed > available {
+            throw ZipError.insufficientSpace(needed: needed, available: available)
+        }
+
         if fm.fileExists(atPath: outputURL.path) { try fm.removeItem(at: outputURL) }
         fm.createFile(atPath: outputURL.path, contents: nil)
         guard let handle = FileHandle(forWritingAtPath: outputURL.path) else { throw ZipError.cannotCreateFile }
-        defer { try? handle.close() }
+        // Close always; also don't leave a truncated archive behind on failure.
+        var completed = false
+        defer {
+            try? handle.close()
+            if !completed { try? fm.removeItem(at: outputURL) }
+        }
 
         var cdEntries: [(name: [UInt8], crc: UInt32, size: UInt32, offset: UInt32)] = []
         var offset: UInt32 = 0
@@ -41,8 +77,8 @@ enum StoredZip {
             hdr.le(UInt16(nameBytes.count)); hdr.le(UInt16(0))
             hdr.append(contentsOf: nameBytes)
 
-            handle.write(hdr)
-            handle.write(fileData)
+            try handle.write(contentsOf: hdr)
+            try handle.write(contentsOf: fileData)
             offset += UInt32(hdr.count) + size
         }
 
@@ -60,7 +96,7 @@ enum StoredZip {
             cd.le(UInt16(0)); cd.le(UInt16(0))
             cd.le(UInt32(0)); cd.le(e.offset)
             cd.append(contentsOf: e.name)
-            handle.write(cd)
+            try handle.write(contentsOf: cd)
             cdSize += UInt32(cd.count)
         }
 
@@ -70,7 +106,8 @@ enum StoredZip {
         eocd.le(UInt16(cdEntries.count)); eocd.le(UInt16(cdEntries.count))
         eocd.le(cdSize); eocd.le(cdStart)
         eocd.le(UInt16(0))
-        handle.write(eocd)
+        try handle.write(contentsOf: eocd)
+        completed = true
     }
 
     // MARK: - Helpers
