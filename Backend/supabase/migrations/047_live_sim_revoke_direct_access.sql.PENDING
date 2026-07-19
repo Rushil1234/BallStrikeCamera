@@ -1,0 +1,40 @@
+-- ============================================================================
+-- 047_live_sim_revoke_direct_access.sql          *** DO NOT APPLY YET ***
+--
+-- PHASE B — the final step that fully closes the live-sim exposure.
+-- Deliberately saved with a .PENDING suffix so `supabase db push` skips it.
+--
+-- APPLYING THIS BEFORE THE CLIENTS MIGRATE WILL BREAK LIVE SIM PAIRING for
+-- every installed iOS app, because the shipped app reads/writes
+-- public.live_sim_state directly.
+--
+-- ---------------------------------------------------------------------------
+-- PRECONDITIONS — all three must be true before you apply this:
+--
+--   1. iOS: BallStrikeCamera/Services/LiveSimService.swift no longer touches
+--      the table. Replace the PostgREST calls with:
+--          POST /rest/v1/rpc/live_sim_get      { "p_code": "<code>" }
+--          POST /rest/v1/rpc/live_sim_update   { "p_code": "<code>",
+--                                                "p_patch": { ...fields } }
+--      …and that build is RELEASED and adopted (check app_version adoption on
+--      the Observability tab — don't strand users on an old build).
+--
+--   2. Web sim: Website/public/sim/js/live.js — same swap
+--      (.from('live_sim_state').select/update  ->  .rpc('live_sim_get'/'live_sim_update')).
+--
+--   3. Watch page: Website/src/app/watch/page.tsx — same swap for its read.
+--
+-- Note INSERT is intentionally left alone: creating a session is what the web
+-- does at pairing time, and the existing WITH CHECK already constrains the code
+-- format. Only blanket SELECT/UPDATE are the exposure.
+-- ---------------------------------------------------------------------------
+
+-- Remove the blanket read/update. After this, the ONLY way to reach a session
+-- is live_sim_get / live_sim_update, both of which require knowing the code.
+drop policy if exists "live sim state read"   on public.live_sim_state;
+drop policy if exists "live sim state update" on public.live_sim_state;
+
+-- Verify afterwards, as anon with only the public key:
+--   GET  /rest/v1/live_sim_state?select=code           -> 0 rows   (no dumping)
+--   POST /rest/v1/rpc/live_sim_get {"p_code":"<real>"} -> 1 row    (pairing OK)
+--   POST /rest/v1/rpc/live_sim_get {"p_code":"<fake>"} -> 0 rows
