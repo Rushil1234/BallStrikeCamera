@@ -14,7 +14,7 @@ struct ShotCompositeView: View {
             imageArea
             infoPanel
         }
-        .background(Color.black.ignoresSafeArea())
+        .background(TCTheme.captureBg.ignoresSafeArea())
         .tcAppearance()
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
@@ -31,7 +31,7 @@ struct ShotCompositeView: View {
         HStack(spacing: 10) {
             Text("Composite")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(TCTheme.captureBone)
 
             Spacer()
 
@@ -40,12 +40,12 @@ struct ShotCompositeView: View {
                 onDismiss()
             }
             .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(.blue)
+            .foregroundColor(TCTheme.captureGold)
             .padding(.leading, 4)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(Color(white: 0.10))
+        .background(TCTheme.captureRaised)
     }
 
     // MARK: - Image area (pure blended composite — no overlays)
@@ -59,15 +59,15 @@ struct ShotCompositeView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 VStack(spacing: 12) {
-                    ProgressView().tint(.white)
+                    ProgressView().tint(TCTheme.captureBone)
                     Text("Rendering composite…")
                         .font(.system(size: 13))
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(TCTheme.captureBone.opacity(0.6))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .background(Color.black)
+        .background(TCTheme.captureBg)
         .frame(maxWidth: .infinity)
         .layoutPriority(1)
     }
@@ -78,11 +78,11 @@ struct ShotCompositeView: View {
         HStack(spacing: 16) {
             Text("Full-shot composite")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(TCTheme.captureBone)
             Spacer()
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(Color(white: 0.08))
+        .background(TCTheme.capturePanel)
     }
 }

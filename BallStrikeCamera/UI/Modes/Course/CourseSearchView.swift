@@ -46,7 +46,7 @@ struct CourseSearchView: View {
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    TrueCarryLogo(size: 16)
+                    TrueCarryLogo(size: 20)
                     Spacer()
                     // location status dot
                     Circle()

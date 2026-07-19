@@ -57,10 +57,12 @@ struct LoginView: View {
     }
 
     private var brandWordmark: some View {
-        Text("True Carry")
+        // Canonical two-tone lockup — "Carry" in italic Marker Gold — matching the
+        // launch screen, in-app header, and website.
+        (Text("True ").foregroundColor(TCTheme.cream)
+            + Text("Carry").italic().foregroundColor(TCTheme.gold))
             .font(.system(size: 30, weight: .medium, design: .serif))
             .tracking(-0.25)
-            .foregroundColor(TCTheme.cream)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
             .frame(maxWidth: .infinity)

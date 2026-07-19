@@ -61,7 +61,8 @@ struct PastSessionsView: View {
                     content
                     Spacer(minLength: 140)
                 }
-                .padding(.top, 8)
+                // No extra top padding — TCHeaderBar carries its own 8pt inset,
+                // so the lockup lands at the same height as every other tab.
                 .padding(.bottom, 40)
             }
             .refreshable { await loadData() }
@@ -143,37 +144,22 @@ struct PastSessionsView: View {
     // MARK: - Header
 
     private var headerBar: some View {
-        HStack(alignment: .center, spacing: 0) {
-            // left: search + refresh
-            HStack(spacing: 6) {
-                TCIconButton(icon: showSearch ? "xmark" : "magnifyingglass") {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                        showSearch.toggle()
-                        if !showSearch { searchText = "" }
-                    }
-                }
-                TCIconButton(icon: "arrow.clockwise") {
-                    Task { await loadData() }
+        TCHeaderBar(initials: userInitials) {
+            TCProfileAvatarButton(initials: userInitials,
+                                  devMode: session.entitlementVM.isDeveloperMode) {
+                showProfile = true
+            }
+        } leftContent: {
+            TCHeaderIconButton(icon: showSearch ? "xmark" : "magnifyingglass") {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    showSearch.toggle()
+                    if !showSearch { searchText = "" }
                 }
             }
-            .frame(width: 88, height: 44, alignment: .leading)
-
-            TrueCarryLogo(size: 20)
-                .frame(maxWidth: .infinity)
-                .multilineTextAlignment(.center)
-
-            // right: profile
-            HStack(spacing: 6) {
-                TCProfileAvatarButton(initials: userInitials,
-                                      devMode: session.entitlementVM.isDeveloperMode) {
-                    showProfile = true
-                }
+            TCHeaderIconButton(icon: "arrow.clockwise") {
+                Task { await loadData() }
             }
-            .frame(width: 88, height: 44, alignment: .trailing)
         }
-        .padding(.horizontal, TCTheme.hPad)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 
     /// Shortcut into the handicap / scores page, with the current estimated index inline.
@@ -211,13 +197,14 @@ struct PastSessionsView: View {
     }
 
     private var titleBlock: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        // Same metrics as the other tabs' page titles (34 serif / 14, 4pt gap).
+        VStack(alignment: .leading, spacing: 4) {
             Text("History")
                 .font(.system(size: 34, weight: .semibold, design: .serif))
                 .foregroundColor(TCTheme.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(historySubtitle)
-                .font(.system(size: 13))
+                .font(.system(size: 14))
                 .foregroundColor(TCTheme.textMuted)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }

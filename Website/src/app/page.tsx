@@ -7,6 +7,8 @@ import SimDemo from "@/components/SimDemo";
 import ClubCards from "@/components/ClubCards";
 import SiteNav from "@/components/SiteNav";
 import { PLANS } from "@/lib/plans";
+import { useSession } from "@/lib/useSession";
+import { getUserEntitlement } from "@/lib/supabase";
 
 type Hole = { n: number; name: string; par: number; yd: number; id: string };
 
@@ -40,8 +42,32 @@ export default function HomePage() {
   const ballRef = useRef<HTMLDivElement | null>(null);
   const trailRef = useRef<HTMLDivElement | null>(null);
 
+  // Track whether the signed-in visitor already has premium (paid or comped), so
+  // we never send an existing subscriber into a checkout that the server would
+  // refuse anyway.
+  const { user } = useSession();
+  const [alreadyPremium, setAlreadyPremium] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) { setAlreadyPremium(false); return; }
+    getUserEntitlement(user.id)
+      .then((e: Record<string, unknown> | null) => {
+        if (cancelled || !e) return;
+        const comp = e.comp_pro_until ? new Date(e.comp_pro_until as string) > new Date() : false;
+        const paid = e.tier !== "free" && ["active", "trialing"].includes(String(e.payment_status));
+        setAlreadyPremium(Boolean(comp || paid));
+      })
+      .catch(() => { /* entitlement unknown -> fall through to normal checkout */ });
+    return () => { cancelled = true; };
+  }, [user]);
+
   // Opening the panel never navigates: the overlay handles auth + Stripe inline.
   function openCheckout(tier: string = "pro") {
+    if (alreadyPremium) {
+      // Already subscribed — take them to their account instead of charging again.
+      window.location.href = "/account";
+      return;
+    }
     setCheckoutTier(tier);
     setCheckoutOpen(true);
   }

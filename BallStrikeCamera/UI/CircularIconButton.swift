@@ -9,7 +9,9 @@ struct CircularIconButton: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .bold))
-                .foregroundColor(isActive ? .white : LaunchMonitorTheme.textPrimary)
+                .foregroundColor(isActive
+                    ? Color(red: 0.055, green: 0.078, blue: 0.059)   // deep forest ink on gold
+                    : LaunchMonitorTheme.textPrimary)
                 .frame(width: 48, height: 48)
                 .background(
                     Circle()

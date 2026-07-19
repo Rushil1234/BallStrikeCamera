@@ -357,9 +357,14 @@ private final class AuthBrowserSession: NSObject, ASWebAuthenticationPresentatio
                 }
 
                 guard let at = pairs["access_token"], let rt = pairs["refresh_token"] else {
+                    // Distinguish the PKCE/code-flow case from a genuinely empty
+                    // callback so a field failure is diagnosable instead of generic.
+                    let msg = pairs["code"] != nil
+                        ? "Sign-in returned an authorization code instead of tokens (PKCE flow). The app expects the implicit flow — please update the app."
+                        : "Google sign-in returned no tokens. If you were sent to the website instead of back to the app, the redirect URL isn't allow-listed in Supabase."
                     cont.resume(throwing: NSError(
                         domain: "TrueCarry.OAuth", code: -3,
-                        userInfo: [NSLocalizedDescriptionKey: "Google sign-in returned no tokens."]
+                        userInfo: [NSLocalizedDescriptionKey: msg]
                     ))
                     return
                 }

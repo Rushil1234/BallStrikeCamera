@@ -71,6 +71,11 @@ struct TrueCarryInsightsView: View {
         }
     }
 
+    /// Most recent shots packaged for the AI coach (session summary).
+    private var coachShots: [AICoachService.ShotPayload] {
+        Array(shots.prefix(20)).map { AICoachService.ShotPayload($0.metrics, clubName: $0.clubName) }
+    }
+
     private var selectedShots: [SavedShot] {
         selectedClub.map { shotsFor($0) } ?? []
     }
@@ -145,6 +150,14 @@ struct TrueCarryInsightsView: View {
                         pageTitleSection
                         sourceToggle
                         clubPicker
+                        if !shots.isEmpty {
+                            AICoachCard(
+                                mode: .session,
+                                shots: coachShots,
+                                isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
+                                subtitle: "Your recent shots, read like a coach"
+                            )
+                        }
                         if !gappingRows.isEmpty { gappingSection }
                         if availableClubs.isEmpty {
                             emptyState

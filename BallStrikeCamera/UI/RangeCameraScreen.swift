@@ -81,6 +81,12 @@ struct RangeCameraScreen: View {
             onShotSaved: isCourseMode ? externalOnShotSaved : nil,
             onShotComplete: {}
         )
+        // First-time beginner hint: how to set up the phone as a launch monitor.
+        .firstTimeHint(
+            id: "cameraSetup",
+            icon: "iphone.gen3",
+            text: "Stand your iPhone on a tripod about waist-high, 6-8 ft to the side of the ball, framing the hitting area. Then take your normal swing."
+        )
         // NFC foreground scan — fires when user taps a tagged club during picker session
         .onChange(of: nfcManager.lastScannedClubId) { clubId in
             guard let clubId else { return }

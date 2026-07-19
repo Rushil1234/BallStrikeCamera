@@ -165,10 +165,13 @@ struct TrueCarryLogo: View {
                 .scaledToFit()
                 .frame(height: max(size * 1.5, 30))
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-            Text("True Carry")
+            // Canonical two-tone lockup — "True" in cream/bone, "Carry" in italic
+            // Marker Gold — matching the launch screen, login crest, and website
+            // so the wordmark reads identically everywhere.
+            (Text("True ").foregroundColor(TCTheme.cream)
+                + Text("Carry").italic().foregroundColor(TCTheme.gold))
                 .font(.system(size: size, weight: .medium, design: .serif))
                 .tracking(-0.25)
-                .foregroundColor(TCTheme.cream)
                 // Never wrap into "Tru e / Car ry" when a header squeezes us —
                 // shrink a little first, and refuse a second line outright.
                 .lineLimit(1)
@@ -181,16 +184,25 @@ struct TrueCarryLogo: View {
 
 // MARK: - Universal Tab Header Bar
 
-struct TCHeaderBar<RightContent: View>: View {
+struct TCHeaderBar<RightContent: View, LeftContent: View>: View {
     let initials: String
     @ViewBuilder let rightContent: () -> RightContent
+    @ViewBuilder let leftContent: () -> LeftContent
     // Three 32pt buttons + spacing need real room; 80 was clipping them.
     private let sideWidth: CGFloat = 118
 
+    init(initials: String,
+         @ViewBuilder rightContent: @escaping () -> RightContent,
+         @ViewBuilder leftContent: @escaping () -> LeftContent) {
+        self.initials = initials
+        self.rightContent = rightContent
+        self.leftContent = leftContent
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
-            Color.clear
-                .frame(width: sideWidth, height: 44)
+            HStack(spacing: 8) { leftContent() }
+                .frame(width: sideWidth, height: 44, alignment: .leading)
             TrueCarryLogo(size: 20)
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
@@ -200,6 +212,44 @@ struct TCHeaderBar<RightContent: View>: View {
         .padding(.horizontal, TCTheme.hPad)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+}
+
+extension TCHeaderBar where LeftContent == EmptyView {
+    /// The common case — logo centered, actions on the right only.
+    init(initials: String, @ViewBuilder rightContent: @escaping () -> RightContent) {
+        self.init(initials: initials, rightContent: rightContent, leftContent: { EmptyView() })
+    }
+}
+
+/// The one header action style: gold glyph in a raised, gold-stroked 32pt
+/// circle. Every icon in every tab header goes through this so the top of the
+/// app reads identically page to page.
+struct TCHeaderIconButton: View {
+    let icon: String
+    var badge: Int = 0
+    var action: () -> Void = {}
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(TCTheme.gold)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(TCTheme.panelRaised))
+                .overlay(Circle().strokeBorder(TCTheme.gold.opacity(0.35), lineWidth: 1))
+                .overlay(alignment: .topTrailing) {
+                    if badge > 0 {
+                        Text(badge > 9 ? "9+" : "\(badge)")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundColor(TCTheme.onPrimary)
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(Capsule().fill(TCTheme.gold))
+                            .offset(x: 5, y: -1)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -240,42 +290,8 @@ struct TCProfileAvatarButton: View {
 
 // MARK: - Header Icon Buttons
 
-struct TCBellButton: View {
-    var badgeCount: Int = 0
-    var action: () -> Void = {}
-    var body: some View {
-        Button(action: action) {
-            ZStack(alignment: .topTrailing) {
-                Image(systemName: "bell")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(TCTheme.textSecondary)
-                if badgeCount > 0 {
-                    Text("\(min(badgeCount, 9))")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(TCTheme.textPrimary)
-                        .offset(x: 6, y: -5)
-                }
-            }
-            .frame(width: 32, height: 32)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-struct TCIconButton: View {
-    let icon: String
-    var color: Color = TCTheme.textSecondary
-    var action: () -> Void = {}
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundColor(color)
-                .frame(width: 32, height: 32)
-        }
-        .buttonStyle(.plain)
-    }
-}
+// (TCBellButton / TCIconButton removed — every header action now goes through
+// TCHeaderIconButton above, so the icon style can't drift between tabs.)
 
 // MARK: - Generated Fairway View (course-map illustration in SwiftUI Canvas)
 

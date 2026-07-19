@@ -1840,6 +1840,12 @@ struct CourseModeGPSHoleView: View {
     private let widgetHeartbeat = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var lastWidgetPushKey = ""
 
+    // Ghost match — persists across app restarts via GhostPersistence
+    @State private var ghostRound: CourseRound?
+    @State private var ghostCandidates: [CourseRound] = []
+    @State private var showGhostPicker = false
+    @State private var ghostOfferDismissed = false
+
     let initialCourse: GolfCourse?
     let initialTeeBox: TeeBox?
     let initialRound:  CourseRound?
@@ -3050,6 +3056,27 @@ struct CourseModeGPSHoleView: View {
                         .padding(.top, 3)
                 }
 
+                // Ghost match — live match status, or the offer when past rounds exist.
+                if let ghost = ghostRound {
+                    GhostStrip(
+                        ghost: ghost,
+                        currentHoles: vm.activeRound?.holes ?? [],
+                        currentHoleNumber: vm.currentHole?.holeNumber ?? (vm.currentHoleIndex + 1),
+                        onEnd: {
+                            withAnimation { ghostRound = nil }
+                            GhostPersistence.clear()
+                        }
+                    )
+                    .padding(.top, 3)
+                } else if !ghostCandidates.isEmpty && !ghostOfferDismissed {
+                    GhostOfferChip(
+                        bestScore: ghostCandidates[0].scoreSummary.totalScore,
+                        onPick: { showGhostPicker = true },
+                        onDismiss: { withAnimation { ghostOfferDismissed = true } }
+                    )
+                    .padding(.top, 3)
+                }
+
                 Spacer()
             }
             .ignoresSafeArea(edges: .bottom)
@@ -3321,6 +3348,16 @@ struct CourseModeGPSHoleView: View {
                 .presentationDetents([.medium, .large])
                 .tcAppearance()
         }
+        .sheet(isPresented: $showGhostPicker) {
+            GhostPickerSheet(candidates: ghostCandidates) { picked in
+                withAnimation { ghostRound = picked }
+                if let rid = vm.activeRound?.id {
+                    GhostPersistence.save(roundId: rid, ghostId: picked.id)
+                }
+            }
+            .presentationDetents([.medium, .large])
+            .tcAppearance()
+        }
         .confirmationDialog(
             "Is this where shot \(vm.currentHoleTrackedShots.count) landed?",
             isPresented: $showLandingConfirm,
@@ -3351,6 +3388,19 @@ struct CourseModeGPSHoleView: View {
                 await vm.startRoundEnriching(course: course, teeBox: tee, gender: session.userProfile?.gender ?? .male)
             }
             pushWidgetData()
+            // Ghost match: past scored rounds on this course become raceable ghosts.
+            if let uid = session.currentUser?.id, let active = vm.activeRound {
+                let all = (try? await session.backend.loadCourseRounds(userId: uid)) ?? []
+                ghostCandidates = GhostMatchScorer.candidates(
+                    from: all, courseId: active.courseId, excluding: active.id
+                )
+                // Restore a ghost race that was live when the app last closed.
+                if ghostRound == nil,
+                   let gid = GhostPersistence.ghostId(forRound: active.id),
+                   let restored = ghostCandidates.first(where: { $0.id == gid }) {
+                    ghostRound = restored
+                }
+            }
         }
         .onAppear {
             registerWatchRoundControls()

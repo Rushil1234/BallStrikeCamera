@@ -15,8 +15,6 @@
 		LSN00000000000000000004 /* SwingStudioController.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000014 /* SwingStudioController.swift */; };
 		2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = D285E96FFA0E9231BA42EF6E /* Appearance.swift */; };
 		3ED54E6FBC4125C8B7DC7BC0 /* WatchConnectivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */; };
-		452252E661FD97C9490B248D /* WatchCompanionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE937E8501EA4686FBADCDC /* WatchCompanionModels.swift */; };
-		91C9C62967418481E7CFCC02 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C3944CB03FEBA50408FF3B9B /* Foundation.framework */; };
 		A29AF9D940AB9F30006F388D /* FriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */; };
 		AA0001000000000000000001 /* LightweightBallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001000000000000000101 /* LightweightBallDetector.swift */; };
 		AA0001000000000000000002 /* FrameDiffTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001000000000000000102 /* FrameDiffTrigger.swift */; };
@@ -139,6 +137,15 @@
 		BF000003000000000000001F /* ScorecardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001F /* ScorecardView.swift */; };
 		BF0000030000000000000099 /* TrueCarryLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000099 /* TrueCarryLaunchView.swift */; };
 		BF00000300000000000000A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF00000200000000000000A1 /* OnboardingView.swift */; };
+		BFED000000000000000000B1 /* BeginnerHelp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F1 /* BeginnerHelp.swift */; };
+		BFED000000000000000000B2 /* TutorialController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F2 /* TutorialController.swift */; };
+		BFED000000000000000000B3 /* TutorialOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F3 /* TutorialOverlay.swift */; };
+		BFED000000000000000000B4 /* AICoachService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F4 /* AICoachService.swift */; };
+		BFED000000000000000000B5 /* AICoachCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F5 /* AICoachCard.swift */; };
+		BFED000000000000000000B6 /* LearnHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F6 /* LearnHub.swift */; };
+		BFED000000000000000000B7 /* HandicapShareCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F7 /* HandicapShareCard.swift */; };
+		BFED000000000000000000B8 /* GhostMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F8 /* GhostMatch.swift */; };
+		BFED000000000000000000B9 /* WeeklyChallenge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F9 /* WeeklyChallenge.swift */; };
 		BF0000030000000000000E01 /* GolfGeometryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000E01 /* GolfGeometryHelpers.swift */; };
 		BF0000030000000000OWM001 /* OpenWeatherMapConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000OWM001 /* OpenWeatherMapConfig.swift */; };
 		BF0000050000000000000002 /* OrientationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000050000000000000001 /* OrientationManager.swift */; };
@@ -192,7 +199,6 @@
 		BF00000A000000000000CRS1 /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000009000000000000CRS1 /* CrashReporter.swift */; };
 		BF00SECRETS00000000000002 /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = BF00SECRETS00000000000001 /* Secrets.plist */; };
 		BFE1E2E300000000000000A2 /* ElevationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE1E2E300000000000000A1 /* ElevationService.swift */; };
-		C01B8FF3C6BC3CAE2B516BA0 /* TrueCarryWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06EDD5EAA4C54D150A3AB0AB /* TrueCarryWatchApp.swift */; };
 		CA0000000000000000000004 /* RoundWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000001 /* RoundWidget.swift */; };
 		CA0000000000000000000005 /* BallStrikeCameraWidget.appex in Embed Widgets */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000002 /* BallStrikeCameraWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CA0000000000000000000011 /* WidgetBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000010 /* WidgetBridge.swift */; };
@@ -222,20 +228,12 @@
 		CAFE0000000000000000FA11 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FA10 /* ShareSheet.swift */; };
 		CAFE0000000000000000FB11 /* ReplayPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FB10 /* ReplayPlayerView.swift */; };
 		CAFE0000000000000000FC11 /* FlightArcModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFE0000000000000000FC10 /* FlightArcModel.swift */; };
-		F87102851E39D771471CCF94 /* BallStrikeCameraWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		LIVE00000000000000000001 /* LiveSimService.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000002 /* LiveSimService.swift */; };
 		LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000004 /* LiveSimCodeView.swift */; };
 		LIVE00000000000000000005 /* LiveSimCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000006 /* LiveSimCameraScreen.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		9BCBD25B86F458D89DCFE956 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BF0000010000000000000501 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = EFA14C7A30504CAC3BCADC41;
-			remoteInfo = BallStrikeCameraWatch;
-		};
 		CA000000000000000000000A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BF0000010000000000000501 /* Project object */;
@@ -252,7 +250,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 16;
 			files = (
-				F87102851E39D771471CCF94 /* BallStrikeCameraWatch.app in Embed Watch Content */,
 			);
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -404,6 +401,15 @@
 		BF000002000000000000001F /* ScorecardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScorecardView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000099 /* TrueCarryLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryLaunchView.swift; sourceTree = "<group>"; };
 		BF00000200000000000000A1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F1 /* BeginnerHelp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeginnerHelp.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F2 /* TutorialController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialController.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F3 /* TutorialOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialOverlay.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F4 /* AICoachService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICoachService.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F5 /* AICoachCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICoachCard.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F6 /* LearnHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnHub.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F7 /* HandicapShareCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandicapShareCard.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F8 /* GhostMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostMatch.swift; sourceTree = "<group>"; };
+		BFED000000000000000000F9 /* WeeklyChallenge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyChallenge.swift; sourceTree = "<group>"; };
 		BF0000020000000000000E01 /* GolfGeometryHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfGeometryHelpers.swift; sourceTree = "<group>"; };
 		BF0000020000000000OWM001 /* OpenWeatherMapConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenWeatherMapConfig.swift; sourceTree = "<group>"; };
 		BF0000050000000000000001 /* OrientationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationManager.swift; sourceTree = "<group>"; };
@@ -510,14 +516,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		F469C5525A53272AB2F229A6 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				91C9C62967418481E7CFCC02 /* Foundation.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -604,7 +602,6 @@
 			children = (
 				BF0000010000000000000111 /* BallStrikeCamera.app */,
 				CA0000000000000000000002 /* BallStrikeCameraWidget.appex */,
-				5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -640,9 +637,22 @@
 			path = Detection;
 			sourceTree = "<group>";
 		};
+		BFED0000000000000000000A /* Learning */ = {
+			isa = PBXGroup;
+			children = (
+				BFED000000000000000000F1 /* BeginnerHelp.swift */,
+				BFED000000000000000000F2 /* TutorialController.swift */,
+				BFED000000000000000000F3 /* TutorialOverlay.swift */,
+				BFED000000000000000000F5 /* AICoachCard.swift */,
+				BFED000000000000000000F6 /* LearnHub.swift */,
+			);
+			path = Learning;
+			sourceTree = "<group>";
+		};
 		BF0000010000000000000307 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				BFED0000000000000000000A /* Learning */,
 				BF0000040000000000000003 /* Auth */,
 				BF0000040000000000000004 /* Profile */,
 				BF0000040000000000000005 /* Modes */,
@@ -815,6 +825,7 @@
 				BF0000010000000000000150 /* AppShellComponents.swift */,
 				BF000001000000000000014A /* SimModeView.swift */,
 				BF000001000000000000014E /* FeedView.swift */,
+				BFED000000000000000000F9 /* WeeklyChallenge.swift */,
 				BF000001000000000000014F /* ProfileSettingsView.swift */,
 				BF0000010000000000000151 /* BallStrikeTheme.swift */,
 				BF0000010000000000000152 /* BallStrikeBackgroundView.swift */,
@@ -986,6 +997,7 @@
 				BF0000060000000000000017 /* ScoreEntryView.swift */,
 				BF0000060000000000000019 /* PastSessionsView.swift */,
 				BF000006000000000000001B /* RoundSetupView.swift */,
+				BFED000000000000000000F8 /* GhostMatch.swift */,
 				BF0000060000000000000021 /* OSMAttributionBadge.swift */,
 				BF0000060000000000000023 /* DiagnosticsOverlay.swift */,
 				BF0000060000000000000025 /* ShotEntryConfirmSheet.swift */,
@@ -997,6 +1009,7 @@
 			isa = PBXGroup;
 			children = (
 				BF0000070000000000000007 /* EntitlementService.swift */,
+				BFED000000000000000000F4 /* AICoachService.swift */,
 				BF000007000000000000BLE1 /* RFIDHubManager.swift */,
 				BF000009000000000000CRS1 /* CrashReporter.swift */,
 				LIVE00000000000000000002 /* LiveSimService.swift */,
@@ -1043,6 +1056,7 @@
 			isa = PBXGroup;
 			children = (
 				CAFE000000000000000000A0 /* TrueCarryHistoryView.swift */,
+				BFED000000000000000000F7 /* HandicapShareCard.swift */,
 				CAFE000000000000000000C4 /* SessionDetailView.swift */,
 				BF00000100000000000ME902 /* RoundHoleMapEditor.swift */,
 				CAFE000000000000000000C6 /* ShotDetailView.swift */,
@@ -1070,7 +1084,6 @@
 			);
 			dependencies = (
 				CA000000000000000000000B /* PBXTargetDependency */,
-				79344484AD9F6257DC3029DB /* PBXTargetDependency */,
 			);
 			name = BallStrikeCamera;
 			productName = BallStrikeCamera;
@@ -1094,23 +1107,6 @@
 			productReference = CA0000000000000000000002 /* BallStrikeCameraWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
-		EFA14C7A30504CAC3BCADC41 /* BallStrikeCameraWatch */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 70C3A3103A6222DB15AED674 /* Build configuration list for PBXNativeTarget "BallStrikeCameraWatch" */;
-			buildPhases = (
-				4BF6937AFC90B33325F9458D /* Sources */,
-				F469C5525A53272AB2F229A6 /* Frameworks */,
-				B4B0BF46108D2161F164CBA6 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = BallStrikeCameraWatch;
-			productName = BallStrikeCameraWatch;
-			productReference = 5491C696F7F51DBB794C4B1A /* BallStrikeCameraWatch.app */;
-			productType = "com.apple.product-type.application";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -1125,9 +1121,6 @@
 						CreatedOnToolsVersion = 15.3;
 					};
 					CA0000000000000000000009 = {
-						CreatedOnToolsVersion = 15.3;
-					};
-					EFA14C7A30504CAC3BCADC41 = {
 						CreatedOnToolsVersion = 15.3;
 					};
 				};
@@ -1147,19 +1140,11 @@
 			targets = (
 				BF0000010000000000000401 /* BallStrikeCamera */,
 				CA0000000000000000000009 /* BallStrikeCameraWidget */,
-				EFA14C7A30504CAC3BCADC41 /* BallStrikeCameraWatch */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		B4B0BF46108D2161F164CBA6 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		BF0000010000000000000203 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1184,15 +1169,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		4BF6937AFC90B33325F9458D /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				C01B8FF3C6BC3CAE2B516BA0 /* TrueCarryWatchApp.swift in Sources */,
-				452252E661FD97C9490B248D /* WatchCompanionModels.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		BF0000010000000000000202 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1305,6 +1281,15 @@
 				BF0000030000000000000011 /* AuthViewModel.swift in Sources */,
 				BF0000030000000000000012 /* LoginView.swift in Sources */,
 				BF00000300000000000000A1 /* OnboardingView.swift in Sources */,
+				BFED000000000000000000B1 /* BeginnerHelp.swift in Sources */,
+				BFED000000000000000000B2 /* TutorialController.swift in Sources */,
+				BFED000000000000000000B3 /* TutorialOverlay.swift in Sources */,
+				BFED000000000000000000B4 /* AICoachService.swift in Sources */,
+				BFED000000000000000000B5 /* AICoachCard.swift in Sources */,
+				BFED000000000000000000B6 /* LearnHub.swift in Sources */,
+				BFED000000000000000000B7 /* HandicapShareCard.swift in Sources */,
+				BFED000000000000000000B8 /* GhostMatch.swift in Sources */,
+				BFED000000000000000000B9 /* WeeklyChallenge.swift in Sources */,
 				BF0000030000000000000099 /* TrueCarryLaunchView.swift in Sources */,
 				BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */,
 				BF0000030000000000000014 /* RangeSessionViewModel.swift in Sources */,
@@ -1417,12 +1402,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		79344484AD9F6257DC3029DB /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			name = BallStrikeCameraWatch;
-			target = EFA14C7A30504CAC3BCADC41 /* BallStrikeCameraWatch */;
-			targetProxy = 9BCBD25B86F458D89DCFE956 /* PBXContainerItemProxy */;
-		};
 		CA000000000000000000000B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = CA0000000000000000000009 /* BallStrikeCameraWidget */;
@@ -1431,29 +1410,6 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		005BACC3647D062CF520C6CE /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = BallStrikeCameraWatch/Info.plist;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.watchkitapp;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = watchos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "watchos watchsimulator";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_STRICT_CONCURRENCY = minimal;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 4;
-				WATCHOS_DEPLOYMENT_TARGET = 9.0;
-				WK_COMPANION_APP_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera;
-			};
-			name = Debug;
-		};
 		BF0000010000000000000601 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1585,7 +1541,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCamera/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1594,7 +1550,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad1.BallStrikeCamera;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1615,7 +1571,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCamera/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
@@ -1624,7 +1580,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad1.BallStrikeCamera;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -1636,30 +1592,6 @@
 			};
 			name = Release;
 		};
-		BF8ABA29C61D1886A69BE4D6 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = BallStrikeCameraWatch/Info.plist;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.watchkitapp;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = watchos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "watchos watchsimulator";
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_STRICT_CONCURRENCY = minimal;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 4;
-				VALIDATE_PRODUCT = YES;
-				WATCHOS_DEPLOYMENT_TARGET = 9.0;
-				WK_COMPANION_APP_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera;
-			};
-			name = Release;
-		};
 		CA000000000000000000000D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1667,7 +1599,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -1677,7 +1609,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.BallStrikeCameraWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad1.BallStrikeCamera.BallStrikeCameraWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
@@ -1697,7 +1629,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7PDC2BMKC9;
+				DEVELOPMENT_TEAM = 488BN3P376;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = BallStrikeCameraWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
@@ -1707,7 +1639,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.noahtobias.BallStrikeCamera.BallStrikeCameraWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.rushilkakkad1.BallStrikeCamera.BallStrikeCameraWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
@@ -1723,15 +1655,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		70C3A3103A6222DB15AED674 /* Build configuration list for PBXNativeTarget "BallStrikeCameraWatch" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				BF8ABA29C61D1886A69BE4D6 /* Release */,
-				005BACC3647D062CF520C6CE /* Debug */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		BF0000010000000000000502 /* Build configuration list for PBXNativeTarget "BallStrikeCamera" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

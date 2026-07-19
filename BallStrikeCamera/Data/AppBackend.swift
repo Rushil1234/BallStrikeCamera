@@ -100,6 +100,10 @@ protocol AppBackend {
     /// build a public link (truecarrygolf.com/attest/<token>) for someone without an account.
     func requestRoundAttestationLink(round: CourseRound, requesterId: UUID, requesterName: String) async throws -> String
 
+    // Camera-verified weekly challenges (v1: longest verified carry)
+    func submitChallengeEntry(carryYards: Double, ballSpeedMph: Double?, clubName: String, shotId: UUID?) async throws
+    func loadChallengeLeaderboard() async throws -> [ChallengeLeaderboardEntry]
+
     // Entitlements & usage
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement
     func loadUsageCounter(userId: UUID, date: String) async throws -> UsageCounter?
@@ -142,6 +146,10 @@ extension AppBackend {
     func requestRoundAttestation(round: CourseRound, requesterId: UUID, requesterName: String, attesterId: UUID) async throws {}
     func loadIncomingAttestations(userId: UUID) async throws -> [IncomingAttestation] { [] }
     func loadSentAttestations(userId: UUID) async throws -> [SentAttestation] { [] }
+
+    // Default: no cloud challenges (local backend has no leaderboard).
+    func submitChallengeEntry(carryYards: Double, ballSpeedMph: Double?, clubName: String, shotId: UUID?) async throws {}
+    func loadChallengeLeaderboard() async throws -> [ChallengeLeaderboardEntry] { [] }
     func respondToAttestation(id: UUID, accept: Bool) async throws {}
     func requestRoundAttestationLink(round: CourseRound, requesterId: UUID, requesterName: String) async throws -> String { "" }
 
