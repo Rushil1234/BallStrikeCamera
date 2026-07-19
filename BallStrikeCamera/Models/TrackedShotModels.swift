@@ -73,22 +73,8 @@ struct ShotClub: Codable, Hashable {
 
 }
 
-// The bridge lives in an extension so the struct keeps its synthesized memberwise init.
-extension ShotClub {
-    /// Bridge from a bag club — shared by manual logging and shot editing.
-    init(userClub c: UserClub) {
-        let category: ClubCategory
-        switch c.type {
-        case .driver:      category = .driver
-        case .fairwayWood: category = .wood
-        case .hybrid:      category = .hybrid
-        case .iron:        category = .iron
-        case .wedge:       category = .wedge
-        case .putter:      category = .putter
-        }
-        self.init(clubId: c.id, name: c.name, category: category)
-    }
-}
+// ShotClub(userClub:) bridge lives in AppModels.swift next to UserClub — this file
+// must stay dependency-free for the swiftc logic-test harness (tools/ios-logic-tests.sh).
 
 // MARK: - Lie
 

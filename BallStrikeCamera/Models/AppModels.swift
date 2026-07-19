@@ -758,3 +758,22 @@ extension CourseRound {
         nfcShots           = try c.decodeIfPresent([NFCShot].self,          forKey: .nfcShots) ?? []
     }
 }
+
+// MARK: - ShotClub bridge
+// Lives here (not TrackedShotModels) so the pure-logic test harness can compile
+// TrackedShotModels without the app-model dependency chain.
+extension ShotClub {
+    /// Bridge from a bag club — shared by manual logging and shot editing.
+    init(userClub c: UserClub) {
+        let category: ClubCategory
+        switch c.type {
+        case .driver:      category = .driver
+        case .fairwayWood: category = .wood
+        case .hybrid:      category = .hybrid
+        case .iron:        category = .iron
+        case .wedge:       category = .wedge
+        case .putter:      category = .putter
+        }
+        self.init(clubId: c.id, name: c.name, category: category)
+    }
+}
