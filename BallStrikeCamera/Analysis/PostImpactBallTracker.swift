@@ -3189,8 +3189,13 @@ final class V2Engine {
 
             // club (approach window only; used for club speed + follow-through has no value)
             if fi <= impact + 1 {
+                // Feet guard (Noah, July 20): no real club point lives in the bottom 1/6
+                // of the frame — that strip is feet/gloves at normal framing (2/1548 hand
+                // labels down there, both bottom-edge junk). Same line as the hosel guard.
+                let footLine = Double(H) * 5.0 / 6.0
                 var pool: [(Double, Blob)] = []
-                for b in (bright + dark + diff) where b.area >= 12 && b.area <= 6000 {
+                for b in (bright + dark + diff) where b.area >= 12 && b.area <= 6000
+                    && b.cy <= footLine {
                     let p = models.club_gbt.prob(clubFeatures(b, lock: lock, r0: r0, prevClub: prevClub))
                     pool.append((p, b))
                 }
