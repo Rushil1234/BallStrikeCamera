@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
 import PhoneDemo from "@/components/PhoneDemo";
 import SimDemo from "@/components/SimDemo";
-import ClubCards from "@/components/ClubCards";
+import ProductArt from "@/components/ProductArt";
 import SiteNav from "@/components/SiteNav";
 import { PLANS } from "@/lib/plans";
 import { useSession } from "@/lib/useSession";
@@ -16,10 +16,21 @@ const HOLES: Hole[] = [
   { n: 1, name: "Tee off", par: 4, yd: 372, id: "h01" },
   { n: 2, name: "What it does", par: 5, yd: 542, id: "h03" },
   { n: 3, name: "Play the sim", par: 5, yd: 527, id: "h05" },
-  { n: 4, name: "Club cards", par: 3, yd: 188, id: "h06" },
+  { n: 4, name: "The pro shop", par: 3, yd: 188, id: "h06" },
   { n: 5, name: "One plan", par: 4, yd: 425, id: "h07" },
   { n: 6, name: "When you're ready", par: 3, yd: 158, id: "h08" },
   { n: 7, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
+];
+
+// Pro-shop teaser — the full hardware lineup, mirrored from /store. Imagery is
+// the shared ProductArt (real photos for four, the render for foam balls).
+type ShopItem = { id: string; name: string; price: string; tag: string; status: string };
+const SHOP: ShopItem[] = [
+  { id: "nfc-tag", name: "Club Tags", price: "$29", tag: "Tap a club, tag the shot", status: "Ships fall 2026" },
+  { id: "foam-balls", name: "Foam Balls", price: "$19", tag: "Full swings, indoors", status: "Ships fall 2026" },
+  { id: "tripod", name: "The Tripod", price: "$39", tag: "Holds the camera steady", status: "Ships fall 2026" },
+  { id: "polo", name: "The Polo", price: "$65", tag: "Wear your numbers", status: "Ships fall 2026" },
+  { id: "gift-card", name: "Gift Card", price: "$25+", tag: "Give every yard", status: "Available now" },
 ];
 
 function HoleStrip({ hole }: { hole: Hole }) {
@@ -230,25 +241,43 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H06, NFC club cards */}
+          {/* H06, the pro shop — the full hardware lineup */}
           <section className="hole h06" id="h06">
             <div className="wrap">
               <HoleStrip hole={HOLES[3]} />
-              <div className="cards-feature">
-                <div className="cards-copy">
-                  <h2>Tap in.<br /><span className="it">Every club, tagged.</span></h2>
-                  <p className="cards-deck">A slim NFC card lives on every club in your bag. Tap your phone on the way to address, and True Carry tags the shot, club, carry, and gapping build themselves, swing after swing.</p>
-                  <ul className="cards-points">
-                    <li><b>No batteries, no pairing</b><span>Passive NFC, tap and swing.</span></li>
-                    <li><b>Gapping that fills itself</b><span>Real carries per club, not range guesses.</span></li>
-                    <li><b>Fits any grip</b><span>Under-grip sticker or bag-tag card.</span></li>
-                  </ul>
-                  <div className="cards-ctas">
-                    <a className="solid" href="/store">Visit the store</a>
-                    <a className="ghost" href="#h03">See the app first</a>
+              <div className="shop-feature">
+                <div className="shop-head">
+                  <div className="shop-head-copy">
+                    <h2>Free on your phone.<br /><span className="it">A shop for the rest.</span></h2>
+                    <p className="shop-deck">
+                      The app is free and needs nothing but your iPhone. A few small things make it
+                      sharper: tags that log every swing, balls you can hit indoors, and a tripod
+                      that holds the shot.
+                    </p>
                   </div>
+                  <a className="shop-visit" href="/store">Visit the store <span aria-hidden>→</span></a>
                 </div>
-                <ClubCards />
+
+                <ul className="shop-grid">
+                  {SHOP.map((p) => {
+                    const live = p.status === "Available now";
+                    return (
+                      <li className="shop-card" key={p.id}>
+                        <a href="/store" aria-label={`${p.name} — ${p.price}. ${p.tag}. ${p.status}.`}>
+                          <span className="shop-card-art"><ProductArt kind={p.id} /></span>
+                          <span className="shop-card-body">
+                            <span className="shop-card-head">
+                              <span className="shop-card-name">{p.name}</span>
+                              <span className="shop-card-price">{p.price}</span>
+                            </span>
+                            <span className="shop-card-tag">{p.tag}</span>
+                            <span className={`shop-card-status${live ? " live" : ""}`}>{p.status}</span>
+                          </span>
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             </div>
           </section>

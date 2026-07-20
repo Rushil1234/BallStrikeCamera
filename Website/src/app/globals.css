@@ -2217,21 +2217,39 @@ code {
 /* ============================================================
    H06 — NFC club cards (paper section) + 3D card stage
    ============================================================ */
-.round .h06 .cards-feature{ display:grid; grid-template-columns:1fr 1fr; gap:clamp(40px,6vw,90px); align-items:center; }
-.round .h06 .cards-copy h2{ font-family:var(--display); font-weight:400; font-size:clamp(44px,6.5vw,88px); line-height:.92; letter-spacing:-.03em; margin:0 0 24px; color:var(--ink); }
-.round .h06 .cards-copy h2 .it{ font-style:italic; color:var(--carry-gold-deep); }
-.round .h06 .cards-deck{ font-family:var(--display); font-style:italic; font-size:clamp(19px,2vw,25px); line-height:1.45; color:color-mix(in oklab,var(--ink) 80%,transparent); margin:0; max-width:34ch; }
-.round .h06 .cards-points{ list-style:none; margin:clamp(26px,3.5vw,40px) 0 0; padding:0; }
-.round .h06 .cards-points li{ padding:14px 0; border-top:1px solid color-mix(in oklab,var(--ink) 16%,transparent); }
-.round .h06 .cards-points li:last-child{ border-bottom:1px solid color-mix(in oklab,var(--ink) 16%,transparent); }
-.round .h06 .cards-points li b{ display:block; font-family:var(--r-sans); font-weight:600; font-size:14.5px; letter-spacing:.02em; color:var(--ink); }
-.round .h06 .cards-points li span{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:color-mix(in oklab,var(--ink) 55%,transparent); }
-.round .h06 .cards-ctas{ display:flex; gap:14px; margin-top:clamp(26px,3.5vw,38px); flex-wrap:wrap; }
-.round .h06 .cards-ctas a{ display:inline-block; padding:16px 30px; border-radius:999px; font-family:var(--r-mono); font-size:11.5px; letter-spacing:.22em; text-transform:uppercase; text-decoration:none; transition:background .2s,color .2s,border-color .2s; }
-.round .h06 .cards-ctas a.solid{ background:var(--ink); color:var(--paper); }
-.round .h06 .cards-ctas a.solid:hover{ background:var(--carry-gold-deep); color:var(--ink); }
-.round .h06 .cards-ctas a.ghost{ border:1px solid color-mix(in oklab,var(--ink) 30%,transparent); color:var(--ink); }
-.round .h06 .cards-ctas a.ghost:hover{ background:var(--ink); color:var(--paper); }
+/* Pro-shop showcase — header row + full-width product grid, on the paper section. */
+.round .h06 .shop-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:clamp(24px,4vw,56px); flex-wrap:wrap; margin-bottom:clamp(36px,4.5vw,56px); }
+.round .h06 .shop-head-copy h2{ font-family:var(--display); font-weight:400; font-size:clamp(38px,5.6vw,74px); line-height:.94; letter-spacing:-.03em; margin:0 0 20px; color:var(--ink); }
+.round .h06 .shop-head-copy h2 .it{ font-style:italic; color:var(--carry-gold-deep); }
+.round .h06 .shop-deck{ font-family:var(--display); font-style:italic; font-size:clamp(18px,1.9vw,23px); line-height:1.45; color:color-mix(in oklab,var(--ink) 78%,transparent); margin:0; max-width:44ch; }
+.round .h06 .shop-visit{ flex:none; display:inline-flex; align-items:center; gap:9px; padding:15px 28px; border-radius:999px; background:var(--ink); color:var(--paper); font-family:var(--r-mono); font-size:11.5px; letter-spacing:.2em; text-transform:uppercase; text-decoration:none; transition:background .2s,color .2s; white-space:nowrap; }
+.round .h06 .shop-visit:hover{ background:var(--carry-gold-deep); color:var(--ink); }
+.round .h06 .shop-visit span{ transition:transform .2s; }
+.round .h06 .shop-visit:hover span{ transform:translateX(3px); }
+
+.round .h06 .shop-grid{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(5,1fr); gap:clamp(14px,1.4vw,20px); }
+@media (max-width:1040px){ .round .h06 .shop-grid{ grid-template-columns:repeat(3,1fr); } }
+@media (max-width:680px){ .round .h06 .shop-grid{ grid-template-columns:repeat(2,1fr); } }
+
+.round .h06 .shop-card > a{ display:flex; flex-direction:column; height:100%; text-decoration:none; color:inherit;
+  background:#faf5e9; border:1px solid color-mix(in oklab,var(--ink) 10%,transparent); border-radius:16px; overflow:hidden;
+  box-shadow:0 1px 2px rgba(30,42,34,.04), 0 18px 34px -28px rgba(30,42,34,.4);
+  transition:transform .26s cubic-bezier(.2,.7,.3,1), box-shadow .26s, border-color .26s; }
+.round .h06 .shop-card > a:hover{ transform:translateY(-6px); border-color:color-mix(in oklab,var(--carry-gold-deep) 55%,transparent);
+  box-shadow:0 2px 4px rgba(30,42,34,.05), 0 30px 56px -28px rgba(30,42,34,.5); }
+.round .h06 .shop-card-art{ position:relative; display:flex; align-items:center; justify-content:center; aspect-ratio:1/1; padding:10px;
+  background:radial-gradient(60% 60% at 50% 42%, #fff, #f1e9d7 78%, #e7ddc9);
+  border-bottom:1px solid color-mix(in oklab,var(--ink) 9%,transparent); }
+.round .h06 .shop-card-art .product-mark{ width:min(78%,180px); color:var(--carry-gold-deep); }
+.round .h06 .shop-card-art .product-photo{ position:absolute; inset:0; }
+.round .h06 .shop-card-body{ display:flex; flex-direction:column; gap:7px; padding:15px 16px 17px; }
+.round .h06 .shop-card-head{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.round .h06 .shop-card-name{ font-family:var(--r-sans); font-weight:600; font-size:15px; color:var(--ink); }
+.round .h06 .shop-card-price{ font-family:var(--display); font-style:italic; font-size:19px; color:var(--carry-gold-deep); }
+.round .h06 .shop-card-tag{ font-family:var(--r-sans); font-size:12.5px; line-height:1.4; color:color-mix(in oklab,var(--ink) 62%,transparent); }
+.round .h06 .shop-card-status{ margin-top:2px; font-family:var(--r-mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--ink) 45%,transparent); }
+.round .h06 .shop-card-status.live{ color:#2F7D46; }
+@media (prefers-reduced-motion:reduce){ .round .h06 .shop-card > a{ transition:none; } .round .h06 .shop-card > a:hover{ transform:none; } }
 
 /* the 3D stage — pointer position feeds --tx/--ty in [-0.5, 0.5] */
 .club-cards{ --tx:0; --ty:0; position:relative; height:clamp(360px,38vw,460px); perspective:1100px; touch-action:pan-y; }
@@ -2284,7 +2302,7 @@ code {
 .cc-meta b{ color:#ecd9ad; font-weight:600; }
 .cc-foot{ display:flex; justify-content:space-between; margin-top:14px; padding-top:10px; border-top:1px solid rgba(201,168,106,.3); font-family:var(--r-mono); font-size:8.5px; letter-spacing:.2em; text-transform:uppercase; color:#c9a86a; }
 @media (max-width:900px){
-  .round .h06 .cards-feature{ grid-template-columns:1fr; }
+  .round .h06 .shop-head{ align-items:flex-start; }
   .club-cards{ height:340px; }
 }
 
