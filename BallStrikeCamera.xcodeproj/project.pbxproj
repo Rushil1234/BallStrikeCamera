@@ -124,6 +124,7 @@
 		BF000003000000000000000E /* CourseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000E /* CourseModels.swift */; };
 		BF000003000000000000000F /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000F /* FeatureFlags.swift */; };
 		BF0000030000000000000010 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000010 /* AppRootView.swift */; };
+		F6CC02EAADA344239F911A9B /* RushilPendingStubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B279B94168429F9A1F4C31 /* RushilPendingStubs.swift */; };
 		BF0000030000000000000011 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000011 /* AuthViewModel.swift */; };
 		BF0000030000000000000012 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000012 /* LoginView.swift */; };
 		BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000013 /* ClubBagViewModel.swift */; };
@@ -139,15 +140,6 @@
 		BF000003000000000000001F /* ScorecardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000001F /* ScorecardView.swift */; };
 		BF0000030000000000000099 /* TrueCarryLaunchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000099 /* TrueCarryLaunchView.swift */; };
 		BF00000300000000000000A1 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF00000200000000000000A1 /* OnboardingView.swift */; };
-		BFED000000000000000000B1 /* BeginnerHelp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F1 /* BeginnerHelp.swift */; };
-		BFED000000000000000000B2 /* TutorialController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F2 /* TutorialController.swift */; };
-		BFED000000000000000000B3 /* TutorialOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F3 /* TutorialOverlay.swift */; };
-		BFED000000000000000000B4 /* AICoachService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F4 /* AICoachService.swift */; };
-		BFED000000000000000000B5 /* AICoachCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F5 /* AICoachCard.swift */; };
-		BFED000000000000000000B6 /* LearnHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F6 /* LearnHub.swift */; };
-		BFED000000000000000000B7 /* HandicapShareCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F7 /* HandicapShareCard.swift */; };
-		BFED000000000000000000B8 /* GhostMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F8 /* GhostMatch.swift */; };
-		BFED000000000000000000B9 /* WeeklyChallenge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFED000000000000000000F9 /* WeeklyChallenge.swift */; };
 		BF0000030000000000000E01 /* GolfGeometryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000E01 /* GolfGeometryHelpers.swift */; };
 		BF0000030000000000OWM001 /* OpenWeatherMapConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000OWM001 /* OpenWeatherMapConfig.swift */; };
 		BF0000050000000000000002 /* OrientationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000050000000000000001 /* OrientationManager.swift */; };
@@ -390,6 +382,7 @@
 		BF000002000000000000000E /* CourseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseModels.swift; sourceTree = "<group>"; };
 		BF000002000000000000000F /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
 		BF0000020000000000000010 /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
+		F2B279B94168429F9A1F4C31 /* RushilPendingStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RushilPendingStubs.swift; sourceTree = "<group>"; };
 		BF0000020000000000000011 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		BF0000020000000000000012 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000013 /* ClubBagViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubBagViewModel.swift; sourceTree = "<group>"; };
@@ -405,15 +398,6 @@
 		BF000002000000000000001F /* ScorecardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScorecardView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000099 /* TrueCarryLaunchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryLaunchView.swift; sourceTree = "<group>"; };
 		BF00000200000000000000A1 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F1 /* BeginnerHelp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeginnerHelp.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F2 /* TutorialController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialController.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F3 /* TutorialOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TutorialOverlay.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F4 /* AICoachService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICoachService.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F5 /* AICoachCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AICoachCard.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F6 /* LearnHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnHub.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F7 /* HandicapShareCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandicapShareCard.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F8 /* GhostMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GhostMatch.swift; sourceTree = "<group>"; };
-		BFED000000000000000000F9 /* WeeklyChallenge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeeklyChallenge.swift; sourceTree = "<group>"; };
 		BF0000020000000000000E01 /* GolfGeometryHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GolfGeometryHelpers.swift; sourceTree = "<group>"; };
 		BF0000020000000000OWM001 /* OpenWeatherMapConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenWeatherMapConfig.swift; sourceTree = "<group>"; };
 		BF0000050000000000000001 /* OrientationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationManager.swift; sourceTree = "<group>"; };
@@ -644,11 +628,6 @@
 		BFED0000000000000000000A /* Learning */ = {
 			isa = PBXGroup;
 			children = (
-				BFED000000000000000000F1 /* BeginnerHelp.swift */,
-				BFED000000000000000000F2 /* TutorialController.swift */,
-				BFED000000000000000000F3 /* TutorialOverlay.swift */,
-				BFED000000000000000000F5 /* AICoachCard.swift */,
-				BFED000000000000000000F6 /* LearnHub.swift */,
 			);
 			path = Learning;
 			sourceTree = "<group>";
@@ -831,7 +810,6 @@
 				BF0000010000000000000150 /* AppShellComponents.swift */,
 				BF000001000000000000014A /* SimModeView.swift */,
 				BF000001000000000000014E /* FeedView.swift */,
-				BFED000000000000000000F9 /* WeeklyChallenge.swift */,
 				BF000001000000000000014F /* ProfileSettingsView.swift */,
 				BF0000010000000000000151 /* BallStrikeTheme.swift */,
 				BF0000010000000000000152 /* BallStrikeBackgroundView.swift */,
@@ -895,6 +873,7 @@
 			isa = PBXGroup;
 			children = (
 				BF0000020000000000000010 /* AppRootView.swift */,
+				F2B279B94168429F9A1F4C31 /* RushilPendingStubs.swift */,
 				BF0000020000000000000011 /* AuthViewModel.swift */,
 				BF0000020000000000000012 /* LoginView.swift */,
 				BF00000200000000000000A1 /* OnboardingView.swift */,
@@ -1003,7 +982,6 @@
 				BF0000060000000000000017 /* ScoreEntryView.swift */,
 				BF0000060000000000000019 /* PastSessionsView.swift */,
 				BF000006000000000000001B /* RoundSetupView.swift */,
-				BFED000000000000000000F8 /* GhostMatch.swift */,
 				BF0000060000000000000021 /* OSMAttributionBadge.swift */,
 				BF0000060000000000000023 /* DiagnosticsOverlay.swift */,
 				BF0000060000000000000025 /* ShotEntryConfirmSheet.swift */,
@@ -1015,7 +993,6 @@
 			isa = PBXGroup;
 			children = (
 				BF0000070000000000000007 /* EntitlementService.swift */,
-				BFED000000000000000000F4 /* AICoachService.swift */,
 				BF000007000000000000BLE1 /* RFIDHubManager.swift */,
 				BF000009000000000000CRS1 /* CrashReporter.swift */,
 				LIVE00000000000000000002 /* LiveSimService.swift */,
@@ -1062,7 +1039,6 @@
 			isa = PBXGroup;
 			children = (
 				CAFE000000000000000000A0 /* TrueCarryHistoryView.swift */,
-				BFED000000000000000000F7 /* HandicapShareCard.swift */,
 				CAFE000000000000000000C4 /* SessionDetailView.swift */,
 				BF00000100000000000ME902 /* RoundHoleMapEditor.swift */,
 				CAFE000000000000000000C6 /* ShotDetailView.swift */,
@@ -1286,18 +1262,10 @@
 				BF0000030000000000000E01 /* GolfGeometryHelpers.swift in Sources */,
 				BF000003000000000000000F /* FeatureFlags.swift in Sources */,
 				BF0000030000000000000010 /* AppRootView.swift in Sources */,
+				F6CC02EAADA344239F911A9B /* RushilPendingStubs.swift in Sources */,
 				BF0000030000000000000011 /* AuthViewModel.swift in Sources */,
 				BF0000030000000000000012 /* LoginView.swift in Sources */,
 				BF00000300000000000000A1 /* OnboardingView.swift in Sources */,
-				BFED000000000000000000B1 /* BeginnerHelp.swift in Sources */,
-				BFED000000000000000000B2 /* TutorialController.swift in Sources */,
-				BFED000000000000000000B3 /* TutorialOverlay.swift in Sources */,
-				BFED000000000000000000B4 /* AICoachService.swift in Sources */,
-				BFED000000000000000000B5 /* AICoachCard.swift in Sources */,
-				BFED000000000000000000B6 /* LearnHub.swift in Sources */,
-				BFED000000000000000000B7 /* HandicapShareCard.swift in Sources */,
-				BFED000000000000000000B8 /* GhostMatch.swift in Sources */,
-				BFED000000000000000000B9 /* WeeklyChallenge.swift in Sources */,
 				BF0000030000000000000099 /* TrueCarryLaunchView.swift in Sources */,
 				BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */,
 				BF0000030000000000000014 /* RangeSessionViewModel.swift in Sources */,

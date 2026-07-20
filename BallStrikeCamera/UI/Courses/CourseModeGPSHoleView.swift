@@ -2855,296 +2855,328 @@ struct CourseModeGPSHoleView: View {
         self.initialRound  = initialRound
     }
 
+    // MARK: - Aim point drags
+    // (extracted from the body closure — the inline version pushed the body
+    // expression past the type-checker's budget once the ghost UI landed)
+
+    private func handleAimPointMoved(_ idx: Int, _ coord: CLLocationCoordinate2D) {
+        // The flag-spawned waypoint rides at the END of the array — route its
+        // drags to flagWaypoint, not the override dict (indices must never grow
+        // the override set past the hole's starting waypoint count).
+        if flagWaypoint != nil && idx == activeAimPoints.count - 1 {
+            guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate else {
+                flagWaypoint = coord; return
+            }
+            let yards = Self.metersBetween(coord, green) * 1.09361
+            if yards <= Self.kFlagWaypointBoundaryYds {
+                // Dragged back inside the flag boundary → the waypoint dissolves.
+                // The FLAG never moves from anything but its own drag: it stays
+                // exactly where it was (home or a prior valid placement).
+                flagWaypoint = nil
+            } else {
+                // Re-run the merge/ordering rules: dragging it back past an existing
+                // waypoint must merge into that waypoint, never draw backwards lines.
+                flagWaypoint = nil
+                placeFlagSpawnedWaypoint(at: coord, green: green)
+            }
+        } else if idx < suggestedAimPoints.count {
+            // Normal waypoints can never enter the flag's 30y zone — clamp to the ring.
+            var c = coord
+            if let green = currentMapHole?.greenCenterCoordinate?.clCoordinate {
+                let yards = Self.metersBetween(coord, green) * 1.09361
+                if yards < Self.kFlagWaypointBoundaryYds {
+                    c = green.projected(yardsForward: Self.kFlagWaypointBoundaryYds,
+                                        yardsRight: 0,
+                                        bearingDeg: green.bearing(to: coord))
+                }
+            }
+            // …and never within 30y of another waypoint OR the (moved) flag —
+            // clamp to the separation ring around the nearest along the drag.
+            var others: [CLLocationCoordinate2D] = suggestedAimPoints.indices
+                .filter { $0 != idx }
+                .map { userAimPointOverrides[$0] ?? suggestedAimPoints[$0] }
+            if let flag = flagWaypoint { others.append(flag) }
+            if let pin = pinOverride { others.append(pin) }
+            if let near = others.min(by: {
+                Self.metersBetween($0, c) < Self.metersBetween($1, c)
+            }), Self.metersBetween(near, c) * 1.09361 < Self.kWaypointMinSeparationYds {
+                c = near.projected(yardsForward: Self.kWaypointMinSeparationYds,
+                                   yardsRight: 0,
+                                   bearingDeg: near.bearing(to: c))
+            }
+            userAimPointOverrides[idx] = c
+        }
+    }
+
     // MARK: - Body
 
+    // Extracted from body: the 25-arg map call blew the type-check budget
+    // once the ghost-race overlays were added.
+    private var mapLayer: some View {
+        SatelliteMapBackground(
+            greenCoord:  currentMapHole?.greenCenterCoordinate?.clCoordinate,
+            teeCoord:    currentMapHole?.teeCoordinate?.clCoordinate,
+            userCoord:   (gpsOn && userIsNearCurrentHole) ? vm.location.currentLocation : nil,
+            rawUserCoord: gpsOn ? vm.location.currentLocation : nil,
+            courseCoord: vm.selectedCourse?.coordinate ?? initialCourse?.coordinate,
+            frontCoord:  currentMapHole?.greenFrontCoordinate?.clCoordinate,
+            backCoord:   currentMapHole?.greenBackCoordinate?.clCoordinate,
+            frontDist:   mapDistances.front,
+            centerDist:  mapDistances.center,
+            backDist:    mapDistances.back,
+            greenPolygon:   currentMapHole?.greenPolygon?.clCoordinates,
+            fairwayPolygon: currentMapHole?.fairwayPolygon?.clCoordinates,
+            bunkerPolygons: currentMapHole?.bunkerPolygons.map(\.clCoordinates) ?? [],
+            waterPolygons:  currentMapHole?.waterPolygons.map(\.clCoordinates)  ?? [],
+            pathCoordinates: currentHolePathCoordinates,
+            aimPoints:      activeAimPoints,
+            onAimPointMoved: { idx, coord in handleAimPointMoved(idx, coord) },
+            onUserPanned: {
+                withAnimation(.spring(response: 0.3)) { showRecenter = true }
+            },
+            trackedShots:   vm.currentHoleTrackedShots,
+            dispersionDots: dispersionDots,
+            topUIInset:    topSafeArea + 140, // clears the lowered top bar + info strip
+            bottomUIInset: bottomSafeArea + 130, // raised bottom stack (score bar, badges, pills) — keeps the tee dot visible above it
+            gpsKey:        coarseGpsKey,
+            fineGpsKey:    fineGpsKey,
+            flagSpawnedIndex: flagWaypoint != nil ? activeAimPoints.count - 1 : nil,
+            customAimTarget: aimTarget,
+            pinCoord:      pinOverride,
+            onPinMoved:    { coord in handlePinMoved(coord) },
+            hazardCounts:  hazardCounts,
+            onHazardCountChanged: { key, count in hazardCounts[key] = count },
+            onMapTap: { coord in
+                guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate,
+                      let userLoc = vm.location.currentLocation else { return }
+                let yardsToGreen = SatelliteMapBackground.metersBetween(userLoc, green) * 1.09361
+                guard yardsToGreen <= 240 else { return }
+                let tapToGreen = SatelliteMapBackground.metersBetween(coord, green) * 1.09361
+                // An aim target only makes sense BETWEEN the player and the green (a layup
+                // or a side of the green). Without this bound a stray tap while walking
+                // planted a target hundreds of yards past the flag and the line chased it.
+                guard tapToGreen <= max(yardsToGreen, 40) else { return }
+                aimTarget = tapToGreen < 25 ? nil : coord
+            },
+            focusId:        mapFocusId,
+            recenterToken:  recenterToken,
+            flightRequest:  flightRequest,
+            onFlightCompleted: { landing in handleFlightCompleted(landing) }
+        )
+        .ignoresSafeArea()
+    }
+
+    // Extracted from body — the ZStack tuple pushed the type-checker over
+    // its budget once the ghost-race overlays landed.
+    @ViewBuilder private var statusOverlays: some View {
+        // Loading geometry indicator
+        if vm.isLoading {
+            VStack {
+                Spacer()
+                HStack(spacing: 10) {
+                    ProgressView().tint(HUDStyle.pin)
+                    Text("Loading course map…")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .hudGlass(22)
+                Spacer()
+            }
+            .transition(.opacity)
+            .zIndex(5)
+        }
+
+        if let unavailable = vm.courseUnavailable {
+            courseUnavailableOverlay(unavailable)
+                .zIndex(30)
+        }
+
+        if vm.courseUnavailable == nil, let note = vm.degradedTierNote {
+            VStack {
+                HStack(spacing: 6) {
+                    Image(systemName: vm.courseTier == .rangefinder ? "location.fill" : "list.bullet.rectangle")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(HUDStyle.live)
+                    Text(note)
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(.white.opacity(0.95))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .hudGlass(20)
+                .fixedSize()
+                .padding(.top, topSafeArea + 128)   // sits below the hole selector + info strip
+                Spacer()
+            }
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .zIndex(6)
+            .allowsHitTesting(false)
+            .task(id: note) {
+                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                withAnimation(.easeInOut(duration: 0.4)) { vm.degradedTierNote = nil }
+            }
+        }
+
+        // Wind flow arrows — ambient direction cue over the map. Stays on even with the
+        // dispersion overlay showing, since the dots being shifted doesn't itself convey
+        // wind direction the way the flowing arrows do.
+        if windEnabled, let we = windDotEffect {
+            // Offset by the map heading so arrows read correctly on the rotated (heading-up) map.
+            WindFlowOverlay(toBearingDegrees: we.fromDegrees + 180 - mapHeading)
+                .allowsHitTesting(false)
+                .zIndex(1)
+        }
+    }
+
+    @ViewBuilder private var hudOverlays: some View {
+        // Top dark gradient
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.black.opacity(0.72), Color.black.opacity(0.36), .clear],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: 150)
+            .ignoresSafeArea(edges: .top)
+            Spacer()
+            LinearGradient(
+                colors: [.clear, Color.black.opacity(0.85)],
+                startPoint: .top, endPoint: .bottom
+            )
+            .frame(height: 180)
+        }
+        .ignoresSafeArea()
+
+        // ── Layout layers ──────────────────────────────────────────────
+        VStack(spacing: 0) {
+
+            // Top bar — lowered well off the notch/island for breathing room
+            topBar
+                .padding(.top, 158)
+
+            // Hole info strip
+            holeInfoStrip
+                .padding(.top, 2)
+                .padding(.horizontal, 16)
+
+            // Wind readout — tucked right under the par/yardage/HCP strip, centered.
+            if windEnabled {
+                windPill
+                    .padding(.top, 3)
+            }
+
+            // Ghost match — live match status, or the offer when past rounds exist.
+            if let ghost = ghostRound {
+                GhostStrip(
+                    ghost: ghost,
+                    currentHoles: vm.activeRound?.holes ?? [],
+                    currentHoleNumber: vm.currentHole?.holeNumber ?? (vm.currentHoleIndex + 1),
+                    onEnd: {
+                        withAnimation { ghostRound = nil }
+                        GhostPersistence.clear()
+                    }
+                )
+                .padding(.top, 3)
+            } else if !ghostCandidates.isEmpty && !ghostOfferDismissed {
+                GhostOfferChip(
+                    bestScore: ghostCandidates[0].scoreSummary.totalScore,
+                    onPick: { showGhostPicker = true },
+                    onDismiss: { withAnimation { ghostOfferDismissed = true } }
+                )
+                .padding(.top, 3)
+            }
+
+            Spacer()
+        }
+        .ignoresSafeArea(edges: .bottom)
+
+        // Left sidebar — pinned just above the OSM attribution badge
+        leftSidebar
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .padding(.leading, 6)
+            .padding(.top, topSafeArea + 120)
+            .padding(.bottom, 250)
+            .ignoresSafeArea(edges: .bottom)
+
+        // Right sidebar
+        rightSidebar
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            .padding(.trailing, 12)
+            .padding(.top, topSafeArea + 126)
+            .padding(.bottom, 232)
+            .ignoresSafeArea(edges: .bottom)
+
+        // Slope ("plays-like") pill — bottom-right, same height as the left F/C/B pill
+        VStack { Spacer(minLength: 0); slopePill }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+            .padding(.trailing, 12)
+            .padding(.top, topSafeArea + 120)
+            .padding(.bottom, 250)
+            .ignoresSafeArea(edges: .bottom)
+
+
+        // Hazard count badges — top-left, below the (lowered) top bar
+        if !hazardCounts.filter({ $0.value > 0 }).isEmpty {
+            VStack {
+                HStack(spacing: 5) {
+                    hazardCountBadge
+                    Spacer()
+                }
+                .padding(.top, topSafeArea + 174)
+                .padding(.leading, 10)
+                Spacer()
+            }
+            .ignoresSafeArea(edges: .bottom)
+        }
+
+        // GPS live/estimate badge — bottom-right above OSM attribution
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                gpsStatusBadge
+                    .padding(.trailing, 10)
+                    .padding(.bottom, 232)
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
+
+        // OSM attribution — required by the ODbL license whenever OSM geometry is shown.
+        VStack {
+            Spacer()
+            HStack {
+                OSMAttributionBadge()
+                    .padding(.leading, 10)
+                    .padding(.bottom, 224)   // above the bottom bar
+                Spacer()
+            }
+        }
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    // Body split into layers + modifier chunks: as one expression the
+    // type-checker timed out after the ghost-race merge.
     var body: some View {
+        attachLifecycle(attachCovers(attachDialogs(attachCore(baseStack))))
+    }
+
+    private var baseStack: some View {
         ZStack(alignment: .top) {
 
             // Full-screen satellite map
-            SatelliteMapBackground(
-                greenCoord:  currentMapHole?.greenCenterCoordinate?.clCoordinate,
-                teeCoord:    currentMapHole?.teeCoordinate?.clCoordinate,
-                userCoord:   (gpsOn && userIsNearCurrentHole) ? vm.location.currentLocation : nil,
-                rawUserCoord: gpsOn ? vm.location.currentLocation : nil,
-                courseCoord: vm.selectedCourse?.coordinate ?? initialCourse?.coordinate,
-                frontCoord:  currentMapHole?.greenFrontCoordinate?.clCoordinate,
-                backCoord:   currentMapHole?.greenBackCoordinate?.clCoordinate,
-                frontDist:   mapDistances.front,
-                centerDist:  mapDistances.center,
-                backDist:    mapDistances.back,
-                greenPolygon:   currentMapHole?.greenPolygon?.clCoordinates,
-                fairwayPolygon: currentMapHole?.fairwayPolygon?.clCoordinates,
-                bunkerPolygons: currentMapHole?.bunkerPolygons.map(\.clCoordinates) ?? [],
-                waterPolygons:  currentMapHole?.waterPolygons.map(\.clCoordinates)  ?? [],
-                pathCoordinates: currentHolePathCoordinates,
-                aimPoints:      activeAimPoints,
-                onAimPointMoved: { idx, coord in
-                    // The flag-spawned waypoint rides at the END of the array — route its
-                    // drags to flagWaypoint, not the override dict (indices must never grow
-                    // the override set past the hole's starting waypoint count).
-                    if flagWaypoint != nil && idx == activeAimPoints.count - 1 {
-                        guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate else {
-                            flagWaypoint = coord; return
-                        }
-                        let yards = Self.metersBetween(coord, green) * 1.09361
-                        if yards <= Self.kFlagWaypointBoundaryYds {
-                            // Dragged back inside the flag boundary → the waypoint dissolves.
-                            // The FLAG never moves from anything but its own drag: it stays
-                            // exactly where it was (home or a prior valid placement).
-                            flagWaypoint = nil
-                        } else {
-                            // Re-run the merge/ordering rules: dragging it back past an existing
-                            // waypoint must merge into that waypoint, never draw backwards lines.
-                            flagWaypoint = nil
-                            placeFlagSpawnedWaypoint(at: coord, green: green)
-                        }
-                    } else if idx < suggestedAimPoints.count {
-                        // Normal waypoints can never enter the flag's 30y zone — clamp to the ring.
-                        var c = coord
-                        if let green = currentMapHole?.greenCenterCoordinate?.clCoordinate {
-                            let yards = Self.metersBetween(coord, green) * 1.09361
-                            if yards < Self.kFlagWaypointBoundaryYds {
-                                c = green.projected(yardsForward: Self.kFlagWaypointBoundaryYds,
-                                                    yardsRight: 0,
-                                                    bearingDeg: green.bearing(to: coord))
-                            }
-                        }
-                        // …and never within 30y of another waypoint OR the (moved) flag —
-                        // clamp to the separation ring around the nearest along the drag.
-                        let others = suggestedAimPoints.indices
-                            .filter { $0 != idx }
-                            .map { userAimPointOverrides[$0] ?? suggestedAimPoints[$0] }
-                            + (flagWaypoint.map { [$0] } ?? [])
-                            + (pinOverride.map { [$0] } ?? [])
-                        if let near = others.min(by: {
-                            Self.metersBetween($0, c) < Self.metersBetween($1, c)
-                        }), Self.metersBetween(near, c) * 1.09361 < Self.kWaypointMinSeparationYds {
-                            c = near.projected(yardsForward: Self.kWaypointMinSeparationYds,
-                                               yardsRight: 0,
-                                               bearingDeg: near.bearing(to: c))
-                        }
-                        userAimPointOverrides[idx] = c
-                    }
-                },
-                onUserPanned: {
-                    withAnimation(.spring(response: 0.3)) { showRecenter = true }
-                },
-                trackedShots:   vm.currentHoleTrackedShots,
-                dispersionDots: dispersionDots,
-                topUIInset:    topSafeArea + 140, // clears the lowered top bar + info strip
-                bottomUIInset: bottomSafeArea + 130, // raised bottom stack (score bar, badges, pills) — keeps the tee dot visible above it
-                gpsKey:        coarseGpsKey,
-                fineGpsKey:    fineGpsKey,
-                flagSpawnedIndex: flagWaypoint != nil ? activeAimPoints.count - 1 : nil,
-                customAimTarget: aimTarget,
-                pinCoord:      pinOverride,
-                onPinMoved:    { coord in handlePinMoved(coord) },
-                hazardCounts:  hazardCounts,
-                onHazardCountChanged: { key, count in hazardCounts[key] = count },
-                onMapTap: { coord in
-                    guard let green = currentMapHole?.greenCenterCoordinate?.clCoordinate,
-                          let userLoc = vm.location.currentLocation else { return }
-                    let yardsToGreen = SatelliteMapBackground.metersBetween(userLoc, green) * 1.09361
-                    guard yardsToGreen <= 240 else { return }
-                    let tapToGreen = SatelliteMapBackground.metersBetween(coord, green) * 1.09361
-                    // An aim target only makes sense BETWEEN the player and the green (a layup
-                    // or a side of the green). Without this bound a stray tap while walking
-                    // planted a target hundreds of yards past the flag and the line chased it.
-                    guard tapToGreen <= max(yardsToGreen, 40) else { return }
-                    aimTarget = tapToGreen < 25 ? nil : coord
-                },
-                focusId:        mapFocusId,
-                recenterToken:  recenterToken,
-                flightRequest:  flightRequest,
-                onFlightCompleted: { landing in handleFlightCompleted(landing) }
-            )
-            .ignoresSafeArea()
+            mapLayer
 
-            // Loading geometry indicator
-            if vm.isLoading {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 10) {
-                        ProgressView().tint(HUDStyle.pin)
-                        Text("Loading course map…")
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 12)
-                    .hudGlass(22)
-                    Spacer()
-                }
-                .transition(.opacity)
-                .zIndex(5)
-            }
+            statusOverlays
 
-            if let unavailable = vm.courseUnavailable {
-                courseUnavailableOverlay(unavailable)
-                    .zIndex(30)
-            }
-
-            if vm.courseUnavailable == nil, let note = vm.degradedTierNote {
-                VStack {
-                    HStack(spacing: 6) {
-                        Image(systemName: vm.courseTier == .rangefinder ? "location.fill" : "list.bullet.rectangle")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(HUDStyle.live)
-                        Text(note)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .foregroundColor(.white.opacity(0.95))
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .hudGlass(20)
-                    .fixedSize()
-                    .padding(.top, topSafeArea + 128)   // sits below the hole selector + info strip
-                    Spacer()
-                }
-                .transition(.move(edge: .top).combined(with: .opacity))
-                .zIndex(6)
-                .allowsHitTesting(false)
-                .task(id: note) {
-                    try? await Task.sleep(nanoseconds: 3_500_000_000)
-                    withAnimation(.easeInOut(duration: 0.4)) { vm.degradedTierNote = nil }
-                }
-            }
-
-            // Wind flow arrows — ambient direction cue over the map. Stays on even with the
-            // dispersion overlay showing, since the dots being shifted doesn't itself convey
-            // wind direction the way the flowing arrows do.
-            if windEnabled, let we = windDotEffect {
-                // Offset by the map heading so arrows read correctly on the rotated (heading-up) map.
-                WindFlowOverlay(toBearingDegrees: we.fromDegrees + 180 - mapHeading)
-                    .allowsHitTesting(false)
-                    .zIndex(1)
-            }
-
-            // Top dark gradient
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [Color.black.opacity(0.72), Color.black.opacity(0.36), .clear],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(height: 150)
-                .ignoresSafeArea(edges: .top)
-                Spacer()
-                LinearGradient(
-                    colors: [.clear, Color.black.opacity(0.85)],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(height: 180)
-            }
-            .ignoresSafeArea()
-
-            // ── Layout layers ──────────────────────────────────────────────
-            VStack(spacing: 0) {
-
-                // Top bar — lowered well off the notch/island for breathing room
-                topBar
-                    .padding(.top, 158)
-
-                // Hole info strip
-                holeInfoStrip
-                    .padding(.top, 2)
-                    .padding(.horizontal, 16)
-
-                // Wind readout — tucked right under the par/yardage/HCP strip, centered.
-                if windEnabled {
-                    windPill
-                        .padding(.top, 3)
-                }
-
-                // Ghost match — live match status, or the offer when past rounds exist.
-                if let ghost = ghostRound {
-                    GhostStrip(
-                        ghost: ghost,
-                        currentHoles: vm.activeRound?.holes ?? [],
-                        currentHoleNumber: vm.currentHole?.holeNumber ?? (vm.currentHoleIndex + 1),
-                        onEnd: {
-                            withAnimation { ghostRound = nil }
-                            GhostPersistence.clear()
-                        }
-                    )
-                    .padding(.top, 3)
-                } else if !ghostCandidates.isEmpty && !ghostOfferDismissed {
-                    GhostOfferChip(
-                        bestScore: ghostCandidates[0].scoreSummary.totalScore,
-                        onPick: { showGhostPicker = true },
-                        onDismiss: { withAnimation { ghostOfferDismissed = true } }
-                    )
-                    .padding(.top, 3)
-                }
-
-                Spacer()
-            }
-            .ignoresSafeArea(edges: .bottom)
-
-            // Left sidebar — pinned just above the OSM attribution badge
-            leftSidebar
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                .padding(.leading, 6)
-                .padding(.top, topSafeArea + 120)
-                .padding(.bottom, 250)
-                .ignoresSafeArea(edges: .bottom)
-
-            // Right sidebar
-            rightSidebar
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                .padding(.trailing, 12)
-                .padding(.top, topSafeArea + 126)
-                .padding(.bottom, 232)
-                .ignoresSafeArea(edges: .bottom)
-
-            // Slope ("plays-like") pill — bottom-right, same height as the left F/C/B pill
-            VStack { Spacer(minLength: 0); slopePill }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                .padding(.trailing, 12)
-                .padding(.top, topSafeArea + 120)
-                .padding(.bottom, 250)
-                .ignoresSafeArea(edges: .bottom)
-
-
-            // Hazard count badges — top-left, below the (lowered) top bar
-            if !hazardCounts.filter({ $0.value > 0 }).isEmpty {
-                VStack {
-                    HStack(spacing: 5) {
-                        hazardCountBadge
-                        Spacer()
-                    }
-                    .padding(.top, topSafeArea + 174)
-                    .padding(.leading, 10)
-                    Spacer()
-                }
-                .ignoresSafeArea(edges: .bottom)
-            }
-
-            // GPS live/estimate badge — bottom-right above OSM attribution
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    gpsStatusBadge
-                        .padding(.trailing, 10)
-                        .padding(.bottom, 232)
-                }
-            }
-            .ignoresSafeArea(edges: .bottom)
-
-            // OSM attribution — required by the ODbL license whenever OSM geometry is shown.
-            VStack {
-                Spacer()
-                HStack {
-                    OSMAttributionBadge()
-                        .padding(.leading, 10)
-                        .padding(.bottom, 224)   // above the bottom bar
-                    Spacer()
-                }
-            }
-            .ignoresSafeArea(edges: .bottom)
+            hudOverlays
 
         }
+    }
+
+    private func attachCore<V: View>(_ v: V) -> some View {
+        v
         // Stationary auto-prompt: you've been standing still without logging a shot here —
         // offer the shot tracker (never auto-inputs; dismissing does nothing).
         .overlay(alignment: .top) {
@@ -3164,6 +3196,10 @@ struct CourseModeGPSHoleView: View {
         .ignoresSafeArea(edges: .bottom)
         .navigationBarHidden(true)
         // Alerts
+    }
+
+    private func attachDialogs<V: View>(_ v: V) -> some View {
+        v
         .confirmationDialog("Leave the course?", isPresented: $showLeaveDialog,
                             titleVisibility: .visible) {
             Button("Back to app — round stays active") {
@@ -3213,6 +3249,10 @@ struct CourseModeGPSHoleView: View {
             Text(infoMessage ?? "")
         }
         // Sheets
+    }
+
+    private func attachCovers<V: View>(_ v: V) -> some View {
+        v
         .fullScreenCover(isPresented: $showCamera) {
             if let uid = session.currentUser?.id {
                 RangeCameraScreen(
@@ -3377,6 +3417,10 @@ struct CourseModeGPSHoleView: View {
         } message: {
             Text("You're standing at your ball. Confirming will save your current GPS location as where that shot ended.")
         }
+    }
+
+    private func attachLifecycle<V: View>(_ v: V) -> some View {
+        v
         .task {
             // Load clubs for NFC tag lookup
             if let uid = session.currentUser?.id {
@@ -3455,6 +3499,7 @@ struct CourseModeGPSHoleView: View {
             }
         }
     }
+
 
     // MARK: - Course Unavailable
 
