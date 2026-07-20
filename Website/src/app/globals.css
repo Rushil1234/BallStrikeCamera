@@ -2335,6 +2335,41 @@ code {
 .product-cta.ghost{ background:none; border:1px solid color-mix(in oklab,var(--bone,#f2eee1) 30%,transparent); color:var(--bone,#f2eee1); }
 .product-cta.ghost:hover{ background:var(--bone,#f2eee1); color:#0c1a10; }
 
+/* ---------- Store: product marks + notify-me capture ---------- */
+.sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+
+/* Line-art product marks sit in the same gradient panel the glyph used to. */
+.product-mark{ color:var(--carry-gold,#c9a86a); width:min(70%,190px); display:flex; }
+.product-mark svg{ width:100%; height:auto; display:block; }
+.product:hover .product-mark{ color:var(--bone,#f2eee1); transition:color .25s ease; }
+
+/* Notify-me: the ghost CTA swaps in place for a compact email field. */
+.notify-form{ display:flex; align-items:center; gap:6px; position:relative; flex:1; min-width:0; }
+.notify-form input{
+  flex:1; min-width:0; background:rgba(0,0,0,.28);
+  border:1px solid color-mix(in oklab,var(--bone,#f2eee1) 26%,transparent);
+  border-radius:999px; padding:9px 14px; color:var(--bone,#f2eee1);
+  font-family:var(--r-sans); font-size:13px;
+}
+.notify-form input::placeholder{ color:color-mix(in oklab,var(--bone,#f2eee1) 40%,transparent); }
+.notify-form input:focus{ outline:none; border-color:var(--carry-gold,#c9a86a); }
+.notify-go{
+  flex:none; width:34px; height:34px; border-radius:999px; cursor:pointer;
+  border:1px solid color-mix(in oklab,var(--bone,#f2eee1) 26%,transparent);
+  background:var(--bone,#f2eee1); color:#0c1a10; font-size:14px; line-height:1;
+  transition:background .2s,color .2s;
+}
+.notify-go:hover:not(:disabled){ background:var(--carry-gold,#c9a86a); }
+.notify-go:disabled{ opacity:.55; cursor:default; }
+.notify-done{
+  margin:0; font-family:var(--r-mono); font-size:10px; letter-spacing:.14em;
+  text-transform:uppercase; color:#8fd49a;
+}
+.notify-error{
+  position:absolute; top:calc(100% + 6px); left:0; margin:0;
+  font-family:var(--r-sans); font-size:11.5px; color:#e07a6f;
+}
+
 .store-note{ margin-top:clamp(48px,6vw,72px); padding-top:28px; border-top:1px solid color-mix(in oklab,var(--bone,#f2eee1) 12%,transparent); display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; align-items:baseline; }
 .store-note p{ font-family:var(--r-sans); font-size:14.5px; line-height:1.7; color:color-mix(in oklab,var(--bone,#f2eee1) 65%,transparent); max-width:52ch; margin:0; }
 .store-sim-link{ font-family:var(--r-mono); font-size:11px; letter-spacing:.18em; text-transform:uppercase; color:var(--carry-gold,#c9a86a); text-decoration:none; }
