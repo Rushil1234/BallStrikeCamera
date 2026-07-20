@@ -716,6 +716,11 @@ enum SwingClubTracer {
         let h: Int
     }
 
+    /// Learned detector source. The app default loads the bundled CoreML model; the macOS
+    /// CLI overrides this with a runtime-compiled model. Nil → motion-ridge fallback.
+    static var detectorProvider: () -> ClubheadDetector? = { ClubheadDetector() }
+    private static var cachedDetector: ClubheadDetector??
+
     static func trace(videoURL: URL, frames: [SwingPoseFrame], phases: SwingPhases) async -> [[Double]]? {
         guard let times = phases.times, times.count == 5 else { return nil }
         let tStart = max(0, times[0] - 0.1)
@@ -765,6 +770,42 @@ enum SwingClubTracer {
         let baseline = max(1, Int((sampleFPS / 30.0).rounded()))
         let windowSize = 2 * baseline + 1
 
+        // ── Learned path: per-frame YOLO detections, clubhead from head-or-shaft-end. ──
+        // The detector generalizes where motion differencing can't (blur, busy backgrounds,
+        // re-timed footage). Falls back to the motion tracker when the model is unavailable.
+        if cachedDetector == nil { cachedDetector = detectorProvider() }
+        if let detector = cachedDetector ?? nil {
+            var trail: [[Double]] = []
+            var rawIndex = 0
+            while let sample = output.copyNextSampleBuffer() {
+                defer { rawIndex += 1 }
+                if rawIndex % frameStride != 0 { continue }
+                guard let pb = CMSampleBufferGetImageBuffer(sample) else { continue }
+                let t = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                let hp = hands(at: t)
+                if let det = detector.detect(pixelBuffer: pb, orientation: orientation),
+                   let hit = det.clubheadWithConfidence(hands: hp),
+                   // Strict before the top (body lock-ons live in the slow backswing);
+                   // relaxed after it — downswing blur naturally lowers confidence, and
+                   // dropping those anchors decouples the trail's TIMING from the club.
+                   hit.conf >= (t < times[2] ? 0.45 : 0.25) {
+                    let head = hit.point
+                    // Mid/late backswing the clubhead is ABOVE the hands — hip-height
+                    // detections there are body false-positives (the club is often half
+                    // out of frame at the top and the detector hallucinates low).
+                    let midBackswing = t > times[1] + 0.25 && t < times[3] - 0.15
+                    if midBackswing, let hp, Double(head.y) < Double(hp.y) - 0.05 {
+                        // skip — geometrically impossible
+                    } else {
+                        trail.append([Double(head.x), Double(head.y), t])
+                    }
+                }
+            }
+            reader.cancelReading()
+            guard trail.count >= 6 else { return nil }
+            return polish(trail, impactTime: times[3])
+        }
+
         var window: [(t: Double, plane: UprightPlane)] = []
         var trail: [[Double]] = []
         var lastDir: Double? = nil
@@ -772,6 +813,7 @@ enum SwingClubTracer {
         var prevHead: CGPoint? = nil
         var missStreak = 0
         var rawIndex = 0
+
         while let sample = output.copyNextSampleBuffer() {
             defer { rawIndex += 1 }
             if rawIndex % frameStride != 0 { continue }
@@ -821,6 +863,65 @@ enum SwingClubTracer {
     private static func polish(_ raw: [[Double]], impactTime: Double) -> [[Double]] {
         var pts = raw.sorted { $0[2] < $1[2] }
 
+        // The trace ends AT impact — follow-through points only smear the line the
+        // player reads. The segmenter's impact TIME can run early, but the ball doesn't
+        // move: truncate at the downswing's closest approach to the address clubhead
+        // position (= the ball). Time-trim only as a loose backstop.
+        pts.removeAll { $0[2] > impactTime + 0.25 }
+        if let ball = pts.first, pts.count > 8 {
+            var bestI = pts.count - 1
+            var bestD = Double.infinity
+            for i in (pts.count / 2)..<pts.count {
+                let d = hypot(pts[i][0] - ball[0], pts[i][1] - ball[1])
+                if d < bestD { bestD = d; bestI = i }
+            }
+            if bestD < 0.15 { pts = Array(pts[0...bestI]) }
+        }
+
+        // Robust outlier pass: a detection that jerks off the line its NEIGHBORS agree on
+        // is a misfire, not the club. Each interior point is predicted from the midpoint of
+        // its neighbors; deviations far beyond the local step get dropped. The allowance is
+        // span-relative, so dense sampling through the top keeps its real curvature.
+        for _ in 0..<2 {
+            guard pts.count > 6 else { break }
+            var keep = [pts[0]]
+            for i in 1..<(pts.count - 1) {
+                let a = pts[i - 1], b = pts[i], c = pts[i + 1]
+                // Predict b by TIME-weighted interpolation between its neighbors — a plain
+                // midpoint assumes uniform sampling and flags real points whenever the club
+                // is fast and a frame was missed (exactly the impact zone).
+                let dt = c[2] - a[2]
+                let u = dt > 1e-6 ? (b[2] - a[2]) / dt : 0.5
+                let ex = a[0] + (c[0] - a[0]) * u
+                let ey = a[1] + (c[1] - a[1]) * u
+                let dev = hypot(b[0] - ex, b[1] - ey)
+                let span = hypot(c[0] - a[0], c[1] - a[1])
+                // Only flagrant jerks die: big absolute deviation AND well beyond what the
+                // local step justifies. Anything softer belongs to the spline.
+                if dev < max(span * 0.9, 0.028) { keep.append(b) }
+            }
+            keep.append(pts[pts.count - 1])
+            pts = keep
+        }
+        // Wider-window pass: a run of 2-4 consecutive false points agrees with itself and
+        // slips past the ±1 test — but against neighbors THREE steps out it reads as the
+        // excursion it is (the hip-height body lock-on). Time-weighted, both directions.
+        if pts.count > 8 {
+            var keep = Array(pts[0..<3])
+            for i in 3..<(pts.count - 3) {
+                let a = pts[i - 3], b = pts[i], c = pts[i + 3]
+                let dt = c[2] - a[2]
+                let u = dt > 1e-6 ? (b[2] - a[2]) / dt : 0.5
+                let ex = a[0] + (c[0] - a[0]) * u
+                let ey = a[1] + (c[1] - a[1]) * u
+                let dev = hypot(b[0] - ex, b[1] - ey)
+                let span = hypot(c[0] - a[0], c[1] - a[1])
+                if dev < max(span * 0.6, 0.05) { keep.append(b) }
+            }
+            keep.append(contentsOf: pts[(pts.count - 3)...])
+            pts = keep
+        }
+
         // Impact anchor: the address clubhead position ≈ the ball. Only inject when the
         // tracker has nothing near impact (blur gap).
         if let ball = pts.first, !pts.contains(where: { abs($0[2] - impactTime) < 0.08 }) {
@@ -861,7 +962,19 @@ enum SwingClubTracer {
         for i in 0..<(pts.count - 1) {
             let p0 = pts[max(0, i - 1)], p1 = pts[i]
             let p2 = pts[i + 1], p3 = pts[min(pts.count - 1, i + 2)]
-            for k in 0..<6 { out.append(cr(p0, p1, p2, p3, Double(k) / 6)) }
+            // Sample each segment at uniform TIME, not uniform parameter: the cubic eases
+            // t near anchors, which makes the growing tip DWELL at the last detection and
+            // then jump — the "lagged" downswing. Solve u for each target time by bisection
+            // (t is monotone along the segment).
+            for k in 0..<6 {
+                let tk = p1[2] + (p2[2] - p1[2]) * Double(k) / 6
+                var lo = 0.0, hi = 1.0
+                for _ in 0..<10 {
+                    let mid = (lo + hi) / 2
+                    if cr(p0, p1, p2, p3, mid)[2] < tk { lo = mid } else { hi = mid }
+                }
+                out.append(cr(p0, p1, p2, p3, (lo + hi) / 2))
+            }
         }
         out.append(pts[pts.count - 1])
         return out
@@ -940,6 +1053,8 @@ enum SwingClubTracer {
                 if c < 0 { break }
                 let s1 = motion(Int(cx + px * side), Int(cy + py * side))
                 let s2 = motion(Int(cx - px * side), Int(cy - py * side))
+                // Thin moving object: hot center, cool sides. A moving torso is hot
+                // across all three and cancels out.
                 // Thin moving object: hot center, cool sides. A moving torso is hot
                 // across all three and cancels out.
                 let ridge = c - 0.7 * max(s1, s2)
