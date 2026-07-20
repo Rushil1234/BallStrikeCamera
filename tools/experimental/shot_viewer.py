@@ -15,73 +15,168 @@ Then open http://localhost:8766
 import argparse, json, os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ARCHIVE = os.environ.get('TC_ARCHIVE') or os.path.expanduser(
-    '~/Documents/TrueCarryFramesArchive_20260717/AllFramesArchive')
-RESULTS = os.environ.get('TC_RESULTS') or os.path.expanduser(
-    '~/Documents/TrueCarryTraining/replays/20260717')
-PAIRS = os.environ.get('TC_PAIRS') or os.path.expanduser(
-    '~/Documents/TrueCarryTraining/session_2026-07-17/pairs.json')
+TRAIN = os.path.expanduser('~/Documents/TrueCarryTraining')
+ARCHIVES = [os.environ['TC_ARCHIVE']] if os.environ.get('TC_ARCHIVE') else [
+    os.path.expanduser(a) for a in (
+        '~/Documents/TrueCarryFramesArchive_20260717/AllFramesArchive',
+        '~/Documents/TrueCarryFramesArchive_20260716/AllFramesArchive',
+        '~/Documents/TrueCarryFramesArchive_20260712/AllFramesArchive')]
+RESULTS = os.environ.get('TC_RESULTS') or os.path.join(TRAIN, 'replays/latest')
 
-pairs = {}
-if os.path.exists(PAIRS):
-    for p in json.load(open(PAIRS)):
-        pairs[p['shot']] = p
 
-# full TopTracer rows (spin, push/pull, peak height...) keyed by shot number
-TT_CSV = os.environ.get('TC_TT_CSV') or os.path.expanduser(
-    '~/Documents/TrueCarryTraining/session_2026-07-17/swingsync-2026-07-17.csv')
-tt_full = {}
-if os.path.exists(TT_CSV):
+def _fnum(v):
+    try:
+        f = float(v)
+        return None if f == -10000 else f
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_truth():
+    """shot -> {'toptracer': {...}|None, 'garmin': {...}|None} across all sessions."""
     import csv as _csv
-    with open(TT_CSV) as _f:
-        for _r in _csv.DictReader(_f):
-            try:
-                _n = int(_r['shotNumber'])
-            except (ValueError, KeyError):
-                continue
-            def _fv(k):
+    out = {}
+    # jul17: nested pairs, enriched from its swingsync CSV
+    p17 = os.path.join(TRAIN, 'session_2026-07-17/pairs.json')
+    ss17 = {}
+    c17 = os.path.join(TRAIN, 'session_2026-07-17/swingsync-2026-07-17.csv')
+    if not os.path.exists(c17):
+        c17 = os.path.expanduser('~/Downloads/swingsync-2026-07-17.csv')
+    if os.path.exists(c17):
+        with open(c17) as f:
+            for r in _csv.DictReader(f):
                 try:
-                    v = float(_r.get(k, ''))
-                    return None if v == -10000 else v
-                except (TypeError, ValueError):
-                    return None
-            tt_full[_n] = dict(ball_mph=_fv('ballSpeed'), club_mph=_fv('clubSpeed'),
-                               launch=_fv('launchAngle'), carry=_fv('carry'), total=_fv('total'),
-                               backspin=_fv('backSpin'), sidespin=_fv('sideSpin'),
-                               push_pull=_fv('pushPull'), peak=_fv('peakHeight'),
-                               smash=_fv('smashFactor'), descent=_fv('decentAngle'),
-                               club=(_r.get('type') or _r.get('clubName') or ''))
+                    n = int(r['shotNumber'])
+                except (ValueError, KeyError):
+                    continue
+                ss17[n] = dict(ball_mph=_fnum(r.get('ballSpeed')), club_mph=_fnum(r.get('clubSpeed')),
+                               launch=_fnum(r.get('launchAngle')), carry=_fnum(r.get('carry')),
+                               total=_fnum(r.get('total')), backspin=_fnum(r.get('backSpin')),
+                               sidespin=_fnum(r.get('sideSpin')), push_pull=_fnum(r.get('pushPull')),
+                               peak=_fnum(r.get('peakHeight')), smash=_fnum(r.get('smashFactor')),
+                               descent=_fnum(r.get('decentAngle')),
+                               club=(r.get('type') or r.get('clubName') or ''))
+    if os.path.exists(p17):
+        for p in json.load(open(p17)):
+            tt = dict(p.get('toptracer') or {})
+            num = tt.get('num')
+            if num in ss17:
+                merged = dict(ss17[num])
+                merged.update({k: v for k, v in tt.items() if v is not None})
+                tt = merged
+            out[p['shot']] = {'toptracer': tt or None, 'garmin': p.get('garmin')}
+    # jul16: flat pairs -> nested via its swingsync CSV (tt_shot == shotNumber)
+    p16 = os.path.join(TRAIN, 'session_2026-07-16/pairs.json')
+    ss16 = {}
+    c16 = os.path.expanduser('~/Downloads/swingsync-2026-07-16.csv')
+    if os.path.exists(c16):
+        with open(c16) as f:
+            for r in _csv.DictReader(f):
+                try:
+                    n = int(r['shotNumber'])
+                except (ValueError, KeyError):
+                    continue
+                ss16[n] = dict(ball_mph=_fnum(r.get('ballSpeed')), club_mph=_fnum(r.get('clubSpeed')),
+                               launch=_fnum(r.get('launchAngle')), carry=_fnum(r.get('carry')),
+                               total=_fnum(r.get('total')), backspin=_fnum(r.get('backSpin')),
+                               sidespin=_fnum(r.get('sideSpin')), push_pull=_fnum(r.get('pushPull')),
+                               peak=_fnum(r.get('peakHeight')), smash=_fnum(r.get('smashFactor')),
+                               descent=_fnum(r.get('decentAngle')),
+                               club=(r.get('type') or r.get('clubName') or ''))
+    if os.path.exists(p16):
+        for p in json.load(open(p16)):
+            tt = dict(ss16.get(p.get('tt_shot')) or {})
+            if not tt:
+                tt = dict(ball_mph=p.get('tt_ball_mph'), launch=p.get('launch_deg'),
+                          carry=p.get('carry_yd'), total=p.get('total_yd'),
+                          backspin=p.get('backspin'), club=p.get('club') or '')
+            tt['num'] = p.get('tt_shot')
+            out[p['shot']] = {'toptracer': tt, 'garmin': None}
+    # jul12 whites: Garmin only, full rows from garmin_main.csv by index
+    p12 = os.path.join(TRAIN, 'session_2026-07-12/pairs.json')
+    g12 = []
+    c12 = os.path.join(TRAIN, 'session_2026-07-12/garmin_main.csv')
+    if os.path.exists(c12):
+        with open(c12) as f:
+            for r in _csv.DictReader(f):
+                g12.append(dict(ball_mph=_fnum(r.get('Ball Speed')), club_mph=_fnum(r.get('Club Speed')),
+                                launch=_fnum(r.get('Launch Angle')), launch_dir=_fnum(r.get('Launch Direction')),
+                                backspin=_fnum(r.get('Backspin')), spin=_fnum(r.get('Spin Rate')),
+                                carry=_fnum(r.get('Carry Distance')), total=_fnum(r.get('Total Distance')),
+                                smash=_fnum(r.get('Smash Factor')), club=(r.get('Club Type') or '')))
+    if os.path.exists(p12):
+        for p in json.load(open(p12)):
+            gi = p.get('garmin_idx')
+            gm = g12[gi] if gi is not None and gi < len(g12) else {'ball_mph': p.get('garmin_ball_mph')}
+            out[p['shot']] = {'toptracer': None, 'garmin': gm}
+    return out
+
+
+truth = _load_truth()
 
 
 def frame_file(shot, fi):
-    d = os.path.join(ARCHIVE, shot)
-    for pat in (f'frame_{fi:03d}.jpg', f'frame_{fi:03d}.png'):
-        p = os.path.join(d, pat)
-        if os.path.exists(p):
-            return p
+    for a in ARCHIVES:
+        for pat in (f'frame_{fi:03d}.jpg', f'frame_{fi:03d}.png'):
+            p = os.path.join(a, shot, pat)
+            if os.path.exists(p):
+                return p
+    return None
+
+
+def shot_dir(shot):
+    for a in ARCHIVES:
+        d = os.path.join(a, shot)
+        if os.path.isdir(d):
+            return d
     return None
 
 
 def shot_ids():
     if not os.path.isdir(RESULTS):
         return []
-    have_frames = set(os.listdir(ARCHIVE)) if os.path.isdir(ARCHIVE) else set()
     return sorted(f[:-5] for f in os.listdir(RESULTS)
-                  if f.endswith('.json') and f[:-5] in have_frames)
+                  if f.endswith('.json') and shot_dir(f[:-5]))
 
 
 def shot_payload(sid):
     d = json.load(open(os.path.join(RESULTS, sid + '.json')))
-    nframes = len([f for f in os.listdir(os.path.join(ARCHIVE, sid))
-                   if f.startswith('frame_')])
-    pr = pairs.get(sid, {})
-    tt = dict(pr.get('toptracer') or {})
-    num = tt.get('num')
-    if num in tt_full:
-        merged = dict(tt_full[num]); merged.update({k: v for k, v in tt.items() if v is not None})
-        tt = merged
+    sd = shot_dir(sid)
+    nframes = len([f for f in os.listdir(sd) if f.startswith('frame_')]) if sd else 0
+    t = truth.get(sid) or {}
     return {'name': sid, 'replay': d, 'nframes': nframes,
-            'toptracer': tt or None, 'garmin': pr.get('garmin')}
+            'toptracer': t.get('toptracer'), 'garmin': t.get('garmin')}
+
+
+def shot_errors(m, t):
+    """Per-metric errors vs the primary truth (TT if present, else Garmin) plus a
+    per-shot average of the percent metrics — Noah's 'how far off is this shot on
+    average'. VLA stays in degrees (percent of a small angle explodes)."""
+    tt = t.get('toptracer') or {}
+    gm = t.get('garmin') or {}
+    ref = tt if tt.get('ball_mph') else gm
+    def pct(ours, th):
+        if ours is None or not th:
+            return None
+        return abs(ours - th) / abs(th) * 100
+    errs = {
+        'err': pct(m.get('ballSpeedMph'), ref.get('ball_mph')),
+        'club_err': pct(m.get('clubSpeedMph'), ref.get('club_mph')),
+        'carry_err_pct': pct(m.get('carryYards'), ref.get('carry')),
+        'total_err_pct': pct(m.get('totalYards'), ref.get('total')),
+    }
+    errs['vla_err'] = (abs(m['vlaDegrees'] - ref['launch'])
+                       if m.get('vlaDegrees') is not None and ref.get('launch') is not None
+                       else None)
+    errs['carry_err'] = (abs(m['carryYards'] - ref['carry'])
+                         if m.get('carryYards') and ref.get('carry') else None)
+    errs['total_err'] = (abs(m['totalYards'] - ref['total'])
+                         if m.get('totalYards') and ref.get('total') else None)
+    pcts = [v for k, v in errs.items()
+            if k in ('err', 'club_err', 'carry_err_pct', 'total_err_pct') and v is not None]
+    errs['avg_err'] = sum(pcts) / len(pcts) if pcts else None
+    errs['n_metrics'] = len(pcts)
+    return errs
 
 
 def index_rows():
@@ -92,29 +187,15 @@ def index_rows():
         except Exception:
             continue
         m = d.get('metrics') or {}
-        pr = pairs.get(sid, {})
-        ttp = pr.get('toptracer') or {}
-        tt = ttp.get('ball_mph')
-        gm = (pr.get('garmin') or {}).get('ball_mph')
-        bs = m.get('ballSpeedMph')
-        err = None
-        if bs and tt:
-            err = abs(bs - tt) / tt * 100
-        elif bs and gm:
-            err = abs(bs - gm) / gm * 100
-        vla_err = None
-        if m.get('vlaDegrees') is not None and ttp.get('launch') is not None:
-            vla_err = abs(m['vlaDegrees'] - ttp['launch'])
-        carry_err = None
-        if m.get('carryYards') and ttp.get('carry'):
-            carry_err = abs(m['carryYards'] - ttp['carry'])
-        total_err = None
-        if m.get('totalYards') and ttp.get('total'):
-            total_err = abs(m['totalYards'] - ttp['total'])
+        t = truth.get(sid) or {}
+        tt = t.get('toptracer') or {}
+        gm = t.get('garmin') or {}
+        e = shot_errors(m, t)
         rows.append({'name': sid, 'verdict': d.get('verdict', '?'),
-                     'ball': bs, 'tt': tt, 'garmin': gm, 'err': err,
-                     'vla_err': vla_err, 'carry_err': carry_err, 'total_err': total_err,
-                     'club': tt_full.get(ttp.get('num'), {}).get('club', '')})
+                     'ball': m.get('ballSpeedMph'),
+                     'tt': tt.get('ball_mph'), 'garmin': gm.get('ball_mph'),
+                     'truth': 'TT' if tt.get('ball_mph') else ('G' if gm.get('ball_mph') else ''),
+                     'club': (tt.get('club') or gm.get('club') or ''), **e})
     return rows
 
 
@@ -139,7 +220,8 @@ PAGE = r"""<!doctype html><html><head><meta charset="utf-8"><title>TrueCarry Sho
 <div id="summary" style="padding:8px;border-bottom:1px solid #2a2f2d;font-size:12px;color:#9ab"></div>
 <div style="padding:4px 8px;border-bottom:1px solid #2a2f2d">
  sort: <select id="sortsel" onchange="renderList()" style="background:#232826;color:#ddd;border:1px solid #333">
- <option value="time">time</option><option value="err">speed err</option>
+ <option value="time">time</option><option value="avg_err">avg err</option>
+ <option value="err">speed err</option><option value="club_err">club err</option>
  <option value="vla_err">VLA err</option><option value="carry_err">carry err</option></select>
 </div>
 <div id="list" style="flex:1;overflow-y:auto;padding:6px"></div>
@@ -166,15 +248,17 @@ const S=3;   // 360x203 -> 1080x609
 function cls(e){ if(e==null) return ''; return e<=2?'err-good':(e<=5?'err-mid':'err-bad'); }
 function median(a){ if(!a.length) return null; const b=[...a].sort((x,y)=>x-y); return b[Math.floor(b.length/2)]; }
 function summary(){
-  const spd=shots.map(s=>s.err).filter(e=>e!=null);
-  const vla=shots.map(s=>s.vla_err).filter(e=>e!=null);
-  const cy=shots.map(s=>s.carry_err).filter(e=>e!=null);
-  const tot=shots.map(s=>s.total_err).filter(e=>e!=null);
+  const pick=k=>shots.map(s=>s[k]).filter(e=>e!=null);
+  const spd=pick('err'), club=pick('club_err'), vla=pick('vla_err');
+  const cy=pick('carry_err'), tot=pick('total_err'), avg=pick('avg_err');
   const f=(v,d)=>v==null?'&mdash;':v.toFixed(d);
+  const nTT=shots.filter(s=>s.truth==='TT').length, nG=shots.filter(s=>s.truth==='G').length;
   document.getElementById('summary').innerHTML =
-    `<b style="color:#ddd">fleet vs TopTracer (${shots.length} shots)</b><br>`+
+    `<b style="color:#ddd">fleet (${shots.length} shots: ${nTT} vs TT, ${nG} vs Garmin)</b><br>`+
+    `<b>avg-of-metrics <span class="${cls(median(avg))}">${f(median(avg),1)}%</span></b> <span class="k">median shot</span><br>`+
     `speed <span class="${cls(median(spd))}">${f(median(spd),1)}%</span> <span class="k">(goal &plusmn;2mph)</span> &middot; `+
-    `VLA <b>${f(median(vla),1)}&deg;</b> <span class="k">(goal 1&deg;)</span><br>`+
+    `club <span class="${cls(median(club))}">${f(median(club),1)}%</span> <span class="k">(hosel)</span><br>`+
+    `VLA <b>${f(median(vla),1)}&deg;</b> <span class="k">(goal 1&deg;)</span> &middot; `+
     `carry <b>${f(median(cy),1)}yd</b> <span class="k">(goal 3)</span> &middot; `+
     `total <b>${f(median(tot),1)}yd</b> <span class="k">(goal 5)</span>`;
 }
@@ -185,10 +269,11 @@ function renderList(){
   const selName = sel>=0? shots[sel].name : null;
   document.getElementById('list').innerHTML = order.map(i=>{
     const s=shots[i];
-    const e = s.err==null?'':` <span class="${cls(s.err)}">${s.err.toFixed(1)}%</span>`;
+    const a = s.avg_err==null?'':` <span class="${cls(s.avg_err)}">avg ${s.avg_err.toFixed(1)}%</span>`;
     const v = s.verdict.startsWith('accepted')?'':' <span class="disc">&#10007;</span>';
+    const t = s.truth==='G'?' <span class="k" style="font-size:10px">G</span>':'';
     const c = s.club?` <span class="k" style="font-size:10px">${s.club.replace('_',' ').slice(0,10)}</span>`:'';
-    return `<div class="shot ${s.name===selName?'sel':''}" id="sh${i}" onclick="load(${i})">${s.name.slice(14)}${v}${e}${c}</div>`;
+    return `<div class="shot ${s.name===selName?'sel':''}" id="sh${i}" onclick="load(${i})">${s.name.slice(5,13)}·${s.name.slice(14)}${v}${a}${t}${c}</div>`;
   }).join('');
 }
 fetch('/shots').then(r=>r.json()).then(d=>{
@@ -275,9 +360,25 @@ function metricsTable(){
   const m=cur.replay.metrics||{}, tt=cur.toptracer||{}, gm=cur.garmin||{};
   const notes=(cur.replay.v2Notes||[]).join(' | ');
   const adv=notes.match(/v3heads: speed ([\d.]+)/);
+  const hosel=notes.match(/hosel: club ([\d.]+) mph \((\d+) ivals/);
   const smashOurs=(m.ballSpeedMph&&m.clubSpeedMph)?m.ballSpeedMph/m.clubSpeedMph:null;
+  // per-shot avg of % errors vs the primary truth (TT, else Garmin) — same math
+  // as the server's list rows: ball, club, carry, total
+  const ref = tt.ball_mph!=null?tt:gm;
+  const refName = tt.ball_mph!=null?'TT':'Garmin';
+  const pcts=[['ball spd',m.ballSpeedMph,ref.ball_mph],['club spd',m.clubSpeedMph,ref.club_mph],
+              ['carry',m.carryYards,ref.carry],['total',m.totalYards,ref.total]]
+    .map(([n,o,t])=>(o!=null&&t)?[n,Math.abs(o-t)/Math.abs(t)*100]:null).filter(x=>x);
+  const avg=pcts.length?pcts.reduce((a,x)=>a+x[1],0)/pcts.length:null;
+  const vlaD=(m.vlaDegrees!=null&&ref.launch!=null)?Math.abs(m.vlaDegrees-ref.launch):null;
+  const avgLine = avg==null?'':
+    `<tr><td style="text-align:left;color:#ddd"><b>SHOT AVG ERROR</b></td>`+
+    `<td colspan=5 style="text-align:left"><b><span class="${cls(avg)}">${avg.toFixed(1)}%</span></b>`+
+    ` <span class="k">vs ${refName} &middot; mean of ${pcts.map(x=>x[0]+' '+x[1].toFixed(1)+'%').join(', ')}`+
+    `${vlaD!=null?' &middot; VLA off '+vlaD.toFixed(1)+'&deg;':''}</span></td></tr>`;
   document.getElementById('metrics').innerHTML =
     '<tr><th>stat</th><th>TrueCarry</th><th>TopTracer</th><th>Garmin</th><th>vs TT</th><th>vs Garmin</th></tr>'+
+    avgLine+
     row('ball speed mph', m.ballSpeedMph, tt.ball_mph, gm.ball_mph)+
     (adv?row('&nbsp; v3 head (advisory)', +adv[1], tt.ball_mph, gm.ball_mph):'')+
     row('VLA &deg;', m.vlaDegrees, tt.launch, gm.launch)+
@@ -285,6 +386,7 @@ function metricsTable(){
     row('carry yd', m.carryYards, tt.carry, gm.carry)+
     row('total yd', m.totalYards, tt.total, gm.total)+
     row('club speed mph', m.clubSpeedMph, tt.club_mph, gm.club_mph)+
+    (hosel?`<tr><td style="text-align:left;color:#9ab">&nbsp; hosel detail</td><td colspan=5 style="text-align:left;color:#8a9;font-size:11px">${hosel[1]} mph from ${hosel[2]} interval(s) &middot; primary source when present</td></tr>`:'')+
     row('smash', smashOurs, tt.smash, gm.smash)+
     row('backspin rpm', null, tt.backspin, gm.backspin)+
     row('sidespin rpm', null, tt.sidespin, gm.spin&&gm.backspin?null:null)+
@@ -355,7 +457,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port', type=int, default=8766)
     args = ap.parse_args()
-    print(f'archive: {ARCHIVE}\nresults: {RESULTS}\npairs:   {PAIRS} ({len(pairs)} paired)')
+    print(f'archives: {len(ARCHIVES)}\nresults: {RESULTS}\ntruth: {len(truth)} shots paired')
     print(f'http://localhost:{args.port}')
     ThreadingHTTPServer(('127.0.0.1', args.port), H).serve_forever()
 
