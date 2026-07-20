@@ -22,9 +22,15 @@ for p in json.load(open(os.path.join(TRAIN, 'session_2026-07-17/pairs.json'))):
     tt = p.get('toptracer') or {}
     if tt.get('ball_mph'):
         truth[p['shot']] = dict(v=tt['ball_mph'], vla=tt.get('launch'))
-for p in json.load(open(os.path.join(TRAIN, 'session_2026-07-16/pairs.json'))):
-    if p.get('tt_ball_mph'):
-        truth[p['shot']] = dict(v=p['tt_ball_mph'], vla=p.get('launch_deg'))
+# jul16 is EXCLUDED by default (July 20): its TT export has bulk-identical
+# timestamps (no per-shot time) AND the evening capture is too noisy to
+# sequence-align — the best-match TT row for each capture scatters randomly
+# across the session, so any binding is noise. Set TC_INCLUDE_JUL16=1 only if
+# a real alignment signal is recovered.
+if os.environ.get('TC_INCLUDE_JUL16') == '1':
+    for p in json.load(open(os.path.join(TRAIN, 'session_2026-07-16/pairs.json'))):
+        if p.get('tt_ball_mph'):
+            truth[p['shot']] = dict(v=p['tt_ball_mph'], vla=p.get('launch_deg'))
 EXCLUDED = set(json.load(open(os.path.join(TRAIN, 'session_2026-07-17/excluded_shots.json'))))
 
 pat = re.compile(r'(\w+)=(-?\d+\.?\d*)')
