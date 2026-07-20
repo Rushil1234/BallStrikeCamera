@@ -167,6 +167,19 @@ def project_tt(gm):
     return out if any(v is not None for k, v in out.items() if k != 'projected') else None
 
 
+# Per-session alignment confidence (July 20 shift-test findings):
+#   jul17  TT sequence-aligns sharply (lag0 84% vs lag±1 ~40%) — trustworthy
+#   jul12  Garmin has real per-shot timestamps, bound within 2.8s — trustworthy
+#   jul16  TT export lost per-shot time (all rows identical) AND evening capture
+#          too noisy to sequence-align (best 61% at lag0); bindings are the best
+#          available but LOW confidence — excluded from head training entirely
+ALIGN_CONF = {'20260717': 'high', '20260712': 'high', '20260716': 'low'}
+
+
+def align_conf(sid):
+    return ALIGN_CONF.get(sid[5:13], 'high')
+
+
 def shot_payload(sid):
     d = json.load(open(os.path.join(RESULTS, sid + '.json')))
     sd = shot_dir(sid)
@@ -176,7 +189,7 @@ def shot_payload(sid):
     if not tt and t.get('garmin'):
         tt = project_tt(t['garmin'])
     return {'name': sid, 'replay': d, 'nframes': nframes,
-            'toptracer': tt, 'garmin': t.get('garmin')}
+            'toptracer': tt, 'garmin': t.get('garmin'), 'align': align_conf(sid)}
 
 
 def shot_errors(m, t):
@@ -226,6 +239,7 @@ def index_rows():
                      'ball': m.get('ballSpeedMph'),
                      'tt': tt.get('ball_mph'), 'garmin': gm.get('ball_mph'),
                      'truth': 'TT' if tt.get('ball_mph') else ('G' if gm.get('ball_mph') else ''),
+                     'align': align_conf(sid),
                      'club': (tt.get('club') or gm.get('club') or ''), **e})
     return rows
 
@@ -280,23 +294,32 @@ function cls(e){ if(e==null) return ''; return e<=2?'err-good':(e<=5?'err-mid':'
 function median(a){ if(!a.length) return null; const b=[...a].sort((x,y)=>x-y); return b[Math.floor(b.length/2)]; }
 function summary(){
   // Only app-ACCEPTED shots count: repositions / implausible discards / false
-  // impacts never show the user metrics, so they don't belong in accuracy stats
-  const ok=shots.filter(s=>s.verdict.startsWith('accepted'));
-  const rej=shots.length-ok.length;
-  const pick=k=>ok.map(s=>s[k]).filter(e=>e!=null);
-  const spd=pick('err'), club=pick('club_err'), vla=pick('vla_err');
-  const cy=pick('carry_err'), tot=pick('total_err'), avg=pick('avg_err');
+  // impacts never show the user metrics, so they don't belong in accuracy stats.
+  // Headline uses HIGH-alignment-confidence sessions only (jul17 TT + jul12
+  // Garmin); jul16 (unalignable TT export) shown separately, never mixed in.
+  const okAll=shots.filter(s=>s.verdict.startsWith('accepted'));
+  const ok=okAll.filter(s=>s.align!=='low');
+  const lowN=okAll.length-ok.length;
+  const rej=shots.length-okAll.length;
+  const pick=(arr,k)=>arr.map(s=>s[k]).filter(e=>e!=null);
   const f=(v,d)=>v==null?'&mdash;':v.toFixed(d);
   const nTT=ok.filter(s=>s.truth==='TT').length, nG=ok.filter(s=>s.truth==='G').length;
+  const line=(arr)=>{
+    const spd=pick(arr,'err'),club=pick(arr,'club_err'),vla=pick(arr,'vla_err');
+    const cy=pick(arr,'carry_err'),tot=pick(arr,'total_err'),avg=pick(arr,'avg_err');
+    return `<b>avg-of-metrics <span class="${cls(median(avg))}">${f(median(avg),1)}%</span></b> `+
+      `<span class="k">median shot</span><br>`+
+      `speed <span class="${cls(median(spd))}">${f(median(spd),1)}%</span> &middot; `+
+      `club <span class="${cls(median(club))}">${f(median(club),1)}%</span> <span class="k">(hosel)</span> &middot; `+
+      `VLA <b>${f(median(vla),1)}&deg;</b> &middot; carry <b>${f(median(cy),1)}yd</b> &middot; total <b>${f(median(tot),1)}yd</b>`;
+  };
   document.getElementById('summary').innerHTML =
-    `<b style="color:#ddd">fleet (${ok.length} app-accepted: ${nTT} vs TT, ${nG} vs Garmin)</b>`+
-    ` <span class="k">&middot; ${rej} filtered by app validation &#10007;</span><br>`+
-    `<b>avg-of-metrics <span class="${cls(median(avg))}">${f(median(avg),1)}%</span></b> <span class="k">median shot</span><br>`+
-    `speed <span class="${cls(median(spd))}">${f(median(spd),1)}%</span> <span class="k">(goal &plusmn;2mph)</span> &middot; `+
-    `club <span class="${cls(median(club))}">${f(median(club),1)}%</span> <span class="k">(hosel)</span><br>`+
-    `VLA <b>${f(median(vla),1)}&deg;</b> <span class="k">(goal 1&deg;)</span> &middot; `+
-    `carry <b>${f(median(cy),1)}yd</b> <span class="k">(goal 3)</span> &middot; `+
-    `total <b>${f(median(tot),1)}yd</b> <span class="k">(goal 5)</span>`;
+    `<b style="color:#ddd">fleet — trustworthy alignment (${ok.length}: ${nTT} TT, ${nG} Garmin)</b>`+
+    ` <span class="k">&middot; ${rej} app-rejected, ${lowN} jul16 low-align excluded</span><br>`+
+    line(ok)+
+    `<div style="margin-top:6px;color:#7a6">jul16 (low-confidence alignment, ${lowN} shots): `+
+    `avg ${f(median(pick(okAll.filter(s=>s.align==='low'),'avg_err')),1)}% `+
+    `<span class="k">&mdash; TT export lost timestamps; shown for reference only</span></div>`;
 }
 function renderList(){
   const mode=document.getElementById('sortsel').value;
@@ -308,8 +331,9 @@ function renderList(){
     const a = s.avg_err==null?'':` <span class="${cls(s.avg_err)}">avg ${s.avg_err.toFixed(1)}%</span>`;
     const v = s.verdict.startsWith('accepted')?'':' <span style="color:#e87a68;font-weight:bold">&#10007; rej</span>';
     const t = s.truth==='G'?' <span class="k" style="font-size:10px">G</span>':'';
+    const al = s.align==='low'?' <span style="color:#c99;font-size:10px">~align</span>':'';
     const c = s.club?` <span class="k" style="font-size:10px">${s.club.replace('_',' ').slice(0,10)}</span>`:'';
-    return `<div class="shot ${s.name===selName?'sel':''}" id="sh${i}" onclick="load(${i})">${s.name.slice(5,13)}·${s.name.slice(14)}${v}${a}${t}${c}</div>`;
+    return `<div class="shot ${s.name===selName?'sel':''}" id="sh${i}" onclick="load(${i})">${s.name.slice(5,13)}·${s.name.slice(14)}${v}${a}${t}${al}${c}</div>`;
   }).join('');
 }
 fetch('/shots').then(r=>r.json()).then(d=>{
