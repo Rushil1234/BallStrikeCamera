@@ -27,9 +27,12 @@ final class FrameArchiveService {
 
     /// Persist a shot's raw frames as PNGs + a timestamps.json in a per-shot folder. Non-blocking:
     /// the encode/write happens on a utility queue so the capture path is never stalled.
+    /// `force` writes even when the dev "save all frames" toggle is off — used when the
+    /// user explicitly chooses to keep an untracked shot's frames for model training.
     func archive(frames: [CapturedFrame], impactIndex: Int?,
-                 lockedBallRect: CGRect? = nil, lockedImpactROI: CGRect? = nil) {
-        guard isEnabled, !frames.isEmpty, let root = archiveDir else { return }
+                 lockedBallRect: CGRect? = nil, lockedImpactROI: CGRect? = nil,
+                 force: Bool = false) {
+        guard isEnabled || force, !frames.isEmpty, let root = archiveDir else { return }
         // Snapshot (image, timestamp) off the capture path — UIImage is safe to read across threads.
         // Archive the 720px hi-res copy when present (July 17): labels and training data
         // inherit 2× precision; the replay loader rebuilds the 360 analysis frame from it.

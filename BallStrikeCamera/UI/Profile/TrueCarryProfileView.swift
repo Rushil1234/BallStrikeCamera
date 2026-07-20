@@ -21,6 +21,7 @@ struct TrueCarryProfileView: View {
     @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
     @AppStorage(FrameArchiveService.enabledKey) private var saveAllFrames = false
     @AppStorage("tc_capture_720") private var capture720 = true
+    @AppStorage(CameraController.promptSaveUntrackedKey) private var promptSaveUntracked = true
 
     // Frame-archive export (developer testing tool)
     @State private var frameExportURL: URL?
@@ -487,6 +488,26 @@ struct TrueCarryProfileView: View {
                     }
                     Spacer()
                     Toggle("", isOn: $capture720)
+                        .tint(Color(red: 1, green: 0.6, blue: 0))
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+
+                rowDivider
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Ask to Save Untracked Shots")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text("When a shot shows no metrics, offer to keep its frames for training — save real shots the tracker missed, discard false triggers.")
+                            .font(.system(size: 11))
+                            .foregroundColor(TCTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $promptSaveUntracked)
                         .tint(Color(red: 1, green: 0.6, blue: 0))
                         .labelsHidden()
                 }

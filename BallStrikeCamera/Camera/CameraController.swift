@@ -17,6 +17,9 @@ final class CameraController: NSObject, ObservableObject {
     @Published var capturedFrames: [CapturedFrame] = []
     @Published var statusText: String = "Looking for ball"
     @Published var isAnalyzingShot: Bool = false
+    /// A shot that reached analysis but yielded no metrics — awaiting the user's
+    /// "save frames for training?" choice. See CameraController+Analysis.
+    @Published var pendingFilteredShot: FilteredShot?
     @Published var latestShotAnalysis: ShotAnalysisResult?
     @Published var analysisStatusText: String = ""
     @Published var showReview: Bool = false
@@ -1137,12 +1140,18 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     print("[ShotValidation] ❌ SHOT DISCARDED — \(reason)")
                     self.isAnalyzingShot = false
                     self.showShotResult = false
+                    if self.offerSaveFilteredFrames(frames, impactIndex: preHit, reason: reason,
+                                                    lockedBallRect: lockedBallRect,
+                                                    lockedImpactROI: lockedImpactROI) { break }
                     self.setLiveProcessingPaused(false)
                     self.resetShotPipeline(to: .searching, status: "Shot discarded: \(reason)")
                 case .repositioned:
                     // Ball was moved within the circle, not struck. Quietly re-arm and re-lock.
                     self.isAnalyzingShot = false
                     self.showShotResult = false
+                    if self.offerSaveFilteredFrames(frames, impactIndex: preHit, reason: "Not tracked",
+                                                    lockedBallRect: lockedBallRect,
+                                                    lockedImpactROI: lockedImpactROI) { break }
                     self.setLiveProcessingPaused(false)
                     self.resetShotPipeline(to: .searching, status: "Ball moved — re-locking")
                 case .result(let result):
@@ -1165,6 +1174,54 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         // really left the setup area) — not a strike. Resume searching and re-lock quietly.
         case repositioned
         case result(ShotAnalysisResult)
+    }
+
+    /// A shot that reached the analyze stage but produced no metrics (discarded / repositioned).
+    /// Held so the user can choose to save its frames for model training — a real-but-untracked
+    /// shot's frames are exactly what the tracker needs to learn from, while true junk is dropped.
+    struct FilteredShot: Identifiable {
+        let id = UUID()
+        let frames: [CapturedFrame]
+        let impactIndex: Int
+        let lockedBallRect: CGRect?
+        let lockedImpactROI: CGRect?
+        let reason: String
+    }
+    /// Whether to surface the "save untracked shot?" prompt (Profile toggle, default on).
+    static let promptSaveUntrackedKey = "tc_prompt_save_untracked"
+    private var promptSaveUntracked: Bool {
+        UserDefaults.standard.object(forKey: Self.promptSaveUntrackedKey) as? Bool ?? true
+    }
+
+    /// Show the save-frames prompt for a filtered shot. Returns true if it took over
+    /// (pipeline stays paused until the user picks Save/Discard); false to reset as usual.
+    private func offerSaveFilteredFrames(_ frames: [CapturedFrame], impactIndex: Int, reason: String,
+                                         lockedBallRect: CGRect?, lockedImpactROI: CGRect?) -> Bool {
+        guard promptSaveUntracked, !frames.isEmpty else { return false }
+        pendingFilteredShot = FilteredShot(frames: frames, impactIndex: impactIndex,
+                                           lockedBallRect: lockedBallRect,
+                                           lockedImpactROI: lockedImpactROI, reason: reason)
+        return true
+    }
+
+    /// User kept the untracked shot's frames — archive them (force) for training, then resume.
+    @MainActor
+    func saveFilteredShotFrames() {
+        guard let fs = pendingFilteredShot else { return }
+        FrameArchiveService.shared.archive(frames: fs.frames, impactIndex: fs.impactIndex,
+                                           lockedBallRect: fs.lockedBallRect,
+                                           lockedImpactROI: fs.lockedImpactROI, force: true)
+        pendingFilteredShot = nil
+        setLiveProcessingPaused(false)
+        resetShotPipeline(to: .searching, status: "Frames saved for analysis")
+    }
+
+    /// User dropped the untracked shot — discard frames and resume searching.
+    @MainActor
+    func discardFilteredShot() {
+        pendingFilteredShot = nil
+        setLiveProcessingPaused(false)
+        resetShotPipeline(to: .searching, status: "Shot discarded")
     }
 
     /// Pure compute: normalization → tracking → metrics validation. Touches no actor-isolated

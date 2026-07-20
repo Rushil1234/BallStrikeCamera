@@ -87,6 +87,22 @@ struct RangeCameraScreen: View {
             icon: "iphone.gen3",
             text: "Stand your iPhone on a tripod about waist-high, 6-8 ft to the side of the ball, framing the hitting area. Then take your normal swing."
         )
+        // A shot that reached analysis but produced no metrics: ask whether to keep its
+        // frames for training (a real-but-untracked shot is gold; a false trigger isn't).
+        .overlay(alignment: .bottom) {
+            if let fs = camera.pendingFilteredShot {
+                FilteredShotPrompt(
+                    reason: fs.reason,
+                    frameCount: fs.frames.count,
+                    onSave: { camera.saveFilteredShotFrames() },
+                    onDiscard: { camera.discardFilteredShot() }
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 130)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: camera.pendingFilteredShot?.id)
         // NFC foreground scan — fires when user taps a tagged club during picker session
         .onChange(of: nfcManager.lastScannedClubId) { clubId in
             guard let clubId else { return }
@@ -298,5 +314,67 @@ struct RangeCameraScreen: View {
             selectedClub = preferred.name
             selectedClubId = preferred.id
         }
+    }
+}
+
+// MARK: - Filtered-shot save prompt
+
+/// Bottom card shown when a shot reached analysis but yielded no metrics. Lets the
+/// user keep the frames for model training (real shot the tracker missed) or drop
+/// them (false trigger). Gated by the Profile "Save untracked shots" toggle.
+private struct FilteredShotPrompt: View {
+    let reason: String
+    let frameCount: Int
+    let onSave: () -> Void
+    let onDiscard: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "questionmark.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(TCTheme.gold)
+                Text("Shot not tracked")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(TCTheme.textPrimary)
+                Spacer(minLength: 0)
+            }
+            Text("No metrics for this one (\(reason.lowercased())). Was it a real shot? Save its \(frameCount) frames to help the tracker learn — or discard if it was a false trigger.")
+                .font(.system(size: 12.5))
+                .foregroundColor(TCTheme.textMuted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button(action: onDiscard) {
+                    Text("Discard")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(TCTheme.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                Button(action: onSave) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "tray.and.arrow.down.fill")
+                        Text("Save frames")
+                    }
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color(red: 0.05, green: 0.09, blue: 0.07))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(TCTheme.gold))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(TCTheme.gold.opacity(0.4), lineWidth: 1))
+        )
+        .shadow(color: .black.opacity(0.4), radius: 16, y: 6)
     }
 }
