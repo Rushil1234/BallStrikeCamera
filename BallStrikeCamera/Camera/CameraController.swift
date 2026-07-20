@@ -348,9 +348,31 @@ final class CameraController: NSObject, ObservableObject {
                 let idealISO = neededISO / 4.0
                 let isoNoiseCeiling = meteredISO * 4.0
                 let targetISO = Float(min(max(idealISO, minISO), min(isoNoiseCeiling, maxISO)))
-                let stopsUnder = neededISO > 0 && Double(targetISO) > 0
+                var stopsUnder = neededISO > 0 && Double(targetISO) > 0
                     ? max(0, log2(neededISO / Double(targetISO)))
                     : 0
+
+                // RUNAWAY-DARK GUARD (July 20): in dim light, too fast a preset can't reach
+                // −2EV without exceeding the ISO noise ceiling, so it overshoots far darker —
+                // observed 1/8000 in indoor light landing −3EV, at which the white ball gave
+                // ~1 bright pixel and vanished (w=1, endless NCF). When the ceiling forces
+                // more than ~2.3 stops under, SLOW the shutter just enough to hold the
+                // intended −2 stops — capped at a 1/2000 floor that still freezes the ball.
+                // A detectable slightly-softer ball beats a razor-sharp invisible one; this
+                // only fires when the alternative is losing the ball entirely.
+                if stopsUnder > 2.3, idealISO > Double(targetISO), duration.seconds > 0 {
+                    let brightenFactor = idealISO / Double(targetISO)   // how much light we're short
+                    let freezeFloorSeconds = 1.0 / 2000.0
+                    let slowedSeconds = min(freezeFloorSeconds, duration.seconds * brightenFactor)
+                    if slowedSeconds > duration.seconds {
+                        duration = CMTime(seconds: slowedSeconds, preferredTimescale: 1_000_000)
+                        let newNeeded = presetSeconds > 0 ? neededISO * (presetSeconds / slowedSeconds) : neededISO
+                        stopsUnder = newNeeded > 0 ? max(0, log2(newNeeded / Double(targetISO))) : stopsUnder
+                        print(String(format: "BallDetector exposure: shutter slowed to 1/%.0f to hold ~2 stops (preset %@ would have locked too dark)",
+                                     1.0 / slowedSeconds, preset.label))
+                    }
+                }
+
                 if stopsUnder > 0.1 {
                     print(String(format: "BallDetector exposure: holding shutter %@ at %.1f stops under metered (iso %.0f, target -2.0, noise ceiling %.0f)",
                                  preset.label, stopsUnder, targetISO, isoNoiseCeiling))
