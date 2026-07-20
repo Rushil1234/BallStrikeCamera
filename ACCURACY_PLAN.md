@@ -59,9 +59,13 @@ Viewers: :8765 labeler · :8766 shot viewer (frames+tracking+3-way metrics) · :
 - [ ] Club round: coverage ≥80%, club-speed head vs TT club pairs, error ≤5 mph (path to 3)
 - [ ] Backspin model shipped (TT-learned), report in-app; target ≤1000 rpm CV
 - [ ] Sidespin curvature experiment on 720px tracks (measure, don't promise)
-- [ ] Hosel-point retest on 720px (Noah's clubless-speed idea: shaft-head junction as
-      the invariant point; sound geometry, blocked at 360px — shaft detector fired 1/51;
-      at 720px the shaft doubles in apparent width)
+- [x] Hosel-point clubless speed — VALIDATED July 20. Noah hand-labeled 1333 hosel
+      frames; mean-of-window speed at ball-radius scale needs no calibration
+      (k=0.984) and hits 3.2 mph / 4.0% vs TT (smash: 1.6-1.8 mph; old centroid:
+      9.4%). ClubDetectorV2 ('all' variant, yolov8n on 3221 frames) reproduces the
+      hand labels at 0.7 px median and gives 3.3-3.4 mph det-driven — detector ≈
+      human. Junk gates: peak<30mph static, backwards, no-club (58 shots culled).
+      720px retest should close toward smash (pixel quantization is the floor).
 - [ ] Carry/total refit incl. our measured descent/apex features; target ≤5 yd median (path to 2/4)
 - [ ] Full validation: all suites, no regressions; viewer refreshed; committed
 
