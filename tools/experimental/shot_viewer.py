@@ -306,7 +306,7 @@ function renderList(){
   document.getElementById('list').innerHTML = order.map(i=>{
     const s=shots[i];
     const a = s.avg_err==null?'':` <span class="${cls(s.avg_err)}">avg ${s.avg_err.toFixed(1)}%</span>`;
-    const v = s.verdict.startsWith('accepted')?'':' <span class="disc">&#10007;</span>';
+    const v = s.verdict.startsWith('accepted')?'':' <span style="color:#e87a68;font-weight:bold">&#10007; rej</span>';
     const t = s.truth==='G'?' <span class="k" style="font-size:10px">G</span>':'';
     const c = s.club?` <span class="k" style="font-size:10px">${s.club.replace('_',' ').slice(0,10)}</span>`:'';
     return `<div class="shot ${s.name===selName?'sel':''}" id="sh${i}" onclick="load(${i})">${s.name.slice(5,13)}·${s.name.slice(14)}${v}${a}${t}${c}</div>`;
@@ -415,9 +415,15 @@ function metricsTable(){
     `${vlaD!=null?' &middot; VLA off '+vlaD.toFixed(1)+'&deg;':''}</span></td></tr>`;
   const ttHdr = tt.projected?'TopTracer <span style="color:#e8c268">(proj)</span>':'TopTracer';
   const ttEHdr = tt.projected?'vs TT(proj)':'vs TT';
+  const verdict = cur.replay.verdict || '';
+  const rejBanner = verdict.startsWith('accepted') ? '' :
+    `<tr><td colspan=6 style="text-align:left;background:#3a1f1c;color:#ff9a8a;padding:8px">`+
+    `&#10007; <b>REJECTED BY APP</b> — ${verdict}. The user never sees these numbers; `+
+    `excluded from all fleet stats. Truth columns shown for context only.</td></tr>`;
   document.getElementById('metrics').innerHTML =
     `<tr><th>stat</th><th>TrueCarry</th><th>${ttHdr}</th><th>Garmin</th><th>${ttEHdr}</th><th>vs Garmin</th></tr>`+
-    avgLine+
+    rejBanner+
+    (verdict.startsWith('accepted') ? avgLine : '')+
     row('ball speed mph', m.ballSpeedMph, tt.ball_mph, gm.ball_mph)+
     (adv?row('&nbsp; v3 head (advisory)', +adv[1], tt.ball_mph, gm.ball_mph):'')+
     row('VLA &deg;', m.vlaDegrees, tt.launch, gm.launch)+
