@@ -2504,6 +2504,52 @@ code {
   .product:hover .product-mark{ transform:none; }
 }
 
+/* ---------- Store return banner ---------- */
+.store-banner{ position:sticky; top:0; z-index:40; text-align:center; padding:12px 20px;
+  font-family:var(--r-sans); font-size:14px; background:var(--c-forest-deep); color:var(--c-paper); }
+.store-banner.ok{ background:#2F5D3A; }
+
+/* ---------- Gift-card purchase modal ---------- */
+.gc-overlay{ position:fixed; inset:0; z-index:120; display:flex; align-items:center; justify-content:center;
+  padding:24px; background:rgba(14,20,15,.62); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }
+.gc-modal{ position:relative; width:min(440px,100%); max-height:92vh; overflow:auto; border-radius:20px;
+  background:var(--c-paper-bright); color:var(--c-forest-deep); padding:clamp(24px,4vw,36px);
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.6); border:1px solid rgba(184,154,94,.3); }
+.gc-close{ position:absolute; top:14px; right:16px; width:32px; height:32px; border-radius:999px; border:none;
+  background:none; font-size:24px; line-height:1; color:var(--c-clay); cursor:pointer; }
+.gc-close:hover{ color:var(--c-forest-deep); }
+.gc-kicker{ font-family:var(--font-mono),monospace; font-size:10.5px; letter-spacing:.24em; text-transform:uppercase; color:var(--c-gold-deep); margin:0 0 8px; }
+.gc-modal h2{ font-family:var(--font-serif),serif; font-weight:400; font-size:clamp(28px,4vw,36px); line-height:1; margin:0 0 8px; color:var(--c-forest-deep); }
+.gc-sub{ font-family:var(--font-sans),sans-serif; font-size:14px; line-height:1.55; color:var(--c-clay); margin:0 0 22px; }
+.gc-amounts{ display:flex; gap:10px; margin:0 0 20px; }
+.gc-amount{ flex:1; padding:16px 0; border-radius:12px; border:1.5px solid rgba(14,20,15,.16); background:#fff;
+  font-family:var(--font-serif),serif; font-style:italic; font-size:22px; color:var(--c-forest-deep); cursor:pointer; transition:border-color .18s,background .18s; }
+.gc-amount:hover{ border-color:var(--c-gold-deep); }
+.gc-amount.on{ border-color:var(--c-forest-deep); background:var(--c-forest-deep); color:var(--c-paper); }
+.gc-field{ display:flex; flex-direction:column; gap:6px; margin:0 0 14px; }
+.gc-field span{ font-family:var(--font-mono),monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--c-clay); }
+.gc-field span em{ font-style:normal; opacity:.7; text-transform:none; letter-spacing:0; }
+.gc-field input,.gc-field textarea{ font-family:var(--font-sans),sans-serif; font-size:14px; padding:11px 13px; border-radius:10px;
+  border:1px solid rgba(14,20,15,.2); background:#fff; color:var(--c-forest-deep); resize:vertical; }
+.gc-field input:focus,.gc-field textarea:focus{ outline:none; border-color:var(--c-gold-deep); box-shadow:0 0 0 3px rgba(184,154,94,.16); }
+.gc-error{ font-family:var(--font-sans),sans-serif; font-size:13px; color:#B4483C; margin:0 0 12px; }
+.gc-submit{ width:100%; padding:15px; border-radius:12px; border:none; cursor:pointer;
+  font-family:var(--font-mono),monospace; font-size:12px; letter-spacing:.16em; text-transform:uppercase;
+  background:var(--c-forest-deep); color:var(--c-paper); transition:background .2s; }
+.gc-submit:hover:not(:disabled){ background:var(--c-gold-deep); }
+.gc-submit:disabled{ opacity:.6; cursor:default; }
+.gc-secure{ text-align:center; font-family:var(--font-mono),monospace; font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--c-clay-faint); margin:12px 0 0; }
+
+/* ---------- Redeem gift card (account page) ---------- */
+.redeem-card h2{ margin:0 0 8px; }
+.redeem-copy{ font-size:14px; line-height:1.6; color:var(--muted); margin:0 0 16px; max-width:52ch; }
+.redeem-form{ display:flex; gap:10px; flex-wrap:wrap; }
+.redeem-form input{ flex:1; min-width:200px; font-family:var(--font-mono),monospace; letter-spacing:.08em; font-size:15px;
+  padding:12px 14px; border-radius:10px; border:1px solid var(--border-strong); background:var(--bg-soft); color:var(--text); }
+.redeem-form input:focus{ outline:none; border-color:var(--gold); }
+.redeem-done{ font-size:14px; color:#8fd49a; margin:0; font-weight:500; }
+.redeem-error{ font-size:13px; color:#e07a6f; margin:12px 0 0; }
+
 /* ---------- Locker editing (account profile + bag forms) ---------- */
 .locker-mini-btn { font-size: 12px; padding: 8px 16px; }
 .locker-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-top: 6px; }
