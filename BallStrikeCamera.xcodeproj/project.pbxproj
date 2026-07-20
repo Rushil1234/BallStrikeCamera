@@ -56,8 +56,11 @@
 		BF000001000000000000002A /* ShotMetricsCalculator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012A /* ShotMetricsCalculator.swift */; };
 		PTT00000000000000000002 /* PuttAnalyzer.swift in Sources */ = {isa = PBXBuildFile; fileRef = PTT00000000000000000001 /* PuttAnalyzer.swift */; };
 		LSN00000000000000000003 /* SwingAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000013 /* SwingAnalysis.swift */; };
+		LSN000000000000000000HS /* HoselSpeedEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN000000000000000001HS /* HoselSpeedEstimator.swift */; };
 		LSN000000000000000000CD /* ClubheadDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN000000000000000001CD /* ClubheadDetector.swift */; };
+		427F0445105844E9975A0EB9 /* HoselSpeedEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0077DBA30C4773A7300E15 /* HoselSpeedEstimator.swift */; };
 		LSN000000000000000000ML /* ClubDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = LSN000000000000000001ML /* ClubDetector.mlpackage */; };
+		A9509E81AEE445F9AB806124 /* ClubDetectorV2.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = F69BA60176D441D486295CBF /* ClubDetectorV2.mlpackage */; };
 		RSV000000000000000000001 /* RoundShotVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = RSV000000000000000000101 /* RoundShotVerifier.swift */; };
 		BF000001000000000000002B /* ClubTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012B /* ClubTracker.swift */; };
 		BF000001000000000000002C /* DistanceEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000012C /* DistanceEstimator.swift */; };
@@ -314,8 +317,11 @@
 		BF000001000000000000012A /* ShotMetricsCalculator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotMetricsCalculator.swift; sourceTree = "<group>"; };
 		PTT00000000000000000001 /* PuttAnalyzer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuttAnalyzer.swift; sourceTree = "<group>"; };
 		LSN00000000000000000013 /* SwingAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwingAnalysis.swift; sourceTree = "<group>"; };
+		LSN000000000000000001HS /* HoselSpeedEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoselSpeedEstimator.swift; sourceTree = "<group>"; };
 		LSN000000000000000001CD /* ClubheadDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubheadDetector.swift; sourceTree = "<group>"; };
+		4D0077DBA30C4773A7300E15 /* HoselSpeedEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoselSpeedEstimator.swift; sourceTree = "<group>"; };
 		LSN000000000000000001ML /* ClubDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = ClubDetector.mlpackage; sourceTree = "<group>"; };
+		F69BA60176D441D486295CBF /* ClubDetectorV2.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = ClubDetectorV2.mlpackage; sourceTree = "<group>"; };
 		RSV000000000000000000101 /* RoundShotVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundShotVerifier.swift; sourceTree = "<group>"; };
 		BF000001000000000000012B /* ClubTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubTracker.swift; sourceTree = "<group>"; };
 		BF000001000000000000012C /* DistanceEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DistanceEstimator.swift; sourceTree = "<group>"; };
@@ -715,8 +721,11 @@
 				BF000001000000000000012A /* ShotMetricsCalculator.swift */,
 				PTT00000000000000000001 /* PuttAnalyzer.swift */,
 				LSN00000000000000000013 /* SwingAnalysis.swift */,
+				LSN000000000000000001HS /* HoselSpeedEstimator.swift */,
 				LSN000000000000000001CD /* ClubheadDetector.swift */,
+				4D0077DBA30C4773A7300E15 /* HoselSpeedEstimator.swift */,
 				LSN000000000000000001ML /* ClubDetector.mlpackage */,
+				F69BA60176D441D486295CBF /* ClubDetectorV2.mlpackage */,
 				RSV000000000000000000101 /* RoundShotVerifier.swift */,
 				CAFE0000000000000000FC10 /* FlightArcModel.swift */,
 				BF000001000000000000012B /* ClubTracker.swift */,
@@ -1170,8 +1179,11 @@
 				BF000001000000000000002A /* ShotMetricsCalculator.swift in Sources */,
 				PTT00000000000000000002 /* PuttAnalyzer.swift in Sources */,
 				LSN00000000000000000003 /* SwingAnalysis.swift in Sources */,
+				LSN000000000000000000HS /* HoselSpeedEstimator.swift in Sources */,
 				LSN000000000000000000CD /* ClubheadDetector.swift in Sources */,
+				427F0445105844E9975A0EB9 /* HoselSpeedEstimator.swift in Sources */,
 				LSN000000000000000000ML /* ClubDetector.mlpackage in Sources */,
+				A9509E81AEE445F9AB806124 /* ClubDetectorV2.mlpackage in Sources */,
 				RSV000000000000000000001 /* RoundShotVerifier.swift in Sources */,
 				CAFE0000000000000000FC11 /* FlightArcModel.swift in Sources */,
 				BF000001000000000000002B /* ClubTracker.swift in Sources */,

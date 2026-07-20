@@ -2417,6 +2417,9 @@ struct V2ClubObservation {
 struct V2Output {
     var ballSpeedMph: Double?
     var clubSpeedMph: Double?
+    /// Clubless club speed from ClubDetectorV2 hosel detections (July 20) — the
+    /// PRIMARY club speed. See HoselSpeedEstimator for the validation record.
+    var hoselClubSpeedMph: Double? = nil
     var vlaDegrees: Double?
     var confident: Bool
     var flightPointCount: Int
@@ -3610,6 +3613,25 @@ final class V2Engine {
             }
         }
 
+        // ── Hosel club speed (July 20): clubless optical, the primary club number.
+        // Hybrid r0 = (this shot + session median) / 2; see HoselSpeedEstimator for
+        // the recipe and the truth-floor validation (3.1 mph vs TT/Garmin average,
+        // while TT and Garmin disagree by 5.4 mph with each other).
+        var hoselMph: Double? = nil
+        do {
+            let r0h = sig?.restRadius ?? rLockSub
+            let sessSorted = V2Engine.sessionR0s.sorted()
+            let r0sess = sessSorted.isEmpty ? r0h : sessSorted[sessSorted.count / 2]
+            if let hs = HoselSpeedEstimator.shared.clubSpeedMph(
+                frames: frames, impactIndex: impact, r0: (r0h + r0sess) / 2) {
+                hoselMph = hs.mph
+                notes.append(String(format: "hosel: club %.1f mph (%d ivals, r0h %.2f)",
+                                    hs.mph, hs.intervals, (r0h + r0sess) / 2))
+            } else {
+                notes.append("hosel: no track")
+            }
+        }
+
         // confidence: fit residuals within noise, or 2-point speed agreement
         let agree2pt = abs(v2pt - firstStep) / max(v2pt, 1e-6)
         let confident = (pts.count >= 3 && fit.chiMax <= 2.5) || (pts.count == 2 && agree2pt <= 0.25)
@@ -3674,6 +3696,7 @@ final class V2Engine {
             guard let sh = speedHead, let vh = vlaHead else {
                 notes.append("v3feat-only (no \(s0.color.rawValue) heads)")
                 return V2Output(ballSpeedMph: ballMphFinal, clubSpeedMph: clubMph,
+                                hoselClubSpeedMph: hoselMph,
                                 vlaDegrees: vlaFinal, confident: confident,
                                 flightPointCount: pts.count, notes: notes,
                                 impactFrameIndex: impact, frameObservations: frameObs,
@@ -3694,6 +3717,7 @@ final class V2Engine {
         }
 
         return V2Output(ballSpeedMph: ballMphFinal, clubSpeedMph: clubMph,
+                        hoselClubSpeedMph: hoselMph,
                         vlaDegrees: vlaFinal, confident: confident,
                         flightPointCount: pts.count, notes: notes,
                         impactFrameIndex: impact, frameObservations: frameObs,

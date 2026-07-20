@@ -361,15 +361,26 @@ struct ShotMetricsCalculator {
             } else {
                 v2Warnings.append("V2 withheld: " + (v2.notes.last ?? "no usable flight track"))
             }
+
+            // ── Hosel club speed (July 20): PRIMARY, regardless of V2 ball confidence.
+            // Clubless — it measures the swing itself, so it generalizes to any user
+            // (smash tables are fit to Noah's TT data and don't transfer). Validated at
+            // the TT/Garmin truth floor (3.1 mph vs their average on jul17 duals, while
+            // the two units disagree by 5.4 with each other); see HoselSpeedEstimator.
+            if !isPutterMode, let hs = v2.hoselClubSpeedMph {
+                clubMetrics.clubSpeedMph = hs
+                clubMetrics.method = "hosel_optical_v1"
+            }
         }
 
-        // ── Smash-based club speed (July 18): clubSpeed = ballSpeed / smash(club).
-        // Our ball speed is 3.5% accurate and per-club smash is tight (±2.5-6.7% across
-        // 289 TT rows) — measured 2.4 mph median vs TT club truth, versus 14.2 mph from
-        // direct optical club tracking (the head's apparent scale/rotation bias). The
-        // user's selected club comes from ClubPreference; unknown clubs keep the
-        // direct estimate.
+        // ── Smash-based club speed: FALLBACK only (July 20 demotion). Its 1.8 mph
+        // vs TT is partly circular — the table was fit to Noah's TT rows and TT
+        // derives club speed from ball speed internally — so vs Garmin it would sit
+        // ~5 mph off, and per-user smash never transfers to another golfer. The
+        // hosel optical path above is the primary; this fills in only when the
+        // detector produced no hosel track.
         if !isPutterMode,
+           clubMetrics.method != "hosel_optical_v1",
            let ball = ballLaunch.ballSpeedMph,
            let clubName = UserDefaults.standard.string(forKey: "lastUsedClubName") {
             let key = clubName.lowercased()
@@ -378,6 +389,27 @@ struct ShotMetricsCalculator {
             if let table = Self.smashByClub, let sm = table[key] ?? table[Self.aliasClub(key)] {
                 clubMetrics.clubSpeedMph = ball / sm
                 clubMetrics.method = "smash_from_ball_speed(\(key))"
+            }
+        }
+
+        // ── Smash rails (Noah, July 20): a real smash factor lives in [0.6, 1.6].
+        // Ball speed is the trusted measurement (3.2% vs TT), so an out-of-range
+        // smash means the CLUB number is wrong — move club speed to the rail rather
+        // than ship a physically impossible pairing.
+        if !isPutterMode,
+           let ball = ballLaunch.ballSpeedMph, ball > 0,
+           let club = clubMetrics.clubSpeedMph, club > 0 {
+            let smash = ball / club
+            if smash > 1.6 {
+                clubMetrics.clubSpeedMph = ball / 1.6
+                v2Warnings.append(String(format:
+                    "Club speed raised %.1f → %.1f mph (smash %.2f exceeded 1.6 rail).",
+                    club, ball / 1.6, smash))
+            } else if smash < 0.6 {
+                clubMetrics.clubSpeedMph = ball / 0.6
+                v2Warnings.append(String(format:
+                    "Club speed lowered %.1f → %.1f mph (smash %.2f under 0.6 rail).",
+                    club, ball / 0.6, smash))
             }
         }
 

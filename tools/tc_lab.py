@@ -23,7 +23,22 @@ Typical day-after-range:
 import argparse, csv, datetime, glob, json, math, os, re, shutil, subprocess, sys, time
 
 UDID = '43599AB4-284E-4087-89A6-D25FB8B50E23'
-BUNDLE = 'com.noahtobias.BallStrikeCamera'
+def _bundle_id():
+    # Rushil's July-19 commits changed PRODUCT_BUNDLE_IDENTIFIER (com.noahtobias ->
+    # com.rushilkakkad1) and every simctl call here silently targeted a stale
+    # install. Read it from the pbxproj so replays always hit the built app.
+    try:
+        s = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              'BallStrikeCamera.xcodeproj/project.pbxproj')).read()
+        m = re.search(r'PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);', s)
+        if m:
+            return m.group(1).strip()
+    except OSError:
+        pass
+    return 'com.noahtobias.BallStrikeCamera'
+
+
+BUNDLE = _bundle_id()
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRAIN = os.path.expanduser('~/Documents/TrueCarryTraining')
 ARCHIVE_ROOT = os.path.expanduser('~/Documents')
