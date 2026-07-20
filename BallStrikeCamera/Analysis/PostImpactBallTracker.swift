@@ -3489,9 +3489,64 @@ final class V2Engine {
             }
         }
 
+        // ── Frame-exit gate (Noah, July 20): the lock and the first CLEARLY-moved
+        // post-impact sighting fix the flight's pixel velocity; from exact frame timing
+        // we know when the ball leaves the frame. Once the extrapolated ball is off
+        // screen, any later sighting is noise (a rolling ball, shadow, or club still in
+        // view) — not the ball. This kills the downward-kinked white tracks
+        // (shot_20260712_110152_555: ball exits left after f19, legacy then tracked
+        // f20/f21 noise → junk 7.9 mph). Only the exit cut is applied — NOT a per-point
+        // straight-line reject, which on clean multi-point shots trims good points off a
+        // crude one-point line and worsens the fit (measured: 082406_945 2.3%→7.8%). The
+        // existing least-squares lineFit + chiMax trim already handles moderate outliers.
+        //
+        // Anchor on the first sighting that has clearly moved (>3 ball radii): the impact+1
+        // read is often the ball still merged with the club at the tee, which gives a
+        // too-slow velocity and a wrong (early) exit prediction.
+        let tImpact: Double = frames.first(where: { $0.frameIndex == impact })?.timestamp
+            ?? (flight.first?.t ?? 0)
+        var ballExitedAfterFirst = false
+        let anchor = flight.first(where: { hypot($0.x - lock.x, $0.y - lock.y) > 3 * r0 })
+            ?? flight.first
+        if let a = anchor, a.t - tImpact > 1e-4 {
+            let vx = (a.x - lock.x) / (a.t - tImpact)
+            let vy = (a.y - lock.y) / (a.t - tImpact)
+            let edge = r0 * 1.5                       // "gone" once center is ~1.5 radii past the frame
+            var kept: [FlightPt] = []
+            for p in flight {
+                let dt = p.t - tImpact
+                let predX = lock.x + vx * dt, predY = lock.y + vy * dt
+                if predX < -edge || predX > Double(W) + edge
+                    || predY < -edge || predY > Double(H) + edge {
+                    ballExitedAfterFirst = (kept.count <= 1)   // exited with ≤1 point in hand
+                    break
+                }
+                kept.append(p)
+            }
+            if kept.isEmpty { kept = [a] }            // never gate away the anchor itself
+            if kept.count != flight.count {
+                notes.append(String(format: "frame-exit gate %d→%d pts (v=%.0fpx/s, exit1=%@)",
+                                    flight.count, kept.count, hypot(vx, vy),
+                                    ballExitedAfterFirst ? "yes" : "no"))
+                // Drop the post-exit sightings from the DISPLAYED track too, so the
+                // viewer/3D path doesn't draw the noise tail we just excluded.
+                let keptFI = Set(kept.map(\.fi))
+                frameObs.removeAll { $0.isFlight && $0.frameIndex > impact && !keptFI.contains($0.frameIndex) }
+                flight = kept
+            }
+        }
+
         // ── metric features (port of metrics_kfold.features_from_track)
         let rLockSub = restRadii.isEmpty ? r0 : restRadii.sorted()[restRadii.count / 2]
         var pts = Array(flight.prefix(5))
+        // Ball seen once before exiting the frame: lock + that sighting still define a
+        // valid line and speed (Noah's rule). Anchor the fit on the lock so the physics
+        // path measures lock→p1 instead of withholding. Heads stay off (flight has 1 pt),
+        // so this rides the physics speed, honestly flagged low-confidence below.
+        if pts.count == 1, ballExitedAfterFirst, pts[0].t - tImpact > 1e-4 {
+            pts = [FlightPt(t: tImpact, x: lock.x, y: lock.y, r: rLockSub, fi: impact), pts[0]]
+            notes.append("lock-anchored 1-pt exit fit")
+        }
         // club-sized points can't enter the fit (far-field radius filter). The near-lock
         // exemption is for motion-smeared radius reads, NOT for the ball+club merged blob
         // at impact+1 — a merged read is fat (≥1.8 rLock) and anchors the whole fit at a

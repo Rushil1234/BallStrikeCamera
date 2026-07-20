@@ -1417,6 +1417,20 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             return .repositioned
         }
 
+        // V2 withheld (its precise tracker could not fit a valid flight) yet the legacy
+        // fallback returned a low speed. On blurry white footage that's the ball
+        // exiting the frame fast after a single good point while the legacy tracker
+        // latches onto slow noise drifting down — the downward-kinked tracks Noah
+        // flagged (shot_20260712_110152_555 = 7.9 mph, VLA 0). Measured on the jul12
+        // whites: every such junk read is < 30 mph, every legitimate legacy recovery
+        // is >= 41 mph — a clean gap. Gated on V2 having withheld, so normal slow
+        // chips (which V2 tracks fine and does NOT withhold) are unaffected.
+        if !isPutterMode, let v2 = v2Primary.v2, v2.ballSpeedMph == nil,
+           let speed = metrics.ballLaunch.ballSpeedMph, speed < 30.0 {
+            print(String(format: "[ShotValidation] V2 withheld + legacy %.1f mph — incoherent track, not a shot", speed))
+            return .repositioned
+        }
+
         // A non-putter "shot" under 3 mph is a hand nudge, not a strike (the slowest real chip
         // is far faster). Putter mode keeps its own lower floor since slow taps are legitimate.
         if !isPutterMode, let speed = metrics.ballLaunch.ballSpeedMph, speed < 3.0 {
