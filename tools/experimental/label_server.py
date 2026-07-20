@@ -11,6 +11,8 @@ Per-frame actions (buttons + keys):
   No club     (X)  — tracker marked a club that isn't there
   Place ball  (B)  — then click the ball's center; scroll wheel resizes circle
   Place club  (C)  — then click the CLUBHEAD CENTER (stored as a point, no circle)
+  Place hosel (H)  — then click the shaft-head junction (gold diamond)
+  No hosel    (N)  — clear the hosel on this frame (kills a wrong prelabel)
   Approve     (A / Enter) — frame is correct as shown
   Approve shot (S) — every frame in the shot is correct as shown
   ←/→ frames · [ / ] shots
@@ -104,6 +106,7 @@ canvas { display:block; border:1px solid #2a3138; border-radius:6px; cursor:cros
 .fchip { padding:3px 8px; border-radius:4px; background:#232a31; cursor:pointer; font-family:Menlo,monospace; font-size:12px; border:1px solid transparent; }
 .fchip.cur { border-color:#e0c93f; }
 .fchip.rev { background:#1d3325; }
+.fchip .hd { color:#e8c268; margin-left:3px; }
 #status { color:#98a2ab; font-size:12px; margin-top:8px; max-width:230px; }
 #shotsel { width:220px; }
 kbd { background:#232a31; border:1px solid #39424b; border-radius:3px; padding:0 5px; font-size:11px; }
@@ -113,6 +116,7 @@ kbd { background:#232a31; border:1px solid #39424b; border-radius:3px; padding:0
     <span id="shotprog"></span>
     <b id="fname"></b>
     <span id="prog"></span>
+    <span id="hoselflag" style="font-family:Menlo,monospace"></span>
   </div>
   <div id="row2">
     <button id="prevShot">‹ shot</button>
@@ -122,6 +126,7 @@ kbd { background:#232a31; border:1px solid #39424b; border-radius:3px; padding:0
     <button id="bmode">Place ball (B)</button>
     <button id="cmode">Place club (C)</button>
     <button id="hmode" style="border-color:#e8c268">Place HOSEL (H)</button>
+    <button id="hgone" class="danger">No hosel (N)</button>
     <button id="approve" class="ok">Approve frame (A)</button>
     <button id="approveShot" class="ok">Approve shot (S)</button>
   </div>
@@ -131,7 +136,7 @@ kbd { background:#232a31; border:1px solid #39424b; border-radius:3px; padding:0
   <div id="side">
     <div>Frames <span style="color:#98a2ab">(green = reviewed)</span>:</div>
     <div class="fstrip" id="fstrip"></div>
-    <div id="status">Keys: <kbd>←</kbd><kbd>→</kbd> frames · <kbd>[</kbd><kbd>]</kbd> shots · <kbd>B</kbd> ball mode then click center, scroll = radius · <kbd>C</kbd> club mode then click clubhead center · <kbd>G</kbd> ball gone · <kbd>X</kbd> no club · <kbd>A</kbd>/<kbd>Enter</kbd> approve · <kbd>S</kbd> approve whole shot</div>
+    <div id="status">Keys: <kbd>←</kbd><kbd>→</kbd> frames · <kbd>[</kbd><kbd>]</kbd> shots · <kbd>B</kbd> ball mode then click center, scroll = radius · <kbd>C</kbd> club mode then click clubhead center · <kbd>H</kbd> hosel mode then click shaft-head junction · <kbd>G</kbd> ball gone · <kbd>X</kbd> no club · <kbd>N</kbd> no hosel · <kbd>A</kbd>/<kbd>Enter</kbd> approve · <kbd>S</kbd> approve whole shot · gold ◆ on a frame chip = hosel placed there</div>
   </div>
 </div>
 <script>
@@ -192,12 +197,15 @@ function draw() {
   }
   document.getElementById('prog').textContent =
     (L.reviewed ? '✓ reviewed' : '· unreviewed') + (mode ? ('   MODE: place ' + mode) : '');
+  const hf = document.getElementById('hoselflag');
+  if (L.hosel) { hf.textContent = '◆ HOSEL PLACED'; hf.style.color = '#e8c268'; }
+  else { hf.textContent = '◇ no hosel'; hf.style.color = '#5a646d'; }
 }
 function renderStrip() {
   const el = document.getElementById('fstrip');
   el.innerHTML = cur.frames.map((f,i)=>{
     const L = cur.per_frame[String(f)];
-    return `<span class="fchip ${i===fIdx?'cur':''} ${L.reviewed?'rev':''}" onclick="fIdx=${i};loadFrame()">f${f}</span>`;
+    return `<span class="fchip ${i===fIdx?'cur':''} ${L.reviewed?'rev':''}" onclick="fIdx=${i};loadFrame()">f${f}${L.hosel?'<span class="hd">◆</span>':''}</span>`;
   }).join('');
 }
 async function push(extra) {
@@ -214,8 +222,8 @@ cv.addEventListener('click', e => {
   const r = cv.getBoundingClientRect();
   const x = (e.clientX - r.left)/S, y = (e.clientY - r.top)/S;
   if (mode === 'ball') { const L = lab(); const rr = (L.ball && L.ball.r) || 8; push({ball:{cx:x, cy:y, r:rr}}); }
-  if (mode === 'hosel') { push({hosel:{cx:x, cy:y}}); }
-  else push({club:{cx:x, cy:y}});
+  else if (mode === 'hosel') { push({hosel:{cx:x, cy:y}}); }
+  else if (mode === 'club') { push({club:{cx:x, cy:y}}); }
   // Mode stays STICKY across clicks and frames (Noah: click through back-to-back without
   // re-selecting the tool every frame). Escape clears it.
   draw();
@@ -237,6 +245,7 @@ document.getElementById('cmode').onclick = () => setMode('club','cmode');
 document.getElementById('hmode').onclick = () => setMode('hosel','hmode');
 document.getElementById('bgone').onclick = () => push({ball:null});
 document.getElementById('cgone').onclick = () => push({club:null});
+document.getElementById('hgone').onclick = () => push({hosel:null});
 document.getElementById('approve').onclick = () => { push({}); step(1); };
 document.getElementById('approveShot').onclick = async () => {
   await j('/approve_shot', {method:'POST', headers:{'Content-Type':'application/json'},
@@ -258,6 +267,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'h' || e.key === 'H') setMode('hosel','hmode');
   else if (e.key === 'g' || e.key === 'G') push({ball:null});
   else if (e.key === 'x' || e.key === 'X') push({club:null});
+  else if (e.key === 'n' || e.key === 'N') push({hosel:null});
   else if (e.key === 'a' || e.key === 'A' || e.key === 'Enter') { push({}); step(1); }
   else if (e.key === 's' || e.key === 'S') document.getElementById('approveShot').click();
   else if (e.key === 'Escape') setMode(null, null);
@@ -311,7 +321,10 @@ class H(BaseHTTPRequestHandler):
                     u = labels[shot][k]
                     base['ball'] = u.get('ball')
                     base['club'] = u.get('club')
-                    if u.get('hosel') is not None: base['hosel'] = u.get('hosel')
+                    # 'hosel' key present = this label was saved during the hosel
+                    # round; honor it even when null (explicit removal). Key absent
+                    # = old club-round label; let the YOLO prelabel show through.
+                    if 'hosel' in u: base['hosel'] = u['hosel']
                     base['reviewed'] = u.get('reviewed', False)
                 merged[k] = base
             self._json({'name': shot, 'impact': pl['impact'], 'frames': pl['frames'],
