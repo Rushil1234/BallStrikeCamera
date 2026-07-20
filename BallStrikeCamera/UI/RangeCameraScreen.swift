@@ -350,8 +350,13 @@ private struct FilteredShotPrompt: View {
                         .foregroundColor(TCTheme.textPrimary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(TCTheme.border, lineWidth: 1))
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(TCTheme.panelRaised)
+                                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(TCTheme.border, lineWidth: 1))
+                        )
+                        .contentShape(Rectangle())   // whole rect tappable, not just the stroke
                 }
                 .buttonStyle(.plain)
                 Button(action: onSave) {
@@ -364,6 +369,7 @@ private struct FilteredShotPrompt: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(TCTheme.gold))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
