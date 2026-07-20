@@ -9,8 +9,13 @@ import numpy as np
 
 SCRATCH = os.path.dirname(os.path.abspath(__file__))
 TRAIN = os.path.expanduser('~/Documents/TrueCarryTraining')
-CONT = open(os.path.join(SCRATCH, 'cont.txt')).read().strip()
-RES = CONT + '/Documents/ReplayResults'
+CONT = ''
+try:
+    CONT = open(os.path.join(SCRATCH, 'cont.txt')).read().strip()
+except OSError:
+    pass
+# TC_RESULTS overrides the sim container (container UUIDs rotate; snapshots don't)
+RES = os.environ.get('TC_RESULTS') or (CONT + '/Documents/ReplayResults')
 
 truth = {}
 for p in json.load(open(os.path.join(TRAIN, 'session_2026-07-17/pairs.json'))):
