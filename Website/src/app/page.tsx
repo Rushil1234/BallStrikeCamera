@@ -172,10 +172,11 @@ export default function HomePage() {
               playsInline
               preload="auto"
               aria-hidden="true"
-              onLoadedMetadata={(e) => { e.currentTarget.playbackRate = 0.82; }}
+              poster="/hero-aerial-poster.jpg"
+              onLoadedMetadata={(e) => { e.currentTarget.playbackRate = 0.72; }}
               onPlaying={(e) => e.currentTarget.classList.add("ready")}
             >
-              <source src="/hero-golf-course.mp4" type="video/mp4" />
+              <source src="/hero-aerial.mp4" type="video/mp4" />
             </video>
             <div className="hero-shade" aria-hidden="true" />
             <div className="wrap">

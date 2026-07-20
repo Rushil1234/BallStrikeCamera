@@ -14,11 +14,35 @@
 import Image from "next/image";
 import type { JSX } from "react";
 
-type Props = { kind: string };
+type Props = { kind: string; priority?: boolean };
 
-/** Product ids that have a real photo at /public/store/<id>.jpg. Add an id here
- *  once the photo exists and the render below is bypassed for that product. */
-const PHOTO: Record<string, string> = {};
+/** Product ids with a real, honest photo at /public/store/<id>.jpg; these bypass
+ *  the render below. Objects are given a focal point so the cropped card frames
+ *  the subject. foam-balls has NO entry on purpose — every stock "practice ball"
+ *  photo was branded hard range balls, which misrepresent a foam product, so it
+ *  keeps the clean render. Alt text describes the honest scene, not the product. */
+const PHOTO: Record<string, { src: string; alt: string; pos?: string }> = {
+  "nfc-tag": {
+    src: "/store/nfc-tag.jpg",
+    alt: "A golfer's gloved hands gripping a club on the course",
+    pos: "center 40%",
+  },
+  tripod: {
+    src: "/store/tripod.jpg",
+    alt: "An iPhone mounted on a tripod, filming outdoors",
+    pos: "center center",
+  },
+  polo: {
+    src: "/store/polo.jpg",
+    alt: "A golfer in a plain white polo at sunset, club over the shoulder",
+    pos: "center 25%",
+  },
+  "gift-card": {
+    src: "/store/gift-card.jpg",
+    alt: "A golf green at dusk",
+    pos: "center 55%",
+  },
+};
 
 const F = {
   forest: "#1E2A22",
@@ -234,13 +258,14 @@ const MARKS: Record<string, () => JSX.Element> = {
   "gift-card": GiftCard,
 };
 
-export default function ProductArt({ kind }: Props) {
+export default function ProductArt({ kind, priority }: Props) {
   const photo = PHOTO[kind];
   if (photo) {
     return (
       <div className="product-photo">
-        <Image src={photo} alt="" fill sizes="(max-width: 900px) 100vw, 380px"
-          style={{ objectFit: "cover" }} />
+        <Image src={photo.src} alt={photo.alt} fill priority={priority}
+          sizes="(max-width: 900px) 100vw, 560px"
+          style={{ objectFit: "cover", objectPosition: photo.pos ?? "center" }} />
       </div>
     );
   }

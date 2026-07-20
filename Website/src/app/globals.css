@@ -2323,6 +2323,16 @@ code {
     radial-gradient(60% 50% at 0% 10%, rgba(42,58,46,.07), transparent 62%),
     linear-gradient(168deg, var(--c-paper-bright) 0%, var(--c-paper) 46%, #EDE6D6 100%);
 }
+/* The nav bar keeps its DARK background site-wide (--nav-bg isn't part of the
+   light flip), so it must NOT inherit the paper theme's dark ink — that turned
+   the nav links dark-on-dark and made them vanish. Re-assert light text tokens
+   for the nav only. */
+.store-page .site-nav{
+  --cream: var(--c-bone);
+  --text:  var(--c-bone);
+  --muted: var(--c-stone);
+  --bone:  var(--c-bone);
+}
 
 /* ---------- Hero ---------- */
 .store-hero{ padding:clamp(116px,15vw,172px) 24px clamp(40px,5vw,62px); }

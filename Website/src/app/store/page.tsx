@@ -100,7 +100,7 @@ function ProductCard({ p }: { p: Product }) {
   return (
     <article className={`product${p.featured ? " featured" : ""}${live ? " is-live" : ""}`}>
       <div className="product-art">
-        <ProductArt kind={p.id} />
+        <ProductArt kind={p.id} priority={p.featured} />
       </div>
       <div className="product-body">
         <div className="product-head">
