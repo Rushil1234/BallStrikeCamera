@@ -58,7 +58,6 @@
 		LSN00000000000000000003 /* SwingAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN00000000000000000013 /* SwingAnalysis.swift */; };
 		LSN000000000000000000HS /* HoselSpeedEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN000000000000000001HS /* HoselSpeedEstimator.swift */; };
 		LSN000000000000000000CD /* ClubheadDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = LSN000000000000000001CD /* ClubheadDetector.swift */; };
-		427F0445105844E9975A0EB9 /* HoselSpeedEstimator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0077DBA30C4773A7300E15 /* HoselSpeedEstimator.swift */; };
 		LSN000000000000000000ML /* ClubDetector.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = LSN000000000000000001ML /* ClubDetector.mlpackage */; };
 		A9509E81AEE445F9AB806124 /* ClubDetectorV2.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = F69BA60176D441D486295CBF /* ClubDetectorV2.mlpackage */; };
 		RSV000000000000000000001 /* RoundShotVerifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = RSV000000000000000000101 /* RoundShotVerifier.swift */; };
@@ -127,7 +126,15 @@
 		BF000003000000000000000E /* CourseModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000E /* CourseModels.swift */; };
 		BF000003000000000000000F /* FeatureFlags.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000002000000000000000F /* FeatureFlags.swift */; };
 		BF0000030000000000000010 /* AppRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000010 /* AppRootView.swift */; };
-		F6CC02EAADA344239F911A9B /* RushilPendingStubs.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B279B94168429F9A1F4C31 /* RushilPendingStubs.swift */; };
+		71BDE2961DF322A70E1D92E0 /* AICoachService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C6C5E6DD59CAEE123C0421A /* AICoachService.swift */; };
+		0D39FFD5328BBC02451859DF /* WeeklyChallenge.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFB5776A18583750032B3FF9 /* WeeklyChallenge.swift */; };
+		861CD24432FFFA8F56FA5796 /* GhostMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B1EFA7E6F169CF6A620BF7 /* GhostMatch.swift */; };
+		D7D216A23E3374E4826F3453 /* HandicapShareCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BB8E058AEBEEEF2CF939797 /* HandicapShareCard.swift */; };
+		39DF3E2DE6DAA4D7742BCB03 /* AICoachCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345075C1A548E682CAD8F432 /* AICoachCard.swift */; };
+		D40E169C0FD6E5A36473BCD4 /* BeginnerHelp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5110A8B335C48B3E0A827572 /* BeginnerHelp.swift */; };
+		646BA2C97D76D2F015B5A2E1 /* LearnHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70D880C702FCF7AD4B4A8F50 /* LearnHub.swift */; };
+		18ACD8390D7D8D03591CA5D3 /* TutorialController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70B83D94A641B7F7A883AC49 /* TutorialController.swift */; };
+		39D735007A9F8924555A9484 /* TutorialOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F692C821D5A77DFB6A16BA /* TutorialOverlay.swift */; };
 		BF0000030000000000000011 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000011 /* AuthViewModel.swift */; };
 		BF0000030000000000000012 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000012 /* LoginView.swift */; };
 		BF0000030000000000000013 /* ClubBagViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000020000000000000013 /* ClubBagViewModel.swift */; };
@@ -319,7 +326,6 @@
 		LSN00000000000000000013 /* SwingAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwingAnalysis.swift; sourceTree = "<group>"; };
 		LSN000000000000000001HS /* HoselSpeedEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoselSpeedEstimator.swift; sourceTree = "<group>"; };
 		LSN000000000000000001CD /* ClubheadDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubheadDetector.swift; sourceTree = "<group>"; };
-		4D0077DBA30C4773A7300E15 /* HoselSpeedEstimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoselSpeedEstimator.swift; sourceTree = "<group>"; };
 		LSN000000000000000001ML /* ClubDetector.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = ClubDetector.mlpackage; sourceTree = "<group>"; };
 		F69BA60176D441D486295CBF /* ClubDetectorV2.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = ClubDetectorV2.mlpackage; sourceTree = "<group>"; };
 		RSV000000000000000000101 /* RoundShotVerifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoundShotVerifier.swift; sourceTree = "<group>"; };
@@ -388,7 +394,15 @@
 		BF000002000000000000000E /* CourseModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CourseModels.swift; sourceTree = "<group>"; };
 		BF000002000000000000000F /* FeatureFlags.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureFlags.swift; sourceTree = "<group>"; };
 		BF0000020000000000000010 /* AppRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRootView.swift; sourceTree = "<group>"; };
-		F2B279B94168429F9A1F4C31 /* RushilPendingStubs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RushilPendingStubs.swift; sourceTree = "<group>"; };
+		6C6C5E6DD59CAEE123C0421A /* AICoachService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AICoachService.swift; path = BallStrikeCamera/Services/AICoachService.swift; sourceTree = SOURCE_ROOT; };
+		BFB5776A18583750032B3FF9 /* WeeklyChallenge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WeeklyChallenge.swift; path = BallStrikeCamera/UI/AppShell/WeeklyChallenge.swift; sourceTree = SOURCE_ROOT; };
+		24B1EFA7E6F169CF6A620BF7 /* GhostMatch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = GhostMatch.swift; path = BallStrikeCamera/UI/Courses/GhostMatch.swift; sourceTree = SOURCE_ROOT; };
+		6BB8E058AEBEEEF2CF939797 /* HandicapShareCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HandicapShareCard.swift; path = BallStrikeCamera/UI/History/HandicapShareCard.swift; sourceTree = SOURCE_ROOT; };
+		345075C1A548E682CAD8F432 /* AICoachCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AICoachCard.swift; path = BallStrikeCamera/UI/Learning/AICoachCard.swift; sourceTree = SOURCE_ROOT; };
+		5110A8B335C48B3E0A827572 /* BeginnerHelp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = BeginnerHelp.swift; path = BallStrikeCamera/UI/Learning/BeginnerHelp.swift; sourceTree = SOURCE_ROOT; };
+		70D880C702FCF7AD4B4A8F50 /* LearnHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LearnHub.swift; path = BallStrikeCamera/UI/Learning/LearnHub.swift; sourceTree = SOURCE_ROOT; };
+		70B83D94A641B7F7A883AC49 /* TutorialController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TutorialController.swift; path = BallStrikeCamera/UI/Learning/TutorialController.swift; sourceTree = SOURCE_ROOT; };
+		E2F692C821D5A77DFB6A16BA /* TutorialOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TutorialOverlay.swift; path = BallStrikeCamera/UI/Learning/TutorialOverlay.swift; sourceTree = SOURCE_ROOT; };
 		BF0000020000000000000011 /* AuthViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModel.swift; sourceTree = "<group>"; };
 		BF0000020000000000000012 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		BF0000020000000000000013 /* ClubBagViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubBagViewModel.swift; sourceTree = "<group>"; };
@@ -723,7 +737,6 @@
 				LSN00000000000000000013 /* SwingAnalysis.swift */,
 				LSN000000000000000001HS /* HoselSpeedEstimator.swift */,
 				LSN000000000000000001CD /* ClubheadDetector.swift */,
-				4D0077DBA30C4773A7300E15 /* HoselSpeedEstimator.swift */,
 				LSN000000000000000001ML /* ClubDetector.mlpackage */,
 				F69BA60176D441D486295CBF /* ClubDetectorV2.mlpackage */,
 				RSV000000000000000000101 /* RoundShotVerifier.swift */,
@@ -882,7 +895,15 @@
 			isa = PBXGroup;
 			children = (
 				BF0000020000000000000010 /* AppRootView.swift */,
-				F2B279B94168429F9A1F4C31 /* RushilPendingStubs.swift */,
+				6C6C5E6DD59CAEE123C0421A /* AICoachService.swift */,
+				BFB5776A18583750032B3FF9 /* WeeklyChallenge.swift */,
+				24B1EFA7E6F169CF6A620BF7 /* GhostMatch.swift */,
+				6BB8E058AEBEEEF2CF939797 /* HandicapShareCard.swift */,
+				345075C1A548E682CAD8F432 /* AICoachCard.swift */,
+				5110A8B335C48B3E0A827572 /* BeginnerHelp.swift */,
+				70D880C702FCF7AD4B4A8F50 /* LearnHub.swift */,
+				70B83D94A641B7F7A883AC49 /* TutorialController.swift */,
+				E2F692C821D5A77DFB6A16BA /* TutorialOverlay.swift */,
 				BF0000020000000000000011 /* AuthViewModel.swift */,
 				BF0000020000000000000012 /* LoginView.swift */,
 				BF00000200000000000000A1 /* OnboardingView.swift */,
@@ -1181,7 +1202,6 @@
 				LSN00000000000000000003 /* SwingAnalysis.swift in Sources */,
 				LSN000000000000000000HS /* HoselSpeedEstimator.swift in Sources */,
 				LSN000000000000000000CD /* ClubheadDetector.swift in Sources */,
-				427F0445105844E9975A0EB9 /* HoselSpeedEstimator.swift in Sources */,
 				LSN000000000000000000ML /* ClubDetector.mlpackage in Sources */,
 				A9509E81AEE445F9AB806124 /* ClubDetectorV2.mlpackage in Sources */,
 				RSV000000000000000000001 /* RoundShotVerifier.swift in Sources */,
@@ -1274,7 +1294,15 @@
 				BF0000030000000000000E01 /* GolfGeometryHelpers.swift in Sources */,
 				BF000003000000000000000F /* FeatureFlags.swift in Sources */,
 				BF0000030000000000000010 /* AppRootView.swift in Sources */,
-				F6CC02EAADA344239F911A9B /* RushilPendingStubs.swift in Sources */,
+				71BDE2961DF322A70E1D92E0 /* AICoachService.swift in Sources */,
+				0D39FFD5328BBC02451859DF /* WeeklyChallenge.swift in Sources */,
+				861CD24432FFFA8F56FA5796 /* GhostMatch.swift in Sources */,
+				D7D216A23E3374E4826F3453 /* HandicapShareCard.swift in Sources */,
+				39DF3E2DE6DAA4D7742BCB03 /* AICoachCard.swift in Sources */,
+				D40E169C0FD6E5A36473BCD4 /* BeginnerHelp.swift in Sources */,
+				646BA2C97D76D2F015B5A2E1 /* LearnHub.swift in Sources */,
+				18ACD8390D7D8D03591CA5D3 /* TutorialController.swift in Sources */,
+				39D735007A9F8924555A9484 /* TutorialOverlay.swift in Sources */,
 				BF0000030000000000000011 /* AuthViewModel.swift in Sources */,
 				BF0000030000000000000012 /* LoginView.swift in Sources */,
 				BF00000300000000000000A1 /* OnboardingView.swift in Sources */,

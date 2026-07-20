@@ -1,0 +1,31 @@
+# Supabase project config for the Backend workdir (functions + migrations).
+#
+# Why this file exists separately from repo-root /supabase/config.toml:
+#   - repo-root /supabase/  → auth email templates + SMTP ([auth.*] only)
+#   - Backend/supabase/      → edge functions + DB migrations (this file)
+# The CLI resolves its project root by walking up for a `config.toml`. Deploying
+# functions/migrations must be run from `Backend/` so this file is found and
+# `Backend/supabase/functions` is the functions dir. Without it the CLI walked
+# up to the repo-root config and looked for functions that aren't there.
+
+project_id = "aoxturoezgecwceudeef"
+
+# ── Edge functions ──────────────────────────────────────────────────────────────
+# ai-coach verifies the caller's JWT itself (supabase.auth.getUser) and routes
+# shot metrics to Claude via OpenRouter. verify_jwt stays on (default) so the
+# gateway rejects unauthenticated calls before they reach the function.
+[functions.ai-coach]
+verify_jwt = true
+
+[functions.stripe-webhook]
+# Stripe calls this with a signature header, not a Supabase JWT.
+verify_jwt = false
+
+[functions.create-checkout-session]
+verify_jwt = true
+
+[functions.create-customer-portal-session]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true

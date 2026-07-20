@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import SiteNav from "@/components/SiteNav";
 import SiteFooter from "@/components/SiteFooter";
 import ClubCards from "@/components/ClubCards";
+import ProductArt from "@/components/ProductArt";
+import NotifyForm from "@/components/NotifyForm";
 
 export const metadata: Metadata = {
   title: "Store",
   description:
-    "NFC club cards, stands, and gear for True Carry: the camera launch monitor. Tag every club in your bag and let your gapping build itself.",
+    "NFC club tags, foam practice balls, the True Carry tripod, the polo, and gift cards. Gear for True Carry: the camera launch monitor.",
 };
 
 type Product = {
@@ -14,50 +16,80 @@ type Product = {
   name: string;
   price: string;
   tag: string;
-  art: string;
   features: string[];
   status: string;
+  href?: string;
 };
 
+// NOTE: prices on the physical goods are placeholders — set them before launch.
+// The gift card is deliberately face-value: anything below the yearly sub price
+// would make gifting yourself cheaper than subscribing.
 const PRODUCTS: Product[] = [
   {
-    id: "full-bag",
-    name: "Club Cards, Full Bag",
+    id: "nfc-tag",
+    name: "NFC Club Tags",
     price: "$29",
-    tag: "Fourteen NFC cards. One for every club you carry.",
-    art: "14",
-    features: ["14 passive NFC cards", "Under-grip or bag-tag fit", "No batteries, no pairing", "Waterproof, tour-thin"],
+    tag: "Tap a club. The next shot knows which one it was.",
+    features: [
+      "14 passive NFC tags, one per club",
+      "Under-grip or bag-tag fit",
+      "No batteries, no pairing",
+      "Waterproof, tour-thin",
+    ],
     status: "Ships fall 2026",
   },
   {
-    id: "short-game",
-    name: "Club Cards, Short Game",
-    price: "$15",
-    tag: "Wedges and putter. Where the scoring happens.",
-    art: "6",
-    features: ["6 passive NFC cards", "Pre-labeled 48°–64° + putter", "Same tap-to-tag flow"],
+    id: "foam-balls",
+    name: "Foam Practice Balls",
+    price: "$19",
+    tag: "Full swings. Living room ceiling intact.",
+    features: [
+      "12 high-density foam balls",
+      "Tracks like a real ball at 240fps",
+      "Indoor and net safe",
+      "Won't mark walls",
+    ],
     status: "Ships fall 2026",
   },
   {
-    id: "stand",
-    name: "The Stand",
+    id: "tripod",
+    name: "The True Carry Tripod",
     price: "$39",
-    tag: "Puts the camera where the math wants it.",
-    art: "△",
-    features: ["Alignment guide for 240fps capture", "Folds to scorecard size", "Fits every iPhone"],
+    tag: "Puts the camera exactly where the math wants it.",
+    features: [
+      "Alignment guide for 240fps capture",
+      "Folds to scorecard size",
+      "Fits every iPhone",
+      "Weighted base, grass or mat",
+    ],
     status: "Ships fall 2026",
   },
   {
-    id: "gift-pro",
-    name: "Gift a year of Pro",
-    // Priced at parity with a yearly Pro subscription ($9.99/mo × 12). Keeping
-    // this below the yearly price made it cheaper to gift yourself than to
-    // subscribe — an arbitrage worth avoiding.
-    price: "$119.88",
+    id: "polo",
+    name: "The True Carry Polo",
+    price: "$65",
+    tag: "Quietly says you know your carry numbers.",
+    features: [
+      "Performance pique, four-way stretch",
+      "Embroidered mark, left chest",
+      "Sizes XS–XXL",
+      "Forest, bone, and clay",
+    ],
+    status: "Ships fall 2026",
+  },
+  {
+    id: "gift-card",
+    name: "True Carry Gift Card",
+    price: "$25+",
     tag: "Every yard, on someone else's card.",
-    art: "Pro",
-    features: ["12 months of True Carry Pro", "Advanced analytics + video export", "Delivered as a code"],
+    features: [
+      "Choose any amount from $25",
+      "Redeemable against Pro, Atlas, or gear",
+      "Delivered by email as a code",
+      "Never expires",
+    ],
     status: "Available now",
+    href: "/#h07",
   },
 ];
 
@@ -71,8 +103,9 @@ export default function StorePage() {
             <p className="store-kicker">The pro shop</p>
             <h1>Gear that knows<br /><span className="it">your bag.</span></h1>
             <p className="store-deck">
-              Hardware is simple here: passive NFC cards that tell the app which club you&apos;re
-              swinging, and a stand that holds the camera steady. Everything else is software.
+              Hardware is simple here: tags that tell the app which club you&apos;re swinging,
+              balls you can hit indoors, and a tripod that holds the camera steady.
+              Everything else is software.
             </p>
           </div>
           <div className="store-hero-cards">
@@ -83,40 +116,36 @@ export default function StorePage() {
 
       <main className="store-main">
         <div className="store-grid">
-          {PRODUCTS.map((p) => (
-            <article className="product" key={p.id}>
-              <div className="product-art" aria-hidden><span>{p.art}</span></div>
-              <div className="product-body">
-                <div className="product-head">
-                  <h2>{p.name}</h2>
-                  <span className="product-price">{p.price}</span>
+          {PRODUCTS.map((p) => {
+            const live = p.status === "Available now";
+            return (
+              <article className="product" key={p.id}>
+                <div className="product-art"><ProductArt kind={p.id} /></div>
+                <div className="product-body">
+                  <div className="product-head">
+                    <h2>{p.name}</h2>
+                    <span className="product-price">{p.price}</span>
+                  </div>
+                  <p className="product-tag">{p.tag}</p>
+                  <ul>
+                    {p.features.map((f) => <li key={f}>{f}</li>)}
+                  </ul>
+                  <div className="product-foot">
+                    <span className={`product-status${live ? " live" : ""}`}>{p.status}</span>
+                    {live
+                      ? <a className="product-cta" href={p.href ?? "/#h07"}>Get it</a>
+                      : <NotifyForm productId={p.id} productName={p.name} />}
+                  </div>
                 </div>
-                <p className="product-tag">{p.tag}</p>
-                <ul>
-                  {p.features.map((f) => <li key={f}>{f}</li>)}
-                </ul>
-                <div className="product-foot">
-                  <span className={`product-status${p.status === "Available now" ? " live" : ""}`}>{p.status}</span>
-                  {p.status === "Available now" ? (
-                    <a className="product-cta" href="/#h07">Get it</a>
-                  ) : (
-                    <a
-                      className="product-cta ghost"
-                      href={`mailto:rushil@truecarrygolf.com?subject=Notify%20me%20about%20${encodeURIComponent(p.name)}`}
-                    >
-                      Notify me
-                    </a>
-                  )}
-                </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
 
         <div className="store-note">
           <p>
-            Club cards pair with the True Carry app, free to start, no reader hardware needed.
-            Tap a card on your phone and the next shot is tagged to that club.
+            Club tags pair with the True Carry app, free to start, no reader hardware needed.
+            Tap a tag on your phone and the next shot is tagged to that club.
           </p>
           <a href="/play" className="store-sim-link">While you wait, play a round in the sim →</a>
         </div>
