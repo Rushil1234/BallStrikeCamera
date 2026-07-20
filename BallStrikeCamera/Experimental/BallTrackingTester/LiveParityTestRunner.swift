@@ -194,6 +194,8 @@ final class LiveParityTestRunner {
                 verdict = String(format: "discarded — implausible (speed=%.1f hla=%.1f carry=%.1f)",
                                  m.ballLaunch.ballSpeedMph ?? 0, m.ballLaunch.hlaDegrees ?? 0,
                                  m.distance.carryYards ?? 0)
+            } else if !isPutterMode, v2Primary.v2?.ballStationary == true {
+                verdict = "repositioned — V2 measured ball stationary"
             } else if !isPutterMode, let speed = m.ballLaunch.ballSpeedMph, speed < 3.0 {
                 verdict = String(format: "repositioned — %.1f mph without putter selected", speed)
             }

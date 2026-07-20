@@ -2423,6 +2423,11 @@ struct V2Output {
     var vlaDegrees: Double?
     var confident: Bool
     var flightPointCount: Int
+    /// V2's tracker fit a flight line but the ball barely moved (< ~1.3 m/s ≈ 3 mph
+    /// off the face). A positive "the ball did NOT launch" signal — used to stop the
+    /// legacy fallback from rescuing a stationary capture into an accepted shot
+    /// (shot_20260716_174308_861: V2 read 0.2 m/s, legacy invented 7.1 mph).
+    var ballStationary: Bool = false
     var notes: [String]
     /// V2's own impact frame (ball-motion detected, launch-cone gated).
     var impactFrameIndex: Int = 0
@@ -3561,8 +3566,15 @@ final class V2Engine {
         let mPerPx = 0.04267 / 2 / max(rLockSub, 2)
         let vPhysMps = vPx * mPerPx
         guard vPhysMps >= 3.0 && vPhysMps <= 105.0 else {
+            // A fitted line under ~1.3 m/s means the tracked ball is essentially where
+            // it started — not a slow shot, a non-shot. Flag it so live validation
+            // repositions instead of showing the legacy fallback's noise speed. (The
+            // high bound is a different failure — glare runaway — and stays a plain
+            // withhold, legacy may still recover a real fast shot there.)
+            let stationary = vPhysMps < 1.3
             return V2Output(ballSpeedMph: nil, clubSpeedMph: nil, vlaDegrees: nil,
                             confident: false, flightPointCount: pts.count,
+                            ballStationary: stationary,
                             notes: notes + [String(format: "withheld: implausible physics %.1f m/s", vPhysMps)],
                             impactFrameIndex: impact, frameObservations: frameObs,
                             clubObservations: clubObs)

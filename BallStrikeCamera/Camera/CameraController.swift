@@ -1408,6 +1408,15 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         guard let metrics = validMetrics else { return .discard(reason: discardReason) }
 
+        // V2's accurate tracker positively measured the ball as stationary (< ~1.3 m/s
+        // over a fitted line). Trust that over the legacy fallback, which can invent a
+        // speed from post-capture noise on a ball that never launched — that's how
+        // shot_20260716_174308_861 (V2 0.2 m/s) surfaced as an accepted 7.1 mph shot.
+        if !isPutterMode, v2Primary.v2?.ballStationary == true {
+            print("[ShotValidation] V2 measured the ball as stationary — reposition, not a shot")
+            return .repositioned
+        }
+
         // A non-putter "shot" under 3 mph is a hand nudge, not a strike (the slowest real chip
         // is far faster). Putter mode keeps its own lower floor since slow taps are legitimate.
         if !isPutterMode, let speed = metrics.ballLaunch.ballSpeedMph, speed < 3.0 {
