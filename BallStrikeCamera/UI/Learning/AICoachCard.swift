@@ -7,8 +7,8 @@ struct AICoachCard: View {
     let mode: AICoachService.Mode
     let shots: [AICoachService.ShotPayload]
     var isPro: Bool
-    var title: String = "Coach"
-    var subtitle: String = "A coach's read on your numbers"
+    var title: String = "AI Coach"
+    var subtitle: String = "A PGA-level read on your numbers"
 
     @State private var coaching: String?
     @State private var loading = false
@@ -111,7 +111,7 @@ struct AICoachCard: View {
 
     private var lockedBody: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Get personalized coaching on your carry, start line, launch, and gapping — read straight from your own shot data. Available on Pro.")
+            Text("Get personalized coaching on your carry, start line, launch, and gapping — powered by AI. Available on Pro.")
                 .font(.system(size: 13))
                 .foregroundColor(TCTheme.textMuted)
                 .fixedSize(horizontal: false, vertical: true)
