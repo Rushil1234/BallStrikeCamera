@@ -686,7 +686,8 @@ struct SwingReplayView: View {
                                     ghostTrail: usingClubTrail ? nil : ghostTrail,
                                     headBox: headBox,
                                     planeAnchors: planeAnchors,
-                                    isFaceOn: swing.viewAngle == .faceOn
+                                    isFaceOn: swing.viewAngle == .faceOn,
+                                    topTime: swing.phases?.times.flatMap { $0.count == 5 ? $0[2] : nil }
                                 )
                             }
                             .allowsHitTesting(false)
@@ -1068,6 +1069,9 @@ struct RichPoseOverlay: View {
     var planeAnchors: (hands: [Double], club: [Double])? = nil
     /// Face-on gauges vs down-the-line hinge/flex arcs in ANGLES mode.
     var isFaceOn: Bool = true
+    /// Top-of-backswing time: PATH mode draws the backswing and downswing in different
+    /// colors when trail rows carry timestamps.
+    var topTime: Double? = nil
 
     // Reference-app palette: one hue per idea, not per body part.
     private static let boneColor  = Color(red: 0.25, green: 0.90, blue: 1.0)    // cyan
@@ -1204,24 +1208,40 @@ struct RichPoseOverlay: View {
                      at: CGPoint(x: pts[0].x, y: max(videoRect.minY + 8, pts[0].y - 12)))
         }
         guard let trail, trail.count > 3 else { return }
-        let pts = trail.map { toScreen($0[0], $0[1]) }
-        var path = Path()
-        path.move(to: pts[0])
-        for i in 1..<pts.count - 1 {
-            let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2,
-                              y: (pts[i].y + pts[i + 1].y) / 2)
-            path.addQuadCurve(to: mid, control: pts[i])
+        // Backswing vs downswing in different colors, split at the top-of-swing time —
+        // white going back, hot red coming down (the tracer-app look).
+        let splitIdx: Int? = {
+            guard let topTime, trail.first?.count ?? 0 >= 3 else { return nil }
+            return trail.firstIndex { $0[2] > topTime }
+        }()
+        func smoothPath(_ pts: [CGPoint]) -> Path {
+            var path = Path()
+            guard pts.count > 1 else { return path }
+            path.move(to: pts[0])
+            guard pts.count > 2 else { path.addLine(to: pts[1]); return path }
+            for i in 1..<pts.count - 1 {
+                let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2,
+                                  y: (pts[i].y + pts[i + 1].y) / 2)
+                path.addQuadCurve(to: mid, control: pts[i])
+            }
+            path.addLine(to: pts[pts.count - 1])
+            return path
         }
-        path.addLine(to: pts[pts.count - 1])
-        ctx.stroke(path, with: .color(.black.opacity(0.3)),
-                   style: StrokeStyle(lineWidth: 6.5, lineCap: .round, lineJoin: .round))
-        ctx.stroke(path, with: .linearGradient(
-            Gradient(colors: [Color.cyan.opacity(0.9), Color(red: 1.0, green: 0.3, blue: 0.9).opacity(0.9)]),
-            startPoint: pts.first!, endPoint: pts.last!),
-            style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+        let pts = trail.map { toScreen($0[0], $0[1]) }
+        let back = splitIdx.map { Array(pts[0..<max($0, 2)]) } ?? pts
+        let down = splitIdx.flatMap { $0 < pts.count ? Array(pts[(max($0, 1) - 1)...]) : nil }
+        for (seg, color) in [(back, Color.white),
+                             (down ?? [], Color(red: 1.0, green: 0.25, blue: 0.25))] {
+            guard seg.count > 1 else { continue }
+            let path = smoothPath(seg)
+            ctx.stroke(path, with: .color(.black.opacity(0.3)),
+                       style: StrokeStyle(lineWidth: 6.5, lineCap: .round, lineJoin: .round))
+            ctx.stroke(path, with: .color(color.opacity(0.92)),
+                       style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+        }
         ctx.draw(Text(trailLabel)
                     .font(.system(size: 10, weight: .black))
-                    .foregroundColor(.cyan.opacity(0.9)),
+                    .foregroundColor(.white.opacity(0.9)),
                  at: CGPoint(x: pts[0].x, y: min(videoRect.maxY - 8, pts[0].y + 16)))
     }
 
