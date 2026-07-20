@@ -51,12 +51,18 @@ final class HoselSpeedEstimator {
         let scale = 640.0 / max(W, H)
         let padX = (640.0 - W * scale) / 2, padY = (640.0 - H * scale) / 2
         let p = arr.dataPointer.bindMemory(to: Float.self, capacity: 7 * n)
+        // Feet guard (Noah, July 20): a hosel can never sit in the bottom 1/8 of the
+        // frame — that strip is the user's feet/shoes at normal tripod framing.
+        // Measured: 0/1333 hand-labeled hosels down there, no error change on the
+        // labeled sessions — pure insurance against feet-as-club on other setups.
+        let footLine = H * 7.0 / 8.0
         var best: (x: Double, y: Double, conf: Double)? = nil
         for i in 0..<n {
             let conf = Double(p[5 * n + i])          // row 5 = hosel class score
             guard conf >= 0.25, conf > (best?.conf ?? 0) else { continue }
-            best = ((Double(p[i]) - padX) / scale,
-                    (Double(p[n + i]) - padY) / scale, conf)
+            let cy = (Double(p[n + i]) - padY) / scale
+            guard cy <= footLine else { continue }
+            best = ((Double(p[i]) - padX) / scale, cy, conf)
         }
         return best
     }

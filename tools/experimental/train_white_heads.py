@@ -14,18 +14,25 @@ RES = CONT + '/Documents/ReplayResults'
 conv = json.load(open(os.path.join(TRAIN, 'garmin_to_tt.json')))
 a_l, b_l = conv['launch']['a'], conv['launch']['b']
 
-# launch truth from garmin_main.csv via garmin_idx (pairs carry ball speed only)
+# launch truth via garmin_idx (pairs carry ball speed only). garmin_idx indexes
+# garmin_small.csv THEN garmin_main.csv, date-filtered rows, concatenated \u2014
+# verified 103/103 on ball speed July 20. The original main-only read here
+# shifted every launch target by 9 rows (white VLA head trained on wrong truth).
 import csv
 grows = []
-with open(os.path.join(TRAIN, 'session_2026-07-12/garmin_main.csv')) as f:
-    for r in csv.DictReader(f):
-        date = r.get('\ufeffDate') or r.get('Date')
-        if not date or '/' not in date:
-            continue
-        try:
-            grows.append(dict(ball=float(r['Ball Speed']), launch=float(r['Launch Angle'])))
-        except (ValueError, KeyError):
-            grows.append(dict(ball=None, launch=None))
+for _name in ('garmin_small.csv', 'garmin_main.csv'):
+    _p = os.path.join(TRAIN, 'session_2026-07-12', _name)
+    if not os.path.exists(_p):
+        continue
+    with open(_p) as f:
+        for r in csv.DictReader(f):
+            date = r.get('\ufeffDate') or r.get('Date')
+            if not date or '/' not in date:
+                continue
+            try:
+                grows.append(dict(ball=float(r['Ball Speed']), launch=float(r['Launch Angle'])))
+            except (ValueError, KeyError):
+                grows.append(dict(ball=None, launch=None))
 truth = {}
 for p in json.load(open(os.path.join(TRAIN, 'session_2026-07-12/pairs.json'))):
     shot = p.get('shot')

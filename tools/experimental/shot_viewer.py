@@ -92,13 +92,22 @@ def _load_truth():
                           backspin=p.get('backspin'), club=p.get('club') or '')
             tt['num'] = p.get('tt_shot')
             out[p['shot']] = {'toptracer': tt, 'garmin': None}
-    # jul12 whites: Garmin only, full rows from garmin_main.csv by index
+    # jul12 whites: Garmin only. garmin_idx indexes the DATE-FILTERED rows of
+    # garmin_small.csv THEN garmin_main.csv concatenated (verified 103/103 on
+    # ball speed; the CSVs carry a units row that must be skipped, and indexing
+    # main-only silently shifts every row by 9 — that bug shipped in
+    # train_white_heads.py's launch truth).
     p12 = os.path.join(TRAIN, 'session_2026-07-12/pairs.json')
     g12 = []
-    c12 = os.path.join(TRAIN, 'session_2026-07-12/garmin_main.csv')
-    if os.path.exists(c12):
+    for name in ('garmin_small.csv', 'garmin_main.csv'):
+        c12 = os.path.join(TRAIN, 'session_2026-07-12', name)
+        if not os.path.exists(c12):
+            continue
         with open(c12) as f:
             for r in _csv.DictReader(f):
+                date = r.get('﻿Date') or r.get('Date')
+                if not date or '/' not in date:
+                    continue          # units row / junk
                 g12.append(dict(ball_mph=_fnum(r.get('Ball Speed')), club_mph=_fnum(r.get('Club Speed')),
                                 launch=_fnum(r.get('Launch Angle')), launch_dir=_fnum(r.get('Launch Direction')),
                                 backspin=_fnum(r.get('Backspin')), spin=_fnum(r.get('Spin Rate')),
@@ -139,13 +148,35 @@ def shot_ids():
                   if f.endswith('.json') and shot_dir(f[:-5]))
 
 
+# Garmin -> TT cross-calibration (fit on 54 dual-paired swings, July 18):
+# projects TT-scale metrics for Garmin-only shots. View-only — error columns
+# and avg-err keep judging Garmin shots against real Garmin numbers.
+G2TT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'garmin_to_tt.json')
+g2tt = json.load(open(G2TT_PATH)) if os.path.exists(G2TT_PATH) else {}
+
+
+def project_tt(gm):
+    def m(name, v):
+        c = g2tt.get(name)
+        return c['a'] * v + c['b'] if c and v is not None else None
+    out = {'ball_mph': m('speed', gm.get('ball_mph')),
+           'launch': m('launch', gm.get('launch')),
+           'club_mph': m('club_speed', gm.get('club_mph')),
+           'backspin': m('backspin', gm.get('backspin')),
+           'projected': True}
+    return out if any(v is not None for k, v in out.items() if k != 'projected') else None
+
+
 def shot_payload(sid):
     d = json.load(open(os.path.join(RESULTS, sid + '.json')))
     sd = shot_dir(sid)
     nframes = len([f for f in os.listdir(sd) if f.startswith('frame_')]) if sd else 0
     t = truth.get(sid) or {}
+    tt = t.get('toptracer')
+    if not tt and t.get('garmin'):
+        tt = project_tt(t['garmin'])
     return {'name': sid, 'replay': d, 'nframes': nframes,
-            'toptracer': t.get('toptracer'), 'garmin': t.get('garmin')}
+            'toptracer': tt, 'garmin': t.get('garmin')}
 
 
 def shot_errors(m, t):
@@ -364,8 +395,9 @@ function metricsTable(){
   const smashOurs=(m.ballSpeedMph&&m.clubSpeedMph)?m.ballSpeedMph/m.clubSpeedMph:null;
   // per-shot avg of % errors vs the primary truth (TT, else Garmin) — same math
   // as the server's list rows: ball, club, carry, total
-  const ref = tt.ball_mph!=null?tt:gm;
-  const refName = tt.ball_mph!=null?'TT':'Garmin';
+  // projected TT is a viewing tool — real Garmin stays the error reference
+  const ref = (tt.ball_mph!=null && !tt.projected)?tt:gm;
+  const refName = (tt.ball_mph!=null && !tt.projected)?'TT':'Garmin';
   const pcts=[['ball spd',m.ballSpeedMph,ref.ball_mph],['club spd',m.clubSpeedMph,ref.club_mph],
               ['carry',m.carryYards,ref.carry],['total',m.totalYards,ref.total]]
     .map(([n,o,t])=>(o!=null&&t)?[n,Math.abs(o-t)/Math.abs(t)*100]:null).filter(x=>x);
@@ -376,13 +408,15 @@ function metricsTable(){
     `<td colspan=5 style="text-align:left"><b><span class="${cls(avg)}">${avg.toFixed(1)}%</span></b>`+
     ` <span class="k">vs ${refName} &middot; mean of ${pcts.map(x=>x[0]+' '+x[1].toFixed(1)+'%').join(', ')}`+
     `${vlaD!=null?' &middot; VLA off '+vlaD.toFixed(1)+'&deg;':''}</span></td></tr>`;
+  const ttHdr = tt.projected?'TopTracer <span style="color:#e8c268">(proj)</span>':'TopTracer';
+  const ttEHdr = tt.projected?'vs TT(proj)':'vs TT';
   document.getElementById('metrics').innerHTML =
-    '<tr><th>stat</th><th>TrueCarry</th><th>TopTracer</th><th>Garmin</th><th>vs TT</th><th>vs Garmin</th></tr>'+
+    `<tr><th>stat</th><th>TrueCarry</th><th>${ttHdr}</th><th>Garmin</th><th>${ttEHdr}</th><th>vs Garmin</th></tr>`+
     avgLine+
     row('ball speed mph', m.ballSpeedMph, tt.ball_mph, gm.ball_mph)+
     (adv?row('&nbsp; v3 head (advisory)', +adv[1], tt.ball_mph, gm.ball_mph):'')+
     row('VLA &deg;', m.vlaDegrees, tt.launch, gm.launch)+
-    row('HLA / push-pull &deg;', null, tt.push_pull, gm.launch_dir)+
+    row('HLA / push-pull &deg;', m.hlaDisplay, tt.push_pull, gm.launch_dir)+
     row('carry yd', m.carryYards, tt.carry, gm.carry)+
     row('total yd', m.totalYards, tt.total, gm.total)+
     row('club speed mph', m.clubSpeedMph, tt.club_mph, gm.club_mph)+
