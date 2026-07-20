@@ -19,6 +19,7 @@ struct RoundShotLogView: View {
     @State private var selectedLinkedShot: SavedShot?
     /// Which hole page is showing — opens on the shot's hole when launched from Insights.
     @State private var selectedHole: Int
+    private let initialHole: Int?
 
     /// Cached OSM geometry for the course (tee/green/path per hole) — the same source course
     /// mode renders from, so history pages match what the player saw during the round.
@@ -27,9 +28,13 @@ struct RoundShotLogView: View {
     init(round: CourseRound, linkedShots: [SavedShot], initialHole: Int? = nil) {
         self.round = round
         self.linkedShots = linkedShots
+        self.initialHole = initialHole
         self.course = OSMGolfService.shared.loadCached(courseId: round.courseId)
+        // Start on the first hole; onAppear jumps to the shot's hole. Initialising
+        // directly to the target doesn't stick — a paged TabView ignores it on first
+        // render, and there'd be no state CHANGE to make it move afterwards.
         let firstHole = round.holes.map { $0.holeNumber }.min() ?? 1
-        _selectedHole = State(initialValue: initialHole ?? firstHole)
+        _selectedHole = State(initialValue: firstHole)
     }
 
     /// Every hole of the round gets a page — holes without shots still show the hole
@@ -83,6 +88,14 @@ struct RoundShotLogView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .indexViewStyle(.page(backgroundDisplayMode: .always))
+                // A paged TabView often ignores its initial selection on first render;
+                // re-assert the target hole once laid out so we land on the shot's hole.
+                .onAppear {
+                    guard let h = initialHole, holesToShow.contains(h), selectedHole != h else { return }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        withAnimation(.none) { selectedHole = h }
+                    }
+                }
             }
             .frame(height: pageHeight)
             .sheet(item: $selectedLinkedShot) { shot in
