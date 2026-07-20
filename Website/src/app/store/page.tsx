@@ -50,7 +50,10 @@ const PRODUCTS: Product[] = [
   {
     id: "gift-pro",
     name: "Gift a year of Pro",
-    price: "$99",
+    // Priced at parity with a yearly Pro subscription ($9.99/mo × 12). Keeping
+    // this below the yearly price made it cheaper to gift yourself than to
+    // subscribe — an arbitrage worth avoiding.
+    price: "$119.88",
     tag: "Every yard, on someone else's card.",
     art: "Pro",
     features: ["12 months of True Carry Pro", "Advanced analytics + video export", "Delivered as a code"],

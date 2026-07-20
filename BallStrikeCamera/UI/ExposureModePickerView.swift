@@ -19,23 +19,34 @@ struct ExposureModePickerView: View {
         }
     }
 
+    /// Deep forest ink for a selected icon (reads on the gold→sage fill),
+    /// Range Bone secondary otherwise.
+    private func iconColor(_ selected: Bool) -> Color {
+        selected ? Color(red: 0.055, green: 0.078, blue: 0.059) : LaunchMonitorTheme.textSecondary
+    }
+
+    private func fillColors(_ selected: Bool) -> [Color] {
+        selected
+            ? [LaunchMonitorTheme.accentSky, LaunchMonitorTheme.accentFairway]
+            : [LaunchMonitorTheme.panelRaisedTop, LaunchMonitorTheme.panelRaisedBottom]
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             ForEach(ShutterPreset.allCases) { preset in
+                let selected = selectedShutter == preset
                 Button {
                     onShutterSelected(preset)
                 } label: {
                     Image(systemName: preset.symbol)
                         .font(.system(size: preset.iconSize, weight: .bold))
-                        .foregroundColor(selectedShutter == preset ? .white : LaunchMonitorTheme.textSecondary)
+                        .foregroundColor(iconColor(selected))
                         .frame(width: 42, height: 42)
                         .background(
                             RoundedRectangle(cornerRadius: 13, style: .continuous)
                                 .fill(
                                     LinearGradient(
-                                        colors: selectedShutter == preset
-                                            ? [LaunchMonitorTheme.accentSky, LaunchMonitorTheme.accentFairway]
-                                            : [LaunchMonitorTheme.panelRaisedTop, LaunchMonitorTheme.panelRaisedBottom],
+                                        colors: fillColors(selected),
                                         startPoint: .topLeading,
                                         endPoint: .bottomTrailing
                                     )
@@ -43,7 +54,7 @@ struct ExposureModePickerView: View {
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                .stroke(selectedShutter == preset ? Color.white.opacity(0.22) : LaunchMonitorTheme.outline, lineWidth: 1)
+                                .stroke(selected ? Color.white.opacity(0.22) : LaunchMonitorTheme.outline, lineWidth: 1)
                         )
                         .overlay(alignment: .topTrailing) {
                             if let color = badgeColor(preset) {

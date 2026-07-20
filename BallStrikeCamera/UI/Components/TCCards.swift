@@ -29,6 +29,31 @@ struct TCSectionHeader: View {
     }
 }
 
+// MARK: - Brand Wordmark
+
+/// The canonical "True Carry." lockup — "True" in the primary ink/bone, "Carry."
+/// in italic Marker Gold, serif. Mirrors the launch-screen wordmark so the brand
+/// reads identically wherever it recurs (empty states, headers). Theme-adaptive:
+/// dark ink on paper, Range Bone on forest; gold adapts in both.
+struct TCWordmark: View {
+    var size: CGFloat = 22
+    var weight: Font.Weight = .medium
+    /// Force the always-dark brand tones (Range Bone + Marker Gold). Use on
+    /// permanently-dark surfaces (e.g. the forest empty-state field), where the
+    /// adaptive primary ink would vanish in light mode.
+    var onDark: Bool = false
+
+    private var trueColor: Color { onDark ? TCTheme.captureBone : TCTheme.textPrimary }
+    private var carryColor: Color { onDark ? TCTheme.captureGold : TCTheme.gold }
+
+    var body: some View {
+        (Text("True ").foregroundColor(trueColor)
+            + Text("Carry.").italic().foregroundColor(carryColor))
+            .font(.system(size: size, weight: weight, design: .serif))
+            .accessibilityLabel("True Carry")
+    }
+}
+
 // MARK: - Divider
 
 struct TCDivider: View {

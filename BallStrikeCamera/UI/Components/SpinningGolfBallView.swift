@@ -199,6 +199,12 @@ struct GolfBallEmptyField: View {
                 .buttonStyle(.plain)
                 .padding(.top, 2)
             }
+
+            // Brand signature — the wordmark recurs on every empty state so the
+            // app reads as True Carry even before there's any data to show.
+            TCWordmark(size: 15, onDark: true)
+                .opacity(0.6)
+                .padding(.top, 2)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)

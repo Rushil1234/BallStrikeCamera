@@ -56,6 +56,7 @@ struct FeedView: View {
     @State private var pendingRound: PendingRound?
     @State private var stagedRound: PendingRound?
     @State private var unfinishedRound: CourseRound?
+    @State private var challengeRefresh = 0   // bumps VerifiedChallengeCard's reload
 
     init(userId: UUID, authorName: String, backend: AppBackend) {
         self.userId = userId
@@ -117,37 +118,12 @@ struct FeedView: View {
     var body: some View {
         ZStack {
             TrueCarryBackground(pattern: .plain)
+            ScrollViewReader { scrollProxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
-                        Button { showNotifications = true } label: {
-                            Image(systemName: "bell.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(TCTheme.gold)
-                                .frame(width: 32, height: 32)
-                                .background(Circle().fill(TCTheme.panelRaised))
-                                .overlay(Circle().strokeBorder(TCTheme.gold.opacity(0.35), lineWidth: 1))
-                                .overlay(alignment: .topTrailing) {
-                                    if unreadNotifs > 0 {
-                                        Text(unreadNotifs > 9 ? "9+" : "\(unreadNotifs)")
-                                            .font(.system(size: 9, weight: .heavy))
-                                            .foregroundColor(TCTheme.onPrimary)
-                                            .padding(.horizontal, 4).padding(.vertical, 1)
-                                            .background(Capsule().fill(TCTheme.gold))
-                                            .offset(x: 5, y: -1)
-                                    }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        Button { showFriends = true } label: {
-                            Image(systemName: "person.2.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(TCTheme.gold)
-                                .frame(width: 32, height: 32)
-                                .background(Circle().fill(TCTheme.panelRaised))
-                                .overlay(Circle().strokeBorder(TCTheme.gold.opacity(0.35), lineWidth: 1))
-                        }
-                        .buttonStyle(.plain)
+                        TCHeaderIconButton(icon: "bell.fill", badge: unreadNotifs) { showNotifications = true }
+                        TCHeaderIconButton(icon: "person.2.fill") { showFriends = true }
                         TCProfileAvatarButton(initials: userInitials,
                                               devMode: session.entitlementVM.isDeveloperMode) { showProfile = true }
                     }
@@ -162,6 +138,7 @@ struct FeedView: View {
                     leaderboardSection
                     sectionGap
                     challengesSection
+                        .id("tc.feed.challenges")
                     sectionGap
                     // Directly under the challenges it counts — completing those cards
                     // permanently banks credits toward these unlocks.
@@ -198,7 +175,22 @@ struct FeedView: View {
                     Spacer(minLength: 120)
                 }
             }
-            .refreshable { await vm.load() }
+            .refreshable {
+                challengeRefresh += 1   // quiet re-load of the verified challenge board
+                await vm.load()
+            }
+            #if DEBUG
+            // Screenshot harness: TC_DEBUG_SCROLL=challenges jumps the feed to the
+            // weekly-challenge board. Absent from release builds.
+            .onAppear {
+                if ProcessInfo.processInfo.environment["TC_DEBUG_SCROLL"] == "challenges" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        withAnimation { scrollProxy.scrollTo("tc.feed.challenges", anchor: .top) }
+                    }
+                }
+            }
+            #endif
+            }
         }
         .navigationBarHidden(true)
         .task {
@@ -361,7 +353,7 @@ struct FeedView: View {
     }
 
     private var homeSummarySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             brandedTitle("Your Week")
                 .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 0) {
@@ -377,6 +369,9 @@ struct FeedView: View {
         }
         .padding(.horizontal, TCTheme.hPad)
         .padding(.vertical, 18)
+        // Solid section background like its siblings — without it this band
+        // showed the page texture and read as a different tone.
+        .background(TCTheme.background)
     }
 
     private var leaderboardSection: some View {
@@ -400,6 +395,8 @@ struct FeedView: View {
     private var challengesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Weekly Challenges", actionTitle: "Post") { showComposer = true }
+            // Camera-verified global leaderboard — the competitive headliner.
+            VerifiedChallengeCard(refreshToken: challengeRefresh)
             VStack(spacing: 8) {
                 ForEach(vm.challengePreviews) { challenge in
                     ChallengePreviewRow(challenge: challenge)
@@ -420,7 +417,7 @@ struct FeedView: View {
                 .foregroundColor(TCTheme.textMuted)
         }
         .padding(.horizontal, TCTheme.hPad)
-        .padding(.vertical, 14)
+        .padding(.vertical, 18)
         .background(TCTheme.background)
     }
 

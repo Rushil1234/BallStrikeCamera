@@ -93,7 +93,7 @@ struct ScorecardView: View {
             .buttonStyle(.plain)
 
             Spacer()
-            TrueCarryLogo(size: 16)
+            TrueCarryLogo(size: 20)
             Spacer()
 
             ShareLink(item: roundSummaryText) {

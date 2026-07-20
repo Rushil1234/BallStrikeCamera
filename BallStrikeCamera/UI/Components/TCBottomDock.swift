@@ -5,17 +5,6 @@ import SwiftUI
 enum TCTab: Int, CaseIterable {
     case home = 0, insights = 1, play = 2, history = 3, locker = 4
 
-    /// Stable ids for welcome-tour spotlight anchors (see .tcGuideTarget).
-    var dockTargetId: String {
-        switch self {
-        case .home: return "home"
-        case .insights: return "insights"
-        case .play: return "play"
-        case .history: return "history"
-        case .locker: return "locker"
-        }
-    }
-
     var label: String {
         switch self {
         case .home:     return "Feed"
@@ -48,13 +37,14 @@ struct TCBottomDock: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 0) {
             ForEach(TCTab.allCases, id: \.rawValue) { tab in
-                if tab.isCenter {
-                    centerPlayButton(tab)
-                        .tcGuideTarget("dock.\(tab.dockTargetId)")
-                } else {
-                    dockItem(tab)
-                        .tcGuideTarget("dock.\(tab.dockTargetId)")
+                Group {
+                    if tab.isCenter {
+                        centerPlayButton(tab)
+                    } else {
+                        dockItem(tab)
+                    }
                 }
+                .tutorialAnchor(tab.tutorialAnchorID)
             }
         }
         .frame(maxWidth: .infinity)
@@ -159,9 +149,10 @@ struct TrueCarryAppShell: View {
     @State private var didPromptUsername = false
     @EnvironmentObject var session: AuthSessionStore
     @EnvironmentObject var camera: CameraController
-    @ObservedObject private var roundBeacon = ActiveRoundBeacon.shared
-    /// Round opened by tapping the banner — presented from the shell so it works on any tab.
-    @State private var bannerRound: CourseRound?
+    @StateObject private var tutorial = TutorialController()
+    #if DEBUG
+    @State private var didForceTutorialStep = false
+    #endif
 
     var body: some View {
         GeometryReader { geo in
@@ -182,39 +173,21 @@ struct TrueCarryAppShell: View {
                 // (Transparent when idle — empty space passes touches through.)
                 GoalCelebrationOverlay()
             }
-            .overlay(alignment: .top) {
-                // "Round in progress" — shown whenever a live round exists and course mode
-                // itself is off screen; tapping jumps back into the round.
-                if let round = roundBeacon.round, !roundBeacon.courseViewVisible {
-                    activeRoundBanner(round)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-            }
-            .animation(.spring(response: 0.32, dampingFraction: 0.8),
-                       value: roundBeacon.round == nil || roundBeacon.courseViewVisible)
+            .tutorialHost(tutorial)
         }
         .background(TCTheme.background.ignoresSafeArea())
-        .tcWelcomeTour()
         .tcAppearance()
+        .environmentObject(tutorial)
+        .onChange(of: tutorial.requestedTab) { newTab in
+            guard let t = newTab else { return }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = t }
+            tutorial.clearRequestedTab()
+        }
+        .onChange(of: session.needsOnboarding) { needs in
+            if !needs { maybeStartTutorial() }
+        }
         .sheet(isPresented: $showUsernameSetup) {
             NavigationStack { TCEditProfileSheet() }.tcAppearance()
-        }
-        .fullScreenCover(item: $bannerRound) { round in
-            CourseModeGPSHoleView(
-                userId: session.currentUser?.id ?? UUID(),
-                backend: session.backend,
-                initialRound: round
-            )
-        }
-        .task {
-            // Seed the round-in-progress banner on cold start — course mode isn't running
-            // yet to set the beacon itself.
-            guard let uid = session.currentUser?.id, ActiveRoundBeacon.shared.round == nil,
-                  !ActiveRoundBeacon.shared.courseViewVisible else { return }
-            let all = (try? await session.backend.loadCourseRounds(userId: uid)) ?? []
-            if !ActiveRoundBeacon.shared.courseViewVisible {
-                ActiveRoundBeacon.shared.round = all.first(where: { $0.endedAt == nil })
-            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .tcOpenLiveSim)) { _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
@@ -228,50 +201,63 @@ struct TrueCarryAppShell: View {
         .onReceive(NotificationCenter.default.publisher(for: .tcResumeRound)) { _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
         }
-        .onAppear(perform: maybePromptUsername)
+        .onAppear {
+            #if DEBUG
+            // Screenshot harness: TC_DEBUG_TAB=0…4 jumps straight to a tab with the
+            // tour and username nudge suppressed. Absent from release builds.
+            if let s = ProcessInfo.processInfo.environment["TC_DEBUG_TAB"],
+               let i = Int(s), let tab = TCTab(rawValue: i) {
+                selectedTab = tab
+                return
+            }
+            // Screenshot harness owns the tour deterministically — no auto-start race.
+            if let s = ProcessInfo.processInfo.environment["TC_TUTORIAL_STEP"], let i = Int(s) {
+                if !didForceTutorialStep {
+                    didForceTutorialStep = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { tutorial.startAt(i) }
+                }
+                return
+            }
+            #endif
+            maybeStartTutorial()
+            // The guided tour takes precedence on first launch; the username
+            // nudge waits until the tour ends so the two never stack.
+            if !TutorialController.shouldAutoStart { maybePromptUsername() }
+        }
+        .onChange(of: tutorial.isActive) { active in
+            // Tour just finished (or was skipped) — now it's safe to nudge.
+            if !active { maybePromptUsername() }
+        }
         .onChange(of: session.userProfile?.username) { _ in maybePromptUsername() }
     }
 
-    /// Tap-to-return pill for a round in progress. Posting `.tcResumeRound` lands on the
-    /// Play tab, which reloads the unfinished round and reopens course mode fullscreen.
-    private func activeRoundBanner(_ round: CourseRound) -> some View {
-        let holeNumber = round.holes.first(where: { $0.score == nil })?.holeNumber
-        return Button {
-            bannerRound = round
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: "flag.fill")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(TCTheme.gold)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(holeNumber.map { "Round in progress · Hole \($0)" } ?? "Round in progress")
-                        .font(.system(size: 12, weight: .heavy, design: .rounded))
-                        .foregroundColor(.white)
-                    Text("\(round.courseName) — tap to return")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundColor(.white.opacity(0.75))
-                        .lineLimit(1)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white.opacity(0.7))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Capsule().fill(Color(red: 0.10, green: 0.23, blue: 0.13)))
-            .overlay(Capsule().strokeBorder(TCTheme.gold.opacity(0.45), lineWidth: 1))
-            .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+    /// Auto-runs the guided tour once, after the server-gated intro slides are
+    /// done. Runs for everyone new; replayable from Locker afterwards.
+    private func maybeStartTutorial() {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["TC_DEBUG_TAB"] != nil { return }
+        #endif
+        guard !tutorial.isActive,
+              session.isLoggedIn,
+              !session.needsOnboarding,
+              TutorialController.shouldAutoStart else { return }
+        // Let the shell settle (tab bar measured) before spotlighting.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            guard TutorialController.shouldAutoStart, !tutorial.isActive else { return }
+            tutorial.start()
         }
-        .buttonStyle(.plain)
-        .padding(.top, 4)
     }
 
     /// One-time-per-launch nudge to pick a username so the app shows @handles instead of email.
     private func maybePromptUsername() {
         guard !didPromptUsername,
+              !tutorial.isActive,
               session.currentUser != nil,
               session.userProfile != nil,
               (session.userProfile?.username ?? "").isEmpty else { return }
+        #if DEBUG
+        if AppRootView.tutorialDemoActive { return }  // keep the coach unobstructed
+        #endif
         didPromptUsername = true
         showUsernameSetup = true
     }

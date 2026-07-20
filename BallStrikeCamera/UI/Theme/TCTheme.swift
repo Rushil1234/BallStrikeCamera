@@ -32,6 +32,20 @@ enum TCTheme {
     static var cyan: Color { cream.opacity(0.82) }
     static let danger         = Color(red: 0.85, green: 0.45, blue: 0.42)
 
+    // MARK: Capture flow — FIXED brand-dark tones
+    // The camera / shot-result / replay screens always sit over a live feed or a
+    // dark flight canvas, so they stay dark in BOTH appearances (not adaptive).
+    // Single source of truth for that flow: deep Carry Forest instead of neutral
+    // black, Range Bone instead of pure white, Marker Gold / Atlas Silver instead
+    // of iOS system blue. Keeps the capture flow reading as the same brand.
+    static let captureBg     = Color(red: 0.055, green: 0.086, blue: 0.070) // deep Carry Forest
+    static let capturePanel  = Color(red: 0.086, green: 0.125, blue: 0.102) // forest-deep #16201A
+    static let captureRaised = Color(red: 0.141, green: 0.192, blue: 0.153) // raised forest #243127
+    static let captureGold    = Color(red: 0.722, green: 0.604, blue: 0.369) // Marker Gold #B89A5E
+    static let captureBone    = Color(red: 0.925, green: 0.894, blue: 0.824) // Range Bone #ECE4D2
+    static let captureSilver  = Color(red: 0.784, green: 0.773, blue: 0.741) // Atlas Silver #C8C5BD
+    static let captureSage    = Color(red: 0.549, green: 0.647, blue: 0.522) // Fairway sage #8CA585
+
     // MARK: Borders — bone hairlines on forest, ink hairlines on paper
     static var border: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.15), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.12)) }
     static var borderMedium: Color { Color.dyn(light: Color(red: 0.055, green: 0.078, blue: 0.059).opacity(0.24), dark: Color(red: 0.925, green: 0.894, blue: 0.824).opacity(0.22)) }

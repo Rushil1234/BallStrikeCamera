@@ -2,9 +2,12 @@ import SwiftUI
 
 struct TrueCarryLockerView: View {
     @EnvironmentObject var session: AuthSessionStore
+    @EnvironmentObject var tutorial: TutorialController
+    @AppStorage(TCLearning.beginnerHelpKey) private var beginnerHelp = true
     @State private var showClubs    = false
     @State private var showSessions = false
     @State private var showProfile  = false
+    @State private var showLearn    = false
     @State private var clubs: [UserClub]     = []
     @State private var shots: [SavedShot]    = []
     @State private var rounds: [CourseRound] = []
@@ -62,10 +65,21 @@ struct TrueCarryLockerView: View {
                         TCProfileAvatarButton(initials: userInitials, devMode: session.entitlementVM.isDeveloperMode) { showProfile = true }
                     }
                     VStack(spacing: TCTheme.sectionGap) {
+                        // Page title — same anatomy as Insights / Play / History.
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Locker")
+                                .font(.system(size: 34, weight: .semibold, design: .serif))
+                                .foregroundColor(TCTheme.textPrimary)
+                            Text("Your bag, gear, and progress.")
+                                .font(.system(size: 14))
+                                .foregroundColor(TCTheme.textMuted)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         profileCard
                         clubsInBagCard
                         milestonesCard
                         savedShotsCard
+                        helpLearningCard
                         settingsRowCard
                         signOutButton
                         Spacer(minLength: 140)
@@ -92,6 +106,19 @@ struct TrueCarryLockerView: View {
             NavigationStack { TrueCarryProfileView() }
                 .tcAppearance()
         }
+        .sheet(isPresented: $showLearn) {
+            NavigationStack { LearnHubView() }
+                .tcAppearance()
+        }
+        #if DEBUG
+        // Screenshot harness: TC_DEBUG_LEARN=1 opens the Learn hub sheet on
+        // arrival. Absent from release builds.
+        .onAppear {
+            if ProcessInfo.processInfo.environment["TC_DEBUG_LEARN"] != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { showLearn = true }
+            }
+        }
+        #endif
         .task {
             if let uid = user?.id {
                 async let c = try? await session.backend.loadClubs(userId: uid)
@@ -142,7 +169,7 @@ struct TrueCarryLockerView: View {
             }
 
             HStack(spacing: 8) {
-                statBadge("HANDICAP", "—", "Index")
+                statBadge("HANDICAP", "—", "Index", glossary: "handicap")
                 statBadge("ROUNDS", "\(rounds.count)", "This Year")
                 statBadge("AVG SCORE", avgScoreStr, "Last 20")
             }
@@ -150,12 +177,17 @@ struct TrueCarryLockerView: View {
         .tcCard()
     }
 
-    private func statBadge(_ label: String, _ value: String, _ sub: String) -> some View {
+    private func statBadge(_ label: String, _ value: String, _ sub: String, glossary: String? = nil) -> some View {
         VStack(alignment: .center, spacing: 3) {
-            Text(label)
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(TCTheme.textMuted)
-                .tracking(0.8)
+            HStack(spacing: 3) {
+                Text(label)
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundColor(TCTheme.textMuted)
+                    .tracking(0.8)
+                if let glossary {
+                    InfoMark(glossary, size: 9)
+                }
+            }
             Text(value)
                 .font(.system(size: 17, weight: .semibold, design: .monospaced))
                 .foregroundColor(TCTheme.textPrimary)
@@ -257,6 +289,90 @@ struct TrueCarryLockerView: View {
                 }
                 .padding(.horizontal, 2)
             }
+        }
+        .tcCard()
+    }
+
+    // MARK: - Help & Learning Card
+
+    private var helpLearningCard: some View {
+        VStack(spacing: 0) {
+            TCSectionHeader(title: "Help & Learning")
+
+            TCDivider().padding(.top, 8)
+
+            // Beginner help toggle
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(TCTheme.gold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Beginner help")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text("Show ⓘ tips and explanations across the app")
+                        .font(.system(size: 12))
+                        .foregroundColor(TCTheme.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Toggle("", isOn: $beginnerHelp)
+                    .labelsHidden()
+                    .tint(TCTheme.gold)
+            }
+            .padding(.vertical, 12)
+
+            TCDivider()
+
+            // Learn hub — short beginner lessons (always visible; the toggle
+            // above only controls the ⓘ marks).
+            Button {
+                showLearn = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "book.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(TCTheme.gold)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Learn the basics")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text("Short lessons on reading your numbers")
+                            .font(.system(size: 12))
+                            .foregroundColor(TCTheme.textMuted)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(TCTheme.textMuted)
+                }
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            TCDivider()
+
+            // Replay tutorial
+            Button {
+                tutorial.start()
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "play.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(TCTheme.sage)
+                    Text("Replay tutorial")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(TCTheme.textMuted)
+                }
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .tcCard()
     }

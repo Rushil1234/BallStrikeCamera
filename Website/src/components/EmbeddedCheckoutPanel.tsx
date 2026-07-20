@@ -29,6 +29,7 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", billingIn
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [complete, setComplete] = useState(false);
+  const [alreadySubscribed, setAlreadySubscribed] = useState(false);
   const [requestId, setRequestId] = useState(0);
 
   // Inline auth (so the button never navigates away)
@@ -112,6 +113,9 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", billingIn
     if (!res.ok) {
       throw new Error(res.status === 401 ? "Please sign in again before checkout." : (json.error ?? "Checkout failed."));
     }
+    // Server refused checkout because this account already has premium — signal
+    // the caller (null) instead of trying to render a Stripe session.
+    if (json.alreadySubscribed) return null;
     if (!json.clientSecret) throw new Error("Checkout did not return a client secret.");
     return json.clientSecret as string;
   }, [token, url, tier, billingInterval]);
@@ -122,9 +126,12 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", billingIn
     setError(null);
     setClientSecret(null);
     setComplete(false);
+    setAlreadySubscribed(false);
     createCheckoutSession()
       .then((secret) => {
-        if (!cancelled) setClientSecret(secret);
+        if (cancelled) return;
+        if (secret === null) { setAlreadySubscribed(true); return; }
+        setClientSecret(secret);
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : "Checkout failed.");
@@ -214,6 +221,12 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", billingIn
                 {mode === "signin" ? "Create one" : "Sign in"}
               </button>
             </p>
+          </div>
+        ) : alreadySubscribed ? (
+          <div className="checkout-config">
+            <h3>You&apos;re already subscribed 🎉</h3>
+            <p>This account already has True Carry premium — no need to pay again. Sign in on the app to start playing.</p>
+            <a className="btn btn-gold btn-block" href="/account" style={{ textDecoration: "none", marginTop: 12 }}>Go to your account</a>
           </div>
         ) : clientSecret ? (
           <EmbeddedCheckoutProvider stripe={stripePromise} options={options}>

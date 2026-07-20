@@ -89,11 +89,21 @@ enum HandicapService {
 
 struct HandicapView: View {
     let rounds: [CourseRound]
+    @EnvironmentObject private var session: AuthSessionStore
+    @State private var sentAttestations: [SentAttestation] = []
+    @State private var showShare = false
+    @State private var shareItems: [Any] = []
 
     /// Round highlighted from a bar tap — its detail card renders under the chart.
     @State private var selectedRoundID: UUID? = nil
 
     private var result: HandicapService.Result { HandicapService.compute(from: rounds) }
+
+    /// Counted rounds a playing partner has attested — powers the verified seal.
+    private var attestedCountedCount: Int {
+        let attestedRoundIDs = Set(sentAttestations.filter { $0.status == "attested" }.map(\.roundId))
+        return result.differentials.filter { $0.counted && attestedRoundIDs.contains($0.round.id) }.count
+    }
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; return f
@@ -109,6 +119,7 @@ struct HandicapView: View {
                         emptyState
                     } else {
                         summaryCard      // estimated index + last-20 trend graph, up top
+                        if result.index != nil { shareButton }
                         roundsSection    // tappable scorecards, counted rounds highlighted
                     }
                     Spacer(minLength: 120)
@@ -120,6 +131,46 @@ struct HandicapView: View {
         .navigationTitle("Scores & Handicap")
         .navigationBarTitleDisplayMode(.large)
         .toolbarBackground(.clear, for: .navigationBar)
+        .sheet(isPresented: $showShare) { ShareSheet(items: shareItems) }
+        .task {
+            // Attestations power the verified seal; failure just means unverified.
+            guard let uid = session.currentUser?.id else { return }
+            sentAttestations = (try? await session.backend.loadSentAttestations(userId: uid)) ?? []
+        }
+    }
+
+    // MARK: Share — the verified handicap card
+
+    private var shareButton: some View {
+        Button { prepareShare() } label: {
+            HStack(spacing: 8) {
+                Image(systemName: attestedCountedCount > 0 ? "checkmark.seal.fill" : "square.and.arrow.up")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Share my handicap")
+                    .font(.system(size: 14, weight: .bold))
+            }
+            .foregroundColor(Color(red: 0.055, green: 0.078, blue: 0.059))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(TCTheme.gold)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func prepareShare() {
+        guard let image = renderHandicapCard(
+            indexString: HandicapService.indexString(result.index),
+            usedCount: result.usedCount,
+            totalCount: result.differentials.count,
+            attestedCount: attestedCountedCount
+        ) else { return }
+        var caption = "Handicap Index \(HandicapService.indexString(result.index)) — tracked with True Carry"
+        if attestedCountedCount > 0 {
+            caption += ", \(attestedCountedCount) round\(attestedCountedCount == 1 ? "" : "s") attested by playing partners"
+        }
+        shareItems = [image, caption]
+        showShare = true
     }
 
     private var indexCard: some View {
@@ -363,6 +414,9 @@ struct HandicapView: View {
                 .font(.system(size: 13))
                 .foregroundColor(TCTheme.textMuted)
                 .multilineTextAlignment(.center)
+            TCWordmark(size: 14)
+                .opacity(0.5)
+                .padding(.top, 6)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)

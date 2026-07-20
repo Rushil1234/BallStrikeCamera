@@ -109,6 +109,18 @@ struct IncomingAttestation: Identifiable, Decodable, Equatable {
     let createdAt: Date?
 }
 
+/// One row of the camera-verified weekly challenge leaderboard, from the
+/// `weekly_challenge_leaderboard` RPC (decoder uses convertFromSnakeCase).
+struct ChallengeLeaderboardEntry: Identifiable, Decodable, Equatable {
+    let userId: UUID
+    let displayName: String
+    let carryYards: Double
+    let ballSpeedMph: Double?
+    let clubName: String
+    let createdAt: Date?
+    var id: UUID { userId }   // one entry per user per week
+}
+
 /// An attestation the current user REQUESTED, so they can see its status and who
 /// verified it. Decoded from `round_attestations` (decoder uses convertFromSnakeCase).
 struct SentAttestation: Identifiable, Decodable, Equatable {

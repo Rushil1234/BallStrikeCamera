@@ -177,5 +177,8 @@
       "/Users/noahtobias/Downloads/ShotExport_20260501_114631",
       "/Users/noahtobias/Downloads/drive-download-20260504T195054Z-3-001/ShotExport_20260504_141936"
     ]
+  },
+  "enabledPlugins": {
+    "unreal-engine-skills-for-claude-code@claude-plugins-official": true
   }
 }

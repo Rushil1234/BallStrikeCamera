@@ -25,6 +25,7 @@ struct ShotDetailView: View {
                     replaySection
                     if m.ballSpeedMph > 0 || m.carryYards > 0 { flightSection }
                     metricsSection
+                    coachSection
                     Spacer(minLength: 40)
                 }
                 .padding(.horizontal, TCTheme.hPad)
@@ -231,6 +232,19 @@ struct ShotDetailView: View {
         .padding(10)
         .background(TCTheme.panelRaised)
         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    // MARK: - AI Coach
+
+    /// Per-shot AI coaching (tap-to-run). Uses the same reusable card as the
+    /// Insights session summary; non-Pro golfers see the locked upsell state.
+    private var coachSection: some View {
+        AICoachCard(
+            mode: .shot,
+            shots: [AICoachService.ShotPayload(m, clubName: shot.clubName)],
+            isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
+            subtitle: "A PGA-level read on this shot"
+        )
     }
 
     // MARK: - Formatted values

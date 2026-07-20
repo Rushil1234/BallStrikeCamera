@@ -931,6 +931,24 @@ final class SupabaseBackendService: AppBackend {
         return rows.sorted { ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast) }
     }
 
+    // MARK: - Camera-verified weekly challenges
+
+    func submitChallengeEntry(carryYards: Double, ballSpeedMph: Double?, clubName: String, shotId: UUID?) async throws {
+        // Goes through submit_challenge_entry() so the server enforces sanity
+        // bounds and the keep-best-per-week upsert.
+        var body: [String: Any] = [
+            "p_carry_yards": carryYards,
+            "p_club_name": clubName,
+        ]
+        if let ballSpeedMph { body["p_ball_speed_mph"] = ballSpeedMph }
+        if let shotId { body["p_shot_id"] = shotId.uuidString }
+        try await rpcVoid("submit_challenge_entry", body: body)
+    }
+
+    func loadChallengeLeaderboard() async throws -> [ChallengeLeaderboardEntry] {
+        try await rpc("weekly_challenge_leaderboard", body: [:])
+    }
+
     func respondToAttestation(id: UUID, accept: Bool) async throws {
         // Goes through respond_to_attestation() so the responder's display name is
         // stamped onto the row (from their profile) for the requester's "Verified by" UI.

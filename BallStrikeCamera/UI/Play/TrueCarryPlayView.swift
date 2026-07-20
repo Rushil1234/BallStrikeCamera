@@ -5,6 +5,7 @@ struct TrueCarryPlayView: View {
     @EnvironmentObject var camera: CameraController
 
     @State private var selectedMode: PlayMode = .range
+    @State private var showProfile = false
     @State private var showCamera = false
     @State private var showSim = false
     @State private var showCourseSearch = false
@@ -67,8 +68,13 @@ struct TrueCarryPlayView: View {
         ZStack {
             TrueCarryBackground()
             ScrollView(showsIndicators: false) {
+                // Header sits outside the padded stack — TCHeaderBar carries its
+                // own insets, so the lockup lines up with every other tab.
+                TCHeaderBar(initials: userInitials) {
+                    TCProfileAvatarButton(initials: userInitials,
+                                          devMode: session.entitlementVM.isDeveloperMode) { showProfile = true }
+                }
                 VStack(spacing: TCTheme.sectionGap) {
-                    TCHeaderBar(initials: userInitials) { EmptyView() }
                     pageTitleSection
                     if let r = unfinishedRound { resumeRoundCard(r) }
                     modeCardsSection
@@ -76,10 +82,13 @@ struct TrueCarryPlayView: View {
                     Spacer(minLength: 140)
                 }
                 .padding(.horizontal, TCTheme.hPad)
-                .padding(.top, 8)
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { TrueCarryProfileView() }
+                .tcAppearance()
+        }
         .fullScreenCover(isPresented: $showCamera) {
             if let uid = session.currentUser?.id {
                 RangeCameraScreen(userId: uid, backend: session.backend)
@@ -138,7 +147,9 @@ struct TrueCarryPlayView: View {
         .task {
             applyDefaultModeIfNeeded()
             await refreshUnfinishedRound()
-            prewarmLocation.requestPermission()
+            // Hold the location prompt back while the first-run coach is on
+            // screen so the system alert never covers the tutorial.
+            if !TutorialController.isTourActive { prewarmLocation.requestPermission() }
             // Flush any deferred remote writes from prior offline rounds.
             await SyncQueue.shared.flush(using: session.backend)
         }
@@ -289,6 +300,7 @@ struct TrueCarryPlayView: View {
         TCPrimaryGoldButton(title: startTitle, icon: startIcon) {
             handleStart()
         }
+        .tutorialAnchor(.playStartHero)
     }
 
     private func handleStart() {
