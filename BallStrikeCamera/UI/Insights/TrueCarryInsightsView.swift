@@ -24,6 +24,7 @@ struct TrueCarryInsightsView: View {
     @State private var roundsById: [UUID: CourseRound] = [:]
     /// Course shot picked on the dispersion chart (course source only).
     @State private var selectedShotMeta: CourseShotMeta?
+    @State private var presentedRound: CourseRound?   // course shot → its round/hole overview
 
     private enum InsightsSource: String, CaseIterable {
         case range = "Range & Sim", course = "On-Course"
@@ -173,16 +174,6 @@ struct TrueCarryInsightsView: View {
                         pageTitleSection
                         sourceToggle
                         clubPicker
-                        if !coachShots.isEmpty {
-                            AICoachCard(
-                                mode: .session,
-                                shots: coachShots,
-                                isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
-                                subtitle: coachScopeLabel
-                            )
-                            .id(coachScopeKey)   // new club/source → fresh card, old analysis cleared
-                        }
-                        if !gappingRows.isEmpty { gappingSection }
                         if availableClubs.isEmpty {
                             emptyState
                         } else if allMode {
@@ -219,6 +210,13 @@ struct TrueCarryInsightsView: View {
             Task { await reloadData() }
         }
         .onChange(of: selectedClub) { _ in selectedShotMeta = nil }
+        .sheet(item: $presentedRound) { round in
+            NavigationStack {
+                RoundShotLogView(round: round,
+                                 linkedShots: shots.filter { $0.roundId == round.id })
+            }
+            .tcAppearance()
+        }
     }
 
     private func reloadData() async {
@@ -468,10 +466,25 @@ struct TrueCarryInsightsView: View {
 
     // MARK: - Stats Content
 
+    /// Coach + bag gapping — shown right beneath the dispersion chart (Noah).
+    @ViewBuilder private var coachAndGapping: some View {
+        if !coachShots.isEmpty {
+            AICoachCard(
+                mode: .session,
+                shots: coachShots,
+                isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
+                subtitle: coachScopeLabel
+            )
+            .id(coachScopeKey)   // new club/source → fresh card, old analysis cleared
+        }
+        if !gappingRows.isEmpty { gappingSection }
+    }
+
     @ViewBuilder
     private var statsContent: some View {
         let s = selectedShots
         dispersionCard(s)
+        coachAndGapping
         singleClubKeyCard
         metricsCard(s)
         carryTrendCard(s)
@@ -512,6 +525,7 @@ struct TrueCarryInsightsView: View {
                 .tcCard(padding: 16)
         } else {
             allClubsCard(series)
+            coachAndGapping
             allClubsKeyCard(series)
         }
         Spacer(minLength: 140)
@@ -879,19 +893,38 @@ struct TrueCarryInsightsView: View {
         detailParts.append("\(Int(meta.yards.rounded())) yds")
         if let c = meta.club, !c.isEmpty { detailParts.append(c) }
         return HStack(spacing: 10) {
-            Image(systemName: "flag.fill")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(TCTheme.gold)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(roundLabel)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(TCTheme.textPrimary)
-                    .lineLimit(1)
-                Text(detailParts.joined(separator: " · "))
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(TCTheme.textMuted)
+            // Tapping opens that round's hole overview in a History sheet (only when
+            // we can resolve the round; a stray shot with no round stays inert).
+            Button {
+                if let round { presentedRound = round }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "flag.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(TCTheme.gold)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(roundLabel)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .lineLimit(1)
+                        Text(detailParts.joined(separator: " · "))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(TCTheme.textMuted)
+                    }
+                    Spacer(minLength: 4)
+                    if round != nil {
+                        HStack(spacing: 3) {
+                            Text("View hole")
+                                .font(.system(size: 11, weight: .bold))
+                            Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(TCTheme.gold)
+                    }
+                }
             }
-            Spacer()
+            .buttonStyle(.plain)
+            .disabled(round == nil)
+
             Button { selectedShotMeta = nil } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
