@@ -279,13 +279,18 @@ const S=3;   // 360x203 -> 1080x609
 function cls(e){ if(e==null) return ''; return e<=2?'err-good':(e<=5?'err-mid':'err-bad'); }
 function median(a){ if(!a.length) return null; const b=[...a].sort((x,y)=>x-y); return b[Math.floor(b.length/2)]; }
 function summary(){
-  const pick=k=>shots.map(s=>s[k]).filter(e=>e!=null);
+  // Only app-ACCEPTED shots count: repositions / implausible discards / false
+  // impacts never show the user metrics, so they don't belong in accuracy stats
+  const ok=shots.filter(s=>s.verdict.startsWith('accepted'));
+  const rej=shots.length-ok.length;
+  const pick=k=>ok.map(s=>s[k]).filter(e=>e!=null);
   const spd=pick('err'), club=pick('club_err'), vla=pick('vla_err');
   const cy=pick('carry_err'), tot=pick('total_err'), avg=pick('avg_err');
   const f=(v,d)=>v==null?'&mdash;':v.toFixed(d);
-  const nTT=shots.filter(s=>s.truth==='TT').length, nG=shots.filter(s=>s.truth==='G').length;
+  const nTT=ok.filter(s=>s.truth==='TT').length, nG=ok.filter(s=>s.truth==='G').length;
   document.getElementById('summary').innerHTML =
-    `<b style="color:#ddd">fleet (${shots.length} shots: ${nTT} vs TT, ${nG} vs Garmin)</b><br>`+
+    `<b style="color:#ddd">fleet (${ok.length} app-accepted: ${nTT} vs TT, ${nG} vs Garmin)</b>`+
+    ` <span class="k">&middot; ${rej} filtered by app validation &#10007;</span><br>`+
     `<b>avg-of-metrics <span class="${cls(median(avg))}">${f(median(avg),1)}%</span></b> <span class="k">median shot</span><br>`+
     `speed <span class="${cls(median(spd))}">${f(median(spd),1)}%</span> <span class="k">(goal &plusmn;2mph)</span> &middot; `+
     `club <span class="${cls(median(club))}">${f(median(club),1)}%</span> <span class="k">(hosel)</span><br>`+
