@@ -124,9 +124,12 @@ def hosel_speeds(shot, labs):
         ivals.append((fb, vpx * scale))
     if not ivals:
         return None
+    used = [h for h in hs if h[0] <= imp + 1]
+    dx_net = (used[-1][1]['cx'] - used[0][1]['cx']) if len(used) >= 2 else 0.0
     return {'impact': ivals[-1][1],
             'mean': sum(v for _, v in ivals) / len(ivals),
             'peak': max(v for _, v in ivals),
+            'dx_net': dx_net,
             'n': len(ivals)}
 
 
@@ -160,20 +163,38 @@ def main():
         r = hosel_speeds(shot, labs)
         if r:
             est[shot] = r
-    # Static-junk gate: a real swing's hosel exceeds 30 mph somewhere in the
-    # window. Below that, the labels sit on a stationary object (YOLO prelabel
-    # on clutter, bulk-approved) — exclude from eval AND from YOLO training.
-    junk = sorted(s for s, r in est.items() if r['peak'] < 30.0)
+    # Junk gates (Noah: these shots wouldn't register in the sim and must not
+    # train the detector). Written as {shot: reason} for the YOLO export.
+    #   static    peak hosel speed < 30 mph — labels sat on stationary clutter
+    #   backwards hosel's net x-displacement isn't forward (play is right-to-
+    #             left, so forward = decreasing x)
+    #   no_club   shot has zero reviewed club/hosel frames anywhere
+    junk = {}
+    for s, r in est.items():
+        if r['peak'] < 30.0:
+            junk[s] = 'static'
+        elif r['dx_net'] >= 0:
+            junk[s] = 'backwards'
+    for shot, labs in labels.items():
+        has_club = any(isinstance(e, dict) and e.get('reviewed')
+                       and (e.get('club') or e.get('hosel')) for e in labs.values())
+        if not has_club:
+            junk[shot] = 'no_club'
     json.dump(junk, open(os.path.join(TRAIN, 'hosel_junk_shots.json'), 'w'), indent=1)
-    est = {s: r for s, r in est.items() if s not in set(junk)}
-    print(f'hosel speed estimates: {len(est)} shots '
-          f'({len(junk)} static-junk excluded -> hosel_junk_shots.json)')
+    est = {s: r for s, r in est.items() if s not in junk}
+    from collections import Counter
+    print(f'hosel speed estimates: {len(est)} shots · junk excluded: '
+          f'{dict(Counter(junk.values()))} -> hosel_junk_shots.json')
 
-    for tname, key in (('vs TOPTRACER (jul16+17)', 'tt'), ('vs GARMIN (jul12 whites)', 'garmin')):
+    sets = (('vs TOPTRACER (jul16+17)', 'tt', None),
+            ('vs TOPTRACER (jul17 range ONLY — TT+Garmin session)', 'tt', 'shot_20260717'),
+            ('vs GARMIN (jul12 whites)', 'garmin', None))
+    for tname, key, prefix in sets:
         print(f'\n{tname}')
         for variant in ('impact', 'mean', 'peak'):
             pt = [(est[s][variant], truth[s][key]) for s in est
-                  if s in truth and truth[s].get(key)]
+                  if s in truth and truth[s].get(key)
+                  and (prefix is None or s.startswith(prefix))]
             report(variant, pt)
 
     # smash baseline on the same TT shots (needs TT ball + club name in table)
