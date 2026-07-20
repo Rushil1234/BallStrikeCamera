@@ -16,8 +16,8 @@ const HOLES: Hole[] = [
   { n: 1, name: "Tee off", par: 4, yd: 372, id: "h01" },
   { n: 2, name: "What it does", par: 5, yd: 542, id: "h03" },
   { n: 3, name: "Play the sim", par: 5, yd: 527, id: "h05" },
-  { n: 4, name: "The pro shop", par: 3, yd: 188, id: "h06" },
-  { n: 5, name: "One plan", par: 4, yd: 425, id: "h07" },
+  { n: 4, name: "One plan", par: 4, yd: 425, id: "h07" },
+  { n: 5, name: "The pro shop", par: 3, yd: 188, id: "h06" },
   { n: 6, name: "When you're ready", par: 3, yd: 158, id: "h08" },
   { n: 7, name: "Clubhouse", par: 5, yd: 580, id: "h09" },
 ];
@@ -241,52 +241,11 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* H06, the pro shop — the full hardware lineup */}
-          <section className="hole h06" id="h06">
-            <div className="wrap">
-              <HoleStrip hole={HOLES[3]} />
-              <div className="shop-feature">
-                <div className="shop-head">
-                  <div className="shop-head-copy">
-                    <h2>Free on your phone.<br /><span className="it">A shop for the rest.</span></h2>
-                    <p className="shop-deck">
-                      The app is free and needs nothing but your iPhone. A few small things make it
-                      sharper: tags that log every swing, balls you can hit indoors, and a tripod
-                      that holds the shot.
-                    </p>
-                  </div>
-                  <a className="shop-visit" href="/store">Visit the store <span aria-hidden>→</span></a>
-                </div>
-
-                <ul className="shop-grid">
-                  {SHOP.map((p) => {
-                    const live = p.status === "Available now";
-                    return (
-                      <li className="shop-card" key={p.id}>
-                        <a href="/store" aria-label={`${p.name} — ${p.price}. ${p.tag}. ${p.status}.`}>
-                          <span className="shop-card-art"><ProductArt kind={p.id} /></span>
-                          <span className="shop-card-body">
-                            <span className="shop-card-head">
-                              <span className="shop-card-name">{p.name}</span>
-                              <span className="shop-card-price">{p.price}</span>
-                            </span>
-                            <span className="shop-card-tag">{p.tag}</span>
-                            <span className={`shop-card-status${live ? " live" : ""}`}>{p.status}</span>
-                          </span>
-                        </a>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </div>
-          </section>
-
-          {/* H07, pricing (four tiers) */}
+          {/* H07, pricing — now the paper section, above the pro shop */}
           <span id="pricing" aria-hidden style={{ position: "absolute", marginTop: "-80px" }} />
           <section className="hole h07" id="h07">
             <div className="wrap">
-              <HoleStrip hole={HOLES[4]} />
+              <HoleStrip hole={HOLES[3]} />
               <div className="plans-head">
                 <h2>One round.<br /><span className="it">Three ways to play.</span></h2>
                 <p>Start free. Step up when you want more of the numbers. <span className="it">Cancel anytime, keep your data.</span></p>
@@ -337,6 +296,53 @@ export default function HomePage() {
             </div>
           </section>
 
+          {/* H06, the pro shop — the full hardware lineup, on the forest section */}
+          <section className="hole h06" id="h06">
+            <div className="wrap">
+              <HoleStrip hole={HOLES[4]} />
+              <div className="shop-feature">
+                <div className="shop-head">
+                  <div className="shop-head-copy">
+                    <h2>Free on your phone.<br /><span className="it">A shop for the rest.</span></h2>
+                    <p className="shop-deck">
+                      The app is free and needs nothing but your iPhone. A few small things make it
+                      sharper: tags that log every swing, balls you can hit indoors, and a tripod
+                      that holds the shot.
+                    </p>
+                  </div>
+                  <a className="shop-visit" href="/store">Visit the store <span aria-hidden>→</span></a>
+                </div>
+
+                {/* Bounce-card fan — overlapping product cards that spread on hover,
+                    each showing its price as a gold chip instead of plain text. */}
+                <div className="shop-fan">
+                  {SHOP.map((p, i) => {
+                    const live = p.status === "Available now";
+                    return (
+                      <a
+                        className="fan-card"
+                        key={p.id}
+                        href="/store"
+                        style={{ "--i": i, "--n": SHOP.length } as React.CSSProperties}
+                        aria-label={`${p.name} — ${p.price}. ${p.tag}. ${p.status}.`}
+                      >
+                        <span className="fan-art"><ProductArt kind={p.id} /></span>
+                        <span className="fan-shade" aria-hidden />
+                        <span className="fan-price">{p.price}</span>
+                        <span className="fan-info">
+                          <span className="fan-name">{p.name}</span>
+                          <span className="fan-tag">{p.tag}</span>
+                          <span className={`fan-status${live ? " live" : ""}`}>{p.status}</span>
+                        </span>
+                      </a>
+                    );
+                  })}
+                </div>
+                <p className="shop-fan-hint" aria-hidden>Hover to fan out · tap any card for the store</p>
+              </div>
+            </div>
+          </section>
+
           {/* H08, closing */}
           <section className="hole h08" id="h08">
             <div className="atlas-bg"><img src="/truecarry-logo.png" alt="" /></div>
@@ -359,17 +365,22 @@ export default function HomePage() {
                 <div className="col">
                   <h4>Product</h4>
                   <a href="#h03">What it does</a>
+                  <a href="/mission">Our mission</a>
                   <a href="/play">Play the sim</a>
-                  <a href="/bridge">Connect to GSPro / OGS</a>
-                  <a href="/connect">Check connection</a>
                   <a href="/store">Store</a>
                   <a href="#h07">Pricing</a>
-                  <a href="#h07" onClick={(e) => { e.preventDefault(); openCheckout(); }}>Get the app</a>
+                </div>
+                <div className="col">
+                  <h4>Setup</h4>
+                  <a href="/bridge">Connect to GSPro / OGS</a>
+                  <a href="/connect">Check connection</a>
+                  <a href="/support">Support</a>
                 </div>
                 <div className="col">
                   <h4>Account</h4>
                   <a href="/login">Sign in</a>
                   <a href="/account">Your account</a>
+                  <a href="#h07">Manage plan</a>
                 </div>
                 <div className="col">
                   <h4>Legal</h4>
@@ -378,8 +389,8 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="bottom">
-                <span>© 2026 True Carry</span>
-                <span>Made in Pacifica · Bear every yard.</span>
+                <span>© {new Date().getFullYear()} True Carry</span>
+                <span>Subscriptions securely managed by Stripe.</span>
               </div>
             </div>
           </footer>
