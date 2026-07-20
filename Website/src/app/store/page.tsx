@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import SiteNav from "@/components/SiteNav";
 import SiteFooter from "@/components/SiteFooter";
-import ClubCards from "@/components/ClubCards";
 import ProductArt from "@/components/ProductArt";
 import NotifyForm from "@/components/NotifyForm";
 
@@ -19,6 +18,8 @@ type Product = {
   features: string[];
   status: string;
   href?: string;
+  /** The signature product — rendered wide, art beside copy. */
+  featured?: boolean;
 };
 
 // NOTE: prices on the physical goods are placeholders — set them before launch.
@@ -37,6 +38,7 @@ const PRODUCTS: Product[] = [
       "Waterproof, tour-thin",
     ],
     status: "Ships fall 2026",
+    featured: true,
   },
   {
     id: "foam-balls",
@@ -93,63 +95,94 @@ const PRODUCTS: Product[] = [
   },
 ];
 
+function ProductCard({ p }: { p: Product }) {
+  const live = p.status === "Available now";
+  return (
+    <article className={`product${p.featured ? " featured" : ""}${live ? " is-live" : ""}`}>
+      <div className="product-art">
+        <ProductArt kind={p.id} />
+      </div>
+      <div className="product-body">
+        <div className="product-head">
+          <h2>{p.name}</h2>
+          <span className="product-price">{p.price}</span>
+        </div>
+        <p className="product-tag">{p.tag}</p>
+        <ul>
+          {p.features.map((f) => (
+            <li key={f}>{f}</li>
+          ))}
+        </ul>
+        <div className="product-foot">
+          <span className={`product-status${live ? " live" : ""}`}>{p.status}</span>
+          {live ? (
+            <a className="product-cta" href={p.href ?? "/#h07"}>
+              Get it
+            </a>
+          ) : (
+            <NotifyForm productId={p.id} productName={p.name} />
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function StorePage() {
   return (
     <div className="store-page">
       <SiteNav />
+
       <header className="store-hero">
         <div className="store-hero-inner">
-          <div className="store-hero-copy">
-            <p className="store-kicker">The pro shop</p>
-            <h1>Gear that knows<br /><span className="it">your bag.</span></h1>
-            <p className="store-deck">
-              Hardware is simple here: tags that tell the app which club you&apos;re swinging,
-              balls you can hit indoors, and a tripod that holds the camera steady.
-              Everything else is software.
-            </p>
-          </div>
-          <div className="store-hero-cards">
-            <ClubCards />
-          </div>
+          <p className="store-kicker">The pro shop</p>
+          <h1>
+            Gear that knows <span className="it">your bag.</span>
+          </h1>
+          <p className="store-deck">
+            Hardware is simple here: tags that tell the app which club you&apos;re swinging,
+            balls you can hit indoors, and a tripod that holds the camera steady.
+            Everything else is software.
+          </p>
+          <dl className="store-facts">
+            <div>
+              <dt>Ships</dt>
+              <dd>Fall 2026</dd>
+            </div>
+            <div>
+              <dt>Gift cards</dt>
+              <dd>Available now</dd>
+            </div>
+            <div>
+              <dt>Returns</dt>
+              <dd>30 days</dd>
+            </div>
+          </dl>
         </div>
       </header>
 
       <main className="store-main">
         <div className="store-grid">
-          {PRODUCTS.map((p) => {
-            const live = p.status === "Available now";
-            return (
-              <article className="product" key={p.id}>
-                <div className="product-art"><ProductArt kind={p.id} /></div>
-                <div className="product-body">
-                  <div className="product-head">
-                    <h2>{p.name}</h2>
-                    <span className="product-price">{p.price}</span>
-                  </div>
-                  <p className="product-tag">{p.tag}</p>
-                  <ul>
-                    {p.features.map((f) => <li key={f}>{f}</li>)}
-                  </ul>
-                  <div className="product-foot">
-                    <span className={`product-status${live ? " live" : ""}`}>{p.status}</span>
-                    {live
-                      ? <a className="product-cta" href={p.href ?? "/#h07"}>Get it</a>
-                      : <NotifyForm productId={p.id} productName={p.name} />}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+          {PRODUCTS.map((p) => (
+            <ProductCard key={p.id} p={p} />
+          ))}
         </div>
 
-        <div className="store-note">
-          <p>
-            Club tags pair with the True Carry app, free to start, no reader hardware needed.
-            Tap a tag on your phone and the next shot is tagged to that club.
-          </p>
-          <a href="/play" className="store-sim-link">While you wait, play a round in the sim →</a>
-        </div>
+        <aside className="store-note">
+          <div>
+            <h3>How the tags work</h3>
+            <p>
+              Club tags pair with the True Carry app, free to start, no reader hardware
+              needed. Tap a tag on your phone and the next shot is tagged to that club —
+              so your carry numbers build themselves, club by club.
+            </p>
+          </div>
+          <a href="/play" className="store-sim-link">
+            While you wait, play a round in the sim →
+          </a>
+        </aside>
       </main>
+
       <SiteFooter />
     </div>
   );
