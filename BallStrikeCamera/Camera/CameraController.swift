@@ -96,6 +96,17 @@ final class CameraController: NSObject, ObservableObject {
     private let searchingStreakRequired = 3
     private var trackingMissCount = 0
     private let trackingMissLimit = 5   // tolerate brief gaps before resetting stable count
+    // ANTI-BOUNCE (July 20): once a stationary ball is being tracked, a detection that jumps
+    // far from it is almost always the clubhead or a hand entering the reticle — both read as
+    // bright, compact, ball-shaped blobs, and detect() returns the LARGEST cluster, so the track
+    // used to abandon the ball and chase the intruder, resetting the stable count over and over
+    // ("keeps reacquiring / bouncing between the club and the ball"). A ball at address cannot
+    // teleport, so hold its position for a short window and ignore the far detection; only if the
+    // far object persists past the window do we accept it as a genuine reposition.
+    private var bounceHoldCount = 0
+    private let bounceHoldMinStable = 4                 // only protect an already-established track
+    private let bounceRejectDistance: CGFloat = 0.08    // >3× stableCenterThreshold ⇒ a different object
+    private let bounceHoldLimit = 15                    // ~62ms at 240fps before accepting a persistent mover
     private var lockedBallRect: CGRect?
     private var lockedStateEnteredAt: Date?
     private let requiredStableFrames = 20
@@ -972,6 +983,22 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 }
                 return
             }
+            // ANTI-BOUNCE: hold a stationary ball's track against a far-jumping intruder (the
+            // clubhead or a hand sweeping through the reticle). See bounceHoldCount for rationale.
+            // Only kicks in once the track is established; a persistent mover is still accepted.
+            if let anchor = stableRect, stableFrameCount >= bounceHoldMinStable,
+               normalizedDistance(anchor.center, observation.normalizedRect.center) > bounceRejectDistance {
+                bounceHoldCount += 1
+                if bounceHoldCount <= bounceHoldLimit {
+                    // Park the overlay and stable count on the ball; ignore the intruder this frame.
+                    if statusText != "Ball found" { statusText = "Ball found" }
+                    return
+                }
+                bounceHoldCount = 0   // the far object persisted — treat it as a genuine reposition
+            } else {
+                bounceHoldCount = 0
+            }
+
             // The rect genuinely moves a little every frame; publishing all 240 of those per
             // second re-invalidates the SwiftUI panel constantly. ~30Hz is visually identical.
             let now = CACurrentMediaTime()
@@ -1125,6 +1152,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         impactDetector.reset()
         stableFrameCount = 0
         stableRect = nil
+        bounceHoldCount = 0
         readyLostFrameCount = 0
     }
 
@@ -1613,6 +1641,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         stableFrameCount = 0
         searchingStreak = 0
         trackingMissCount = 0
+        bounceHoldCount = 0
         readyLostFrameCount = 0
         lockedStateEnteredAt = nil
     }
