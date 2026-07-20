@@ -3539,14 +3539,11 @@ final class V2Engine {
         // ── metric features (port of metrics_kfold.features_from_track)
         let rLockSub = restRadii.isEmpty ? r0 : restRadii.sorted()[restRadii.count / 2]
         var pts = Array(flight.prefix(5))
-        // Ball seen once before exiting the frame: lock + that sighting still define a
-        // valid line and speed (Noah's rule). Anchor the fit on the lock so the physics
-        // path measures lock→p1 instead of withholding. Heads stay off (flight has 1 pt),
-        // so this rides the physics speed, honestly flagged low-confidence below.
-        if pts.count == 1, ballExitedAfterFirst, pts[0].t - tImpact > 1e-4 {
-            pts = [FlightPt(t: tImpact, x: lock.x, y: lock.y, r: rLockSub, fi: impact), pts[0]]
-            notes.append("lock-anchored 1-pt exit fit")
-        }
+        _ = ballExitedAfterFirst   // frame-exit still trims the display; single-point
+        // recovery was tried and REMOVED: lock→one-sighting speed is 30-60% off Garmin
+        // on this footage (motion blur fattens the ball → deflated scale), so a recovered
+        // number is just a different wrong number. When V2 can't fit ≥2 clean flight
+        // points the honest result is a withhold → live validation repositions.
         // club-sized points can't enter the fit (far-field radius filter). The near-lock
         // exemption is for motion-smeared radius reads, NOT for the ball+club merged blob
         // at impact+1 — a merged read is fat (≥1.8 rLock) and anchors the whole fit at a

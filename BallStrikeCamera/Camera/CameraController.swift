@@ -1408,26 +1408,20 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         guard let metrics = validMetrics else { return .discard(reason: discardReason) }
 
-        // V2's accurate tracker positively measured the ball as stationary (< ~1.3 m/s
-        // over a fitted line). Trust that over the legacy fallback, which can invent a
-        // speed from post-capture noise on a ball that never launched — that's how
-        // shot_20260716_174308_861 (V2 0.2 m/s) surfaced as an accepted 7.1 mph shot.
-        if !isPutterMode, v2Primary.v2?.ballStationary == true {
-            print("[ShotValidation] V2 measured the ball as stationary — reposition, not a shot")
-            return .repositioned
-        }
-
-        // V2 withheld (its precise tracker could not fit a valid flight) yet the legacy
-        // fallback returned a low speed. On blurry white footage that's the ball
-        // exiting the frame fast after a single good point while the legacy tracker
-        // latches onto slow noise drifting down — the downward-kinked tracks Noah
-        // flagged (shot_20260712_110152_555 = 7.9 mph, VLA 0). Measured on the jul12
-        // whites: every such junk read is < 30 mph, every legitimate legacy recovery
-        // is >= 41 mph — a clean gap. Gated on V2 having withheld, so normal slow
-        // chips (which V2 tracks fine and does NOT withhold) are unaffected.
-        if !isPutterMode, let v2 = v2Primary.v2, v2.ballSpeedMph == nil,
-           let speed = metrics.ballLaunch.ballSpeedMph, speed < 30.0 {
-            print(String(format: "[ShotValidation] V2 withheld + legacy %.1f mph — incoherent track, not a shot", speed))
+        // V2's precise tracker withheld — it could not fit a trustworthy flight. On this
+        // footage the legacy fallback's rescue is NOT reliable: measured on the jul12
+        // whites, legacy-rescued shots miss Garmin by 14% median (6/9 worse than 10%),
+        // versus 4% when V2 is confident. So a withhold means "we couldn't read this
+        // one" → reposition, never a legacy guess or a lock-anchored single-frame speed
+        // (both 14-60% off — see PostImpactBallTracker). On good footage V2 withholds
+        // rarely (jul17: 1/56), so this seldom fires there; on blurry footage it
+        // correctly asks for a re-hit instead of poisoning the session with a wrong
+        // number. Covers the stationary non-shot (861) and the fast-exit kink (110152_555)
+        // as the same honest case.
+        if !isPutterMode, let v2 = v2Primary.v2, v2.ballSpeedMph == nil {
+            let why = v2.ballStationary ? "ball stationary"
+                : String(format: "legacy %.0f mph unreliable", metrics.ballLaunch.ballSpeedMph ?? 0)
+            print("[ShotValidation] V2 withheld (\(why)) — reposition, not a shot")
             return .repositioned
         }
 

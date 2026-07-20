@@ -194,11 +194,10 @@ final class LiveParityTestRunner {
                 verdict = String(format: "discarded — implausible (speed=%.1f hla=%.1f carry=%.1f)",
                                  m.ballLaunch.ballSpeedMph ?? 0, m.ballLaunch.hlaDegrees ?? 0,
                                  m.distance.carryYards ?? 0)
-            } else if !isPutterMode, v2Primary.v2?.ballStationary == true {
-                verdict = "repositioned — V2 measured ball stationary"
-            } else if !isPutterMode, let v2 = v2Primary.v2, v2.ballSpeedMph == nil,
-                      let speed = m.ballLaunch.ballSpeedMph, speed < 30.0 {
-                verdict = String(format: "repositioned — V2 withheld + legacy %.1f mph (incoherent track)", speed)
+            } else if !isPutterMode, let v2 = v2Primary.v2, v2.ballSpeedMph == nil {
+                let why = v2.ballStationary ? "ball stationary"
+                    : String(format: "legacy %.0f mph unreliable", m.ballLaunch.ballSpeedMph ?? 0)
+                verdict = "repositioned — V2 withheld (\(why))"
             } else if !isPutterMode, let speed = m.ballLaunch.ballSpeedMph, speed < 3.0 {
                 verdict = String(format: "repositioned — %.1f mph without putter selected", speed)
             }
