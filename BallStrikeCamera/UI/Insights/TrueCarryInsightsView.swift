@@ -71,9 +71,32 @@ struct TrueCarryInsightsView: View {
         }
     }
 
-    /// Most recent shots packaged for the AI coach (session summary).
+    /// Shots the coach reads — exactly what the user is currently looking at:
+    /// the selected club, or every club in ALL mode, filtered to the current
+    /// source (Range/Sim vs On-Course). Re-derives as the club/source changes.
+    private var coachSourceShots: [SavedShot] {
+        if allMode {
+            return shots.filter { !$0.isBadShot && $0.metrics.carryYards > 0 && matchesSource($0) }
+        } else if let club = selectedClub {
+            return shotsFor(club)
+        }
+        return []
+    }
+
     private var coachShots: [AICoachService.ShotPayload] {
-        Array(shots.prefix(20)).map { AICoachService.ShotPayload($0.metrics, clubName: $0.clubName) }
+        coachSourceShots.map { AICoachService.ShotPayload($0.metrics, clubName: $0.clubName) }
+    }
+
+    /// Human label for what the coach is reading, shown as the card subtitle.
+    private var coachScopeLabel: String {
+        if allMode { return "All your clubs, read like a coach" }
+        if let club = selectedClub { return "Your \(club) shots, read like a coach" }
+        return "Pick a club to get a read"
+    }
+
+    /// Changing this recreates the card so a new club clears the old analysis.
+    private var coachScopeKey: String {
+        "\(allMode)|\(selectedClub ?? "")|\(insightsSourceRaw)"
     }
 
     private var selectedShots: [SavedShot] {
@@ -150,13 +173,14 @@ struct TrueCarryInsightsView: View {
                         pageTitleSection
                         sourceToggle
                         clubPicker
-                        if !shots.isEmpty {
+                        if !coachShots.isEmpty {
                             AICoachCard(
                                 mode: .session,
                                 shots: coachShots,
                                 isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
-                                subtitle: "Your recent shots, read like a coach"
+                                subtitle: coachScopeLabel
                             )
+                            .id(coachScopeKey)   // new club/source → fresh card, old analysis cleared
                         }
                         if !gappingRows.isEmpty { gappingSection }
                         if availableClubs.isEmpty {
@@ -186,6 +210,8 @@ struct TrueCarryInsightsView: View {
                 clubs = session.cachedClubs
                 if selectedClub == nil { selectedClub = availableClubs.first }
             }
+            // Persisted On-Course state has no carry metric — snap to Total on entry.
+            if insightsSource == .course { dispersionMetric = .total }
             Task { await reloadData() }
         }
         // Deletions elsewhere (history, session detail) must recompute every stat here.
@@ -236,7 +262,13 @@ struct TrueCarryInsightsView: View {
     private var sourceToggle: some View {
         Picker("Shot source", selection: Binding(
             get: { insightsSource },
-            set: { insightsSourceRaw = $0.rawValue; selectedShotMeta = nil }
+            set: {
+                insightsSourceRaw = $0.rawValue
+                selectedShotMeta = nil
+                // On-Course has no carry metric — snap the toggle to Total so the
+                // displayed stats never show a carry number that doesn't exist.
+                if $0 == .course { dispersionMetric = .total }
+            }
         )) {
             ForEach(InsightsSource.allCases, id: \.self) { src in
                 Text(src.rawValue).tag(src)
@@ -650,9 +682,15 @@ struct TrueCarryInsightsView: View {
     }
 
     /// Toggles whether dispersion dots plot at carry (first landing) or total (after roll).
+    /// On-Course shots only carry a TOTAL distance (GPS start→end) — there's no
+    /// carry measurement — so the Carry toggle is hidden there.
+    private var availableMetrics: [DispersionMetric] {
+        insightsSource == .course ? [.total] : DispersionMetric.allCases
+    }
+
     private var dispersionMetricPicker: some View {
         HStack(spacing: 2) {
-            ForEach(DispersionMetric.allCases, id: \.self) { metric in
+            ForEach(availableMetrics, id: \.self) { metric in
                 Button {
                     dispersionMetric = metric
                 } label: {
