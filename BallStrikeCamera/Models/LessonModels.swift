@@ -291,6 +291,7 @@ enum SwingMetricKind: String, Codable, CaseIterable {
     case takeawayPath     = "takeaway_path"      // hands vs address plane at hip height going back (− inside / + outside)
     case deliveryPlane    = "delivery_plane"     // hands vs plane at hip height coming down (+ steep / − shallow)
     case earlyExtension   = "early_extension"    // hip drift toward the ball top→impact, % shoulder width
+    case postureRetention = "posture_retention"  // spine-angle change address→impact, degrees (0 = held)
 
     var displayName: String {
         switch self {
@@ -307,6 +308,7 @@ enum SwingMetricKind: String, Codable, CaseIterable {
         case .takeawayPath:     return "Takeaway Path"
         case .deliveryPlane:    return "Delivery Plane"
         case .earlyExtension:   return "Early Extension"
+        case .postureRetention: return "Posture Held"
         }
     }
 
@@ -316,7 +318,7 @@ enum SwingMetricKind: String, Codable, CaseIterable {
         case .headSway, .hipSlide, .finishBalance, .shoulderTurn, .stanceWidth,
              .weightShift, .takeawayPath, .deliveryPlane, .earlyExtension: return "%"
         case .transitionSeq:                    return "ms"
-        case .spineTiltAddress, .leadArmAtTop:  return "°"
+        case .spineTiltAddress, .leadArmAtTop, .postureRetention: return "°"
         }
     }
 
@@ -331,6 +333,8 @@ enum SwingMetricKind: String, Codable, CaseIterable {
             return value.value > value.targetHigh ? ("Club Steep at Delivery", false) : ("Club Shallow at Delivery", false)
         case .earlyExtension:
             return value.inBand ? ("Posture Held", true) : ("Early Extension", false)
+        case .postureRetention:
+            return value.inBand ? ("Spine Angle Held", true) : ("Stood Up Through It", false)
         case .tempoRatio:
             if value.inBand { return ("Tour Tempo", true) }
             return value.value < value.targetLow ? ("Quick Transition", false) : ("Slow Drift Back", false)

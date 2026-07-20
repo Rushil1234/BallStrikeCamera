@@ -82,7 +82,22 @@ enum SwingPoseExtractor {
             try? handler.perform([request])
 
             var joints: [VNHumanBodyPoseObservation.JointName: SwingJoint] = [:]
-            if let obs = request.results?.first,
+            // Ranges have bystanders: track the LARGEST person in frame (torso span),
+            // not whoever Vision happens to list first — a spectator behind the golfer
+            // otherwise hijacks the whole analysis.
+            func torsoSpan(_ obs: VNHumanBodyPoseObservation) -> CGFloat {
+                guard let pts = try? obs.recognizedPoints(.all),
+                      let ls = pts[.leftShoulder], let rs = pts[.rightShoulder],
+                      let lh = pts[.leftHip], let rh = pts[.rightHip],
+                      ls.confidence > 0.1, rs.confidence > 0.1,
+                      lh.confidence > 0.1, rh.confidence > 0.1 else { return 0 }
+                let sh = CGPoint(x: (ls.location.x + rs.location.x) / 2,
+                                 y: (ls.location.y + rs.location.y) / 2)
+                let hip = CGPoint(x: (lh.location.x + rh.location.x) / 2,
+                                  y: (lh.location.y + rh.location.y) / 2)
+                return hypot(sh.x - hip.x, sh.y - hip.y)
+            }
+            if let obs = request.results?.max(by: { torsoSpan($0) < torsoSpan($1) }),
                let recognized = try? obs.recognizedPoints(.all) {
                 for (name, pt) in recognized where pt.confidence > 0.1 {
                     joints[name] = SwingJoint(point: pt.location, confidence: Double(pt.confidence))
@@ -131,6 +146,28 @@ enum SwingPoseExtractor {
             }
         }
         return out
+    }
+}
+
+// MARK: - Trail quality
+
+/// Smoothness gate for drawn paths. Roughness = mean deviation of each point from its
+/// neighbors' midpoint, relative to the local step — a clean arc scores near 0.1-0.3,
+/// pose-jitter spaghetti scores far higher. Face-on hand paths above the gate aren't
+/// drawn at all: a jerky line teaches nothing.
+enum TrailQuality {
+    static func roughness(_ pts: [[Double]]) -> Double {
+        guard pts.count > 6 else { return 999 }
+        var total = 0.0
+        var n = 0
+        for i in 1..<(pts.count - 1) {
+            let a = pts[i - 1], b = pts[i], c = pts[i + 1]
+            let dev = hypot(b[0] - (a[0] + c[0]) / 2, b[1] - (a[1] + c[1]) / 2)
+            let span = max(hypot(c[0] - a[0], c[1] - a[1]), 1e-4)
+            total += dev / span
+            n += 1
+        }
+        return n > 0 ? total / Double(n) : 999
     }
 }
 
@@ -296,7 +333,7 @@ enum SwingMetricsEngine {
         }
         let loose = skill == .newcomer || skill == .beginner
         switch kind {
-        case .tempoRatio:       return loose ? (2.2, 4.0) : (2.6, 3.4)
+        case .tempoRatio:       return loose ? (2.2, 4.0) : (2.5, 3.7)   // real-time pro measured 3.6:1
         case .headSway:         return loose ? (0, 40)    : (0, 25)      // % shoulder width
         case .hipSlide:         return loose ? (0, 55)    : (0, 35)
         case .spineTiltAddress: return (25, 45)                          // degrees
@@ -307,10 +344,13 @@ enum SwingMetricsEngine {
         // checkpoint, so the target band lives above 100% of shoulder width.
         case .stanceWidth:      return loose ? (85, 170)  : (95, 155)
         case .weightShift:      return loose ? (40, 125)  : (55, 115)    // % toward the lead foot
-        case .transitionSeq:    return loose ? (-80, 320) : (0, 250)     // ms hips lead arms
+        case .transitionSeq:    return loose ? (-80, 380) : (0, 360)     // ms hips lead arms (pro measured 320)
         case .takeawayPath:     return loose ? (-35, 35)  : (-22, 22)    // % shoulder width off plane
         case .deliveryPlane:    return loose ? (-35, 35)  : (-22, 22)
-        case .earlyExtension:   return loose ? (0, 35)    : (0, 22)
+        case .earlyExtension:   return loose ? (0, 65)    : (0, 50)    // reference-calibrated: Rory measures 41 on this scale
+        // Reference-calibrated: Rory holds spine angle within ~4° address→impact; a
+        // 25-handicap reference collapsed 21°. Aspect cancels in the DIFFERENCE.
+        case .postureRetention: return loose ? (0, 14)    : (0, 8)
         }
     }
 
@@ -334,8 +374,10 @@ enum SwingMetricsEngine {
                                            limitedMobility: Bool = false) -> [SwingMetricValue] {
         var out: [SwingMetricValue] = []
         let addr = frames[phases.address]
-        let scale = Double(SwingPhaseSegmenter.shoulderWidth(addr) ?? 0.10)
-        guard scale > 0.015 else { return out }
+        // Shoulder width FORESHORTENS to near-zero from behind — normalizing by it
+        // inflated every DTL percentage ~3x (and the tiny-scale guard zeroed whole
+        // clips). motionScale falls back to body height exactly like the segmenter.
+        let scale = Double(max(SwingPhaseSegmenter.motionScale(frames), 0.05))
 
         func add(_ kind: SwingMetricKind, _ value: Double, confidence: Double) {
             let band = targetBand(kind, skill: skill, limitedMobility: limitedMobility)
@@ -390,8 +432,25 @@ enum SwingMetricsEngine {
         }
         add(.earlyExtension, (maxDrift / scale * 100).rounded(), confidence: 0.55)
 
-        // Balance reads the same from any angle.
-        let tail = frames.suffix(max(3, Int(phases.frameRate * 0.5)))
+        // Posture retention: spine-from-vertical change address→impact. THE amateur
+        // tell (standing up through the ball) — hands-based plane proxies miss it
+        // completely; the reference amateur read Δ21° where Rory reads Δ<4°.
+        func spineAngle(_ f: SwingPoseFrame) -> Double? {
+            guard let hip = f.mid(.leftHip, .rightHip),
+                  let sh = f.mid(.leftShoulder, .rightShoulder) else { return nil }
+            return atan2(Double(sh.x - hip.x), Double(sh.y - hip.y)) * 180 / .pi
+        }
+        if phases.impact < frames.count,
+           let a = spineAngle(addr), let i = spineAngle(frames[phases.impact]) {
+            add(.postureRetention, (abs(abs(a) - abs(i))).rounded(), confidence: 0.7)
+        }
+
+        // Balance reads the same from any angle — but only when the clip actually
+        // CONTAINS the finish: on a clip cut at impact the "tail" is the release, and
+        // pros were scoring 30 for a metric that measured nothing.
+        let tailLen = max(3, Int(phases.frameRate * 0.5))
+        guard frames.count - phases.finish >= tailLen / 2 else { return out }
+        let tail = frames.suffix(from: max(phases.finish, frames.count - tailLen))
         let anklePts: [CGPoint] = tail.compactMap { $0.mid(.leftAnkle, .rightAnkle) }
         if anklePts.count > 3 {
             let mx = anklePts.map { Double($0.x) }.reduce(0, +) / Double(anklePts.count)
@@ -495,8 +554,12 @@ enum SwingMetricsEngine {
            let sh  = addr.mid(.leftShoulder, .rightShoulder) {
             let dx = Double(sh.x - hip.x), dy = Double(sh.y - hip.y)
             if dy > 0.01 {
+                // Face-on this measures FRONTAL lean (pros ≈ 0-8°, our reference: 0.7°),
+                // not the DTL forward bend the default 25-45° band describes — that band
+                // flagged every face-on golfer ever. Band overridden to the frontal read.
                 let tilt = abs(atan2(dx, dy) * 180 / .pi)
-                add(.spineTiltAddress, tilt.rounded(), confidence: 0.75)
+                out.append(SwingMetricValue(kind: .spineTiltAddress, value: tilt.rounded(),
+                                            targetLow: 0, targetHigh: 12, confidence: 0.75))
             }
         }
 
@@ -551,7 +614,8 @@ enum SwingScorer {
         .headSway: "body", .hipSlide: "body", .leadArmAtTop: "body", .weightShift: "body",
         .transitionSeq: "tempo",
         .finishBalance: "balance",
-        .takeawayPath: "plane", .deliveryPlane: "plane", .earlyExtension: "plane"
+        .takeawayPath: "plane", .deliveryPlane: "plane", .earlyExtension: "plane",
+        .postureRetention: "posture"
     ]
 
     static func score(metrics: [SwingMetricValue], faults: [SwingFault]) -> Result {
@@ -777,12 +841,19 @@ enum SwingClubTracer {
         if let detector = cachedDetector ?? nil {
             var trail: [[Double]] = []
             var rawIndex = 0
+            var ballAnchor: CGPoint? = nil
             while let sample = output.copyNextSampleBuffer() {
                 defer { rawIndex += 1 }
                 if rawIndex % frameStride != 0 { continue }
                 guard let pb = CMSampleBufferGetImageBuffer(sample) else { continue }
                 let t = CMSampleBufferGetPresentationTimeStamp(sample).seconds
                 let hp = hands(at: t)
+                if ballAnchor == nil, let hp {
+                    // One-time ball fix from the first (address) frame.
+                    ballAnchor = Self.findBall(
+                        plane: Self.uprightPlane(from: pb, orientation: orientation),
+                        handsUpright: hp)
+                }
                 if let det = detector.detect(pixelBuffer: pb, orientation: orientation),
                    let hit = det.clubheadWithConfidence(hands: hp),
                    // Strict before the top (body lock-ons live in the slow backswing);
@@ -803,7 +874,8 @@ enum SwingClubTracer {
             }
             reader.cancelReading()
             guard trail.count >= 6 else { return nil }
-            return polish(trail, impactTime: times[3])
+            return polish(trail, impactTime: times[3],
+                          ball: ballAnchor.map { [Double($0.x), Double($0.y)] })
         }
 
         var window: [(t: Double, plane: UprightPlane)] = []
@@ -860,8 +932,31 @@ enum SwingClubTracer {
     /// one point physics guarantees (the clubhead is AT THE BALL at impact — bridging
     /// the motion-blur gap with truth instead of a chord), then resample through a
     /// Catmull-Rom spline. The drawn line should read as a swing plane, not a seismograph.
-    private static func polish(_ raw: [[Double]], impactTime: Double) -> [[Double]] {
+    private static func polish(_ raw: [[Double]], impactTime: Double,
+                               ball: [Double]? = nil) -> [[Double]] {
         var pts = raw.sorted { $0[2] < $1[2] }
+
+        // Whole-clip swing selection (Noah's rule), anchored on the TRUE ball position:
+        // waggles and pre-swing club adjustments hover near the ball; the real backswing
+        // is the FINAL departure from it. Without a ball fix this is skipped entirely —
+        // four heuristic versions without an anchor all traded one clip for another.
+        if let ball, pts.count > 14 {
+            var topIdx = 0
+            var topDist = 0.0
+            for (i, p) in pts.enumerated() {
+                let d = hypot(p[0] - ball[0], p[1] - ball[1])
+                if d > topDist { topDist = d; topIdx = i }
+            }
+            if topIdx > 3, topDist > 0.25 {
+                var start = 0
+                for j in 0..<topIdx where hypot(pts[j][0] - ball[0], pts[j][1] - ball[1]) < 0.07 {
+                    start = j
+                }
+                if start > 0, pts[start][2] - pts[0][2] > 0.3 {
+                    pts.removeFirst(start)
+                }
+            }
+        }
 
         // The trace ends AT impact — follow-through points only smear the line the
         // player reads. The segmenter's impact TIME can run early, but the ball doesn't
@@ -978,6 +1073,45 @@ enum SwingClubTracer {
         }
         out.append(pts[pts.count - 1])
         return out
+    }
+
+    /// True BALL anchor: brightest compact blob below the hands at address. The ball
+    /// is a small white circle on grass — the one scene object we can find without the
+    /// trail (whose own first points may be pre-swing junk). Normalized upright, y-up.
+    static func findBall(plane: UprightPlane, handsUpright: CGPoint) -> CGPoint? {
+        let w = plane.w, h = plane.h
+        let hx = Int(Double(handsUpright.x) * Double(w))
+        let hy = Int((1 - Double(handsUpright.y)) * Double(h))   // raster y-down
+        let r = max(2, h / 240)                                   // ~ball radius
+        var best: (score: Double, x: Int, y: Int)? = nil
+        let y0 = min(h - 1, hy + h / 20), y1 = min(h - 1, hy + h / 2)
+        let x0 = max(0, hx - w / 4), x1 = min(w - 1, hx + w / 4)
+        var y = y0
+        while y < y1 {
+            var x = x0
+            while x < x1 {
+                let c = Double(plane.data[y * w + x])
+                guard c > 150 else { x += 2; continue }
+                // Bright center, darker ring at 3r — compact blob, not a stripe.
+                var ring = 0.0
+                var n = 0
+                for (dx, dy) in [(3 * r, 0), (-3 * r, 0), (0, 3 * r), (0, -3 * r)] {
+                    let rx = x + dx, ry = y + dy
+                    guard rx >= 0, ry >= 0, rx < w, ry < h else { continue }
+                    ring += Double(plane.data[ry * w + rx])
+                    n += 1
+                }
+                guard n > 2 else { x += 2; continue }
+                let contrast = c - ring / Double(n)
+                if contrast > 28, contrast > (best?.score ?? 0) {
+                    best = (contrast, x, y)
+                }
+                x += 2
+            }
+            y += 2
+        }
+        guard let best else { return nil }
+        return CGPoint(x: Double(best.x) / Double(w), y: 1 - Double(best.y) / Double(h))
     }
 
     /// Rotate + 2× downsample the Y plane into upright raster space.

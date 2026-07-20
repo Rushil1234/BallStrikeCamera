@@ -588,8 +588,10 @@ struct SwingReplayView: View {
     }
 
     private var usingClubTrail: Bool {
-        preferClubTrail ?? (swing.viewAngle == .downTheLine && swing.clubTrail != nil)
-            && swing.clubTrail != nil
+        // Club trail is DTL-only (face-on downswing club tracking isn't reliable —
+        // face-on PATH always traces the hands). Same rule as the CLI renderer.
+        guard swing.viewAngle == .downTheLine else { return false }
+        return (preferClubTrail ?? true) && swing.clubTrail != nil
     }
 
     /// One analysis at a time. Down-the-line defaults to the club path (the tracer view);
@@ -608,7 +610,13 @@ struct SwingReplayView: View {
     }
 
     private var activeTrail: [[Double]]? {
-        usingClubTrail ? swing.clubTrail : (swing.handTrail ?? swing.clubTrail)
+        if usingClubTrail { return swing.clubTrail }
+        // Hands path draws only when the data is CLEAN — a jerky pose-noise line
+        // teaches nothing (threshold calibrated on reference clips: clean ≈ 0.10,
+        // jerky ≈ 0.27). Same rule as the CLI renderer.
+        guard let hands = swing.handTrail,
+              TrailQuality.roughness(hands) <= 0.20 else { return nil }
+        return hands
     }
 
     /// Your best other swing from the SAME view — the ghost under this one.
@@ -719,7 +727,8 @@ struct SwingReplayView: View {
             VStack(alignment: .leading, spacing: 6) {
                 if activeOverlayMode == .path {
                     HStack(spacing: 8) {
-                        if swing.clubTrail != nil, swing.handTrail != nil {
+                        if swing.viewAngle == .downTheLine,
+                           swing.clubTrail != nil, swing.handTrail != nil {
                             Button { preferClubTrail = !usingClubTrail } label: {
                                 Text(usingClubTrail ? "CLUB" : "HANDS")
                                     .font(.system(size: 11, weight: .black, design: .rounded))
