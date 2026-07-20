@@ -17,15 +17,19 @@ struct RoundShotLogView: View {
     let linkedShots: [SavedShot]
 
     @State private var selectedLinkedShot: SavedShot?
+    /// Which hole page is showing — opens on the shot's hole when launched from Insights.
+    @State private var selectedHole: Int
 
     /// Cached OSM geometry for the course (tee/green/path per hole) — the same source course
     /// mode renders from, so history pages match what the player saw during the round.
     private let course: GolfCourse?
 
-    init(round: CourseRound, linkedShots: [SavedShot]) {
+    init(round: CourseRound, linkedShots: [SavedShot], initialHole: Int? = nil) {
         self.round = round
         self.linkedShots = linkedShots
         self.course = OSMGolfService.shared.loadCached(courseId: round.courseId)
+        let firstHole = round.holes.map { $0.holeNumber }.min() ?? 1
+        _selectedHole = State(initialValue: initialHole ?? firstHole)
     }
 
     /// Every hole of the round gets a page — holes without shots still show the hole
@@ -52,7 +56,7 @@ struct RoundShotLogView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             GeometryReader { geo in
-                TabView {
+                TabView(selection: $selectedHole) {
                     ForEach(holesToShow, id: \.self) { holeNum in
                         let roundHole = round.holes.first { $0.holeNumber == holeNum }
                         HoleShotPage(
@@ -74,6 +78,7 @@ struct RoundShotLogView: View {
                         )
                         .padding(.horizontal, 2)
                         .padding(.bottom, 28)
+                        .tag(holeNum)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))

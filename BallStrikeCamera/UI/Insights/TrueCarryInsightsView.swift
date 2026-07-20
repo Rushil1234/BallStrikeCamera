@@ -25,6 +25,7 @@ struct TrueCarryInsightsView: View {
     /// Course shot picked on the dispersion chart (course source only).
     @State private var selectedShotMeta: CourseShotMeta?
     @State private var presentedRound: CourseRound?   // course shot → its round/hole overview
+    @State private var presentedRoundHole: Int?       // the hole that shot came from
 
     private enum InsightsSource: String, CaseIterable {
         case range = "Range & Sim", course = "On-Course"
@@ -213,7 +214,8 @@ struct TrueCarryInsightsView: View {
         .sheet(item: $presentedRound) { round in
             NavigationStack {
                 RoundShotLogView(round: round,
-                                 linkedShots: shots.filter { $0.roundId == round.id })
+                                 linkedShots: shots.filter { $0.roundId == round.id },
+                                 initialHole: presentedRoundHole)
             }
             .tcAppearance()
         }
@@ -896,7 +898,10 @@ struct TrueCarryInsightsView: View {
             // Tapping opens that round's hole overview in a History sheet (only when
             // we can resolve the round; a stray shot with no round stays inert).
             Button {
-                if let round { presentedRound = round }
+                if let round {
+                    presentedRoundHole = meta.holeNumber
+                    presentedRound = round
+                }
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "flag.fill")
