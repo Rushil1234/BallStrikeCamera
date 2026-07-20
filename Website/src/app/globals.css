@@ -686,17 +686,28 @@ label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.16e
 .section-head.center .eyebrow::before { display: none; }
 .divider-line { height: 1px; background: var(--border); border: none; }
 
-/* ---------- Footer ---------- */
-.footer { border-top: 1px solid var(--border); margin-top: 0; }
-.footer-inner { max-width: var(--maxw); margin: 0 auto; padding: 80px 32px 44px; }
-.footer-cols { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 48px; margin-bottom: 64px; }
-.footer-links { display: flex; flex-direction: column; gap: 14px; }
-.footer-links a { color: var(--muted); font-size: 14px; }
-.footer-links a:hover { color: var(--text); }
+/* ---------- Footer ----------
+   Matches the homepage's inline footer (.round .h09) so every page's footer is
+   the same. Token-based, so it adapts to dark pages and the light /store,
+   /mission themes automatically. Keep in sync with the h09 markup in page.tsx. */
+.footer { border-top: 1px solid var(--border); background: var(--bg); }
+.footer-inner { max-width: var(--maxw); margin: 0 auto; padding: 72px 32px 30px; }
+.footer-cols { display: grid; grid-template-columns: 1fr; gap: 32px; margin-bottom: 0; }
+@media (min-width: 760px) { .footer-cols { grid-template-columns: 1.6fr repeat(4, minmax(110px, .7fr)); align-items: start; } }
+.footer-brand { max-width: 34ch; }
+.footer-wm { font-family: var(--font-serif), serif; font-size: 30px; line-height: 1; margin-bottom: 12px; color: var(--text); }
+.footer-wm .it { font-style: italic; color: var(--gold); }
+.footer-brand p { font-family: var(--font-sans), sans-serif; font-size: 13.5px; line-height: 1.55; color: color-mix(in oklab, var(--text) 70%, transparent); margin: 0 0 18px; }
+.footer-meta { font-family: var(--font-mono), monospace; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: color-mix(in oklab, var(--text) 48%, transparent); }
+.footer-links { display: flex; flex-direction: column; gap: 8px; }
+.footer-links h4 { margin: 0 0 6px; font-family: var(--font-mono), monospace; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: color-mix(in oklab, var(--text) 50%, transparent); font-weight: 500; }
+.footer-links a { font-family: var(--font-sans), sans-serif; font-size: 14px; color: color-mix(in oklab, var(--text) 74%, transparent); text-decoration: none; transition: color .2s ease; }
+.footer-links a:hover { color: var(--gold); }
 .footer-bottom {
   display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center;
-  padding-top: 32px; border-top: 1px solid var(--border);
-  color: var(--faint); font-size: 12.5px;
+  margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--border);
+  font-family: var(--font-mono), monospace; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase;
+  color: color-mix(in oklab, var(--text) 42%, transparent);
 }
 
 /* ---------- Scroll reveal (subtle) ---------- */
@@ -1532,10 +1543,8 @@ code {
 .round .scene .stamp .v{ display:block; font-family:var(--display); font-style:italic; font-size:26px; letter-spacing:0; color:var(--bone); text-transform:none; margin-top:4px; }
 
 /* H06 paper round card */
-.round .h06{ background:var(--paper); color:var(--ink); }
-.round .h06 .hole-strip{ color:color-mix(in oklab,var(--ink) 60%,transparent); border-color:color-mix(in oklab,var(--ink) 18%,transparent); }
-.round .h06 .hole-strip .n,.round .h06 .hole-strip .name{ color:var(--ink); }
-.round .h06 .hole-strip .par .v,.round .h06 .hole-strip .yd .v{ color:var(--carry-gold-deep); }
+/* H06 pro shop is now the FOREST section (dark). Default hole-strip (bone) applies. */
+.round .h06{ background:var(--forest); color:var(--bone); }
 .round .h06 .top{ display:grid; grid-template-columns:1fr; gap:clamp(48px,6vw,80px); margin-bottom:56px; }
 @media (min-width:760px){ .round .h06 .top{ grid-template-columns:1fr 1fr; align-items:end; } }
 .round .h06 .top h2{ font-family:var(--display); font-weight:400; font-size:clamp(40px,6vw,76px); line-height:.98; letter-spacing:-.022em; margin:0; color:var(--ink); max-width:16ch; }
@@ -1559,7 +1568,21 @@ code {
 .round .h06 .card .sc-foot .net .it{ color:var(--carry-gold-deep); }
 
 /* H07 pricing */
-.round .h07{ text-align:center; background:var(--forest); padding-bottom:clamp(120px,16vw,200px); }
+/* H07 pricing is now the PAPER section. The plan CSS is written entirely in
+   --bone / --ink / --carry-gold, so flipping those three tokens (plus the
+   section color) re-themes the whole pricing UI light without touching a single
+   plan rule: bone(light text) -> ink(dark), ink(inverted text) -> paper(light),
+   gold -> the deep gold that holds on paper. */
+.round .h07{
+  text-align:center; background:var(--paper); color:var(--c-ink);
+  --bone: var(--c-ink);
+  --ink: var(--c-paper);
+  --carry-gold: var(--c-gold-deep);
+  padding-bottom:clamp(120px,16vw,200px);
+}
+.round .h07 .hole-strip{ color:color-mix(in oklab,var(--c-ink) 60%,transparent); border-color:color-mix(in oklab,var(--c-ink) 18%,transparent); }
+.round .h07 .hole-strip .n,.round .h07 .hole-strip .name{ color:var(--c-ink); }
+.round .h07 .hole-strip .par .v,.round .h07 .hole-strip .yd .v{ color:var(--c-gold-deep); }
 .round .h07 .hole-strip{ text-align:left; }
 .round .h07 .price{ font-family:var(--display); font-weight:400; font-size:clamp(180px,28vw,380px); line-height:.88; letter-spacing:-.04em; margin:clamp(56px,7vw,88px) 0 0; position:relative; display:inline-block; }
 .round .h07 .price .dollar{ font-size:.42em; vertical-align:.42em; color:color-mix(in oklab,var(--bone) 55%,transparent); margin-right:-.08em; }
@@ -1588,7 +1611,7 @@ code {
 /* H09 footer */
 .round .h09{ background:var(--ink); padding:48px 0 28px; border-top:1px solid color-mix(in oklab,var(--bone) 12%,transparent); border-bottom:none; }
 .round .h09 .grid{ display:grid; grid-template-columns:1fr; gap:32px; }
-@media (min-width:760px){ .round .h09 .grid{ grid-template-columns:1.5fr repeat(3, minmax(120px, .7fr)); align-items:start; } }
+@media (min-width:760px){ .round .h09 .grid{ grid-template-columns:1.6fr repeat(4, minmax(110px, .7fr)); align-items:start; } }
 .round .h09 .col h4{ margin:0 0 14px; font-family:var(--r-mono); font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 50%,transparent); font-weight:500; }
 .round .h09 .col a{ display:block; font-family:var(--r-sans); font-size:14px; color:color-mix(in oklab,var(--bone) 74%,transparent); text-decoration:none; margin-bottom:8px; transition:color .2s ease; }
 .round .h09 .col a:hover{ color:var(--carry-gold); }
@@ -2217,39 +2240,60 @@ code {
 /* ============================================================
    H06 — NFC club cards (paper section) + 3D card stage
    ============================================================ */
-/* Pro-shop showcase — header row + full-width product grid, on the paper section. */
-.round .h06 .shop-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:clamp(24px,4vw,56px); flex-wrap:wrap; margin-bottom:clamp(36px,4.5vw,56px); }
-.round .h06 .shop-head-copy h2{ font-family:var(--display); font-weight:400; font-size:clamp(38px,5.6vw,74px); line-height:.94; letter-spacing:-.03em; margin:0 0 20px; color:var(--ink); }
-.round .h06 .shop-head-copy h2 .it{ font-style:italic; color:var(--carry-gold-deep); }
-.round .h06 .shop-deck{ font-family:var(--display); font-style:italic; font-size:clamp(18px,1.9vw,23px); line-height:1.45; color:color-mix(in oklab,var(--ink) 78%,transparent); margin:0; max-width:44ch; }
-.round .h06 .shop-visit{ flex:none; display:inline-flex; align-items:center; gap:9px; padding:15px 28px; border-radius:999px; background:var(--ink); color:var(--paper); font-family:var(--r-mono); font-size:11.5px; letter-spacing:.2em; text-transform:uppercase; text-decoration:none; transition:background .2s,color .2s; white-space:nowrap; }
-.round .h06 .shop-visit:hover{ background:var(--carry-gold-deep); color:var(--ink); }
+/* Pro-shop showcase — header row + a bounce-card fan, on the FOREST section. */
+.round .h06 .shop-head{ display:flex; justify-content:space-between; align-items:flex-end; gap:clamp(24px,4vw,56px); flex-wrap:wrap; margin-bottom:clamp(20px,3vw,36px); }
+.round .h06 .shop-head-copy h2{ font-family:var(--display); font-weight:400; font-size:clamp(38px,5.6vw,74px); line-height:.94; letter-spacing:-.03em; margin:0 0 20px; color:var(--bone); }
+.round .h06 .shop-head-copy h2 .it{ font-style:italic; color:var(--carry-gold); }
+.round .h06 .shop-deck{ font-family:var(--display); font-style:italic; font-size:clamp(18px,1.9vw,23px); line-height:1.45; color:color-mix(in oklab,var(--bone) 78%,transparent); margin:0; max-width:44ch; }
+.round .h06 .shop-visit{ flex:none; display:inline-flex; align-items:center; gap:9px; padding:15px 28px; border-radius:999px; background:var(--bone); color:var(--c-forest-deep); font-family:var(--r-mono); font-size:11.5px; letter-spacing:.2em; text-transform:uppercase; text-decoration:none; transition:background .2s,color .2s; white-space:nowrap; }
+.round .h06 .shop-visit:hover{ background:var(--carry-gold); color:var(--c-forest-deep); }
 .round .h06 .shop-visit span{ transition:transform .2s; }
 .round .h06 .shop-visit:hover span{ transform:translateX(3px); }
 
-.round .h06 .shop-grid{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(5,1fr); gap:clamp(14px,1.4vw,20px); }
-@media (max-width:1040px){ .round .h06 .shop-grid{ grid-template-columns:repeat(3,1fr); } }
-@media (max-width:680px){ .round .h06 .shop-grid{ grid-template-columns:repeat(2,1fr); } }
+/* --- Bounce-card fan --------------------------------------------------------
+   Cards overlap in a rotated fan (transform-origin at the bottom). Hovering the
+   fan straightens and spreads them; a springy cubic-bezier gives the "bounce".
+   Per-card --i (index) and --n (count) drive the fan angle from CSS alone. */
+.round .h06 .shop-fan{ display:flex; justify-content:center; align-items:flex-end; padding:clamp(30px,5vw,64px) 0 10px; perspective:1400px; min-height:340px; }
+.round .h06 .fan-card{
+  --spread: 8deg;
+  --angle: calc((var(--i) - (var(--n) - 1) / 2) * var(--spread));
+  position:relative; flex:none; width:clamp(148px,15.5vw,208px); aspect-ratio:5/7;
+  margin-left:-58px; border-radius:18px; overflow:hidden; text-decoration:none; color:var(--bone);
+  background:linear-gradient(165deg,#243127,#16201a);
+  border:1px solid color-mix(in oklab,var(--bone) 14%,transparent);
+  transform:rotate(var(--angle)); transform-origin:bottom center; z-index:calc(var(--i) + 1);
+  box-shadow:0 34px 54px -30px rgba(0,0,0,.7);
+  transition:transform .5s cubic-bezier(.34,1.56,.64,1), margin .5s cubic-bezier(.34,1.56,.64,1), box-shadow .3s ease, border-color .3s ease;
+}
+.round .h06 .fan-card:first-child{ margin-left:0; }
+.round .h06 .shop-fan:hover .fan-card{ transform:rotate(0deg); margin-left:clamp(8px,1vw,16px); }
+.round .h06 .shop-fan:hover .fan-card:first-child{ margin-left:0; }
+.round .h06 .fan-card:hover{ transform:rotate(0deg) translateY(-16px) scale(1.05); z-index:20; border-color:color-mix(in oklab,var(--carry-gold) 60%,transparent); box-shadow:0 44px 70px -28px rgba(0,0,0,.8); }
+.round .h06 .fan-art{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:radial-gradient(70% 60% at 50% 40%, #2a3a2e, #16201a); }
+.round .h06 .fan-art .product-photo{ position:absolute; inset:0; }
+.round .h06 .fan-art .product-mark{ width:min(72%,150px); color:var(--carry-gold-bright,#cbb079); }
+.round .h06 .fan-shade{ position:absolute; inset:0; background:linear-gradient(180deg, rgba(14,20,15,.05) 40%, rgba(14,20,15,.55) 78%, rgba(14,20,15,.86)); }
+.round .h06 .fan-price{ position:absolute; top:12px; right:12px; font-family:var(--r-mono); font-size:12px; font-weight:600; letter-spacing:.02em; color:var(--c-forest-deep); background:var(--carry-gold-bright,#cbb079); padding:5px 11px; border-radius:999px; box-shadow:0 6px 16px -6px rgba(0,0,0,.5); }
+.round .h06 .fan-info{ position:absolute; left:0; right:0; bottom:0; display:flex; flex-direction:column; gap:3px; padding:16px 15px 15px; }
+.round .h06 .fan-name{ font-family:var(--display); font-size:clamp(18px,1.6vw,22px); line-height:1.02; color:var(--bone); }
+.round .h06 .fan-tag{ font-family:var(--r-sans); font-size:11.5px; line-height:1.35; color:color-mix(in oklab,var(--bone) 72%,transparent); opacity:0; max-height:0; transition:opacity .35s ease .05s, max-height .35s ease; overflow:hidden; }
+.round .h06 .fan-card:hover .fan-tag{ opacity:1; max-height:40px; }
+.round .h06 .fan-status{ font-family:var(--r-mono); font-size:8.5px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 50%,transparent); margin-top:4px; }
+.round .h06 .fan-status.live{ color:#8fd49a; }
+.round .h06 .shop-fan-hint{ text-align:center; font-family:var(--r-mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 42%,transparent); margin:clamp(20px,3vw,34px) 0 0; }
 
-.round .h06 .shop-card > a{ display:flex; flex-direction:column; height:100%; text-decoration:none; color:inherit;
-  background:#faf5e9; border:1px solid color-mix(in oklab,var(--ink) 10%,transparent); border-radius:16px; overflow:hidden;
-  box-shadow:0 1px 2px rgba(30,42,34,.04), 0 18px 34px -28px rgba(30,42,34,.4);
-  transition:transform .26s cubic-bezier(.2,.7,.3,1), box-shadow .26s, border-color .26s; }
-.round .h06 .shop-card > a:hover{ transform:translateY(-6px); border-color:color-mix(in oklab,var(--carry-gold-deep) 55%,transparent);
-  box-shadow:0 2px 4px rgba(30,42,34,.05), 0 30px 56px -28px rgba(30,42,34,.5); }
-.round .h06 .shop-card-art{ position:relative; display:flex; align-items:center; justify-content:center; aspect-ratio:1/1; padding:10px;
-  background:radial-gradient(60% 60% at 50% 42%, #fff, #f1e9d7 78%, #e7ddc9);
-  border-bottom:1px solid color-mix(in oklab,var(--ink) 9%,transparent); }
-.round .h06 .shop-card-art .product-mark{ width:min(78%,180px); color:var(--carry-gold-deep); }
-.round .h06 .shop-card-art .product-photo{ position:absolute; inset:0; }
-.round .h06 .shop-card-body{ display:flex; flex-direction:column; gap:7px; padding:15px 16px 17px; }
-.round .h06 .shop-card-head{ display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
-.round .h06 .shop-card-name{ font-family:var(--r-sans); font-weight:600; font-size:15px; color:var(--ink); }
-.round .h06 .shop-card-price{ font-family:var(--display); font-style:italic; font-size:19px; color:var(--carry-gold-deep); }
-.round .h06 .shop-card-tag{ font-family:var(--r-sans); font-size:12.5px; line-height:1.4; color:color-mix(in oklab,var(--ink) 62%,transparent); }
-.round .h06 .shop-card-status{ margin-top:2px; font-family:var(--r-mono); font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--ink) 45%,transparent); }
-.round .h06 .shop-card-status.live{ color:#2F7D46; }
-@media (prefers-reduced-motion:reduce){ .round .h06 .shop-card > a{ transition:none; } .round .h06 .shop-card > a:hover{ transform:none; } }
+/* Mobile: drop the overlap/rotation, wrap to a tidy 2-up card grid. */
+@media (max-width:760px){
+  .round .h06 .shop-fan{ flex-wrap:wrap; gap:14px; min-height:0; padding:24px 0 6px; }
+  .round .h06 .fan-card{ margin-left:0 !important; transform:none !important; width:calc(50% - 7px); box-shadow:0 20px 36px -26px rgba(0,0,0,.7); }
+  .round .h06 .fan-tag{ opacity:1; max-height:40px; }
+  .round .h06 .shop-fan-hint{ display:none; }
+}
+@media (prefers-reduced-motion:reduce){
+  .round .h06 .fan-card{ transition:none; }
+  .round .h06 .shop-fan:hover .fan-card{ transform:rotate(0deg); }
+}
 
 /* the 3D stage — pointer position feeds --tx/--ty in [-0.5, 0.5] */
 .club-cards{ --tx:0; --ty:0; position:relative; height:clamp(360px,38vw,460px); perspective:1100px; touch-action:pan-y; }
