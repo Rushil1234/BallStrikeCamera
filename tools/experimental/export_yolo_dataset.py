@@ -12,7 +12,14 @@ import json, math, os, random, shutil, zipfile
 
 TRAIN = os.path.expanduser('~/Documents/TrueCarryTraining')
 LABELS = json.load(open(os.path.join(TRAIN, 'labels/labels.json')))
+# Shots whose hosel labels sat on static clutter (peak hosel speed < 30 mph —
+# see hosel_speed_shootout.py). Their ball/club labels are fine; hosels are not.
+try:
+    HOSEL_JUNK = set(json.load(open(os.path.join(TRAIN, 'hosel_junk_shots.json'))))
+except FileNotFoundError:
+    HOSEL_JUNK = set()
 ARCHIVES = [os.path.expanduser(a) for a in (
+    '~/Documents/TrueCarryTraining/hosel_archive',   # symlinks; covers all 375 hosel-round shots
     '~/Documents/TrueCarryFramesArchive_20260717/AllFramesArchive',
     '~/Documents/TrueCarryFramesArchive_20260716/AllFramesArchive',
     '~/Documents/TrueCarryFramesArchive_20260712/AllFramesArchive')]
@@ -45,7 +52,7 @@ def main():
             if e.get('club'):
                 c = e['club']
                 lines.append(f"0 {c['cx']/W:.5f} {c['cy']/H:.5f} {HEAD_BOX/W:.5f} {HEAD_BOX/H:.5f}")
-            if e.get('hosel'):
+            if e.get('hosel') and shot not in HOSEL_JUNK:
                 c = e['hosel']
                 lines.append(f"1 {c['cx']/W:.5f} {c['cy']/H:.5f} {HOSEL_BOX/W:.5f} {HOSEL_BOX/H:.5f}")
             if e.get('ball'):
