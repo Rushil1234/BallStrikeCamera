@@ -105,7 +105,6 @@ function ProductCard({ p }: { p: Product }) {
       <div className="product-body">
         <div className="product-head">
           <h2>{p.name}</h2>
-          <span className="product-price">{p.price}</span>
         </div>
         <p className="product-tag">{p.tag}</p>
         <ul>
