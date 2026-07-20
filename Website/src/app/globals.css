@@ -2586,12 +2586,68 @@ textarea:focus-visible, [tabindex]:focus-visible{
 
 /* ---------- mission page ---------- */
 .mission-page{ min-height:100vh; display:flex; flex-direction:column; background:var(--c-forest-deep,#16201a); color:var(--c-bone,#ece4d2); }
-.mission-hero{ max-width:880px; margin:0 auto; padding:140px 24px 60px; text-align:center; }
+.mission-hero{ max-width:920px; margin:0 auto; padding:132px 24px 40px; text-align:center; }
 .mission-kicker{ font-family:var(--r-mono); font-size:12px; letter-spacing:.28em; text-transform:uppercase; color:var(--c-gold,#b89a5e); margin-bottom:22px; }
 .mission-hero h1{ font-family:var(--display,Georgia,serif); font-size:clamp(40px,6.2vw,72px); line-height:1.04; font-weight:600; margin:0 0 26px; }
 .mission-hero h1 .it{ font-style:italic; color:var(--c-gold-bright,#cbb079); }
 .mission-deck{ font-size:clamp(17px,2vw,21px); line-height:1.6; color:rgba(236,228,210,.8); max-width:62ch; margin:0 auto; }
-.mission-main{ max-width:820px; margin:0 auto; padding:20px 24px 40px; width:100%; }
+/* Hero stat strip — a page about numbers should show a few. */
+.mission-stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin:44px auto 0; max-width:760px;
+  background:rgba(236,228,210,.1); border:1px solid rgba(236,228,210,.1); border-radius:14px; overflow:hidden; }
+.mission-stats div{ background:var(--c-forest-deep,#16201a); padding:22px 14px; display:flex; flex-direction:column; gap:6px; align-items:center; }
+.mission-stats dt{ font-family:var(--display,Georgia,serif); font-style:italic; font-size:clamp(26px,3.4vw,38px); line-height:1; color:var(--c-gold-bright,#cbb079); }
+.mission-stats dd{ margin:0; font-family:var(--r-mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:rgba(236,228,210,.55); line-height:1.4; }
+@media (max-width:640px){ .mission-stats{ grid-template-columns:repeat(2,1fr); } }
+
+.mission-main{ max-width:1060px; margin:0 auto; padding:20px 24px 40px; width:100%; }
+
+/* Problem — copy beside the price ladder */
+.mission-split{ display:grid; grid-template-columns:1.05fr 1fr; gap:clamp(32px,5vw,64px); align-items:center; padding:60px 0; border-top:1px solid rgba(236,228,210,.1); }
+.mission-split-copy h2{ font-family:var(--display,Georgia,serif); font-size:clamp(26px,3.6vw,40px); line-height:1.14; font-weight:600; margin:0 0 20px; }
+.mission-split-copy p{ font-size:16.5px; line-height:1.68; color:rgba(236,228,210,.82); margin:0 0 16px; }
+@media (max-width:860px){ .mission-split{ grid-template-columns:1fr; gap:36px; } }
+
+.price-ladder{ display:flex; flex-direction:column; gap:22px; padding:30px; border-radius:20px;
+  background:rgba(236,228,210,.04); border:1px solid rgba(236,228,210,.1); }
+.ladder-row{ display:grid; gap:9px; }
+.ladder-head{ display:flex; justify-content:space-between; align-items:baseline; gap:12px; }
+.ladder-name{ font-family:var(--r-sans); font-size:14px; font-weight:600; color:var(--c-bone,#ece4d2); }
+.ladder-price{ font-family:var(--r-mono); font-size:13px; color:rgba(236,228,210,.6); white-space:nowrap; }
+.ladder-track{ height:8px; border-radius:999px; background:rgba(236,228,210,.08); overflow:hidden; }
+.ladder-fill{ display:block; height:100%; border-radius:999px;
+  background:linear-gradient(90deg, var(--c-gold-deep,#8c7240), var(--c-gold,#b89a5e)); transition:width .6s var(--ease,ease); }
+.ladder-note{ font-family:var(--r-mono); font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:rgba(236,228,210,.42); }
+.ladder-row.us .ladder-name{ color:var(--c-gold-bright,#cbb079); }
+.ladder-row.us .ladder-price{ color:var(--c-gold-bright,#cbb079); font-weight:600; }
+.ladder-row.us .ladder-track{ background:repeating-linear-gradient(90deg, rgba(203,176,121,.28) 0 6px, transparent 6px 12px); }
+.ladder-row.us .ladder-note{ color:rgba(203,176,121,.7); }
+
+/* Solution — three steps */
+.mission-block{ padding:60px 0; border-top:1px solid rgba(236,228,210,.1); }
+.mission-steps{ list-style:none; margin:34px 0 0; padding:0; display:grid; grid-template-columns:repeat(3,1fr); gap:20px; counter-reset:none; }
+.mission-steps li{ position:relative; background:rgba(236,228,210,.04); border:1px solid rgba(236,228,210,.1); border-radius:16px; padding:26px 24px; }
+.mission-steps .step-n{ font-family:var(--r-mono); font-size:12px; letter-spacing:.14em; color:var(--c-gold,#b89a5e); }
+.mission-steps h3{ font-family:var(--display,Georgia,serif); font-size:22px; font-weight:600; margin:10px 0 8px; color:var(--c-bone,#ece4d2); }
+.mission-steps li p{ font-size:14.5px; line-height:1.6; color:rgba(236,228,210,.72); margin:0; }
+@media (max-width:760px){ .mission-steps{ grid-template-columns:1fr; } }
+
+/* Beginner — photo beside copy, warmer treatment */
+.mission-beginner{ display:grid; grid-template-columns:0.85fr 1.15fr; gap:clamp(28px,4vw,48px); align-items:stretch;
+  margin:20px 0; padding:clamp(24px,3vw,36px); border-radius:24px;
+  background:radial-gradient(120% 120% at 0% 0%, rgba(184,154,94,.14), transparent 55%), rgba(236,228,210,.035);
+  border:1px solid rgba(184,154,94,.22); }
+.beginner-media{ position:relative; min-height:320px; border-radius:16px; overflow:hidden; }
+.beginner-media::after{ content:""; position:absolute; inset:0; background:linear-gradient(160deg, transparent 40%, rgba(14,20,15,.5)); }
+.beginner-copy h2{ font-family:var(--display,Georgia,serif); font-size:clamp(26px,3.4vw,38px); line-height:1.12; font-weight:600; margin:0 0 16px; }
+.beginner-lead{ font-size:16px; line-height:1.66; color:rgba(236,228,210,.82); margin:0 0 24px; }
+.beginner-list{ list-style:none; margin:0 0 26px; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:20px 26px; }
+.beginner-list h3{ font-family:var(--r-sans); font-size:15px; font-weight:700; margin:0 0 6px; color:var(--c-bone,#ece4d2); position:relative; padding-left:16px; }
+.beginner-list h3::before{ content:""; position:absolute; left:0; top:7px; width:7px; height:7px; border-radius:50%; background:var(--c-gold,#b89a5e); }
+.beginner-list p{ font-size:13.5px; line-height:1.58; color:rgba(236,228,210,.7); margin:0; padding-left:16px; }
+.beginner-cta{ display:inline-block; font-family:var(--r-mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--c-gold-bright,#cbb079); text-decoration:none; border-bottom:1px solid rgba(203,176,121,.4); padding-bottom:3px; transition:border-color .2s; }
+.beginner-cta:hover{ border-bottom-color:var(--c-gold-bright,#cbb079); }
+@media (max-width:820px){ .mission-beginner{ grid-template-columns:1fr; } .beginner-media{ min-height:220px; } .beginner-list{ grid-template-columns:1fr; } }
 .mission-block{ padding:48px 0; border-top:1px solid rgba(236,228,210,.1); }
 .mission-tag{ font-family:var(--r-mono); font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:var(--c-gold,#b89a5e); margin-bottom:16px; }
 .mission-tag.light{ color:rgba(236,228,210,.55); }
