@@ -4,6 +4,7 @@
 
 import Stripe from "npm:stripe@14";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 // API version is pinned intentionally. This handler reads
 // `subscription.current_period_start` / `current_period_end`, which were moved
@@ -93,6 +94,13 @@ Deno.serve(async (req: Request) => {
 // ── Handlers ──────────────────────────────────────────────────────────────────
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+  // Gift-card purchases are one-time payments (no subscription, no logged-in
+  // user). Branch before the subscription path, which requires both.
+  if (session.metadata?.type === "giftcard") {
+    await handleGiftCardPurchase(session);
+    return;
+  }
+
   const userId = session.client_reference_id ?? session.metadata?.supabase_user_id;
   if (!userId) {
     console.error("[stripe-webhook] checkout.session.completed: no userId in metadata");
@@ -175,6 +183,134 @@ async function handlePaymentFailed(inv: Stripe.Invoice) {
     cancelAtPeriodEnd:    sub.cancel_at_period_end,
   });
   console.log(`[stripe-webhook] Payment failed — user=${userId}`);
+}
+
+// ── Gift cards ──────────────────────────────────────────────────────────────
+
+async function handleGiftCardPurchase(session: Stripe.Checkout.Session) {
+  const amountCents = Number(session.metadata?.amountCents ?? session.amount_total ?? 0);
+  const recipientEmail = session.metadata?.recipientEmail ?? "";
+  const purchaserEmail = session.metadata?.purchaserEmail ?? session.customer_details?.email ?? "";
+  const message = session.metadata?.message ?? "";
+
+  if (![2500, 5000, 10000].includes(amountCents) || !recipientEmail) {
+    console.error("[stripe-webhook] gift card: bad metadata", { amountCents, recipientEmail });
+    return;
+  }
+
+  const code = generateGiftCode();
+  const codeHash = await sha256Hex(code);
+
+  // Idempotent on stripe_session_id: a re-delivered webhook hits the unique
+  // constraint (23505) and we skip re-issuing / re-emailing.
+  const { error } = await supabase.from("gift_cards").insert({
+    code_hash: codeHash,
+    amount_cents: amountCents,
+    currency: session.currency ?? "usd",
+    status: "active",
+    purchaser_email: purchaserEmail || null,
+    recipient_email: recipientEmail,
+    message: message || null,
+    stripe_session_id: session.id,
+    stripe_payment_intent_id: (session.payment_intent as string) ?? null,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      console.log("[stripe-webhook] gift card already issued for session", session.id);
+      return;
+    }
+    console.error("[stripe-webhook] gift card insert error:", error);
+    throw error;
+  }
+
+  console.log(`[stripe-webhook] Gift card issued — $${amountCents / 100} → ${recipientEmail}`);
+
+  // Email is best-effort: the card exists regardless, and the code is
+  // recoverable from the founder side if delivery hiccups.
+  try {
+    await sendGiftEmail({ code, amountCents, recipientEmail, purchaserEmail, message });
+  } catch (err) {
+    console.error("[stripe-webhook] gift card email failed (card still issued):", err);
+  }
+}
+
+// TC-XXXX-XXXX-XXXX in Crockford base32 (no I,L,O,U — avoids ambiguity).
+function generateGiftCode(): string {
+  const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  const chars = Array.from(bytes, (b) => alphabet[b % alphabet.length]);
+  const group = (i: number) => chars.slice(i, i + 4).join("");
+  return `TC-${group(0)}-${group(4)}-${group(8)}`;
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function sendGiftEmail(g: {
+  code: string;
+  amountCents: number;
+  recipientEmail: string;
+  purchaserEmail: string;
+  message: string;
+}) {
+  const user = Deno.env.get("ZOHO_SMTP_USER");
+  const pass = Deno.env.get("ZOHO_SMTP_PASSWORD");
+  if (!user || !pass) {
+    console.warn("[stripe-webhook] ZOHO_SMTP_* not set — skipping gift email");
+    return;
+  }
+  const websiteURL = Deno.env.get("TRUECARRY_WEBSITE_URL") ?? "https://truecarry.golf";
+  const dollars = g.amountCents / 100;
+  const redeemUrl = `${websiteURL}/account?redeem=${g.code}`;
+  const from = g.purchaserEmail ? `someone (${g.purchaserEmail})` : "someone";
+
+  const html = `
+  <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#16201a">
+    <p style="font-family:Georgia,serif;font-size:26px;color:#1E2A22;margin:0 0 6px">True <em style="color:#8C7240">Carry.</em></p>
+    <h1 style="font-size:22px;margin:18px 0 6px">You&rsquo;ve got a gift card.</h1>
+    <p style="font-size:15px;line-height:1.6;color:#5C5A4F;margin:0 0 20px">
+      ${from} sent you a <strong>$${dollars}</strong> True Carry gift card &mdash; credit toward Pro or Atlas.
+    </p>
+    ${g.message ? `<p style="font-size:15px;font-style:italic;line-height:1.6;color:#5C5A4F;border-left:3px solid #B89A5E;padding-left:14px;margin:0 0 20px">&ldquo;${escapeHtml(g.message)}&rdquo;</p>` : ""}
+    <div style="background:#F4EFE2;border:1px solid #B89A5E;border-radius:10px;padding:18px;text-align:center;margin:0 0 20px">
+      <div style="font-family:mono,Menlo,monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A8576;margin-bottom:6px">Your code</div>
+      <div style="font-family:mono,Menlo,monospace;font-size:22px;letter-spacing:.12em;color:#16201a">${g.code}</div>
+    </div>
+    <a href="${redeemUrl}" style="display:inline-block;background:#16201a;color:#F4EFE2;text-decoration:none;font-size:14px;padding:13px 26px;border-radius:999px">Redeem it &rarr;</a>
+    <p style="font-size:12.5px;line-height:1.6;color:#8A8576;margin:22px 0 0">
+      Redeem at ${websiteURL}/account &mdash; the credit comes off your next plan automatically. Never expires.
+    </p>
+  </div>`;
+
+  const text =
+    `You've got a $${dollars} True Carry gift card.\n\n` +
+    (g.message ? `"${g.message}"\n\n` : "") +
+    `Code: ${g.code}\nRedeem: ${redeemUrl}\n\n` +
+    `The credit applies to your next Pro or Atlas plan automatically. Never expires.`;
+
+  const client = new SMTPClient({
+    connection: { hostname: "smtp.zoho.com", port: 465, tls: true, auth: { username: user, password: pass } },
+  });
+  await client.send({
+    from: `True Carry <${user}>`,
+    to: g.recipientEmail,
+    subject: `Your $${dollars} True Carry gift card`,
+    content: text,
+    html,
+  });
+  await client.close();
+  console.log(`[stripe-webhook] Gift email sent to ${g.recipientEmail}`);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string)
+  );
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

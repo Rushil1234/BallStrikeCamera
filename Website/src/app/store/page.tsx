@@ -3,6 +3,7 @@ import SiteNav from "@/components/SiteNav";
 import SiteFooter from "@/components/SiteFooter";
 import ProductArt from "@/components/ProductArt";
 import NotifyForm from "@/components/NotifyForm";
+import GiftCardBuy from "@/components/GiftCardBuy";
 
 export const metadata: Metadata = {
   title: "Store",
@@ -114,7 +115,9 @@ function ProductCard({ p }: { p: Product }) {
         </ul>
         <div className="product-foot">
           <span className={`product-status${live ? " live" : ""}`}>{p.status}</span>
-          {live ? (
+          {p.id === "gift-card" ? (
+            <GiftCardBuy />
+          ) : live ? (
             <a className="product-cta" href={p.href ?? "/#h07"}>
               Get it
             </a>
@@ -127,10 +130,26 @@ function ProductCard({ p }: { p: Product }) {
   );
 }
 
-export default function StorePage() {
+export default async function StorePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ gift?: string }>;
+}) {
+  const gift = (await searchParams).gift;
   return (
     <div className="store-page">
       <SiteNav />
+
+      {gift === "success" && (
+        <div className="store-banner ok" role="status">
+          Gift card on its way — we&apos;ve emailed the code to your recipient. 🎁
+        </div>
+      )}
+      {gift === "cancel" && (
+        <div className="store-banner" role="status">
+          Checkout canceled — no charge. The gift card is still here when you&apos;re ready.
+        </div>
+      )}
 
       <header className="store-hero">
         <div className="store-hero-inner">

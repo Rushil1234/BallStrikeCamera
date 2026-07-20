@@ -29,3 +29,12 @@ verify_jwt = true
 
 [functions.delete-account]
 verify_jwt = true
+
+[functions.create-giftcard-session]
+# Public: anyone (logged out) can buy a gift card. The anon key is a valid JWT,
+# so the JS client still passes the gateway; the function validates its own input.
+verify_jwt = true
+
+[functions.redeem-gift-card]
+# Authenticated: verifies the caller's JWT itself (supabase.auth.getUser).
+verify_jwt = true

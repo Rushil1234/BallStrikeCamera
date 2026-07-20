@@ -16,6 +16,7 @@ import {
   type AccountProfile,
 } from "@/lib/supabase";
 import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
+import RedeemGiftCard from "@/components/RedeemGiftCard";
 import SiteFooter from "@/components/SiteFooter";
 import SiteNav from "@/components/SiteNav";
 
@@ -268,6 +269,8 @@ export default function AccountPage() {
         {error && <p className="error-msg account-error">{error}</p>}
 
         {user && <ReferralCard userId={user.id} />}
+
+        {user && <RedeemGiftCard />}
 
         {user && (
           <section className="card account-privacy-card" aria-labelledby="privacy-rights-h">
