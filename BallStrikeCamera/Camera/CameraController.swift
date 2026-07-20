@@ -345,8 +345,19 @@ final class CameraController: NSObject, ObservableObject {
                 // c-counts fell ~700 → 0 at this offset). ISO is additionally ceilinged at 4×
                 // metered so sensor noise stays bounded — a fast preset in dim light lands even
                 // darker than −2EV rather than grainy, which the pipeline tolerates far better.
-                let idealISO = neededISO / 4.0
-                let isoNoiseCeiling = meteredISO * 4.0
+                // DIM-LIGHT BRIGHTENING (July 20): −2EV (÷4) + a 4× ISO ceiling keeps the
+                // ball the lone bright object in full sun, but indoors it leaves a white
+                // ball too dim to SATURATE — only scattered highlights cross the bright
+                // threshold, they fragment, and the clusterer reports "no cluster" (Noah's
+                // home log: max~234, w=200-670, endless no-cluster). As the metered scene
+                // dims (ISO climbs off its sunny floor), ease toward −1EV and lift the ISO
+                // ceiling so the ball reaches a solid bright disc. Motion blur is moot for
+                // the at-rest lock. Bright/outdoor scenes (low metered ISO) are unchanged.
+                let dimness = min(1.0, max(0.0, (meteredISO - 110.0) / 160.0))  // 0 sun → 1 dim
+                let underExpose = 4.0 - 2.0 * dimness    // ÷4 (−2EV) in sun → ÷2 (−1EV) dim
+                let ceilingMult = 4.0 + 4.0 * dimness    // ×4 in sun → ×8 dim
+                let idealISO = neededISO / underExpose
+                let isoNoiseCeiling = meteredISO * ceilingMult
                 let targetISO = Float(min(max(idealISO, minISO), min(isoNoiseCeiling, maxISO)))
                 var stopsUnder = neededISO > 0 && Double(targetISO) > 0
                     ? max(0, log2(neededISO / Double(targetISO)))
