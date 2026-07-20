@@ -121,6 +121,7 @@ kbd { background:#232a31; border:1px solid #39424b; border-radius:3px; padding:0
     <button id="cgone" class="danger">No club (X)</button>
     <button id="bmode">Place ball (B)</button>
     <button id="cmode">Place club (C)</button>
+    <button id="hmode" style="border-color:#e8c268">Place HOSEL (H)</button>
     <button id="approve" class="ok">Approve frame (A)</button>
     <button id="approveShot" class="ok">Approve shot (S)</button>
   </div>
@@ -180,6 +181,15 @@ function draw() {
     ctx.beginPath(); ctx.arc(x, y, 4, 0, 7); ctx.fill();
     ctx.beginPath(); ctx.moveTo(x-12,y); ctx.lineTo(x+12,y); ctx.moveTo(x,y-12); ctx.lineTo(x,y+12); ctx.stroke();
   }
+  if (L.hosel) {
+    // gold diamond — the shaft-head junction
+    ctx.strokeStyle = ctx.fillStyle = '#e8c268'; ctx.lineWidth = 2.5;
+    const hx = L.hosel.cx*S, hy = L.hosel.cy*S;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy-9); ctx.lineTo(hx+9, hy); ctx.lineTo(hx, hy+9); ctx.lineTo(hx-9, hy);
+    ctx.closePath(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx, hy, 2, 0, 7); ctx.fill();
+  }
   document.getElementById('prog').textContent =
     (L.reviewed ? '✓ reviewed' : '· unreviewed') + (mode ? ('   MODE: place ' + mode) : '');
 }
@@ -195,7 +205,7 @@ async function push(extra) {
   Object.assign(L, extra || {});
   L.reviewed = true;
   await j('/label', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({shot: cur.name, fi: frame(), ball: L.ball, club: L.club})});
+    body: JSON.stringify({shot: cur.name, fi: frame(), ball: L.ball, club: L.club, hosel: L.hosel})});
   shots[shotIdx].reviewed = Object.values(cur.per_frame).filter(x=>x.reviewed).length;
   shotProg(); draw(); renderStrip();
 }
@@ -204,6 +214,7 @@ cv.addEventListener('click', e => {
   const r = cv.getBoundingClientRect();
   const x = (e.clientX - r.left)/S, y = (e.clientY - r.top)/S;
   if (mode === 'ball') { const L = lab(); const rr = (L.ball && L.ball.r) || 8; push({ball:{cx:x, cy:y, r:rr}}); }
+  if (mode === 'hosel') { push({hosel:{cx:x, cy:y}}); }
   else push({club:{cx:x, cy:y}});
   // Mode stays STICKY across clicks and frames (Noah: click through back-to-back without
   // re-selecting the tool every frame). Escape clears it.
@@ -223,6 +234,7 @@ function setMode(m, btn) {
 }
 document.getElementById('bmode').onclick = () => setMode('ball','bmode');
 document.getElementById('cmode').onclick = () => setMode('club','cmode');
+document.getElementById('hmode').onclick = () => setMode('hosel','hmode');
 document.getElementById('bgone').onclick = () => push({ball:null});
 document.getElementById('cgone').onclick = () => push({club:null});
 document.getElementById('approve').onclick = () => { push({}); step(1); };
@@ -243,6 +255,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === '[') loadShot(Math.max(0, shotIdx-1));
   else if (e.key === 'b' || e.key === 'B') setMode('ball','bmode');
   else if (e.key === 'c' || e.key === 'C') setMode('club','cmode');
+  else if (e.key === 'h' || e.key === 'H') setMode('hosel','hmode');
   else if (e.key === 'g' || e.key === 'G') push({ball:null});
   else if (e.key === 'x' || e.key === 'X') push({club:null});
   else if (e.key === 'a' || e.key === 'A' || e.key === 'Enter') { push({}); step(1); }
@@ -298,6 +311,7 @@ class H(BaseHTTPRequestHandler):
                     u = labels[shot][k]
                     base['ball'] = u.get('ball')
                     base['club'] = u.get('club')
+                    if u.get('hosel') is not None: base['hosel'] = u.get('hosel')
                     base['reviewed'] = u.get('reviewed', False)
                 merged[k] = base
             self._json({'name': shot, 'impact': pl['impact'], 'frames': pl['frames'],
@@ -325,7 +339,8 @@ class H(BaseHTTPRequestHandler):
         if self.path == '/label':
             shot, fi = req['shot'], str(req['fi'])
             labels.setdefault(shot, {})[fi] = {
-                'ball': req.get('ball'), 'club': req.get('club'), 'reviewed': True}
+                'ball': req.get('ball'), 'club': req.get('club'),
+                'hosel': req.get('hosel'), 'reviewed': True}
             save_labels()
             self._json({'ok': True})
         elif self.path == '/approve_shot':
@@ -338,7 +353,8 @@ class H(BaseHTTPRequestHandler):
                 else:
                     base = pl['per_frame'][k]
                     labels.setdefault(shot, {})[k] = {
-                        'ball': base['ball'], 'club': base['club'], 'reviewed': True}
+                        'ball': base['ball'], 'club': base['club'],
+                        'hosel': base.get('hosel'), 'reviewed': True}
             save_labels()
             self._json({'ok': True})
         else:
