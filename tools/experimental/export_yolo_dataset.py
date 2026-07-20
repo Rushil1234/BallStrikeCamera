@@ -105,8 +105,11 @@ def write_dataset(name, rows):
         else:
             shutil.copy(p, dst)
         open(os.path.join(out, 'labels', split, stem + '.txt'), 'w').write('\n'.join(lines))
+    # No 'path:' key — ultralytics then roots the dataset at the yaml's own
+    # directory, so the zip works wherever it's extracted (a hardcoded
+    # /content path broke Noah's Colab run when he extracted elsewhere).
     open(os.path.join(out, 'data.yaml'), 'w').write(
-        f"path: /content/yolo_datasets/{name}\ntrain: images/train\nval: images/val\n"
+        "train: images/train\nval: images/val\n"
         "names:\n  0: head\n  1: hosel\n  2: ball\n")
     print(f'  {name}: {len(rows)} frames / {len(shots)} shots '
           f'({nv} val frames from {n_val} held-out shots)')
