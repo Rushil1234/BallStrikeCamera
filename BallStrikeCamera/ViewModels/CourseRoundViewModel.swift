@@ -867,9 +867,8 @@ final class CourseRoundViewModel: ObservableObject {
             "holes_scored": round.holes.filter { $0.score != nil }.count,
             "shots": round.shotIds.count
         ], sessionId: nil)
-        // Share to the social feed (explicit choice, else the auto-share setting).
-        await FeedAutoPoster.share(round: round, backend: backend,
-                                   enabled: shareToFeed ?? FeedSharing.autoShareEnabled)
+        // No auto-posting — a finished round surfaces as a draft in the feed's
+        // "Ready to share" section, and the golfer chooses to post it.
         activeRound = nil
         location.endRoundBackgroundUpdates()
     }

@@ -135,6 +135,10 @@ struct FeedView: View {
                     }
                     activityHero
                     sectionGap
+                    if !vm.drafts.isEmpty {
+                        draftsSection
+                        sectionGap
+                    }
                     homeSummarySection
                     sectionGap
                     challengesSection
@@ -196,13 +200,16 @@ struct FeedView: View {
             }
             if let hs = session.cachedHomeSummary { vm.homeSummary = hs }
             await vm.load()
+            await vm.loadDrafts()
             let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
             unfinishedRound = all.first(where: { $0.endedAt == nil })
         }
-        // Deletions must recompute the feed + "Your Week" summary immediately.
+        // Deletions + finishing a round must recompute the feed, drafts, and
+        // "Your Week" summary immediately.
         .onReceive(NotificationCenter.default.publisher(for: .tcDataChanged)) { _ in
             Task {
                 await vm.load()
+                await vm.loadDrafts()
                 let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
                 unfinishedRound = all.first(where: { $0.endedAt == nil })
             }
@@ -232,6 +239,7 @@ struct FeedView: View {
                 }
             }
             .tcAppearance()
+            .task { await vm.refreshNotifications() }
             .onAppear { notifsLastSeenTs = Date().timeIntervalSince1970 }
         }
         .fullScreenCover(isPresented: $showRangeCamera) {
@@ -384,6 +392,33 @@ struct FeedView: View {
                         LeaderboardPreviewRow(rank: index + 1, entry: entry)
                     }
                 }
+            }
+        }
+        .padding(.horizontal, TCTheme.hPad)
+        .padding(.vertical, 18)
+        .background(TCTheme.background)
+    }
+
+    private var draftsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Ready to share")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(TCTheme.textPrimary)
+                Spacer()
+                Text("\(vm.drafts.count) draft\(vm.drafts.count == 1 ? "" : "s")")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.gold)
+            }
+            Text("From your recent play — nothing posts until you say so.")
+                .font(.system(size: 12))
+                .foregroundColor(TCTheme.textMuted)
+            ForEach(vm.drafts) { draft in
+                DraftRow(
+                    draft: draft,
+                    onShare: { Task { await vm.shareDraft(draft) } },
+                    onDismiss: { vm.dismissDraft(draft) }
+                )
             }
         }
         .padding(.horizontal, TCTheme.hPad)
@@ -573,6 +608,71 @@ private struct QuickStartTile: View {
         }
         .buttonStyle(.plain)
         .disabled(action == nil)
+    }
+}
+
+private struct DraftRow: View {
+    let draft: FeedDraft
+    let onShare: () -> Void
+    let onDismiss: () -> Void
+    @State private var sharing = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Text(draft.kindLabel.uppercased())
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.0)
+                    .foregroundColor(TCTheme.onPrimary)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(TCTheme.gold)
+                    .clipShape(Capsule())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(draft.post.title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .lineLimit(1)
+                    Text(draft.post.subtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(TCTheme.textMuted)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(draft.post.metricHighlight)
+                    .font(.system(size: 18, weight: .bold, design: .monospaced))
+                    .foregroundColor(TCTheme.gold)
+            }
+            HStack(spacing: 10) {
+                Button(action: { sharing = true; onShare() }) {
+                    Text(sharing ? "Sharing…" : "Share")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(TCTheme.onPrimary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(TCTheme.goldGradient)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(sharing)
+                Button(action: onDismiss) {
+                    Text("Not now")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(TCTheme.textMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(TCTheme.panel)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous)
+                .strokeBorder(TCTheme.gold.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 

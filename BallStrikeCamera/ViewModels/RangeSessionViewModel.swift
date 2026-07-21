@@ -130,7 +130,6 @@ final class RangeSessionViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        await FeedAutoPoster.share(session: session, backend: backend)
         activeSession = nil
     }
 
@@ -146,7 +145,6 @@ final class RangeSessionViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        await FeedAutoPoster.share(session: session, backend: backend)
         activeSession = nil
     }
 

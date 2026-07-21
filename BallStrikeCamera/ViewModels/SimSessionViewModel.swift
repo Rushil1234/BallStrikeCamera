@@ -148,7 +148,6 @@ final class SimSessionViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        await FeedAutoPoster.share(sim: session, backend: backend)
         activeSession = nil
         players = ["You"]
         currentPlayerIndex = 0
@@ -172,7 +171,6 @@ final class SimSessionViewModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
-        await FeedAutoPoster.share(sim: session, backend: backend)
         activeSession = nil
         players = ["You"]
         currentPlayerIndex = 0

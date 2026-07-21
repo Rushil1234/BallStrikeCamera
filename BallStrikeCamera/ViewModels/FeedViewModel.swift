@@ -11,6 +11,7 @@ final class FeedViewModel: ObservableObject {
     @Published var gimmedByMe: Set<UUID> = []
     @Published var commentCounts: [UUID: Int] = [:]
     @Published var notifications: [FeedNotification] = []
+    @Published var drafts: [FeedDraft] = []
     @Published var friendsCount = 0
     @Published var isLoading = false
     @Published var isLoadingMore = false
@@ -33,6 +34,11 @@ final class FeedViewModel: ObservableObject {
         guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
+        // Notifications load INDEPENDENTLY of the feed/summary chain below. Previously
+        // this ran as the last line of the do-block, so any earlier throw (home summary,
+        // feed page, engagement, leaderboard) skipped it via the catch — which is why
+        // comment/gimme notifications never appeared for some users.
+        await refreshNotifications()
         do {
             homeSummary = try await backend.loadHomeSummary(userId: userId)
             friendsCount = homeSummary.friendsCount
@@ -46,10 +52,66 @@ final class FeedViewModel: ObservableObject {
             // Completed challenges bank permanent credits toward sim-course unlocks
             // (celebration popups fire from inside the service).
             WeeklyGoalsService.shared.syncChallenges(challengePreviews)
-            notifications = (try? await backend.loadFeedNotifications()) ?? notifications
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Loads notifications on their own so a failure elsewhere never hides them.
+    /// Called on feed load and whenever the notifications sheet opens (fresh each time).
+    func refreshNotifications() async {
+        notifications = (try? await backend.loadFeedNotifications()) ?? notifications
+    }
+
+    // MARK: - Drafts (replaces auto-posting)
+
+    /// Recent finished activities you haven't posted or dismissed. They surface as
+    /// "Ready to share" drafts at the top of the feed — nothing posts automatically.
+    func loadDrafts() async {
+        let cutoff = Date().addingTimeInterval(-14 * 24 * 3600)
+        let name = ((try? await backend.loadUserProfile(userId: userId))?.displayName).flatMap { $0.isEmpty ? nil : $0 } ?? "Golfer"
+        async let roundsT = try? await backend.loadCourseRounds(userId: userId)
+        async let rangeT  = try? await backend.loadRangeSessions(userId: userId)
+        async let simT    = try? await backend.loadSimSessions(userId: userId)
+        let rounds = (await roundsT ?? []).filter { ($0.endedAt ?? .distantPast) >= cutoff }
+        let ranges = (await rangeT ?? []).filter { ($0.endedAt ?? .distantPast) >= cutoff }
+        let sims   = (await simT ?? []).filter { ($0.endedAt ?? .distantPast) >= cutoff }
+
+        var out: [FeedDraft] = []
+        for r in rounds where !FeedDraftStore.isHandled(r.id) {
+            if let post = FeedPostFactory.post(from: r, authorName: name) {
+                out.append(FeedDraft(id: r.id, kindLabel: "Round", post: post))
+            }
+        }
+        for s in ranges where !FeedDraftStore.isHandled(s.id) {
+            if let post = FeedPostFactory.post(from: s, authorName: name) {
+                out.append(FeedDraft(id: s.id, kindLabel: "Range", post: post))
+            }
+        }
+        for s in sims where !FeedDraftStore.isHandled(s.id) {
+            if let post = FeedPostFactory.post(from: s, authorName: name) {
+                out.append(FeedDraft(id: s.id, kindLabel: "Sim", post: post))
+            }
+        }
+        drafts = out.sorted { $0.post.timestamp > $1.post.timestamp }
+    }
+
+    /// Post a draft to the feed, then drop it from the drafts strip.
+    func shareDraft(_ draft: FeedDraft) async {
+        do {
+            try await backend.saveFeedPost(draft.post)
+            FeedDraftStore.markPosted(draft.id)
+            drafts.removeAll { $0.id == draft.id }
+            await load()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Permanently hide a draft without posting.
+    func dismissDraft(_ draft: FeedDraft) {
+        FeedDraftStore.markDismissed(draft.id)
+        drafts.removeAll { $0.id == draft.id }
     }
 
     func loadMoreIfNeeded(currentPost post: FeedPost?) async {
@@ -375,5 +437,36 @@ final class FriendsViewModel: ObservableObject {
 
     func isFriend(_ profile: FriendProfile) -> Bool {
         friends.contains { $0.userId == profile.userId }
+    }
+}
+
+// MARK: - Drafts model & store
+
+/// A finished activity that's ready to share but hasn't been posted. Wraps the
+/// candidate FeedPost plus the source activity id (used to remember posted/dismissed).
+struct FeedDraft: Identifiable {
+    let id: UUID          // source round/session id
+    let kindLabel: String // "Round" / "Range" / "Sim"
+    let post: FeedPost
+}
+
+/// Remembers which activities have been posted or dismissed so their draft never
+/// reappears. Local (UserDefaults) — drafts are just prompts for recent activity.
+enum FeedDraftStore {
+    private static let postedKey = "tc_drafts_posted_ids"
+    private static let dismissedKey = "tc_drafts_dismissed_ids"
+
+    static func isHandled(_ id: UUID) -> Bool {
+        ids(postedKey).contains(id.uuidString) || ids(dismissedKey).contains(id.uuidString)
+    }
+    static func markPosted(_ id: UUID) { add(id, postedKey) }
+    static func markDismissed(_ id: UUID) { add(id, dismissedKey) }
+
+    private static func ids(_ key: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+    }
+    private static func add(_ id: UUID, _ key: String) {
+        var s = ids(key); s.insert(id.uuidString)
+        UserDefaults.standard.set(Array(s), forKey: key)
     }
 }
