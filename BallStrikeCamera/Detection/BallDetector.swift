@@ -33,6 +33,12 @@ final class BallDetector {
     private var adaptiveThreshold: Int
     private let adaptiveFloor = 105    // never drop below this (keeps grain/turf out)
 
+    /// The brightness threshold the detector is currently using (adaptive; ≤ the configured
+    /// ceiling). Shared with ImpactDetector so its ball-pixel census counts the ball at the SAME
+    /// threshold the detector actually located it at — otherwise a dim (flashlight/indoor) ball
+    /// locks but the impact baseline stays under its "real ball" floor and the shot never triggers.
+    var activeThreshold: Int { adaptiveThreshold }
+
     // Diagnostic throttling — this runs at up to 240fps, so only a fraction of calls print.
     // `frameCounter` is only ever touched from the serial video-capture queue that calls detect().
     private var frameCounter: Int = 0

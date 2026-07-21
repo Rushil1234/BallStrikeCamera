@@ -36,20 +36,22 @@ final class ImpactDetector {
         debugFrameCounter = 0
     }
 
-    // Sets the baseline from the current frame if no baseline exists yet.
-    func establishBaselineIfNeeded(pixelBuffer: CVPixelBuffer, roi: CGRect) {
+    // Sets the baseline from the current frame if no baseline exists yet. `brightnessThreshold`
+    // is the detector's live (adaptive) threshold — the ball must be counted at the same brightness
+    // it was located at, or a dim flashlight/indoor ball reads a near-zero baseline and never fires.
+    func establishBaselineIfNeeded(pixelBuffer: CVPixelBuffer, roi: CGRect, brightnessThreshold: Int) {
         lock.lock()
         defer { lock.unlock() }
         guard baselineWhiteRatio == nil else { return }
-        baselineWhiteRatio = whitePixelRatio(in: pixelBuffer, roi: roi)
+        baselineWhiteRatio = whitePixelRatio(in: pixelBuffer, roi: roi, brightnessThreshold: brightnessThreshold)
     }
 
     // Returns true when consecutive impact-looking frames exceed the threshold.
-    func checkForImpact(pixelBuffer: CVPixelBuffer, roi: CGRect) -> Bool {
+    func checkForImpact(pixelBuffer: CVPixelBuffer, roi: CGRect, brightnessThreshold: Int) -> Bool {
         lock.lock()
         defer { lock.unlock() }
 
-        let current = whitePixelRatio(in: pixelBuffer, roi: roi)
+        let current = whitePixelRatio(in: pixelBuffer, roi: roi, brightnessThreshold: brightnessThreshold)
 
         // Init baseline inline if somehow called before establishBaselineIfNeeded.
         if baselineWhiteRatio == nil {
@@ -96,7 +98,9 @@ final class ImpactDetector {
     }
 
     // Scans only within the clamped ROI, downsampled by sampleStride. BGRA byte order.
-    private func whitePixelRatio(in pixelBuffer: CVPixelBuffer, roi: CGRect) -> Double {
+    // `brightnessThreshold` comes from the detector's live adaptive threshold (capped here at the
+    // configured value so a bright scene behaves exactly as before).
+    private func whitePixelRatio(in pixelBuffer: CVPixelBuffer, roi: CGRect, brightnessThreshold: Int) -> Double {
         CVPixelBufferLockBaseAddress(pixelBuffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, .readOnly) }
 
@@ -118,6 +122,10 @@ final class ImpactDetector {
 
         guard xEnd > xStart, yEnd > yStart else { return 0 }
 
+        // Count the ball at the detector's live threshold, but never ABOVE the configured ceiling
+        // (so bright/range scenes, where the adaptive value pins to the ceiling, are unchanged).
+        let thr = min(brightnessThreshold, configuration.brightnessThreshold)
+
         var whiteCount = 0
         var totalCount = 0
 
@@ -136,7 +144,7 @@ final class ImpactDetector {
                 // Without the lime path the baseline was ~zero for lime balls and the
                 // departure trigger could never fire: lock succeeded, capture never did.
                 let isLime = g - b >= 110 && r < g && r * 2 > g && bright >= 130
-                if (bright >= configuration.brightnessThreshold && spread <= configuration.maxChannelSpread) || isLime {
+                if (bright >= thr && spread <= configuration.maxChannelSpread) || isLime {
                     whiteCount += 1
                 }
             }

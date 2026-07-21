@@ -607,8 +607,12 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
         var impactDetected = false
         if let impactROI {
-            impactDetector.establishBaselineIfNeeded(pixelBuffer: pixelBuffer, roi: impactROI)
-            impactDetected = impactDetector.checkForImpact(pixelBuffer: pixelBuffer, roi: impactROI)
+            // Count the ball at the detector's live (adaptive) threshold — a dim flashlight/indoor
+            // ball locks below 155, so the old fixed-155 census read a near-zero baseline and the
+            // impact trigger was suppressed as "not a real ball" (lock perfect, capture never fired).
+            let ballThreshold = detector.activeThreshold
+            impactDetector.establishBaselineIfNeeded(pixelBuffer: pixelBuffer, roi: impactROI, brightnessThreshold: ballThreshold)
+            impactDetected = impactDetector.checkForImpact(pixelBuffer: pixelBuffer, roi: impactROI, brightnessThreshold: ballThreshold)
         }
 
         roiLock.lock()
