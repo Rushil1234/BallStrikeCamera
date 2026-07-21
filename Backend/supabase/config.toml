@@ -38,3 +38,8 @@ verify_jwt = true
 [functions.redeem-gift-card]
 # Authenticated: verifies the caller's JWT itself (supabase.auth.getUser).
 verify_jwt = true
+
+[functions.send-gift-email]
+# Internal: verifies its own shared GIFT_EMAIL_KEY header. verify_jwt off so the
+# webhook (service role) can call it without a user JWT.
+verify_jwt = false

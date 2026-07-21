@@ -2274,21 +2274,18 @@ code {
 .round .h06 .fan-art .product-photo{ position:absolute; inset:0; }
 .round .h06 .fan-art .product-mark{ width:min(72%,150px); color:var(--carry-gold-bright,#cbb079); }
 .round .h06 .fan-shade{ position:absolute; inset:0; background:linear-gradient(180deg, rgba(14,20,15,.05) 40%, rgba(14,20,15,.55) 78%, rgba(14,20,15,.86)); }
-.round .h06 .fan-price{ position:absolute; top:12px; right:12px; font-family:var(--r-mono); font-size:12px; font-weight:600; letter-spacing:.02em; color:var(--c-forest-deep); background:var(--carry-gold-bright,#cbb079); padding:5px 11px; border-radius:999px; box-shadow:0 6px 16px -6px rgba(0,0,0,.5); }
 .round .h06 .fan-info{ position:absolute; left:0; right:0; bottom:0; display:flex; flex-direction:column; gap:3px; padding:16px 15px 15px; }
 .round .h06 .fan-name{ font-family:var(--display); font-size:clamp(18px,1.6vw,22px); line-height:1.02; color:var(--bone); }
 .round .h06 .fan-tag{ font-family:var(--r-sans); font-size:11.5px; line-height:1.35; color:color-mix(in oklab,var(--bone) 72%,transparent); opacity:0; max-height:0; transition:opacity .35s ease .05s, max-height .35s ease; overflow:hidden; }
 .round .h06 .fan-card:hover .fan-tag{ opacity:1; max-height:40px; }
 .round .h06 .fan-status{ font-family:var(--r-mono); font-size:8.5px; letter-spacing:.14em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 50%,transparent); margin-top:4px; }
 .round .h06 .fan-status.live{ color:#8fd49a; }
-.round .h06 .shop-fan-hint{ text-align:center; font-family:var(--r-mono); font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:color-mix(in oklab,var(--bone) 42%,transparent); margin:clamp(20px,3vw,34px) 0 0; }
 
 /* Mobile: drop the overlap/rotation, wrap to a tidy 2-up card grid. */
 @media (max-width:760px){
   .round .h06 .shop-fan{ flex-wrap:wrap; gap:14px; min-height:0; padding:24px 0 6px; }
   .round .h06 .fan-card{ margin-left:0 !important; transform:none !important; width:calc(50% - 7px); box-shadow:0 20px 36px -26px rgba(0,0,0,.7); }
   .round .h06 .fan-tag{ opacity:1; max-height:40px; }
-  .round .h06 .shop-fan-hint{ display:none; }
 }
 @media (prefers-reduced-motion:reduce){
   .round .h06 .fan-card{ transition:none; }

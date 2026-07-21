@@ -324,11 +324,10 @@ export default function HomePage() {
                         key={p.id}
                         href="/store"
                         style={{ "--i": i, "--n": SHOP.length } as React.CSSProperties}
-                        aria-label={`${p.name} — ${p.price}. ${p.tag}. ${p.status}.`}
+                        aria-label={`${p.name}. ${p.tag}. ${p.status}.`}
                       >
                         <span className="fan-art"><ProductArt kind={p.id} /></span>
                         <span className="fan-shade" aria-hidden />
-                        <span className="fan-price">{p.price}</span>
                         <span className="fan-info">
                           <span className="fan-name">{p.name}</span>
                           <span className="fan-tag">{p.tag}</span>
@@ -338,7 +337,6 @@ export default function HomePage() {
                     );
                   })}
                 </div>
-                <p className="shop-fan-hint" aria-hidden>Hover to fan out · tap any card for the store</p>
               </div>
             </div>
           </section>

@@ -4,7 +4,6 @@
 
 import Stripe from "npm:stripe@14";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.6.0/mod.ts";
 
 // API version is pinned intentionally. This handler reads
 // `subscription.current_period_start` / `current_period_end`, which were moved
@@ -258,59 +257,25 @@ async function sendGiftEmail(g: {
   purchaserEmail: string;
   message: string;
 }) {
-  const user = Deno.env.get("ZOHO_SMTP_USER");
-  const pass = Deno.env.get("ZOHO_SMTP_PASSWORD");
-  if (!user || !pass) {
-    console.warn("[stripe-webhook] ZOHO_SMTP_* not set — skipping gift email");
-    return;
+  // Offloaded to the lean send-gift-email function (HTTP/ZeptoMail). Raw SMTP
+  // exceeds the edge compute limit on the Free plan, so we don't do it inline.
+  const url = `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-gift-email`;
+  const internalKey = Deno.env.get("GIFT_EMAIL_KEY") ?? "";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""}`,
+      "x-gift-key": internalKey,
+    },
+    body: JSON.stringify(g),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`send-gift-email ${res.status}: ${detail.slice(0, 300)}`);
   }
-  const websiteURL = Deno.env.get("TRUECARRY_WEBSITE_URL") ?? "https://truecarry.golf";
-  const dollars = g.amountCents / 100;
-  const redeemUrl = `${websiteURL}/account?redeem=${g.code}`;
-  const from = g.purchaserEmail ? `someone (${g.purchaserEmail})` : "someone";
-
-  const html = `
-  <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:520px;margin:0 auto;color:#16201a">
-    <p style="font-family:Georgia,serif;font-size:26px;color:#1E2A22;margin:0 0 6px">True <em style="color:#8C7240">Carry.</em></p>
-    <h1 style="font-size:22px;margin:18px 0 6px">You&rsquo;ve got a gift card.</h1>
-    <p style="font-size:15px;line-height:1.6;color:#5C5A4F;margin:0 0 20px">
-      ${from} sent you a <strong>$${dollars}</strong> True Carry gift card &mdash; credit toward Pro or Atlas.
-    </p>
-    ${g.message ? `<p style="font-size:15px;font-style:italic;line-height:1.6;color:#5C5A4F;border-left:3px solid #B89A5E;padding-left:14px;margin:0 0 20px">&ldquo;${escapeHtml(g.message)}&rdquo;</p>` : ""}
-    <div style="background:#F4EFE2;border:1px solid #B89A5E;border-radius:10px;padding:18px;text-align:center;margin:0 0 20px">
-      <div style="font-family:mono,Menlo,monospace;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A8576;margin-bottom:6px">Your code</div>
-      <div style="font-family:mono,Menlo,monospace;font-size:22px;letter-spacing:.12em;color:#16201a">${g.code}</div>
-    </div>
-    <a href="${redeemUrl}" style="display:inline-block;background:#16201a;color:#F4EFE2;text-decoration:none;font-size:14px;padding:13px 26px;border-radius:999px">Redeem it &rarr;</a>
-    <p style="font-size:12.5px;line-height:1.6;color:#8A8576;margin:22px 0 0">
-      Redeem at ${websiteURL}/account &mdash; the credit comes off your next plan automatically. Never expires.
-    </p>
-  </div>`;
-
-  const text =
-    `You've got a $${dollars} True Carry gift card.\n\n` +
-    (g.message ? `"${g.message}"\n\n` : "") +
-    `Code: ${g.code}\nRedeem: ${redeemUrl}\n\n` +
-    `The credit applies to your next Pro or Atlas plan automatically. Never expires.`;
-
-  const client = new SMTPClient({
-    connection: { hostname: "smtp.zoho.com", port: 465, tls: true, auth: { username: user, password: pass } },
-  });
-  await client.send({
-    from: `True Carry <${user}>`,
-    to: g.recipientEmail,
-    subject: `Your $${dollars} True Carry gift card`,
-    content: text,
-    html,
-  });
-  await client.close();
-  console.log(`[stripe-webhook] Gift email sent to ${g.recipientEmail}`);
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string)
-  );
+  console.log(`[stripe-webhook] Gift email dispatched to ${g.recipientEmail}`);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
