@@ -41,6 +41,7 @@ struct FeedView: View {
     @State private var showComposer = false
     @State private var showNotifications = false
     @State private var showLeaderboards = false
+    @State private var profilePost: FeedPost?
     @AppStorage("tc_feed_notifs_seen_ts") private var notifsLastSeenTs: Double = 0
     @State private var greeting: HomeGreeting = HomeGreeting.all.first!
     @State private var commentingPost: FeedPost?
@@ -158,7 +159,8 @@ struct FeedView: View {
                                 canDelete: post.userId == userId,
                                 onGimme: { Task { await vm.toggleGimme(post) } },
                                 onComment: { commentingPost = post },
-                                onDelete: { Task { await vm.deletePost(id: post.id) } }
+                                onDelete: { Task { await vm.deletePost(id: post.id) } },
+                                onOpenProfile: post.userId == userId ? nil : { profilePost = post }
                             )
                             .task { await vm.loadMoreIfNeeded(currentPost: post) }
                             sectionGap
@@ -221,6 +223,17 @@ struct FeedView: View {
         .sheet(isPresented: $showLeaderboards) {
             NavigationStack { LeaderboardView(userId: userId, backend: backend) }
                 .tcAppearance()
+        }
+        .sheet(item: $profilePost) { post in
+            NavigationStack {
+                PublicProfileView(
+                    userId: post.userId,
+                    displayName: post.authorName,
+                    homeCourse: nil,
+                    posts: vm.posts.filter { $0.userId == post.userId }
+                )
+            }
+            .tcAppearance()
         }
         .sheet(isPresented: $showProfile) {
             NavigationStack { TrueCarryProfileView() }
@@ -904,8 +917,11 @@ private struct FeedPostRow: View {
     let onGimme: () -> Void
     let onComment: () -> Void
     let onDelete: () -> Void
+    var onOpenProfile: (() -> Void)? = nil
 
     @State private var loadedPhoto: Image?
+    @State private var shareURL: URL?
+    @State private var showShareSheet = false
 
     /// Decodes the post photo downsampled to roughly its on-screen size (`ImageIO` thumbnailing
     /// never allocates the full-resolution bitmap). The old computed-property version called
@@ -929,28 +945,43 @@ private struct FeedPostRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Header: avatar + name + time/type
+            // Header: avatar + name + time/type — tap avatar/name to open the profile.
             HStack(spacing: 12) {
-                AvatarCircle(name: post.authorName, size: 44)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(post.authorName)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(TCTheme.textPrimary)
-                    HStack(spacing: 6) {
-                        Image(systemName: typeIcon).font(.system(size: 11))
-                        Text("\(timeText) · \(typeLabel)")
-                            .font(.system(size: 13))
-                        if let vis = post.visibility, vis != .everyone {
-                            Image(systemName: vis == .private ? "lock.fill" : "person.2.fill")
-                                .font(.system(size: 10, weight: .semibold))
+                Button { onOpenProfile?() } label: {
+                    HStack(spacing: 12) {
+                        AvatarCircle(name: post.authorName, size: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(post.authorName)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(TCTheme.textPrimary)
+                            HStack(spacing: 6) {
+                                Image(systemName: typeIcon).font(.system(size: 11))
+                                Text("\(timeText) · \(typeLabel)")
+                                    .font(.system(size: 13))
+                                if let vis = post.visibility, vis != .everyone {
+                                    Image(systemName: vis == .private ? "lock.fill" : "person.2.fill")
+                                        .font(.system(size: 10, weight: .semibold))
+                                }
+                            }
+                            .foregroundColor(TCTheme.textMuted)
                         }
                     }
-                    .foregroundColor(TCTheme.textMuted)
                 }
+                .buttonStyle(.plain)
+                .disabled(onOpenProfile == nil)
                 Spacer()
                 Menu {
+                    Button {
+                        // Render the branded TrueCarry card and open the share sheet.
+                        if let url = renderActivityShareCard(post: post) {
+                            shareURL = url
+                            showShareSheet = true
+                        }
+                    } label: {
+                        Label("Share card", systemImage: "square.and.arrow.up")
+                    }
                     ShareLink(item: shareText) {
-                        Label("Share", systemImage: "square.and.arrow.up")
+                        Label("Share as text", systemImage: "text.quote")
                     }
                     if canDelete {
                         Button(role: .destructive, action: onDelete) {
@@ -1031,17 +1062,28 @@ private struct FeedPostRow: View {
                 }
                 .buttonStyle(.plain)
                 Spacer()
-                ShareLink(item: shareText) {
+                Button {
+                    if let url = renderActivityShareCard(post: post) {
+                        shareURL = url
+                        showShareSheet = true
+                    }
+                } label: {
                     Image(systemName: "square.and.arrow.up")
                         .font(.system(size: 19))
                         .foregroundColor(TCTheme.textSecondary)
                 }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 8)
         }
         .padding(.horizontal, TCTheme.hPad)
         .padding(.vertical, 18)
         .background(TCTheme.background)
+        .sheet(isPresented: $showShareSheet) {
+            if let url = shareURL {
+                ShareSheet(items: [url])
+            }
+        }
         .task(id: post.photoPath) {
             guard let path = post.photoPath else { loadedPhoto = nil; return }
             let url = AppStorageManager.compositeDir(userId: post.userId).appendingPathComponent(path)

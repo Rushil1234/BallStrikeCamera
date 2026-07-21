@@ -16,6 +16,8 @@
 		2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = D285E96FFA0E9231BA42EF6E /* Appearance.swift */; };
 		3ED54E6FBC4125C8B7DC7BC0 /* WatchConnectivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */; };
 		A29AF9D940AB9F30006F388D /* FriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */; };
+		C5957F5E5BCEA43A1A9098D0 /* PublicProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117DF1DC2FA235F5D1A8907D /* PublicProfileView.swift */; };
+		E9ED8188B46D64B766A43A01 /* ActivityShareCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18D9F9E0C73A3FD475715C3F /* ActivityShareCard.swift */; };
 		260CB75D8B61AEBACCC6DDAD /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AB9987673DE9E498605AAEE /* LeaderboardView.swift */; };
 		AA0001000000000000000001 /* LightweightBallDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001000000000000000101 /* LightweightBallDetector.swift */; };
 		AA0001000000000000000002 /* FrameDiffTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0001000000000000000102 /* FrameDiffTrigger.swift */; };
@@ -505,6 +507,8 @@
 		D285E96FFA0E9231BA42EF6E /* Appearance.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Appearance.swift; sourceTree = "<group>"; };
 		E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchConnectivityBridge.swift; sourceTree = "<group>"; };
 		E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
+		117DF1DC2FA235F5D1A8907D /* PublicProfileView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PublicProfileView.swift; sourceTree = "<group>"; };
+		18D9F9E0C73A3FD475715C3F /* ActivityShareCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ActivityShareCard.swift; sourceTree = "<group>"; };
 		8AB9987673DE9E498605AAEE /* LeaderboardView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LeaderboardView.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000002 /* LiveSimService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimService.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000004 /* LiveSimCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCodeView.swift; sourceTree = "<group>"; };
@@ -838,6 +842,8 @@
 				BF0000010000000000000151 /* BallStrikeTheme.swift */,
 				BF0000010000000000000152 /* BallStrikeBackgroundView.swift */,
 				E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */,
+				117DF1DC2FA235F5D1A8907D /* PublicProfileView.swift */,
+				18D9F9E0C73A3FD475715C3F /* ActivityShareCard.swift */,
 				8AB9987673DE9E498605AAEE /* LeaderboardView.swift */,
 				CAFE000000000000000000C2 /* SimCameraScreen.swift */,
 				LIVE00000000000000000004 /* LiveSimCodeView.swift */,
@@ -1399,6 +1405,8 @@
 				BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */,
 				AA99CCFA875B0F87C1A65A88 /* FeedPostFactory.swift in Sources */,
 				A29AF9D940AB9F30006F388D /* FriendsView.swift in Sources */,
+				C5957F5E5BCEA43A1A9098D0 /* PublicProfileView.swift in Sources */,
+				E9ED8188B46D64B766A43A01 /* ActivityShareCard.swift in Sources */,
 				260CB75D8B61AEBACCC6DDAD /* LeaderboardView.swift in Sources */,
 				2258EEF139766BE5679A2B32 /* Appearance.swift in Sources */,
 				CA0000000000000000000011 /* WidgetBridge.swift in Sources */,
