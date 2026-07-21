@@ -42,6 +42,7 @@ struct FeedView: View {
     @State private var showNotifications = false
     @State private var showLeaderboards = false
     @State private var profilePost: FeedPost?
+    @State private var detailPost: FeedPost?
     @AppStorage("tc_feed_notifs_seen_ts") private var notifsLastSeenTs: Double = 0
     @State private var greeting: HomeGreeting = HomeGreeting.all.first!
     @State private var commentingPost: FeedPost?
@@ -160,7 +161,8 @@ struct FeedView: View {
                                 onGimme: { Task { await vm.toggleGimme(post) } },
                                 onComment: { commentingPost = post },
                                 onDelete: { Task { await vm.deletePost(id: post.id) } },
-                                onOpenProfile: post.userId == userId ? nil : { profilePost = post }
+                                onOpenProfile: post.userId == userId ? nil : { profilePost = post },
+                                onOpenDetail: { detailPost = post }
                             )
                             .task { await vm.loadMoreIfNeeded(currentPost: post) }
                             sectionGap
@@ -232,6 +234,12 @@ struct FeedView: View {
                     homeCourse: nil,
                     posts: vm.posts.filter { $0.userId == post.userId }
                 )
+            }
+            .tcAppearance()
+        }
+        .sheet(item: $detailPost) { post in
+            NavigationStack {
+                FeedActivityDetailView(post: post, currentUserId: userId, backend: backend)
             }
             .tcAppearance()
         }
@@ -918,6 +926,7 @@ private struct FeedPostRow: View {
     let onComment: () -> Void
     let onDelete: () -> Void
     var onOpenProfile: (() -> Void)? = nil
+    var onOpenDetail: (() -> Void)? = nil
 
     @State private var loadedPhoto: Image?
     @State private var shareURL: URL?
@@ -997,17 +1006,25 @@ private struct FeedPostRow: View {
                 .buttonStyle(.plain)
             }
 
-            // Title
-            Text(post.title)
-                .font(.system(size: 21, weight: .semibold, design: .serif))
-                .foregroundColor(TCTheme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+            // Title + stats — tap to open the full breakdown.
+            Button { onOpenDetail?() } label: {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(post.title)
+                        .font(.system(size: 21, weight: .semibold, design: .serif))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let metadata = post.activityMetadata {
+                        FeedActivitySummary(metadata: metadata, fallbackStats: post.stats, subtitle: post.subtitle)
+                    } else if !post.stats.isEmpty {
+                        FeedStatColumns(stats: post.stats)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(onOpenDetail == nil)
 
-            if let metadata = post.activityMetadata {
-                FeedActivitySummary(metadata: metadata, fallbackStats: post.stats, subtitle: post.subtitle)
-            } else if !post.stats.isEmpty {
-                FeedStatColumns(stats: post.stats)
-            } else if !post.subtitle.isEmpty {
+            if post.activityMetadata == nil, post.stats.isEmpty, !post.subtitle.isEmpty {
                 Text(post.subtitle)
                     .font(.system(size: 14))
                     .foregroundColor(TCTheme.textSecondary)
