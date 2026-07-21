@@ -1,13 +1,13 @@
-// True Carry — Send Gift-Card Email (HTTP, ZeptoMail)
+// True Carry — Send Gift-Card Email (HTTP, Resend)
 // Deploy: supabase functions deploy send-gift-email
 //
 // WHY HTTP, NOT SMTP: raw SMTP (denomailer) exceeds the Supabase Edge Function
 // compute limit on the Free plan (WORKER_RESOURCE_LIMIT / 546). A plain fetch to
-// an HTTP email API is lightweight and reliable. ZeptoMail is Zoho's transactional
-// email service (same Zoho account, free tier), so it honors "use my Zoho".
+// an HTTP email API is lightweight and reliable.
 //
-// Secrets (env or Vault): ZEPTOMAIL_TOKEN (Send Mail token), ZEPTOMAIL_FROM
-// (a verified sender address in ZeptoMail). GIFT_EMAIL_KEY gates internal calls.
+// Secrets (env): RESEND_API_KEY, optional RESEND_FROM (a verified sender; until a
+// domain is verified in Resend, use onboarding@resend.dev which only delivers to
+// the Resend account owner's own address). GIFT_EMAIL_KEY gates internal calls.
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -37,15 +37,12 @@ Deno.serve(async (req: Request) => {
     return json({ error: "Missing fields" }, 400);
   }
 
-  const token = Deno.env.get("ZEPTOMAIL_TOKEN") ?? (await vaultSecret("ZEPTOMAIL_TOKEN"));
+  const apiKey = Deno.env.get("RESEND_API_KEY") ?? (await vaultSecret("RESEND_API_KEY"));
+  if (!apiKey) return json({ error: "RESEND_API_KEY not configured" }, 500);
   const from =
-    Deno.env.get("ZEPTOMAIL_FROM") ??
-    (await vaultSecret("ZEPTOMAIL_FROM")) ??
-    Deno.env.get("ZOHO_SMTP_USER") ??
-    (await vaultSecret("ZOHO_SMTP_USER"));
-  if (!token || !from) {
-    return json({ error: "ZEPTOMAIL_TOKEN / ZEPTOMAIL_FROM not configured" }, 500);
-  }
+    Deno.env.get("RESEND_FROM") ??
+    (await vaultSecret("RESEND_FROM")) ??
+    "True Carry <onboarding@resend.dev>";
 
   const websiteURL = Deno.env.get("TRUECARRY_WEBSITE_URL") ?? "https://truecarry.golf";
   const dollars = g.amountCents / 100;
@@ -76,27 +73,26 @@ Deno.serve(async (req: Request) => {
     `The credit applies to your next Pro or Atlas plan automatically. Never expires.`;
 
   try {
-    const res = await fetch("https://api.zeptomail.com/v1.1/email", {
+    const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
-        Authorization: `Zoho-enczapikey ${token}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        Accept: "application/json",
       },
       body: JSON.stringify({
-        from: { address: from, name: "True Carry" },
-        to: [{ email_address: { address: g.recipientEmail, name: g.recipientEmail } }],
+        from,
+        to: [g.recipientEmail],
         subject: `Your $${dollars} True Carry gift card`,
-        htmlbody: html,
-        textbody: text,
+        html,
+        text,
       }),
     });
     const bodyText = await res.text();
     if (!res.ok) {
-      console.error("[send-gift-email] ZeptoMail error:", res.status, bodyText);
+      console.error("[send-gift-email] Resend error:", res.status, bodyText);
       return json({ error: "email provider rejected", status: res.status, detail: bodyText.slice(0, 400) }, 502);
     }
-    return json({ ok: true, sentTo: g.recipientEmail }, 200);
+    return json({ ok: true, sentTo: g.recipientEmail, provider: JSON.parse(bodyText || "{}") }, 200);
   } catch (err) {
     console.error("[send-gift-email] send failed:", err);
     return json({ error: String(err) }, 502);
