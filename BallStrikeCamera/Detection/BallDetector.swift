@@ -23,6 +23,16 @@ final class BallDetector {
 
     private let configuration: Configuration
 
+    // ADAPTIVE THRESHOLD state (July 20). The fixed brightnessThreshold assumes a sunlit,
+    // saturated (≈255) white ball; indoors the ball's whole disc can sit below it and never
+    // cluster ("no cluster" even with the ball plainly in the circle). We lower the working
+    // threshold toward the scene's OWN background when a frame is dim — but never above the
+    // configured value, so bright/range capture stays byte-for-byte identical. Derived from
+    // each frame's brightness histogram and applied on the NEXT frame (lighting changes far
+    // slower than 240fps, so a one-frame lag is invisible). Only touched from the video queue.
+    private var adaptiveThreshold: Int
+    private let adaptiveFloor = 105    // never drop below this (keeps grain/turf out)
+
     // Diagnostic throttling — this runs at up to 240fps, so only a fraction of calls print.
     // `frameCounter` is only ever touched from the serial video-capture queue that calls detect().
     private var frameCounter: Int = 0
@@ -34,6 +44,7 @@ final class BallDetector {
 
     init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
+        self.adaptiveThreshold = configuration.brightnessThreshold
     }
 
     func detect(in pixelBuffer: CVPixelBuffer, roi: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)) -> BallObservation? {
@@ -83,6 +94,12 @@ final class BallDetector {
         var brightX: [Int] = []
         var brightY: [Int] = []
 
+        // This frame collects at the threshold computed from the PREVIOUS frame's histogram;
+        // this frame's histogram sets the threshold for the next one. brightnessThreshold is the
+        // ceiling, so in bright light scanThreshold == the configured value and nothing changes.
+        let scanThreshold = adaptiveThreshold
+        var histogram = [Int](repeating: 0, count: 256)
+
         // Scan only within ROI, downsampled. BGRA byte order.
         // normalizedRect output is always relative to the full frame so overlay mapping is unchanged.
         for y in stride(from: yStart, to: yEnd, by: sampleStride) {
@@ -98,6 +115,7 @@ final class BallDetector {
                 let brightness = (r + g + b) / 3
                 let spread = maxChannel - minChannel
 
+                histogram[brightness] += 1
                 if brightness > maxBrightnessSeen { maxBrightnessSeen = brightness }
 
                 // White balls tend to be bright with modest channel spread. Lime range
@@ -108,7 +126,7 @@ final class BallDetector {
                 // r < g is load-bearing: golden sunlit grass reads (240,189,4) — red ABOVE
                 // green — while the lime ball is green-dominant (207,227,2 measured).
                 let isLime = g - b >= 110 && r < g && r * 2 > g
-                if brightness >= configuration.brightnessThreshold {
+                if brightness >= scanThreshold {
                     if spread <= configuration.maxChannelSpread || isLime {
                         if isLime && spread > configuration.maxChannelSpread { limePixelCount += 1 }
                         brightX.append(x)
@@ -126,24 +144,48 @@ final class BallDetector {
             }
         }
 
+        // Recompute the adaptive threshold from this frame's brightness distribution, for the
+        // NEXT frame. Set it partway up the span between the scene BACKGROUND (45th percentile —
+        // most of the ROI is turf/mat) and the BRIGHT peak (99th percentile ≈ the ball, robust to
+        // a stray hot pixel). Crucially this keys off the BALL, not the background: when the ball
+        // saturates (sun/moon), the span is huge so the threshold pins to the configured ceiling
+        // and detection is byte-for-byte unchanged — a dark-grass background can't drag it down.
+        // Only when the brightest thing in frame is itself dim (an unsaturated indoor ball) does
+        // the threshold lower, floored so it never reaches into grain/turf.
+        if sampledPixels > 0 {
+            let bgTarget = sampledPixels * 45 / 100
+            let hiTarget = sampledPixels * 99 / 100
+            var acc = 0
+            var bgLevel = 0
+            var hiLevel = 255
+            var haveBg = false
+            for level in 0..<256 {
+                acc += histogram[level]
+                if !haveBg, acc >= bgTarget { bgLevel = level; haveBg = true }
+                if acc >= hiTarget { hiLevel = level; break }
+            }
+            let dynamic = bgLevel + (hiLevel - bgLevel) * 3 / 5   // 60% up the background→ball span
+            adaptiveThreshold = max(adaptiveFloor, min(configuration.brightnessThreshold, dynamic))
+        }
+
         if shouldLogSnapshot {
             // ROI/thresholds are constant for a whole session — print them only on change,
             // then keep the per-snapshot line to the three numbers that actually vary.
             // w = bright+low-spread (white-ish, ball material), c = bright+high-spread (colored glare).
             if roi != lastLoggedROI {
                 lastLoggedROI = roi
-                print(String(format: "[BD] roi=(%.3f,%.3f %.3fx%.3f) px=(%d,%d)-(%d,%d) sampled=%d thrBright=%d thrSpread=%d needW=%d",
+                print(String(format: "[BD] roi=(%.3f,%.3f %.3fx%.3f) px=(%d,%d)-(%d,%d) sampled=%d thrBright=%d(cap%d) thrSpread=%d needW=%d",
                              roi.minX, roi.minY, roi.width, roi.height,
                              xStart, yStart, xEnd, yEnd, sampledPixels,
-                             configuration.brightnessThreshold, configuration.maxChannelSpread,
+                             scanThreshold, configuration.brightnessThreshold, configuration.maxChannelSpread,
                              configuration.minimumBrightPixels))
             }
-            print("[BD] max=\(maxBrightnessSeen) w=\(brightX.count) c=\(brightIgnoringSpread) l=\(limePixelCount)")
+            print("[BD] max=\(maxBrightnessSeen) thr=\(scanThreshold) w=\(brightX.count) c=\(brightIgnoringSpread) l=\(limePixelCount)")
         }
 
         guard brightX.count >= configuration.minimumBrightPixels else {
             if shouldLogSnapshot {
-                let reason = maxBrightnessSeen < configuration.brightnessThreshold
+                let reason = maxBrightnessSeen < scanThreshold
                     ? "dark max=\(maxBrightnessSeen)"
                     : "w=\(brightX.count)<\(configuration.minimumBrightPixels) c=\(brightIgnoringSpread)"
                 print("[BD] NCF \(reason)")
@@ -291,9 +333,10 @@ final class BallDetector {
         let winH = yEnd - yStart
         guard winW > 2, winH > 2, winW * winH < 200_000 else { return nil }
 
-        // 0 = background, 1 = rim (dimmer ball limb), 2 = core (ball-bright).
-        let coreBrightness = configuration.brightnessThreshold
-        let rimBrightness  = max(90, coreBrightness - 45)
+        // 0 = background, 1 = rim (dimmer ball limb), 2 = core (ball-bright). Track the same
+        // adaptive threshold detection used, so a dim-light lock still finds its (dimmer) core.
+        let coreBrightness = adaptiveThreshold
+        let rimBrightness  = max(80, coreBrightness - 45)
         let rimSpread      = configuration.maxChannelSpread + 20
         var mask = [UInt8](repeating: 0, count: winW * winH)
         for y in 0..<winH {
