@@ -686,17 +686,32 @@ private struct DraftRow: View {
     let onDismiss: () -> Void
     @State private var sharing = false
 
+    /// Glyph for the activity kind — anchors the card visually.
+    private var kindIcon: String {
+        switch draft.post.activityMetadata?.kind {
+        case .round:  return "flag.fill"
+        case .range:  return "scope"
+        case .sim:    return "tv.fill"
+        case .manual, .none:
+            return draft.post.type == .round ? "flag.fill" : "figure.golf"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Text(draft.kindLabel.uppercased())
-                    .font(.system(size: 10, weight: .bold))
-                    .tracking(1.0)
-                    .foregroundColor(TCTheme.onPrimary)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(TCTheme.gold)
-                    .clipShape(Capsule())
-                VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(TCTheme.gold.opacity(0.14))
+                    Image(systemName: kindIcon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(TCTheme.gold)
+                }
+                .frame(width: 40, height: 40)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(draft.kindLabel.uppercased())
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1.0)
+                        .foregroundColor(TCTheme.gold)
                     Text(draft.post.title)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(TCTheme.textPrimary)
@@ -706,10 +721,12 @@ private struct DraftRow: View {
                         .foregroundColor(TCTheme.textMuted)
                         .lineLimit(1)
                 }
-                Spacer()
+                Spacer(minLength: 8)
                 Text(draft.post.metricHighlight)
                     .font(.system(size: 18, weight: .bold, design: .monospaced))
                     .foregroundColor(TCTheme.gold)
+                    .lineLimit(1)
+                    .fixedSize()
             }
             HStack(spacing: 10) {
                 Button(action: { sharing = true; onShare() }) {
