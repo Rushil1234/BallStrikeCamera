@@ -137,13 +137,17 @@ struct FeedView: View {
             ScrollViewReader { scrollProxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    TCHeaderBar(initials: userInitials) {
-                        TCHeaderIconButton(icon: "trophy.fill") { showLeaderboards = true }
+                    // Four actions balanced 2 left / 2 right so they fit their slots
+                    // and never crowd the centered wordmark. Discovery (leaderboards,
+                    // friends) on the left; your stuff (notifications, profile) on the right.
+                    TCHeaderBar(initials: userInitials, rightContent: {
                         TCHeaderIconButton(icon: "bell.fill", badge: unreadNotifs) { showNotifications = true }
-                        TCHeaderIconButton(icon: "person.2.fill") { showFriends = true }
                         TCProfileAvatarButton(initials: userInitials,
                                               devMode: session.entitlementVM.isDeveloperMode) { showProfile = true }
-                    }
+                    }, leftContent: {
+                        TCHeaderIconButton(icon: "trophy.fill") { showLeaderboards = true }
+                        TCHeaderIconButton(icon: "person.2.fill") { showFriends = true }
+                    })
                     if let r = unfinishedRound {
                         resumeRoundBanner(r)
                         sectionGap
