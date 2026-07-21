@@ -149,7 +149,7 @@ struct ProfileShareCardView: View {
 func renderProfileShareCard(data: ProfileShareData) -> URL? {
     let card = ProfileShareCardView(data: data).padding(14)
     let renderer = ImageRenderer(content: card)
-    renderer.scale = 3
+    renderer.scale = 2   // 720pt-wide PNG — crisp in chat, ~2.25× faster than 3×
     renderer.isOpaque = false
     guard let image = renderer.uiImage, let pngData = image.pngData() else { return nil }
     let url = FileManager.default.temporaryDirectory

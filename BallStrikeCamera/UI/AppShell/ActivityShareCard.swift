@@ -156,7 +156,7 @@ struct ActivityShareCardView: View {
 func renderActivityShareCard(post: FeedPost) -> URL? {
     let card = ActivityShareCardView(post: post).padding(14)
     let renderer = ImageRenderer(content: card)
-    renderer.scale = 3
+    renderer.scale = 2   // 720pt-wide PNG — crisp in chat, ~2.25× faster than 3×
     renderer.isOpaque = false
     guard let image = renderer.uiImage, let data = image.pngData() else { return nil }
     let url = FileManager.default.temporaryDirectory

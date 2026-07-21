@@ -171,6 +171,8 @@ struct FeedView: View {
                             FeedPostRow(
                                 post: post,
                                 authorName: authorName,
+                                currentUserId: userId,
+                                backend: backend,
                                 gimmeCount: vm.gimmeCount(for: post),
                                 hasGimmed: vm.hasGimmed(post),
                                 commentCount: vm.commentCount(for: post),
@@ -877,15 +879,25 @@ private struct FeedActivitySummary: View {
     }
 }
 
-/// The full session breakdown shown inline when a feed card is expanded — every
-/// available stat (not just the overview averages), plus a link to the scorecard.
+/// The full breakdown shown inline when a feed card is expanded — for your own
+/// range/sim sessions it lists EVERY shot; otherwise (or as a fallback) it shows
+/// the full aggregate stat grid, plus a hole-by-hole scorecard link for rounds.
 private struct FeedActivityFullStats: View {
+    let post: FeedPost
     let metadata: FeedActivityMetadata
     let fallbackStats: [FeedStat]
-    let isRound: Bool
+    var currentUserId: UUID? = nil
+    var backend: AppBackend? = nil
     var onOpenDetail: (() -> Void)? = nil
 
-    /// Every non-empty stat derived from the metadata for this activity kind.
+    @State private var shots: [SavedShot] = []
+    @State private var loading = false
+    @State private var loaded = false
+
+    private var isRound: Bool { metadata.kind == .round }
+    private var isOwnPost: Bool { currentUserId != nil && post.userId == currentUserId }
+
+    /// Every non-empty aggregate stat derived from the metadata for this kind.
     private var rows: [(String, String)] {
         func t(_ v: Int?) -> String? { v.map { "\($0)" } }
         switch metadata.kind {
@@ -920,20 +932,15 @@ private struct FeedActivityFullStats: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
-                ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
-                    VStack(spacing: 4) {
-                        Text(r.1)
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .foregroundColor(TCTheme.textPrimary)
-                            .lineLimit(1).minimumScaleFactor(0.6)
-                        Text(r.0.uppercased())
-                            .font(.system(size: 9, weight: .semibold))
-                            .tracking(0.6)
-                            .foregroundColor(TCTheme.textMuted)
-                            .lineLimit(1)
+            if !shots.isEmpty {
+                perShotList
+            } else {
+                aggregateGrid
+                if loading {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Loading every shot…").font(.system(size: 12)).foregroundColor(TCTheme.textMuted)
                     }
-                    .frame(maxWidth: .infinity)
                 }
             }
             if isRound, let onOpenDetail {
@@ -955,6 +962,87 @@ private struct FeedActivityFullStats: View {
         .padding(14)
         .background(TCTheme.panel)
         .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
+        .task { await loadShots() }
+    }
+
+    private var aggregateGrid: some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                VStack(spacing: 4) {
+                    Text(r.1)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                    Text(r.0.uppercased())
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundColor(TCTheme.textMuted)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var perShotList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("EVERY SHOT · \(shots.count)")
+                .font(.system(size: 10, weight: .bold))
+                .tracking(0.8)
+                .foregroundColor(TCTheme.textMuted)
+                .padding(.bottom, 10)
+            // Column header
+            HStack(spacing: 8) {
+                Text("#").frame(width: 22, alignment: .leading)
+                Text("CLUB").frame(maxWidth: .infinity, alignment: .leading)
+                Text("CARRY").frame(width: 62, alignment: .trailing)
+                Text("BALL").frame(width: 62, alignment: .trailing)
+            }
+            .font(.system(size: 9, weight: .bold))
+            .tracking(0.5)
+            .foregroundColor(TCTheme.textUltraMuted)
+            .padding(.bottom, 6)
+            ForEach(Array(shots.enumerated()), id: \.element.id) { idx, shot in
+                HStack(spacing: 8) {
+                    Text("\(idx + 1)")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(TCTheme.gold)
+                        .frame(width: 22, alignment: .leading)
+                    Text(shot.clubName ?? metadata.clubName ?? "—")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(shot.metrics.carryYards > 0 ? "\(Int(shot.metrics.carryYards.rounded())) yd" : "—")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .frame(width: 62, alignment: .trailing)
+                    Text(shot.metrics.ballSpeedMph > 0 ? "\(Int(shot.metrics.ballSpeedMph.rounded()))" : "—")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(TCTheme.textMuted)
+                        .frame(width: 62, alignment: .trailing)
+                }
+                .padding(.vertical, 8)
+                .overlay(Rectangle().fill(TCTheme.border).frame(height: 1), alignment: .top)
+            }
+        }
+    }
+
+    /// Loads this session's/round's shots — only for your own posts (RLS scopes
+    /// loadShots to the caller). Others' posts fall back to the aggregate grid.
+    private func loadShots() async {
+        guard !loaded, !loading, isOwnPost, let backend, let uid = currentUserId else { return }
+        let sessionId = post.linkedSessionId
+        let roundId = post.linkedRoundId
+        guard sessionId != nil || roundId != nil else { loaded = true; return }
+        loading = true
+        defer { loading = false; loaded = true }
+        let all = (try? await backend.loadShots(userId: uid)) ?? []
+        let filtered = all.filter { shot in
+            (sessionId != nil && shot.sessionId == sessionId) ||
+            (roundId != nil && shot.roundId == roundId)
+        }
+        shots = filtered.sorted { $0.timestamp < $1.timestamp }
     }
 }
 
@@ -1003,6 +1091,8 @@ enum PostLink {
 private struct FeedPostRow: View {
     let post: FeedPost
     let authorName: String
+    var currentUserId: UUID? = nil
+    var backend: AppBackend? = nil
     let gimmeCount: Int
     let hasGimmed: Bool
     let commentCount: Int
@@ -1017,6 +1107,21 @@ private struct FeedPostRow: View {
     @State private var shareURL: URL?
     @State private var showShareSheet = false
     @State private var expanded = false
+    @State private var preparingShare = false
+
+    /// Renders the share card without freezing the tap: yields once so the button
+    /// can paint its spinner, then renders and presents. ImageRenderer must run on
+    /// the main actor, so the yield is what keeps the tap feeling responsive.
+    private func prepareShareCard() {
+        guard !preparingShare else { return }
+        preparingShare = true
+        Task { @MainActor in
+            await Task.yield()
+            let url = renderActivityShareCard(post: post)
+            preparingShare = false
+            if let url { shareURL = url; showShareSheet = true }
+        }
+    }
 
     /// Decodes the post photo downsampled to roughly its on-screen size (`ImageIO` thumbnailing
     /// never allocates the full-resolution bitmap). The old computed-property version called
@@ -1067,11 +1172,7 @@ private struct FeedPostRow: View {
                 Spacer()
                 Menu {
                     Button {
-                        // Render the branded TrueCarry card and open the share sheet.
-                        if let url = renderActivityShareCard(post: post) {
-                            shareURL = url
-                            showShareSheet = true
-                        }
+                        prepareShareCard()
                     } label: {
                         Label("Share card", systemImage: "square.and.arrow.up")
                     }
@@ -1123,9 +1224,11 @@ private struct FeedPostRow: View {
                 }
                 .buttonStyle(.plain)
                 if expanded {
-                    FeedActivityFullStats(metadata: metadata,
+                    FeedActivityFullStats(post: post,
+                                          metadata: metadata,
                                           fallbackStats: post.stats,
-                                          isRound: post.type == .round,
+                                          currentUserId: currentUserId,
+                                          backend: backend,
                                           onOpenDetail: onOpenDetail)
                 }
             }
@@ -1186,16 +1289,20 @@ private struct FeedPostRow: View {
                 .buttonStyle(.plain)
                 Spacer()
                 Button {
-                    if let url = renderActivityShareCard(post: post) {
-                        shareURL = url
-                        showShareSheet = true
-                    }
+                    prepareShareCard()
                 } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 19))
-                        .foregroundColor(TCTheme.textSecondary)
+                    if preparingShare {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(TCTheme.textSecondary)
+                    } else {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 19))
+                            .foregroundColor(TCTheme.textSecondary)
+                    }
                 }
                 .buttonStyle(.plain)
+                .disabled(preparingShare)
             }
             .padding(.horizontal, 8)
         }
