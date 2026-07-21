@@ -48,6 +48,13 @@ struct BallTrackingTestView: View {
         .persistentSystemOverlays(.hidden)
         .onAppear {
             exports = loader.listAvailableExports()
+            // TC_REPLAY_ALL=1 (simulator/dev): batch-replay every archived shot through the live
+            // pipeline, write each ReplayResults/<shot>.json, and log speed+verdict — headless
+            // Garmin-pairing/accuracy runs without tapping through 61 shots by hand.
+            if ProcessInfo.processInfo.environment["TC_REPLAY_ALL"] == "1" {
+                runAllReplays()
+                return
+            }
             // Headed dev demo (TC_OPEN_TESTER=1): auto-load the first export and run it so
             // the overlays are on screen without any tapping.
             if ProcessInfo.processInfo.environment["TC_OPEN_TESTER"] == "1",
@@ -2081,6 +2088,38 @@ struct BallTrackingTestView: View {
                     ? "\(output.verdict) · auto-lock"
                     : output.verdict
             }
+        }
+    }
+
+    /// Batch-replay every archived export through the live pipeline (LiveParityTestRunner already
+    /// writes ReplayResults/<shot>.json). Logs speed+verdict per shot for headless capture.
+    private func runAllReplays() {
+        let all = exports
+        let loader = self.loader
+        print("[ReplayAll] START \(all.count) exports")
+        Task.detached(priority: .userInitiated) {
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            var done = 0
+            for url in all {
+                do {
+                    let seq = try loader.loadSequence(from: url)
+                    let out = LiveParityTestRunner().run(sequence: seq)
+                    done += 1
+                    var speed = "nil", vla = "nil", club = "nil"
+                    if let docs,
+                       let d = try? Data(contentsOf: docs.appendingPathComponent("ReplayResults/\(seq.sourceName).json")),
+                       let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                       let m = j["metrics"] as? [String: Any] {
+                        if let v = m["ballSpeedMph"] as? Double { speed = String(format: "%.1f", v) }
+                        if let v = m["vlaDegrees"]   as? Double { vla = String(format: "%.1f", v) }
+                        if let v = m["clubSpeedMph"] as? Double { club = String(format: "%.1f", v) }
+                    }
+                    print("[ReplayAll] \(done)/\(all.count) \(seq.sourceName) | verdict=\(out.verdict) | ballMph=\(speed) vla=\(vla) clubMph=\(club)")
+                } catch {
+                    print("[ReplayAll] FAIL \(url.lastPathComponent): \(error.localizedDescription)")
+                }
+            }
+            print("[ReplayAll] DONE \(done)/\(all.count)")
         }
     }
 
