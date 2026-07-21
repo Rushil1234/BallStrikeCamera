@@ -5,7 +5,9 @@ import MapKit
 
 struct CourseSearchView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var session: AuthSessionStore
     @StateObject private var location = LocationService()
+    @State private var bookmarkedKeys: Set<String> = []
     @State private var query = ""
     @State private var nearbyCourses: [GolfCourse] = []
     @State private var searchResults: [GolfCourse] = []
@@ -157,6 +159,7 @@ struct CourseSearchView: View {
             Task { await loadNearby() }
         }
         .task {
+            await refreshBookmarks()
             location.requestPermission()
             // Wait briefly for location to arrive after authorization
             for _ in 0..<10 {
@@ -166,6 +169,29 @@ struct CourseSearchView: View {
             if location.currentLocation != nil {
                 await loadNearby()
             }
+        }
+    }
+
+    // MARK: - Bookmarks
+
+    private func bookmarkKey(_ name: String) -> String {
+        (name.components(separatedBy: " ~ ").first ?? name)
+            .lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func refreshBookmarks() async {
+        let marks = (try? await session.backend.loadCourseBookmarks(userId: userId)) ?? []
+        bookmarkedKeys = Set(marks.map { bookmarkKey($0.courseName) })
+    }
+
+    private func toggleBookmark(_ course: GolfCourse) async {
+        let key = bookmarkKey(course.name)
+        if bookmarkedKeys.contains(key) {
+            try? await session.backend.removeCourseBookmark(userId: userId, course: course.name)
+            bookmarkedKeys.remove(key)
+        } else {
+            try? await session.backend.addCourseBookmark(userId: userId, course: course.name)
+            bookmarkedKeys.insert(key)
         }
     }
 
@@ -393,6 +419,16 @@ struct CourseSearchView: View {
                         }
                     }
                     Spacer(minLength: 0)
+                    // Bookmark toggle — save a course to play later without selecting it.
+                    // Nested inside the row button; SwiftUI hit-tests the inner button first.
+                    Button { Task { await toggleBookmark(course) } } label: {
+                        Image(systemName: bookmarkedKeys.contains(bookmarkKey(course.name)) ? "bookmark.fill" : "bookmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(bookmarkedKeys.contains(bookmarkKey(course.name)) ? TCTheme.gold : TCTheme.textUltraMuted)
+                            .frame(width: 30, height: 40)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                     VStack(alignment: .trailing, spacing: 3) {
                         if resolvingCourseId == course.id {
                             ProgressView()

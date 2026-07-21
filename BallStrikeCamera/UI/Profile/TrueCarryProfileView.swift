@@ -17,7 +17,6 @@ struct TrueCarryProfileView: View {
     @EnvironmentObject var session: AuthSessionStore
     @State private var route: ProfileRoute?
     @AppStorage(AppearanceStore.key) private var appearanceRaw = AppAppearance.dark.rawValue
-    @AppStorage("tc_feed_autoshare_enabled") private var autoShareFeed = true
     @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
     @AppStorage(FrameArchiveService.enabledKey) private var saveAllFrames = false
     @AppStorage("tc_capture_720") private var capture720 = true
@@ -167,7 +166,7 @@ struct TrueCarryProfileView: View {
         .padding(.vertical, 8)
     }
 
-    // MARK: - Display (appearance + feed sharing)
+    // MARK: - Display (appearance)
 
     private var displayCard: some View {
         VStack(spacing: 0) {
@@ -192,29 +191,6 @@ struct TrueCarryProfileView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-
-                rowDivider
-
-                HStack(spacing: 14) {
-                    Image(systemName: "newspaper")
-                        .font(.system(size: 14))
-                        .foregroundColor(TCTheme.textMuted)
-                        .frame(width: 24, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Share activities to feed")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(TCTheme.textPrimary)
-                        Text("Auto-post rounds & sessions to friends")
-                            .font(.system(size: 11))
-                            .foregroundColor(TCTheme.textMuted)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $autoShareFeed)
-                        .labelsHidden()
-                        .tint(TCTheme.gold)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
             }
             .tcCard()
         }

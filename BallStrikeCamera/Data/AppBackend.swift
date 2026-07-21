@@ -107,6 +107,13 @@ protocol AppBackend {
     /// course name (tees grouped). Empty on the local backend.
     func loadHomeCourseLeaderboard(course: String) async throws -> [HomeCourseLeaderboardEntry]
 
+    // Course ratings & bookmarks
+    func rateCourse(userId: UUID, course: String, rating: Int, review: String?) async throws
+    func courseRatingSummary(course: String) async throws -> CourseRatingSummary
+    func addCourseBookmark(userId: UUID, course: String) async throws
+    func removeCourseBookmark(userId: UUID, course: String) async throws
+    func loadCourseBookmarks(userId: UUID) async throws -> [CourseBookmark]
+
     // Entitlements & usage
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement
     func loadUsageCounter(userId: UUID, date: String) async throws -> UsageCounter?
@@ -154,6 +161,13 @@ extension AppBackend {
     func submitChallengeEntry(carryYards: Double, ballSpeedMph: Double?, clubName: String, shotId: UUID?) async throws {}
     func loadChallengeLeaderboard() async throws -> [ChallengeLeaderboardEntry] { [] }
     func loadHomeCourseLeaderboard(course: String) async throws -> [HomeCourseLeaderboardEntry] { [] }
+
+    // Default: no cloud course social graph on the local backend.
+    func rateCourse(userId: UUID, course: String, rating: Int, review: String?) async throws {}
+    func courseRatingSummary(course: String) async throws -> CourseRatingSummary { .empty }
+    func addCourseBookmark(userId: UUID, course: String) async throws {}
+    func removeCourseBookmark(userId: UUID, course: String) async throws {}
+    func loadCourseBookmarks(userId: UUID) async throws -> [CourseBookmark] { [] }
     func respondToAttestation(id: UUID, accept: Bool) async throws {}
     func requestRoundAttestationLink(round: CourseRound, requesterId: UUID, requesterName: String) async throws -> String { "" }
 

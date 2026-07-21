@@ -251,8 +251,6 @@ struct ProfileSettingsView: View {
                               accent: BSTheme.gold)
             }.buttonStyle(.plain)
             BSDivider()
-            FeedShareRow()
-            BSDivider()
             MenuSettingsRow(icon: "play.fill", title: "Default Play Mode", accent: BSTheme.gold,
                             value: defaultPlayMode,
                             options: ["Range", "Simulator", "Course"]) { defaultPlayMode = $0 }
@@ -350,7 +348,6 @@ struct ProfileSettingsView: View {
         exposureMode = "Auto"
         cameraSide = "Down-the-line"
         defaultPlayMode = "Range"
-        FeedSharing.autoShareEnabled = true
         UserDefaults.standard.set(AppAppearance.dark.rawValue, forKey: AppearanceStore.key)
         AppearanceStore.applyToWindows(.dark)
     }
@@ -491,25 +488,6 @@ private struct AppearanceRow: View {
                 ForEach(AppAppearance.allCases) { mode in Text(mode.label).tag(mode.rawValue) }
             }
             .pickerStyle(.segmented).frame(width: 180)
-        }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-    }
-}
-
-// MARK: - Feed Sharing Row (auto-post opt-out)
-
-private struct FeedShareRow: View {
-    @AppStorage("tc_feed_autoshare_enabled") private var autoShare = true
-    var body: some View {
-        HStack(spacing: 14) {
-            iconBadge("newspaper.fill", BSTheme.fairwayGreen)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Share activities to feed").font(.system(size: 15)).foregroundColor(BSTheme.textPrimary)
-                Text("Auto-post completed rounds & sessions to friends")
-                    .font(.system(size: 11)).foregroundColor(BSTheme.textMuted)
-            }
-            Spacer()
-            Toggle("", isOn: $autoShare).labelsHidden().tint(BSTheme.fairwayGreen)
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
     }

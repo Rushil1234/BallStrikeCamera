@@ -8,6 +8,7 @@ struct TrueCarryLockerView: View {
     @State private var showSessions = false
     @State private var showProfile  = false
     @State private var showLearn    = false
+    @State private var showSaved    = false
     @State private var clubs: [UserClub]     = []
     @State private var shots: [SavedShot]    = []
     @State private var rounds: [CourseRound] = []
@@ -81,6 +82,7 @@ struct TrueCarryLockerView: View {
                         // Moved out of the feed — sim course unlocks are progress, they
                         // belong with your bag and milestones.
                         SimUnlocksCard()
+                        savedCoursesCard
                         savedShotsCard
                         helpLearningCard
                         settingsRowCard
@@ -112,6 +114,12 @@ struct TrueCarryLockerView: View {
         .sheet(isPresented: $showLearn) {
             NavigationStack { LearnHubView() }
                 .tcAppearance()
+        }
+        .sheet(isPresented: $showSaved) {
+            if let uid = user?.id {
+                NavigationStack { SavedCoursesView(userId: uid, backend: session.backend) }
+                    .tcAppearance()
+            }
         }
         #if DEBUG
         // Screenshot harness: TC_DEBUG_LEARN=1 opens the Learn hub sheet on
@@ -297,6 +305,31 @@ struct TrueCarryLockerView: View {
     }
 
     // MARK: - Help & Learning Card
+
+    private var savedCoursesCard: some View {
+        Button { showSaved = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "bookmark.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(TCTheme.gold)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Saved courses")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text("Courses you've bookmarked to play")
+                        .font(.system(size: 12))
+                        .foregroundColor(TCTheme.textMuted)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(TCTheme.textMuted)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .tcCard()
+    }
 
     private var helpLearningCard: some View {
         VStack(spacing: 0) {

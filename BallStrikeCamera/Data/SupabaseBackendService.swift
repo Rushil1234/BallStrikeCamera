@@ -955,6 +955,60 @@ final class SupabaseBackendService: AppBackend {
         return try await rpc("home_course_leaderboard", body: ["p_course": trimmed, "p_limit": 25])
     }
 
+    // MARK: - Course ratings & bookmarks
+
+    /// Ratings/bookmarks are keyed on the base course name so all tees share one.
+    private func baseCourseName(_ s: String) -> String {
+        (s.components(separatedBy: " ~ ").first ?? s).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    func rateCourse(userId: UUID, course: String, rating: Int, review: String?) async throws {
+        var body: [String: Any] = [
+            "user_id": userId.uuidString,
+            "course_name": baseCourseName(course),
+            "rating": max(1, min(5, rating)),
+            "updated_at": ISO8601DateFormatter().string(from: Date()),
+        ]
+        if let review, !review.isEmpty { body["review"] = review }
+        try await upsert(table: "course_ratings", body: body, onConflict: "user_id,course_name")
+    }
+
+    func courseRatingSummary(course: String) async throws -> CourseRatingSummary {
+        let rows: [CourseRatingSummary] = try await rpc("course_rating_summary", body: ["p_course": course])
+        return rows.first ?? .empty
+    }
+
+    func addCourseBookmark(userId: UUID, course: String) async throws {
+        let body: [String: Any] = ["user_id": userId.uuidString, "course_name": baseCourseName(course)]
+        try await upsert(table: "course_bookmarks", body: body, onConflict: "user_id,course_name")
+    }
+
+    func removeCourseBookmark(userId: UUID, course: String) async throws {
+        var components = URLComponents(url: restURL("course_bookmarks"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "user_id", value: "eq.\(userId.uuidString)"),
+            URLQueryItem(name: "course_name", value: "eq.\(baseCourseName(course))"),
+        ]
+        var req = authorizedRequest(url: components.url!, method: "DELETE")
+        req.setValue("return=minimal", forHTTPHeaderField: "Prefer")
+        _ = try? await performAuthorizedRequest(req)
+    }
+
+    func loadCourseBookmarks(userId: UUID) async throws -> [CourseBookmark] {
+        var components = URLComponents(url: restURL("course_bookmarks"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "id,course_name"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+        ]
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await performAuthorizedRequest(req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:course_bookmarks", data: data, response: response)
+            throw BackendError.loadFailed("course_bookmarks")
+        }
+        return try decoder.decode([CourseBookmark].self, from: data)
+    }
+
     func respondToAttestation(id: UUID, accept: Bool) async throws {
         // Goes through respond_to_attestation() so the responder's display name is
         // stamped onto the row (from their profile) for the requester's "Verified by" UI.

@@ -41,6 +41,8 @@ struct FeedView: View {
     @State private var showComposer = false
     @State private var showNotifications = false
     @State private var showLeaderboards = false
+    @State private var showSavedCourses = false
+    @State private var savedCourses: [CourseBookmark] = []
     @State private var profilePost: FeedPost?
     @State private var detailPost: FeedPost?
     @AppStorage("tc_feed_notifs_seen_ts") private var notifsLastSeenTs: Double = 0
@@ -143,6 +145,10 @@ struct FeedView: View {
                     }
                     homeSummarySection
                     sectionGap
+                    if !savedCourses.isEmpty {
+                        savedCoursesSection
+                        sectionGap
+                    }
                     challengesSection
                         .id("tc.feed.challenges")
                     sectionGap
@@ -207,6 +213,7 @@ struct FeedView: View {
             await vm.loadDrafts()
             let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
             unfinishedRound = all.first(where: { $0.endedAt == nil })
+            savedCourses = (try? await backend.loadCourseBookmarks(userId: userId)) ?? []
         }
         // Deletions + finishing a round must recompute the feed, drafts, and
         // "Your Week" summary immediately.
@@ -216,7 +223,14 @@ struct FeedView: View {
                 await vm.loadDrafts()
                 let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
                 unfinishedRound = all.first(where: { $0.endedAt == nil })
+                savedCourses = (try? await backend.loadCourseBookmarks(userId: userId)) ?? []
             }
+        }
+        .sheet(isPresented: $showSavedCourses, onDismiss: {
+            Task { savedCourses = (try? await backend.loadCourseBookmarks(userId: userId)) ?? [] }
+        }) {
+            NavigationStack { SavedCoursesView(userId: userId, backend: backend) }
+                .tcAppearance()
         }
         .sheet(isPresented: $showFriends, onDismiss: { Task { await vm.load() } }) {
             NavigationStack { FriendsView(userId: userId, backend: backend) }
@@ -441,6 +455,40 @@ struct FeedView: View {
                     onDismiss: { vm.dismissDraft(draft) }
                 )
             }
+        }
+        .padding(.horizontal, TCTheme.hPad)
+        .padding(.vertical, 18)
+        .background(TCTheme.background)
+    }
+
+    /// Beli-style strip of the courses you've bookmarked — tap to see them all.
+    private var savedCoursesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("Saved Courses", actionTitle: "See all") { showSavedCourses = true }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(savedCourses.prefix(8)) { bm in
+                        Button { showSavedCourses = true } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "flag.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(TCTheme.gold)
+                                Text(bm.baseName)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(TCTheme.textPrimary)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .background(TCTheme.panel)
+                            .clipShape(Capsule())
+                            .overlay(Capsule().strokeBorder(TCTheme.border, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, TCTheme.hPad)
+            }
+            .padding(.horizontal, -TCTheme.hPad)
         }
         .padding(.horizontal, TCTheme.hPad)
         .padding(.vertical, 18)

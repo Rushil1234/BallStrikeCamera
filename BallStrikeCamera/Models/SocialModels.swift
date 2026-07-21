@@ -121,6 +121,24 @@ struct ChallengeLeaderboardEntry: Identifiable, Decodable, Equatable {
     var id: UUID { userId }   // one entry per user per week
 }
 
+/// A course's aggregate rating plus the caller's own rating. Decoded from
+/// course_rating_summary() (decoder uses convertFromSnakeCase).
+struct CourseRatingSummary: Decodable, Equatable {
+    var avgRating: Double?
+    var ratingCount: Int
+    var myRating: Int?
+    static let empty = CourseRatingSummary(avgRating: nil, ratingCount: 0, myRating: nil)
+}
+
+/// A course the user has bookmarked. Decoded from course_bookmarks (own rows).
+struct CourseBookmark: Identifiable, Decodable, Equatable {
+    var id: UUID
+    var courseName: String
+    var createdAt: Date?
+    /// Base course name (tees stripped) for display.
+    var baseName: String { courseName.components(separatedBy: " ~ ").first ?? courseName }
+}
+
 /// One player's standing on a course's leaderboard (best saved round). Decoded
 /// from home_course_leaderboard() (decoder uses convertFromSnakeCase).
 struct HomeCourseLeaderboardEntry: Identifiable, Decodable, Equatable {

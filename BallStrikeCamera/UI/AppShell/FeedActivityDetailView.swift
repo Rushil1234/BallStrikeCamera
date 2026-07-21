@@ -16,6 +16,14 @@ struct FeedActivityDetailView: View {
         let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f
     }()
 
+    /// The course to rate — only for round posts, from the linked round or metadata.
+    private var courseNameForRating: String? {
+        if let c = round?.courseName, !c.isEmpty { return c }
+        if let c = post.activityMetadata?.courseName, !c.isEmpty { return c }
+        if post.type == .round, !post.title.isEmpty, post.title != "Course Round" { return post.title }
+        return nil
+    }
+
     private var stats: [(String, String)] {
         guard let m = post.activityMetadata else { return post.stats.map { ($0.label, $0.value) } }
         switch m.kind {
@@ -51,6 +59,9 @@ struct FeedActivityDetailView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     header
                     statsCard
+                    if post.type == .round, let course = courseNameForRating {
+                        CourseSocialBar(course: course, userId: currentUserId, backend: backend)
+                    }
                     if let round, !round.holes.isEmpty {
                         scorecard(round)
                     }
