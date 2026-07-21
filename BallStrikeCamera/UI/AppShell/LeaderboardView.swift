@@ -22,6 +22,7 @@ struct LeaderboardView: View {
     @State private var homeCourse: [HomeCourseLeaderboardEntry] = []
     @State private var loading = false
     @State private var challengeRefresh = 0
+    @State private var profileTarget: ProfileTarget?
 
     private var homeCourseName: String {
         (session.userProfile?.homeCourseName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -50,6 +51,13 @@ struct LeaderboardView: View {
         .navigationBarHidden(true)
         .task(id: board) { await load() }
         .refreshable { await load(force: true) }
+        .sheet(item: $profileTarget) { t in
+            NavigationStack {
+                PublicProfileView(userId: t.id, seedName: t.name, seedHomeCourse: t.homeCourse,
+                                  seedPosts: t.seedPosts, backend: backend)
+            }
+            .tcAppearance()
+        }
     }
 
     // MARK: Header + picker
@@ -102,15 +110,20 @@ struct LeaderboardView: View {
                      system: "person.2.fill")
         } else {
             ForEach(Array(friends.enumerated()), id: \.element.id) { i, entry in
-                LeaderboardRow(
-                    rank: i + 1,
-                    name: entry.displayName,
-                    subtitle: entry.metric.title,
-                    value: "\(entry.value)",
-                    unit: entry.metric.unit,
-                    caption: entry.subtitle,
-                    highlight: entry.userId == userId
-                )
+                Button {
+                    profileTarget = ProfileTarget(id: entry.userId, name: entry.displayName, homeCourse: nil, seedPosts: [])
+                } label: {
+                    LeaderboardRow(
+                        rank: i + 1,
+                        name: entry.displayName,
+                        subtitle: entry.metric.title,
+                        value: "\(entry.value)",
+                        unit: entry.metric.unit,
+                        caption: entry.subtitle,
+                        highlight: entry.userId == userId
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -131,15 +144,21 @@ struct LeaderboardView: View {
                 .foregroundColor(TCTheme.textMuted)
                 .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(Array(homeCourse.enumerated()), id: \.element.id) { i, entry in
-                LeaderboardRow(
-                    rank: i + 1,
-                    name: entry.displayName,
-                    subtitle: "\(entry.roundsPlayed) round\(entry.roundsPlayed == 1 ? "" : "s")",
-                    value: "\(entry.bestScore)",
-                    unit: "",
-                    caption: entry.toParString + " to par",
-                    highlight: entry.userId == userId
-                )
+                Button {
+                    profileTarget = ProfileTarget(id: entry.userId, name: entry.displayName,
+                                                  homeCourse: homeCourseName, seedPosts: [])
+                } label: {
+                    LeaderboardRow(
+                        rank: i + 1,
+                        name: entry.displayName,
+                        subtitle: "\(entry.roundsPlayed) round\(entry.roundsPlayed == 1 ? "" : "s")",
+                        value: "\(entry.bestScore)",
+                        unit: "",
+                        caption: entry.toParString + " to par",
+                        highlight: entry.userId == userId
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
     }

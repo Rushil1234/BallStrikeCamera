@@ -63,6 +63,9 @@ protocol AppBackend {
     func saveFeedPost(_ post: FeedPost) async throws
     func deleteFeedPost(postId: UUID, userId: UUID) async throws
     func loadFeed(userId: UUID) async throws -> [FeedPost]
+    /// Posts authored by one specific user, visible to the caller (RLS-scoped) —
+    /// powers a person's profile activity list.
+    func loadUserPosts(userId: UUID) async throws -> [FeedPost]
     func loadHomeSummary(userId: UUID) async throws -> FeedHomeSummary
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage
     func loadEngagement(postIds: [UUID], userId: UUID) async throws -> FeedEngagementSummary

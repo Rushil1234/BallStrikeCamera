@@ -43,7 +43,7 @@ struct FeedView: View {
     @State private var showLeaderboards = false
     @State private var showSavedCourses = false
     @State private var savedCourses: [CourseBookmark] = []
-    @State private var profilePost: FeedPost?
+    @State private var profileTarget: ProfileTarget?
     @State private var detailPost: FeedPost?
     @AppStorage("tc_feed_notifs_seen_ts") private var notifsLastSeenTs: Double = 0
     @State private var greeting: HomeGreeting = HomeGreeting.all.first!
@@ -180,7 +180,11 @@ struct FeedView: View {
                                 onGimme: { Task { await vm.toggleGimme(post) } },
                                 onComment: { commentingPost = post },
                                 onDelete: { Task { await vm.deletePost(id: post.id) } },
-                                onOpenProfile: post.userId == userId ? nil : { profilePost = post },
+                                onOpenProfile: post.userId == userId ? nil : {
+                                    profileTarget = ProfileTarget(id: post.userId, name: post.authorName,
+                                                                  homeCourse: nil,
+                                                                  seedPosts: vm.posts.filter { $0.userId == post.userId })
+                                },
                                 onOpenDetail: { detailPost = post }
                             )
                             .task { await vm.loadMoreIfNeeded(currentPost: post) }
@@ -251,6 +255,14 @@ struct FeedView: View {
                 }
             }
         }
+        // A shared profile link (truecarry://user/<id>) opens that golfer's profile.
+        .onReceive(DeepLinkRouter.shared.$pendingProfileId) { id in
+            guard let id else { return }
+            let name = vm.posts.first(where: { $0.userId == id })?.authorName ?? "Golfer"
+            profileTarget = ProfileTarget(id: id, name: name, homeCourse: nil,
+                                          seedPosts: vm.posts.filter { $0.userId == id })
+            DeepLinkRouter.shared.pendingProfileId = nil
+        }
         .sheet(isPresented: $showSavedCourses, onDismiss: {
             Task { savedCourses = (try? await backend.loadCourseBookmarks(userId: userId)) ?? [] }
         }) {
@@ -265,13 +277,14 @@ struct FeedView: View {
             NavigationStack { LeaderboardView(userId: userId, backend: backend) }
                 .tcAppearance()
         }
-        .sheet(item: $profilePost) { post in
+        .sheet(item: $profileTarget) { t in
             NavigationStack {
                 PublicProfileView(
-                    userId: post.userId,
-                    displayName: post.authorName,
-                    homeCourse: nil,
-                    posts: vm.posts.filter { $0.userId == post.userId }
+                    userId: t.id,
+                    seedName: t.name,
+                    seedHomeCourse: t.homeCourse,
+                    seedPosts: t.seedPosts,
+                    backend: backend
                 )
             }
             .tcAppearance()
@@ -1082,6 +1095,28 @@ enum PostLink {
     /// Parses a post id out of a truecarry://post/<uuid> URL, if it is one.
     static func postId(from url: URL) -> UUID? {
         guard url.scheme == "truecarry", url.host == "post" else { return nil }
+        return UUID(uuidString: url.lastPathComponent)
+    }
+}
+
+/// Identifies whose profile to open (tap-through or deep link). Seed values give
+/// the profile something to show instantly while it loads the full data.
+struct ProfileTarget: Identifiable {
+    let id: UUID
+    let name: String
+    let homeCourse: String?
+    let seedPosts: [FeedPost]
+}
+
+/// A shareable link that opens a specific golfer's profile in the app
+/// (`truecarry://user/<uuid>`). Handled in BallStrikeCameraApp.onOpenURL →
+/// DeepLinkRouter → the feed opens that profile.
+enum ProfileLink {
+    static func url(for id: UUID) -> URL {
+        URL(string: "truecarry://user/\(id.uuidString)")!
+    }
+    static func userId(from url: URL) -> UUID? {
+        guard url.scheme == "truecarry", url.host == "user" else { return nil }
         return UUID(uuidString: url.lastPathComponent)
     }
 }

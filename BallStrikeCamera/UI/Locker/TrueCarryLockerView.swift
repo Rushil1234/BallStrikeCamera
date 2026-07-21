@@ -147,7 +147,9 @@ struct TrueCarryLockerView: View {
             }
         }
         .sheet(isPresented: $showProfileShare) {
-            if let url = profileShareURL { ShareSheet(items: [url]) }
+            if let url = profileShareURL {
+                ShareSheet(items: [url, ProfileLink.url(for: user?.id ?? UUID())])
+            }
         }
     }
 

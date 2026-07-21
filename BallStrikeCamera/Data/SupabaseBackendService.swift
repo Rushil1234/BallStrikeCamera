@@ -703,6 +703,25 @@ final class SupabaseBackendService: AppBackend {
         return rows.compactMap { $0.toFeedPost() }.sorted { $0.timestamp > $1.timestamp }
     }
 
+    func loadUserPosts(userId: UUID) async throws -> [FeedPost] {
+        // RLS on feed_posts enforces visibility (public + friends-of-caller), so we
+        // just filter to this author. Returns only what the caller is allowed to see.
+        var components = URLComponents(url: restURL("feed_posts"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "user_id", value: "eq.\(userId.uuidString)"),
+            URLQueryItem(name: "order", value: "timestamp.desc"),
+            URLQueryItem(name: "limit", value: "200")
+        ]
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await performAuthorizedRequest(req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:feed_posts:user", data: data, response: response)
+            throw BackendError.loadFailed("feed_posts")
+        }
+        let rows = try decoder.decode([SupabaseFeedPostRow].self, from: data)
+        return rows.compactMap { $0.toFeedPost() }.sorted { $0.timestamp > $1.timestamp }
+    }
+
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage {
         var queryItems = [
             URLQueryItem(name: "order", value: "timestamp.desc"),

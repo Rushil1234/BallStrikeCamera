@@ -3,8 +3,11 @@ import SwiftUI
 struct FriendsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var vm: FriendsViewModel
+    private let backend: AppBackend
+    @State private var profileTarget: ProfileTarget?
 
     init(userId: UUID, backend: AppBackend) {
+        self.backend = backend
         _vm = StateObject(wrappedValue: FriendsViewModel(userId: userId, backend: backend))
     }
 
@@ -33,6 +36,18 @@ struct FriendsView: View {
         }
         .task { await vm.loadAll() }
         .overlay(alignment: .bottom) { statusToast }
+        .sheet(item: $profileTarget) { t in
+            NavigationStack {
+                PublicProfileView(userId: t.id, seedName: t.name, seedHomeCourse: t.homeCourse,
+                                  seedPosts: t.seedPosts, backend: backend)
+            }
+            .tcAppearance()
+        }
+    }
+
+    private func openProfile(_ profile: FriendProfile) {
+        profileTarget = ProfileTarget(id: profile.userId, name: profile.displayName,
+                                      homeCourse: profile.homeCourseName, seedPosts: [])
     }
 
     // MARK: Search
@@ -200,17 +215,24 @@ struct FriendsView: View {
 
     private func personRow<Trailing: View>(_ profile: FriendProfile, @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: 12) {
-            AvatarCircle(name: profile.displayName, size: 40)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(profile.displayName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(TCTheme.textPrimary)
-                    .fitOneLine(0.6)
-                if let home = profile.homeCourseName, !home.isEmpty {
-                    Text(home).font(.system(size: 12)).foregroundColor(TCTheme.textMuted)
+            // Tap the avatar/name to open this golfer's profile.
+            Button { openProfile(profile) } label: {
+                HStack(spacing: 12) {
+                    AvatarCircle(name: profile.displayName, size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(profile.displayName)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .fitOneLine(0.6)
+                        if let home = profile.homeCourseName, !home.isEmpty {
+                            Text(home).font(.system(size: 12)).foregroundColor(TCTheme.textMuted)
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
             trailing()
         }
         .tcCard(padding: 12)

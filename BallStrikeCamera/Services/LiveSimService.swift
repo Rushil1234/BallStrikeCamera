@@ -108,6 +108,8 @@ final class DeepLinkRouter: ObservableObject {
     @Published var pendingSimCode: String?
     /// Post id from truecarry://post/<uuid>; cleared when the feed opens it.
     @Published var pendingPostId: UUID?
+    /// User id from truecarry://user/<uuid>; cleared when the feed opens the profile.
+    @Published var pendingProfileId: UUID?
 }
 
 @MainActor

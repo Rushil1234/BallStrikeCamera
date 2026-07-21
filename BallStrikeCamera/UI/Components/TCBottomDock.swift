@@ -203,6 +203,11 @@ struct TrueCarryAppShell: View {
             guard id != nil else { return }
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .home }
         }
+        // Profile link (truecarry://user/…): switch to the Feed tab, which opens the profile.
+        .onReceive(DeepLinkRouter.shared.$pendingProfileId) { id in
+            guard id != nil else { return }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .home }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .tcResumeRound)) { _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) { selectedTab = .play }
         }
