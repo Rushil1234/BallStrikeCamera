@@ -103,6 +103,9 @@ protocol AppBackend {
     // Camera-verified weekly challenges (v1: longest verified carry)
     func submitChallengeEntry(carryYards: Double, ballSpeedMph: Double?, clubName: String, shotId: UUID?) async throws
     func loadChallengeLeaderboard() async throws -> [ChallengeLeaderboardEntry]
+    /// Best-round leaderboard for a course, ranked low-to-high. Matches on the base
+    /// course name (tees grouped). Empty on the local backend.
+    func loadHomeCourseLeaderboard(course: String) async throws -> [HomeCourseLeaderboardEntry]
 
     // Entitlements & usage
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement
@@ -150,6 +153,7 @@ extension AppBackend {
     // Default: no cloud challenges (local backend has no leaderboard).
     func submitChallengeEntry(carryYards: Double, ballSpeedMph: Double?, clubName: String, shotId: UUID?) async throws {}
     func loadChallengeLeaderboard() async throws -> [ChallengeLeaderboardEntry] { [] }
+    func loadHomeCourseLeaderboard(course: String) async throws -> [HomeCourseLeaderboardEntry] { [] }
     func respondToAttestation(id: UUID, accept: Bool) async throws {}
     func requestRoundAttestationLink(round: CourseRound, requesterId: UUID, requesterName: String) async throws -> String { "" }
 

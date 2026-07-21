@@ -949,6 +949,12 @@ final class SupabaseBackendService: AppBackend {
         try await rpc("weekly_challenge_leaderboard", body: [:])
     }
 
+    func loadHomeCourseLeaderboard(course: String) async throws -> [HomeCourseLeaderboardEntry] {
+        let trimmed = course.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        return try await rpc("home_course_leaderboard", body: ["p_course": trimmed, "p_limit": 25])
+    }
+
     func respondToAttestation(id: UUID, accept: Bool) async throws {
         // Goes through respond_to_attestation() so the responder's display name is
         // stamped onto the row (from their profile) for the requester's "Verified by" UI.

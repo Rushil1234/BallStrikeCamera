@@ -40,6 +40,7 @@ struct FeedView: View {
     @State private var showProfile = false
     @State private var showComposer = false
     @State private var showNotifications = false
+    @State private var showLeaderboards = false
     @AppStorage("tc_feed_notifs_seen_ts") private var notifsLastSeenTs: Double = 0
     @State private var greeting: HomeGreeting = HomeGreeting.all.first!
     @State private var commentingPost: FeedPost?
@@ -122,6 +123,7 @@ struct FeedView: View {
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     TCHeaderBar(initials: userInitials) {
+                        TCHeaderIconButton(icon: "trophy.fill") { showLeaderboards = true }
                         TCHeaderIconButton(icon: "bell.fill", badge: unreadNotifs) { showNotifications = true }
                         TCHeaderIconButton(icon: "person.2.fill") { showFriends = true }
                         TCProfileAvatarButton(initials: userInitials,
@@ -135,15 +137,8 @@ struct FeedView: View {
                     sectionGap
                     homeSummarySection
                     sectionGap
-                    leaderboardSection
-                    sectionGap
                     challengesSection
                         .id("tc.feed.challenges")
-                    sectionGap
-                    // Directly under the challenges it counts — completing those cards
-                    // permanently banks credits toward these unlocks.
-                    SimUnlocksCard()
-                        .padding(.horizontal, TCTheme.hPad)
                     sectionGap
                     if vm.posts.isEmpty && !vm.isLoading {
                         emptyState
@@ -214,6 +209,10 @@ struct FeedView: View {
         }
         .sheet(isPresented: $showFriends, onDismiss: { Task { await vm.load() } }) {
             NavigationStack { FriendsView(userId: userId, backend: backend) }
+                .tcAppearance()
+        }
+        .sheet(isPresented: $showLeaderboards) {
+            NavigationStack { LeaderboardView(userId: userId, backend: backend) }
                 .tcAppearance()
         }
         .sheet(isPresented: $showProfile) {
@@ -395,8 +394,8 @@ struct FeedView: View {
     private var challengesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Weekly Challenges", actionTitle: "Post") { showComposer = true }
-            // Camera-verified global leaderboard — the competitive headliner.
-            VerifiedChallengeCard(refreshToken: challengeRefresh)
+            // The camera-verified global board now lives in the Leaderboards hub
+            // (trophy button) — this section keeps the actionable weekly challenges.
             VStack(spacing: 8) {
                 ForEach(vm.challengePreviews) { challenge in
                     ChallengePreviewRow(challenge: challenge)

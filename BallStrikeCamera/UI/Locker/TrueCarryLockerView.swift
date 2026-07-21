@@ -78,6 +78,9 @@ struct TrueCarryLockerView: View {
                         profileCard
                         clubsInBagCard
                         milestonesCard
+                        // Moved out of the feed — sim course unlocks are progress, they
+                        // belong with your bag and milestones.
+                        SimUnlocksCard()
                         savedShotsCard
                         helpLearningCard
                         settingsRowCard

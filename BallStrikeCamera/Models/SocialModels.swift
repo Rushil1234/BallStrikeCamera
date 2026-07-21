@@ -121,6 +121,24 @@ struct ChallengeLeaderboardEntry: Identifiable, Decodable, Equatable {
     var id: UUID { userId }   // one entry per user per week
 }
 
+/// One player's standing on a course's leaderboard (best saved round). Decoded
+/// from home_course_leaderboard() (decoder uses convertFromSnakeCase).
+struct HomeCourseLeaderboardEntry: Identifiable, Decodable, Equatable {
+    let userId: UUID
+    let displayName: String
+    let bestScore: Int
+    let bestPar: Int
+    let roundsPlayed: Int
+    let lastPlayed: Date?
+    var id: UUID { userId }   // one row per user
+    var toPar: Int { bestScore - bestPar }
+    var toParString: String {
+        let d = toPar
+        if d == 0 { return "E" }
+        return d > 0 ? "+\(d)" : "\(d)"
+    }
+}
+
 /// An attestation the current user REQUESTED, so they can see its status and who
 /// verified it. Decoded from `round_attestations` (decoder uses convertFromSnakeCase).
 struct SentAttestation: Identifiable, Decodable, Equatable {
