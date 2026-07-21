@@ -171,6 +171,31 @@ struct SentAttestation: Identifiable, Decodable, Equatable {
     let respondedAt: Date?
 }
 
+// MARK: - Follow graph + privacy
+
+/// A profile's social summary from profile_social() (decoder uses convertFromSnakeCase).
+struct ProfileSocial: Decodable, Equatable {
+    var followerCount: Int
+    var followingCount: Int
+    var followStatus: String   // "none" | "pending" | "accepted"
+    var isPrivate: Bool
+    var canView: Bool          // false = private account you don't follow (hide activity)
+    static let empty = ProfileSocial(followerCount: 0, followingCount: 0,
+                                     followStatus: "none", isPrivate: false, canView: true)
+
+    var isFollowing: Bool { followStatus == "accepted" }
+    var isPending: Bool { followStatus == "pending" }
+}
+
+/// A pending follow request received by the current user (private-account approval).
+/// Decoded from incoming_follow_requests() (decoder uses convertFromSnakeCase).
+struct IncomingFollowRequest: Identifiable, Decodable, Equatable {
+    var followerId: UUID
+    var displayName: String
+    var createdAt: Date?
+    var id: UUID { followerId }
+}
+
 // MARK: - Feed Notification (gimmes / comments on your posts)
 
 struct FeedNotification: Identifiable, Equatable {

@@ -122,6 +122,16 @@ struct BallStrikeCameraApp: App {
                         DeepLinkRouter.shared.pendingSimCode = code
                         return
                     }
+                    // Post link: truecarry://post/<uuid> opens that post in the feed.
+                    if let postId = PostLink.postId(from: url) {
+                        DeepLinkRouter.shared.pendingPostId = postId
+                        return
+                    }
+                    // Profile link: truecarry://user/<uuid> opens that golfer's profile.
+                    if let profileId = ProfileLink.userId(from: url) {
+                        DeepLinkRouter.shared.pendingProfileId = profileId
+                        return
+                    }
                     NFCManager.shared.handleNFCURL(url)
                 }
                 // 2. NSUserActivity: delivered directly to foreground app with zero UI

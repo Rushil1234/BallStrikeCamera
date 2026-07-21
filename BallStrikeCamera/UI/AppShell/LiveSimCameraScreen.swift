@@ -120,7 +120,7 @@ struct LiveSimCameraScreen: View {
                     defaultName: saveSheetDefaultName,
                     date: simVM.activeSession?.startedAt ?? Date()
                 ),
-                onSave: { name, desc, share in
+                onSave: { name, desc in
                     Task {
                         // Attach the web sim's real round result (course, score,
                         // holes) to the saved session automatically.
@@ -131,8 +131,7 @@ struct LiveSimCameraScreen: View {
                         await simVM.endSessionWithDetails(
                             name: name,
                             description: fullDesc.isEmpty ? nil : fullDesc,
-                            usedOGS: false,
-                            share: share
+                            usedOGS: false
                         )
                         dismiss()
                     }

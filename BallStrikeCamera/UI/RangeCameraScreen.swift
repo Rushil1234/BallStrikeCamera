@@ -168,9 +168,9 @@ struct RangeCameraScreen: View {
                     defaultName: saveSheetDefaultName,
                     date: rangeVM.activeSession?.startedAt ?? Date()
                 ),
-                onSave: { name, desc, share in
+                onSave: { name, desc in
                     isFinishing = true
-                    Task { await rangeVM.endSessionWithDetails(name: name, description: desc, share: share); publishWatchRangeState(); exitClean() }
+                    Task { await rangeVM.endSessionWithDetails(name: name, description: desc); publishWatchRangeState(); exitClean() }
                 },
                 onDelete: {
                     isFinishing = true

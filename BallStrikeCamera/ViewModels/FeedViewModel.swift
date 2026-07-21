@@ -11,7 +11,7 @@ final class FeedViewModel: ObservableObject {
     @Published var gimmedByMe: Set<UUID> = []
     @Published var commentCounts: [UUID: Int] = [:]
     @Published var notifications: [FeedNotification] = []
-    @Published var drafts: [FeedDraft] = []
+    @Published var pendingCompose: ComposePrefill?
     @Published var friendsCount = 0
     @Published var isLoading = false
     @Published var isLoadingMore = false
@@ -63,11 +63,13 @@ final class FeedViewModel: ObservableObject {
         notifications = (try? await backend.loadFeedNotifications()) ?? notifications
     }
 
-    // MARK: - Drafts (replaces auto-posting)
+    // MARK: - Auto-compose after a session (replaces drafts)
 
-    /// Recent finished activities you haven't posted or dismissed. They surface as
-    /// "Ready to share" drafts at the top of the feed — nothing posts automatically.
-    func loadDrafts() async {
+    /// After a session/round finishes, surface the newest un-offered finished
+    /// activity as a PREFILLED composer so the user reviews and posts. Nothing
+    /// posts automatically; skipping the composer marks it handled too.
+    func checkPendingCompose() async {
+        guard pendingCompose == nil else { return }   // never stack offers
         let cutoff = Date().addingTimeInterval(-14 * 24 * 3600)
         let name = ((try? await backend.loadUserProfile(userId: userId))?.displayName).flatMap { $0.isEmpty ? nil : $0 } ?? "Golfer"
         async let roundsT = try? await backend.loadCourseRounds(userId: userId)
@@ -77,41 +79,24 @@ final class FeedViewModel: ObservableObject {
         let ranges = (await rangeT ?? []).filter { ($0.endedAt ?? .distantPast) >= cutoff }
         let sims   = (await simT ?? []).filter { ($0.endedAt ?? .distantPast) >= cutoff }
 
-        var out: [FeedDraft] = []
-        for r in rounds where !FeedDraftStore.isHandled(r.id) {
-            if let post = FeedPostFactory.post(from: r, authorName: name) {
-                out.append(FeedDraft(id: r.id, kindLabel: "Round", post: post))
-            }
+        var candidates: [(when: Date, post: FeedPost, id: UUID)] = []
+        for r in rounds where !FeedComposeStore.isHandled(r.id) {
+            if let p = FeedPostFactory.post(from: r, authorName: name) { candidates.append((r.endedAt ?? .distantPast, p, r.id)) }
         }
-        for s in ranges where !FeedDraftStore.isHandled(s.id) {
-            if let post = FeedPostFactory.post(from: s, authorName: name) {
-                out.append(FeedDraft(id: s.id, kindLabel: "Range", post: post))
-            }
+        for s in ranges where !FeedComposeStore.isHandled(s.id) {
+            if let p = FeedPostFactory.post(from: s, authorName: name) { candidates.append((s.endedAt ?? .distantPast, p, s.id)) }
         }
-        for s in sims where !FeedDraftStore.isHandled(s.id) {
-            if let post = FeedPostFactory.post(from: s, authorName: name) {
-                out.append(FeedDraft(id: s.id, kindLabel: "Sim", post: post))
-            }
+        for s in sims where !FeedComposeStore.isHandled(s.id) {
+            if let p = FeedPostFactory.post(from: s, authorName: name) { candidates.append((s.endedAt ?? .distantPast, p, s.id)) }
         }
-        drafts = out.sorted { $0.post.timestamp > $1.post.timestamp }
+        guard let newest = candidates.max(by: { $0.when < $1.when }) else { return }
+        pendingCompose = ComposePrefill(id: newest.id, post: newest.post)
     }
 
-    /// Post a draft to the feed, then drop it from the drafts strip.
-    func shareDraft(_ draft: FeedDraft) async {
-        do {
-            try await backend.saveFeedPost(draft.post)
-            FeedDraftStore.markPosted(draft.id)
-            drafts.removeAll { $0.id == draft.id }
-            await load()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    /// Permanently hide a draft without posting.
-    func dismissDraft(_ draft: FeedDraft) {
-        FeedDraftStore.markDismissed(draft.id)
-        drafts.removeAll { $0.id == draft.id }
+    /// Mark a compose offer resolved (posted OR skipped) so it never re-pops.
+    func resolveCompose(_ id: UUID) {
+        FeedComposeStore.markHandled(id)
+        if pendingCompose?.id == id { pendingCompose = nil }
     }
 
     func loadMoreIfNeeded(currentPost post: FeedPost?) async {
@@ -179,8 +164,12 @@ final class FeedViewModel: ObservableObject {
         return nil
     }
 
+    /// When `basePost` is supplied (posting a prefilled session), its rich
+    /// activity metadata and linked ids are carried through so the feed card keeps
+    /// the full session breakdown — only the edited text/photo/visibility override.
     func createPost(title: String, body: String, type: FeedPostType, highlight: String, authorName: String,
-                    visibility: FeedVisibility = .everyone, photoData: Data? = nil, extraStats: [FeedStat] = []) async {
+                    visibility: FeedVisibility = .everyone, photoData: Data? = nil, extraStats: [FeedStat] = [],
+                    basePost: FeedPost? = nil) async {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanHighlight = highlight.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -202,6 +191,13 @@ final class FeedViewModel: ObservableObject {
         var stats = extraStats
         if !cleanHighlight.isEmpty { stats.append(FeedStat(label: "Highlight", value: cleanHighlight)) }
         let savedPhoto = photoData.flatMap { savePhoto($0) }
+        // Prefer the source session's rich metadata (course, fairways, carries…) so
+        // the posted card keeps the full breakdown; fall back to the coarse manual one.
+        let metadata = basePost?.activityMetadata ?? FeedActivityMetadata(
+            kind: type == .round ? .round : type == .session ? .range : .manual,
+            shotCount: type == .session ? firstInteger(in: cleanHighlight) : nil,
+            bestCarryYards: type == .shot ? firstInteger(in: cleanHighlight) : nil
+        )
         let post = FeedPost(
             userId: userId,
             authorName: authorName,
@@ -210,12 +206,11 @@ final class FeedViewModel: ObservableObject {
             subtitle: cleanBody,
             metricHighlight: cleanHighlight,
             stats: stats,
-            timestamp: Date(),
-            activityMetadata: FeedActivityMetadata(
-                kind: type == .round ? .round : type == .session ? .range : .manual,
-                shotCount: type == .session ? firstInteger(in: cleanHighlight) : nil,
-                bestCarryYards: type == .shot ? firstInteger(in: cleanHighlight) : nil
-            ),
+            timestamp: basePost?.timestamp ?? Date(),
+            linkedShotId: basePost?.linkedShotId,
+            linkedSessionId: basePost?.linkedSessionId,
+            linkedRoundId: basePost?.linkedRoundId,
+            activityMetadata: metadata,
             visibility: visibility,
             photoPath: savedPhoto
         )
@@ -440,33 +435,28 @@ final class FriendsViewModel: ObservableObject {
     }
 }
 
-// MARK: - Drafts model & store
+// MARK: - Auto-compose model & store
 
-/// A finished activity that's ready to share but hasn't been posted. Wraps the
-/// candidate FeedPost plus the source activity id (used to remember posted/dismissed).
-struct FeedDraft: Identifiable {
-    let id: UUID          // source round/session id
-    let kindLabel: String // "Round" / "Range" / "Sim"
+/// A finished activity offered as a PREFILLED composer. Wraps the candidate
+/// FeedPost plus the source activity id (used to remember it's been handled).
+struct ComposePrefill: Identifiable, Equatable {
+    let id: UUID       // source round/session id
     let post: FeedPost
+    static func == (l: ComposePrefill, r: ComposePrefill) -> Bool { l.id == r.id }
 }
 
-/// Remembers which activities have been posted or dismissed so their draft never
-/// reappears. Local (UserDefaults) — drafts are just prompts for recent activity.
-enum FeedDraftStore {
-    private static let postedKey = "tc_drafts_posted_ids"
-    private static let dismissedKey = "tc_drafts_dismissed_ids"
+/// Remembers which finished activities have already been offered in the composer
+/// (posted or skipped) so the prefilled composer never re-pops for them.
+/// Local (UserDefaults) — these are just one-time prompts for recent activity.
+enum FeedComposeStore {
+    private static let key = "tc_compose_handled_ids"
 
-    static func isHandled(_ id: UUID) -> Bool {
-        ids(postedKey).contains(id.uuidString) || ids(dismissedKey).contains(id.uuidString)
-    }
-    static func markPosted(_ id: UUID) { add(id, postedKey) }
-    static func markDismissed(_ id: UUID) { add(id, dismissedKey) }
-
-    private static func ids(_ key: String) -> Set<String> {
-        Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
-    }
-    private static func add(_ id: UUID, _ key: String) {
-        var s = ids(key); s.insert(id.uuidString)
+    static func isHandled(_ id: UUID) -> Bool { ids().contains(id.uuidString) }
+    static func markHandled(_ id: UUID) {
+        var s = ids(); s.insert(id.uuidString)
         UserDefaults.standard.set(Array(s), forKey: key)
+    }
+    private static func ids() -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
     }
 }

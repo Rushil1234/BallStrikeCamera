@@ -9,6 +9,9 @@ struct TrueCarryLockerView: View {
     @State private var showProfile  = false
     @State private var showLearn    = false
     @State private var showSaved    = false
+    @State private var showProfileShare = false
+    @State private var profileShareURL: URL?
+    @State private var sessionsCount = 0
     @State private var clubs: [UserClub]     = []
     @State private var shots: [SavedShot]    = []
     @State private var rounds: [CourseRound] = []
@@ -135,11 +138,32 @@ struct TrueCarryLockerView: View {
                 async let c = try? await session.backend.loadClubs(userId: uid)
                 async let s = try? await session.backend.loadShots(userId: uid)
                 async let r = try? await session.backend.loadCourseRounds(userId: uid)
+                async let rg = try? await session.backend.loadRangeSessions(userId: uid)
+                async let sm = try? await session.backend.loadSimSessions(userId: uid)
                 clubs  = await c ?? []
                 shots  = await s ?? []
                 rounds = await r ?? []
+                sessionsCount = (await rg?.count ?? 0) + (await sm?.count ?? 0)
             }
         }
+        .sheet(isPresented: $showProfileShare) {
+            if let url = profileShareURL {
+                ShareSheet(items: [url, ProfileLink.url(for: user?.id ?? UUID())])
+            }
+        }
+    }
+
+    /// Your profile as a shareable TrueCarry card (Strava/Beli-style).
+    private var profileShareData: ProfileShareData {
+        ProfileShareData(
+            userId: user?.id ?? UUID(),
+            name: displayName,
+            homeCourse: profile?.homeCourseName,
+            handicap: nil,
+            rounds: rounds.count,
+            sessions: sessionsCount,
+            bestCarry: Int(shots.map { $0.metrics.carryYards }.max() ?? 0)
+        )
     }
 
     // MARK: - Profile Card
@@ -177,6 +201,20 @@ struct TrueCarryLockerView: View {
                 }
 
                 Spacer(minLength: 0)
+
+                Button {
+                    if let url = renderProfileShareCard(data: profileShareData) {
+                        profileShareURL = url; showProfileShare = true
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(TCTheme.gold)
+                        .frame(width: 36, height: 36)
+                        .background(TCTheme.panelRaised)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
             }
 
             HStack(spacing: 8) {

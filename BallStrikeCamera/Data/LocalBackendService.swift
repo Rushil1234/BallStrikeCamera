@@ -196,6 +196,11 @@ final class LocalBackendService: AppBackend {
         return posts.sorted { $0.timestamp > $1.timestamp }
     }
 
+    func loadUserPosts(userId: UUID) async throws -> [FeedPost] {
+        let posts = (try? AppStorageManager.loadAll(FeedPost.self, from: AppStorageManager.feedDir(userId: userId))) ?? []
+        return posts.filter { $0.userId == userId }.sorted { $0.timestamp > $1.timestamp }
+    }
+
     // MARK: Feed social actions
 
     func loadGimmes() async throws -> [FeedReaction] {

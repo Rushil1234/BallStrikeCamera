@@ -19,6 +19,7 @@
 		71BDE2961DF322A70E1D92E0 /* AICoachService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C6C5E6DD59CAEE123C0421A /* AICoachService.swift */; };
 		861CD24432FFFA8F56FA5796 /* GhostMatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24B1EFA7E6F169CF6A620BF7 /* GhostMatch.swift */; };
 		A29AF9D940AB9F30006F388D /* FriendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */; };
+		67DCBC5909A87059C3130C69 /* ProfileShareCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583F38A663BFDB3529EFD4BC /* ProfileShareCard.swift */; };
 		5DA75E65C352114C4D8BB1E2 /* CourseSocial.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5911826B71CBB483B4934CED /* CourseSocial.swift */; };
 		4E08D88B9CD1B81C040147E8 /* FeedActivityDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B42A766A3705E745B6996C7 /* FeedActivityDetailView.swift */; };
 		C5957F5E5BCEA43A1A9098D0 /* PublicProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 117DF1DC2FA235F5D1A8907D /* PublicProfileView.swift */; };
@@ -493,6 +494,7 @@
 		E2F692C821D5A77DFB6A16BA /* TutorialOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TutorialOverlay.swift; path = BallStrikeCamera/UI/Learning/TutorialOverlay.swift; sourceTree = SOURCE_ROOT; };
 		E34F082867335403F869DD09 /* WatchConnectivityBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WatchConnectivityBridge.swift; sourceTree = "<group>"; };
 		E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FriendsView.swift; sourceTree = "<group>"; };
+		583F38A663BFDB3529EFD4BC /* ProfileShareCard.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ProfileShareCard.swift; sourceTree = "<group>"; };
 		5911826B71CBB483B4934CED /* CourseSocial.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CourseSocial.swift; sourceTree = "<group>"; };
 		7B42A766A3705E745B6996C7 /* FeedActivityDetailView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FeedActivityDetailView.swift; sourceTree = "<group>"; };
 		117DF1DC2FA235F5D1A8907D /* PublicProfileView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PublicProfileView.swift; sourceTree = "<group>"; };
@@ -832,6 +834,7 @@
 				BF0000010000000000000151 /* BallStrikeTheme.swift */,
 				BF0000010000000000000152 /* BallStrikeBackgroundView.swift */,
 				E38E9B9C0121A17EF7A5ACCD /* FriendsView.swift */,
+				583F38A663BFDB3529EFD4BC /* ProfileShareCard.swift */,
 				5911826B71CBB483B4934CED /* CourseSocial.swift */,
 				7B42A766A3705E745B6996C7 /* FeedActivityDetailView.swift */,
 				117DF1DC2FA235F5D1A8907D /* PublicProfileView.swift */,
@@ -1422,6 +1425,7 @@
 				BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */,
 				AA99CCFA875B0F87C1A65A88 /* FeedPostFactory.swift in Sources */,
 				A29AF9D940AB9F30006F388D /* FriendsView.swift in Sources */,
+				67DCBC5909A87059C3130C69 /* ProfileShareCard.swift in Sources */,
 				5DA75E65C352114C4D8BB1E2 /* CourseSocial.swift in Sources */,
 				4E08D88B9CD1B81C040147E8 /* FeedActivityDetailView.swift in Sources */,
 				C5957F5E5BCEA43A1A9098D0 /* PublicProfileView.swift in Sources */,

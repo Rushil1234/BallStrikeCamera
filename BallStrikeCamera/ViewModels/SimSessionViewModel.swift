@@ -154,8 +154,7 @@ final class SimSessionViewModel: ObservableObject {
     }
 
     func endSessionWithDetails(name: String, description: String?, usedOGS: Bool = false,
-                               provider: SimProvider? = nil,
-                               share: FeedVisibility? = nil) async {
+                               provider: SimProvider? = nil) async {
         guard var session = activeSession else { return }
         guard !session.shotIds.isEmpty else { await discardSession(); return }
         session.name = name
@@ -171,15 +170,6 @@ final class SimSessionViewModel: ObservableObject {
             try await backend.saveSimSession(session)
         } catch {
             errorMessage = error.localizedDescription
-        }
-        // Post to the feed only when the golfer chose an audience at save time.
-        if let share {
-            let author = ((try? await backend.loadUserProfile(userId: userId))?.displayName)
-                .flatMap { $0.isEmpty ? nil : $0 } ?? "Golfer"
-            if var post = FeedPostFactory.post(from: session, authorName: author) {
-                post.visibility = share
-                try? await backend.saveFeedPost(post)
-            }
         }
         activeSession = nil
         players = ["You"]

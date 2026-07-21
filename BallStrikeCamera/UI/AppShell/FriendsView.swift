@@ -3,8 +3,14 @@ import SwiftUI
 struct FriendsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var vm: FriendsViewModel
+    private let backend: AppBackend
+    private let currentUserId: UUID
+    @State private var profileTarget: ProfileTarget?
+    @State private var followState: [UUID: String] = [:]   // userId → "accepted"/"pending"
 
     init(userId: UUID, backend: AppBackend) {
+        self.backend = backend
+        self.currentUserId = userId
         _vm = StateObject(wrappedValue: FriendsViewModel(userId: userId, backend: backend))
     }
 
@@ -33,6 +39,35 @@ struct FriendsView: View {
         }
         .task { await vm.loadAll() }
         .overlay(alignment: .bottom) { statusToast }
+        .sheet(item: $profileTarget) { t in
+            NavigationStack {
+                PublicProfileView(userId: t.id, seedName: t.name, seedHomeCourse: t.homeCourse,
+                                  seedPosts: t.seedPosts, currentUserId: currentUserId, backend: backend)
+            }
+            .tcAppearance()
+        }
+    }
+
+    private func openProfile(_ profile: FriendProfile) {
+        profileTarget = ProfileTarget(id: profile.userId, name: profile.displayName,
+                                      homeCourse: profile.homeCourseName, seedPosts: [])
+    }
+
+    /// Follow / Following / Requested button for a discovery result (asymmetric follow).
+    @ViewBuilder private func followTrailing(_ profile: FriendProfile) -> some View {
+        switch followState[profile.userId] {
+        case "accepted":
+            Text("Following").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.sage)
+        case "pending":
+            Text("Requested").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.textMuted)
+        default:
+            actionButton("Follow", filled: true) {
+                Task {
+                    let s = (try? await backend.followUser(target: profile.userId)) ?? "accepted"
+                    followState[profile.userId] = s
+                }
+            }
+        }
     }
 
     // MARK: Search
@@ -56,13 +91,7 @@ struct FriendsView: View {
 
             ForEach(vm.results) { profile in
                 personRow(profile) {
-                    if vm.isFriend(profile) {
-                        Text("Friends").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.sage)
-                    } else if vm.sentRequestIds.contains(profile.userId) {
-                        Text("Requested").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.textMuted)
-                    } else {
-                        actionButton("Add", filled: true) { Task { await vm.sendRequest(to: profile) } }
-                    }
+                    followTrailing(profile)
                 }
             }
             if vm.query.count >= 2 && vm.results.isEmpty && !vm.isSearching {
@@ -200,17 +229,24 @@ struct FriendsView: View {
 
     private func personRow<Trailing: View>(_ profile: FriendProfile, @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: 12) {
-            AvatarCircle(name: profile.displayName, size: 40)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(profile.displayName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(TCTheme.textPrimary)
-                    .fitOneLine(0.6)
-                if let home = profile.homeCourseName, !home.isEmpty {
-                    Text(home).font(.system(size: 12)).foregroundColor(TCTheme.textMuted)
+            // Tap the avatar/name to open this golfer's profile.
+            Button { openProfile(profile) } label: {
+                HStack(spacing: 12) {
+                    AvatarCircle(name: profile.displayName, size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(profile.displayName)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .fitOneLine(0.6)
+                        if let home = profile.homeCourseName, !home.isEmpty {
+                            Text(home).font(.system(size: 12)).foregroundColor(TCTheme.textMuted)
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
+                .contentShape(Rectangle())
             }
-            Spacer()
+            .buttonStyle(.plain)
             trailing()
         }
         .tcCard(padding: 12)

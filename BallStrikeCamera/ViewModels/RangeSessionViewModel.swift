@@ -133,8 +133,7 @@ final class RangeSessionViewModel: ObservableObject {
         activeSession = nil
     }
 
-    func endSessionWithDetails(name: String, description: String?,
-                               share: FeedVisibility? = nil) async {
+    func endSessionWithDetails(name: String, description: String?) async {
         guard var session = activeSession else { return }
         guard !session.shotIds.isEmpty else { await discardSession(); return }
         session.name = name
@@ -145,15 +144,6 @@ final class RangeSessionViewModel: ObservableObject {
             try await backend.saveRangeSession(session)
         } catch {
             errorMessage = error.localizedDescription
-        }
-        // Post to the feed only when the golfer chose an audience at save time.
-        if let share {
-            let author = ((try? await backend.loadUserProfile(userId: userId))?.displayName)
-                .flatMap { $0.isEmpty ? nil : $0 } ?? "Golfer"
-            if var post = FeedPostFactory.post(from: session, authorName: author) {
-                post.visibility = share
-                try? await backend.saveFeedPost(post)
-            }
         }
         activeSession = nil
     }
