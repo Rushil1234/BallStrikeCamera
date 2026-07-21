@@ -4,10 +4,13 @@ struct FriendsView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var vm: FriendsViewModel
     private let backend: AppBackend
+    private let currentUserId: UUID
     @State private var profileTarget: ProfileTarget?
+    @State private var followState: [UUID: String] = [:]   // userId → "accepted"/"pending"
 
     init(userId: UUID, backend: AppBackend) {
         self.backend = backend
+        self.currentUserId = userId
         _vm = StateObject(wrappedValue: FriendsViewModel(userId: userId, backend: backend))
     }
 
@@ -39,7 +42,7 @@ struct FriendsView: View {
         .sheet(item: $profileTarget) { t in
             NavigationStack {
                 PublicProfileView(userId: t.id, seedName: t.name, seedHomeCourse: t.homeCourse,
-                                  seedPosts: t.seedPosts, backend: backend)
+                                  seedPosts: t.seedPosts, currentUserId: currentUserId, backend: backend)
             }
             .tcAppearance()
         }
@@ -48,6 +51,23 @@ struct FriendsView: View {
     private func openProfile(_ profile: FriendProfile) {
         profileTarget = ProfileTarget(id: profile.userId, name: profile.displayName,
                                       homeCourse: profile.homeCourseName, seedPosts: [])
+    }
+
+    /// Follow / Following / Requested button for a discovery result (asymmetric follow).
+    @ViewBuilder private func followTrailing(_ profile: FriendProfile) -> some View {
+        switch followState[profile.userId] {
+        case "accepted":
+            Text("Following").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.sage)
+        case "pending":
+            Text("Requested").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.textMuted)
+        default:
+            actionButton("Follow", filled: true) {
+                Task {
+                    let s = (try? await backend.followUser(target: profile.userId)) ?? "accepted"
+                    followState[profile.userId] = s
+                }
+            }
+        }
     }
 
     // MARK: Search
@@ -71,13 +91,7 @@ struct FriendsView: View {
 
             ForEach(vm.results) { profile in
                 personRow(profile) {
-                    if vm.isFriend(profile) {
-                        Text("Friends").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.sage)
-                    } else if vm.sentRequestIds.contains(profile.userId) {
-                        Text("Requested").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.textMuted)
-                    } else {
-                        actionButton("Add", filled: true) { Task { await vm.sendRequest(to: profile) } }
-                    }
+                    followTrailing(profile)
                 }
             }
             if vm.query.count >= 2 && vm.results.isEmpty && !vm.isSearching {

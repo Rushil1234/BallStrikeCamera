@@ -722,6 +722,35 @@ final class SupabaseBackendService: AppBackend {
         return rows.compactMap { $0.toFeedPost() }.sorted { $0.timestamp > $1.timestamp }
     }
 
+    // MARK: - Follow graph + privacy
+
+    func followUser(target: UUID) async throws -> String {
+        struct StatusRow: Decodable { let status: String }
+        let rows: [StatusRow] = try await rpc("follow_user", body: ["target": target.uuidString])
+        return rows.first?.status ?? "accepted"
+    }
+
+    func unfollowUser(target: UUID) async throws {
+        try await rpcVoid("unfollow_user", body: ["target": target.uuidString])
+    }
+
+    func profileSocial(target: UUID) async throws -> ProfileSocial {
+        let rows: [ProfileSocial] = try await rpc("profile_social", body: ["target": target.uuidString])
+        return rows.first ?? .empty
+    }
+
+    func setProfilePrivacy(_ isPrivate: Bool) async throws {
+        try await rpcVoid("set_profile_privacy", body: ["is_priv": isPrivate])
+    }
+
+    func loadIncomingFollowRequests() async throws -> [IncomingFollowRequest] {
+        try await rpc("incoming_follow_requests", body: [:])
+    }
+
+    func respondFollowRequest(follower: UUID, accept: Bool) async throws {
+        try await rpcVoid("respond_follow_request", body: ["follower": follower.uuidString, "accept": accept])
+    }
+
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage {
         var queryItems = [
             URLQueryItem(name: "order", value: "timestamp.desc"),

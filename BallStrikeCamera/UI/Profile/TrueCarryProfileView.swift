@@ -16,6 +16,7 @@ enum ProfileRoute: Identifiable {
 struct TrueCarryProfileView: View {
     @EnvironmentObject var session: AuthSessionStore
     @State private var route: ProfileRoute?
+    @State private var isPrivateAccount = false
     @AppStorage(AppearanceStore.key) private var appearanceRaw = AppAppearance.dark.rawValue
     @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
     @AppStorage(FrameArchiveService.enabledKey) private var saveAllFrames = false
@@ -207,8 +208,45 @@ struct TrueCarryProfileView: View {
                 genderRow
                 rowDivider
                 defaultVisibilityRow
+                rowDivider
+                privateAccountRow
             }
             .tcCard()
+        }
+    }
+
+    private var privateAccountRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: isPrivateAccount ? "lock.fill" : "lock.open")
+                .font(.system(size: 14))
+                .foregroundColor(TCTheme.textMuted)
+                .frame(width: 24, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Private account")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(TCTheme.textPrimary)
+                Text("Only approved followers can see your activity")
+                    .font(.system(size: 11))
+                    .foregroundColor(TCTheme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { isPrivateAccount },
+                set: { newVal in
+                    isPrivateAccount = newVal
+                    Task { try? await session.backend.setProfilePrivacy(newVal) }
+                }
+            ))
+            .labelsHidden()
+            .tint(TCTheme.gold)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .task {
+            if let uid = user?.id {
+                isPrivateAccount = (try? await session.backend.profileSocial(target: uid))?.isPrivate ?? false
+            }
         }
     }
 

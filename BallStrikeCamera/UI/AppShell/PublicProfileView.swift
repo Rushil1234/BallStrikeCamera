@@ -10,15 +10,21 @@ struct PublicProfileView: View {
     var seedName: String
     var seedHomeCourse: String? = nil
     var seedPosts: [FeedPost] = []
+    var currentUserId: UUID? = nil
     let backend: AppBackend
 
     @Environment(\.dismiss) private var dismiss
     @State private var posts: [FeedPost] = []
     @State private var profile: UserProfile?
+    @State private var social: ProfileSocial = .empty
     @State private var loaded = false
+    @State private var busyFollow = false
     @State private var showAllActivities = false
     @State private var shareURL: URL?
     @State private var showShare = false
+
+    private var isSelf: Bool { currentUserId != nil && currentUserId == userId }
+    private var canViewActivity: Bool { isSelf || social.canView }
 
     // MARK: Derived
 
@@ -55,8 +61,14 @@ struct PublicProfileView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 18) {
                     hero
-                    statStrip
-                    activitySection
+                    followRow
+                    if canViewActivity {
+                        statStrip
+                        achievements
+                        activitySection
+                    } else {
+                        privateNotice
+                    }
                     Spacer(minLength: 40)
                 }
                 .padding(.horizontal, TCTheme.hPad)
@@ -109,6 +121,7 @@ struct PublicProfileView: View {
                 .foregroundColor(TCTheme.textMuted)
                 .padding(.top, 6)
             }
+            if !isSelf { followButton.padding(.top, 14) }
             Spacer().frame(height: 20)
         }
         .frame(maxWidth: .infinity)
@@ -211,11 +224,119 @@ struct PublicProfileView: View {
         }
     }
 
+    // MARK: Follow
+
+    private var followButton: some View {
+        Button { Task { await toggleFollow() } } label: {
+            HStack(spacing: 6) {
+                Image(systemName: followIcon).font(.system(size: 12, weight: .bold))
+                Text(followLabel).font(.system(size: 14, weight: .bold))
+            }
+            .foregroundColor(social.isFollowing || social.isPending ? TCTheme.textPrimary : TCTheme.onPrimary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(social.isFollowing || social.isPending ? TCTheme.panelRaised : TCTheme.gold)
+            .clipShape(Capsule())
+            .overlay(Capsule().strokeBorder(TCTheme.gold.opacity(social.isFollowing || social.isPending ? 0.5 : 0), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(busyFollow)
+        .padding(.horizontal, 40)
+    }
+
+    private var followLabel: String {
+        if social.isFollowing { return "Following" }
+        if social.isPending { return "Requested" }
+        return social.isPrivate ? "Request" : "Follow"
+    }
+    private var followIcon: String {
+        if social.isFollowing { return "checkmark" }
+        if social.isPending { return "clock" }
+        return "plus"
+    }
+
+    private func toggleFollow() async {
+        busyFollow = true; defer { busyFollow = false }
+        if social.isFollowing || social.isPending {
+            try? await backend.unfollowUser(target: userId)
+        } else {
+            _ = try? await backend.followUser(target: userId)
+        }
+        social = (try? await backend.profileSocial(target: userId)) ?? social
+    }
+
+    private var followRow: some View {
+        HStack(spacing: 0) {
+            countTile("\(social.followerCount)", "Followers")
+            Rectangle().fill(TCTheme.border).frame(width: 1, height: 30)
+            countTile("\(social.followingCount)", "Following")
+        }
+        .padding(.vertical, 14)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+    }
+
+    private func countTile(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 3) {
+            Text(value).font(.system(size: 20, weight: .bold, design: .rounded)).foregroundColor(TCTheme.textPrimary)
+            Text(label.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(0.6).foregroundColor(TCTheme.textMuted)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Achievements (milestone badges, derived from activity)
+
+    private var earnedMilestones: [Int] { [10, 25, 50, 100].filter { activities.count >= $0 } }
+
+    @ViewBuilder private var achievements: some View {
+        if !earnedMilestones.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Achievements")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(TCTheme.textPrimary)
+                HStack(spacing: 12) {
+                    ForEach(earnedMilestones, id: \.self) { m in
+                        VStack(spacing: 6) {
+                            ZStack {
+                                Image(systemName: "hexagon.fill").font(.system(size: 46)).foregroundColor(TCTheme.gold.opacity(0.18))
+                                Image(systemName: "hexagon").font(.system(size: 46)).foregroundColor(TCTheme.gold.opacity(0.6))
+                                Text("\(m)").font(.system(size: 15, weight: .black, design: .rounded)).foregroundColor(TCTheme.gold)
+                            }
+                            Text("\(m) posts").font(.system(size: 9, weight: .semibold)).foregroundColor(TCTheme.textMuted)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .padding(16)
+            .background(TCTheme.panel)
+            .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+        }
+    }
+
+    private var privateNotice: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "lock.fill").font(.system(size: 28)).foregroundColor(TCTheme.textUltraMuted)
+            Text("This account is private")
+                .font(.system(size: 16, weight: .semibold)).foregroundColor(TCTheme.textPrimary)
+            Text(social.isPending ? "Your follow request is pending approval."
+                                  : "Follow \(name) to see their activity.")
+                .font(.system(size: 13)).foregroundColor(TCTheme.textMuted)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
+    }
+
     private func load() async {
         async let p = try? await backend.loadUserPosts(userId: userId)
         async let pr = try? await backend.loadUserProfile(userId: userId)
+        async let so = try? await backend.profileSocial(target: userId)
         posts = (await p ?? []).filter { $0.userId == userId }
         profile = await pr ?? nil
+        social = await so ?? .empty
         loaded = true
     }
 }

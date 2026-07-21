@@ -54,7 +54,7 @@ struct LeaderboardView: View {
         .sheet(item: $profileTarget) { t in
             NavigationStack {
                 PublicProfileView(userId: t.id, seedName: t.name, seedHomeCourse: t.homeCourse,
-                                  seedPosts: t.seedPosts, backend: backend)
+                                  seedPosts: t.seedPosts, currentUserId: userId, backend: backend)
             }
             .tcAppearance()
         }

@@ -284,6 +284,7 @@ struct FeedView: View {
                     seedName: t.name,
                     seedHomeCourse: t.homeCourse,
                     seedPosts: t.seedPosts,
+                    currentUserId: userId,
                     backend: backend
                 )
             }

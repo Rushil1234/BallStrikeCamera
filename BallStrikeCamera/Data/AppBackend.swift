@@ -66,6 +66,18 @@ protocol AppBackend {
     /// Posts authored by one specific user, visible to the caller (RLS-scoped) —
     /// powers a person's profile activity list.
     func loadUserPosts(userId: UUID) async throws -> [FeedPost]
+
+    // MARK: Follow graph + profile privacy
+    /// Follow a golfer. Returns the resulting status: "accepted" (public account) or
+    /// "pending" (private account — awaiting their approval).
+    func followUser(target: UUID) async throws -> String
+    func unfollowUser(target: UUID) async throws
+    /// Follower/following counts + the caller's follow status + privacy/visibility for a profile.
+    func profileSocial(target: UUID) async throws -> ProfileSocial
+    func setProfilePrivacy(_ isPrivate: Bool) async throws
+    func loadIncomingFollowRequests() async throws -> [IncomingFollowRequest]
+    func respondFollowRequest(follower: UUID, accept: Bool) async throws
+
     func loadHomeSummary(userId: UUID) async throws -> FeedHomeSummary
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage
     func loadEngagement(postIds: [UUID], userId: UUID) async throws -> FeedEngagementSummary
@@ -173,6 +185,14 @@ extension AppBackend {
     func loadCourseBookmarks(userId: UUID) async throws -> [CourseBookmark] { [] }
     func respondToAttestation(id: UUID, accept: Bool) async throws {}
     func requestRoundAttestationLink(round: CourseRound, requesterId: UUID, requesterName: String) async throws -> String { "" }
+
+    // Default: no follow graph on the local backend.
+    func followUser(target: UUID) async throws -> String { "accepted" }
+    func unfollowUser(target: UUID) async throws {}
+    func profileSocial(target: UUID) async throws -> ProfileSocial { .empty }
+    func setProfilePrivacy(_ isPrivate: Bool) async throws {}
+    func loadIncomingFollowRequests() async throws -> [IncomingFollowRequest] { [] }
+    func respondFollowRequest(follower: UUID, accept: Bool) async throws {}
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)
