@@ -275,6 +275,25 @@ final class CameraController: NSObject, ObservableObject {
             // check in logFrameTiming can't fire against a stale value mid-converge.
             self._lockedExposureOffsetEV = .nan
 
+            // AUTO (dark-room fallback): hand exposure to the camera and leave it there — no
+            // custom underexposed lock. Continuous AE keeps adjusting, so the drift-relock stays
+            // suspended (baseline parked at .nan above). Frames may be blurry; this is a
+            // "does the ball even show up when we stop darkening it?" escape hatch.
+            if !preset.isCustomLock {
+                do {
+                    try device.lockForConfiguration()
+                    if device.isExposureModeSupported(.continuousAutoExposure) {
+                        device.exposureMode = .continuousAutoExposure
+                    }
+                    device.unlockForConfiguration()
+                    print("BallDetector exposure: AUTO mode — native continuous AE, no custom lock (dark-room fallback)")
+                } catch {
+                    print("BallDetector exposure: could not enable AUTO exposure: \(error.localizedDescription)")
+                }
+                Task { @MainActor in self.statusText = "Exposure: Auto (dark room)" }
+                return
+            }
+
             // Re-measure the scene before freezing exposure. Locking straight onto
             // device.iso (the old behavior) captures whatever transient ISO the sensor
             // last had — often a stale/arbitrary value from right after session start
@@ -778,7 +797,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     let minISO = Double(device.activeFormat.minISO)
                     let maxISO = Double(device.activeFormat.maxISO)
                     var fitness: [ShutterPreset: ShutterFitness] = [:]
-                    for preset in ShutterPreset.allCases {
+                    for preset in ShutterPreset.allCases where preset.isCustomLock {
                         let needed = hCorrect * Double(preset.denominator)
                         let target = needed / 4.0    // the -2EV operating point
                         if needed < minISO { fitness[preset] = .tooBright }

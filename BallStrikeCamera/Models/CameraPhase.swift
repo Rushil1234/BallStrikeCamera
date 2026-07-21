@@ -24,6 +24,12 @@ enum ShutterPreset: CaseIterable, Identifiable {
     case twoThousand
     case fourThousand
     case eightThousand
+    /// Dark-room escape hatch (July 20): hand the whole exposure back to the camera's native
+    /// continuous auto-exposure and DON'T lock a deliberately-underexposed custom value. In a very
+    /// dim room the shutter-first −2EV lock leaves the ball too dark to detect at any preset; this
+    /// lets iOS brighten the scene however it wants. Frames may be blurry (AE will pick a slow
+    /// shutter), so tracking accuracy is not guaranteed — it's a "does it even capture?" fallback.
+    case auto
 
     var id: String { label }
 
@@ -33,6 +39,7 @@ enum ShutterPreset: CaseIterable, Identifiable {
         case .twoThousand: return "1/2000"
         case .fourThousand: return "1/4000"
         case .eightThousand: return "1/8000"
+        case .auto: return "Auto"
         }
     }
 
@@ -42,6 +49,7 @@ enum ShutterPreset: CaseIterable, Identifiable {
         case .twoThousand:   return "sun.min.fill"     // sun, small rays
         case .fourThousand:  return "sun.max.fill"     // sun, medium rays
         case .eightThousand: return "sun.max.fill"     // sun, large rays (rendered bigger)
+        case .auto:          return "a.circle.fill"    // camera decides (dark-room fallback)
         }
     }
 
@@ -52,17 +60,24 @@ enum ShutterPreset: CaseIterable, Identifiable {
         case .twoThousand:   return 15
         case .fourThousand:  return 18
         case .eightThousand: return 22
+        case .auto:          return 18
         }
     }
 
+    /// Shutter denominator for the custom lock. `.auto` never locks a custom shutter (it hands
+    /// exposure to the camera), so this is an unused placeholder for it.
     var denominator: Int32 {
         switch self {
         case .oneThousand: return 1_000
         case .twoThousand: return 2_000
         case .fourThousand: return 4_000
         case .eightThousand: return 8_000
+        case .auto:        return 1_000
         }
     }
+
+    /// True for the fixed shutter-first presets that lock a custom exposure; false for `.auto`.
+    var isCustomLock: Bool { self != .auto }
 }
 
 struct CapturedFrame: Identifiable {
