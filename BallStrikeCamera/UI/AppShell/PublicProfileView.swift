@@ -11,11 +11,18 @@ struct PublicProfileView: View {
     let posts: [FeedPost]
 
     @Environment(\.dismiss) private var dismiss
+    @State private var shareURL: URL?
+    @State private var showShare = false
 
     private var rounds: Int { posts.filter { $0.type == .round }.count }
     private var sessions: Int { posts.filter { $0.type == .session }.count }
     private var bestCarry: Int {
         posts.compactMap { $0.activityMetadata?.bestCarryYards }.max() ?? 0
+    }
+
+    private var shareData: ProfileShareData {
+        ProfileShareData(userId: userId, name: displayName, homeCourse: homeCourse,
+                         handicap: nil, rounds: rounds, sessions: sessions, bestCarry: bestCarry)
     }
 
     var body: some View {
@@ -33,11 +40,24 @@ struct PublicProfileView: View {
             }
         }
         .navigationBarHidden(true)
+        .sheet(isPresented: $showShare) {
+            if let url = shareURL { ShareSheet(items: [url]) }
+        }
     }
 
     private var header: some View {
         VStack(spacing: 12) {
             HStack {
+                Button {
+                    if let url = renderProfileShareCard(data: shareData) { shareURL = url; showShare = true }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(TCTheme.textMuted)
+                        .frame(width: 32, height: 32)
+                        .background(TCTheme.panel)
+                        .clipShape(Circle())
+                }
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")

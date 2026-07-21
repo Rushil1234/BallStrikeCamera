@@ -74,6 +74,17 @@ struct FeedView: View {
         vm.notifications.filter { $0.createdAt.timeIntervalSince1970 > notifsLastSeenTs }.count
     }
 
+    /// Drives the prefilled composer sheet. Dismissing it (post or cancel) sets the
+    /// binding to nil, which we treat as "handled" so the same session won't re-pop.
+    private var pendingComposeBinding: Binding<ComposePrefill?> {
+        Binding(
+            get: { vm.pendingCompose },
+            set: { newValue in
+                if newValue == nil, let id = vm.pendingCompose?.id { vm.resolveCompose(id) }
+            }
+        )
+    }
+
     private var userInitials: String {
         let parts = authorName.components(separatedBy: " ")
         if parts.count >= 2, let f = parts[0].first, let l = parts[1].first { return "\(f)\(l)" }
@@ -139,10 +150,6 @@ struct FeedView: View {
                     }
                     activityHero
                     sectionGap
-                    if !vm.drafts.isEmpty {
-                        draftsSection
-                        sectionGap
-                    }
                     homeSummarySection
                     sectionGap
                     if !savedCourses.isEmpty {
@@ -210,20 +217,32 @@ struct FeedView: View {
             }
             if let hs = session.cachedHomeSummary { vm.homeSummary = hs }
             await vm.load()
-            await vm.loadDrafts()
             let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
             unfinishedRound = all.first(where: { $0.endedAt == nil })
             savedCourses = (try? await backend.loadCourseBookmarks(userId: userId)) ?? []
+            await vm.checkPendingCompose()
         }
-        // Deletions + finishing a round must recompute the feed, drafts, and
-        // "Your Week" summary immediately.
+        // Deletions + finishing a round must recompute the feed and "Your Week"
+        // summary immediately, and offer the just-finished session in the composer.
         .onReceive(NotificationCenter.default.publisher(for: .tcDataChanged)) { _ in
             Task {
                 await vm.load()
-                await vm.loadDrafts()
                 let all = (try? await backend.loadCourseRounds(userId: userId)) ?? []
                 unfinishedRound = all.first(where: { $0.endedAt == nil })
                 savedCourses = (try? await backend.loadCourseBookmarks(userId: userId)) ?? []
+                await vm.checkPendingCompose()
+            }
+        }
+        // A shared post link (truecarry://post/<id>) opens that post's detail. Published
+        // value re-emits on subscribe, so this fires even if the link beat this view.
+        .onReceive(DeepLinkRouter.shared.$pendingPostId) { id in
+            guard let id else { return }
+            Task {
+                if vm.posts.first(where: { $0.id == id }) == nil { await vm.load() }
+                if let post = vm.posts.first(where: { $0.id == id }) {
+                    detailPost = post
+                    DeepLinkRouter.shared.pendingPostId = nil
+                }
             }
         }
         .sheet(isPresented: $showSavedCourses, onDismiss: {
@@ -309,16 +328,25 @@ struct FeedView: View {
         }
         .sheet(isPresented: $showComposer, onDismiss: { Task { await vm.load() } }) {
             NavigationStack {
-                FeedComposeSheet(authorName: authorName) { title, body, type, highlight, visibility, photoData, extraStats in
+                FeedComposeSheet(authorName: authorName) { title, body, type, highlight, visibility, photoData, extraStats, basePost in
                     await vm.createPost(
-                        title: title,
-                        body: body,
-                        type: type,
-                        highlight: highlight,
-                        authorName: authorName,
-                        visibility: visibility,
-                        photoData: photoData,
-                        extraStats: extraStats
+                        title: title, body: body, type: type, highlight: highlight,
+                        authorName: authorName, visibility: visibility,
+                        photoData: photoData, extraStats: extraStats, basePost: basePost
+                    )
+                }
+            }
+            .tcAppearance()
+        }
+        // Prefilled composer — pops up after a finished session (replaces drafts).
+        // Dismissing it (post OR cancel) marks that session handled so it won't re-pop.
+        .sheet(item: pendingComposeBinding) { prefill in
+            NavigationStack {
+                FeedComposeSheet(authorName: authorName, prefill: prefill.post) { title, body, type, highlight, visibility, photoData, extraStats, basePost in
+                    await vm.createPost(
+                        title: title, body: body, type: type, highlight: highlight,
+                        authorName: authorName, visibility: visibility,
+                        photoData: photoData, extraStats: extraStats, basePost: basePost
                     )
                 }
             }
@@ -427,33 +455,6 @@ struct FeedView: View {
                         LeaderboardPreviewRow(rank: index + 1, entry: entry)
                     }
                 }
-            }
-        }
-        .padding(.horizontal, TCTheme.hPad)
-        .padding(.vertical, 18)
-        .background(TCTheme.background)
-    }
-
-    private var draftsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Ready to share")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(TCTheme.textPrimary)
-                Spacer()
-                Text("\(vm.drafts.count) draft\(vm.drafts.count == 1 ? "" : "s")")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(TCTheme.gold)
-            }
-            Text("From your recent play — nothing posts until you say so.")
-                .font(.system(size: 12))
-                .foregroundColor(TCTheme.textMuted)
-            ForEach(vm.drafts) { draft in
-                DraftRow(
-                    draft: draft,
-                    onShare: { Task { await vm.shareDraft(draft) } },
-                    onDismiss: { vm.dismissDraft(draft) }
-                )
             }
         }
         .padding(.horizontal, TCTheme.hPad)
@@ -680,88 +681,6 @@ private struct QuickStartTile: View {
     }
 }
 
-private struct DraftRow: View {
-    let draft: FeedDraft
-    let onShare: () -> Void
-    let onDismiss: () -> Void
-    @State private var sharing = false
-
-    /// Glyph for the activity kind — anchors the card visually.
-    private var kindIcon: String {
-        switch draft.post.activityMetadata?.kind {
-        case .round:  return "flag.fill"
-        case .range:  return "scope"
-        case .sim:    return "tv.fill"
-        case .manual, .none:
-            return draft.post.type == .round ? "flag.fill" : "figure.golf"
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().fill(TCTheme.gold.opacity(0.14))
-                    Image(systemName: kindIcon)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(TCTheme.gold)
-                }
-                .frame(width: 40, height: 40)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(draft.kindLabel.uppercased())
-                        .font(.system(size: 9, weight: .bold))
-                        .tracking(1.0)
-                        .foregroundColor(TCTheme.gold)
-                    Text(draft.post.title)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(TCTheme.textPrimary)
-                        .lineLimit(1)
-                    Text(draft.post.subtitle)
-                        .font(.system(size: 12))
-                        .foregroundColor(TCTheme.textMuted)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                Text(draft.post.metricHighlight)
-                    .font(.system(size: 18, weight: .bold, design: .monospaced))
-                    .foregroundColor(TCTheme.gold)
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-            HStack(spacing: 10) {
-                Button(action: { sharing = true; onShare() }) {
-                    Text(sharing ? "Sharing…" : "Share")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(TCTheme.onPrimary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(TCTheme.goldGradient)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .disabled(sharing)
-                Button(action: onDismiss) {
-                    Text("Not now")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(TCTheme.textMuted)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 9)
-                        .background(TCTheme.panel)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(12)
-        .background(TCTheme.panel)
-        .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous)
-                .strokeBorder(TCTheme.gold.opacity(0.35), lineWidth: 1)
-        )
-    }
-}
-
 private struct LeaderboardPreviewRow: View {
     let rank: Int
     let entry: FeedLeaderboardEntry
@@ -954,6 +873,87 @@ private struct FeedActivitySummary: View {
     }
 }
 
+/// The full session breakdown shown inline when a feed card is expanded — every
+/// available stat (not just the overview averages), plus a link to the scorecard.
+private struct FeedActivityFullStats: View {
+    let metadata: FeedActivityMetadata
+    let fallbackStats: [FeedStat]
+    let isRound: Bool
+    var onOpenDetail: (() -> Void)? = nil
+
+    /// Every non-empty stat derived from the metadata for this activity kind.
+    private var rows: [(String, String)] {
+        func t(_ v: Int?) -> String? { v.map { "\($0)" } }
+        switch metadata.kind {
+        case .round:
+            return [
+                ("To Par", metadata.scoreToPar.map { $0 == 0 ? "E" : ($0 > 0 ? "+\($0)" : "\($0)") }),
+                ("Score", t(metadata.totalScore)),
+                ("Fairways", t(metadata.fairwaysHit)),
+                ("GIR", t(metadata.greensInRegulation)),
+                ("Putts", t(metadata.putts)),
+                ("Course", metadata.courseName?.components(separatedBy: " ~ ").first),
+            ].compactMap { label, value in value.map { (label, $0) } }
+        case .range:
+            return [
+                ("Shots", t(metadata.shotCount)),
+                ("Avg Carry", metadata.averageCarryYards.map { "\($0) yd" }),
+                ("Best Carry", metadata.bestCarryYards.map { "\($0) yd" }),
+                ("Best Total", metadata.bestTotalYards.map { "\($0) yd" }),
+                ("Ball Speed", metadata.averageBallSpeedMph.map { "\($0) mph" }),
+                ("Club", metadata.clubName),
+            ].compactMap { label, value in value.map { (label, $0) } }
+        case .sim:
+            return [
+                ("Shots", t(metadata.shotCount)),
+                ("Best Carry", metadata.bestCarryYards.map { "\($0) yd" }),
+                ("Source", metadata.providerName ?? "Simulator"),
+            ].compactMap { label, value in value.map { (label, $0) } }
+        case .manual:
+            return fallbackStats.map { ($0.label, $0.value) }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 14) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                    VStack(spacing: 4) {
+                        Text(r.1)
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                        Text(r.0.uppercased())
+                            .font(.system(size: 9, weight: .semibold))
+                            .tracking(0.6)
+                            .foregroundColor(TCTheme.textMuted)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            if isRound, let onOpenDetail {
+                Button(action: onOpenDetail) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "list.number").font(.system(size: 12, weight: .semibold))
+                        Text("View hole-by-hole scorecard").font(.system(size: 13, weight: .semibold))
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundColor(TCTheme.gold)
+                    .padding(.vertical, 10).padding(.horizontal, 12)
+                    .background(TCTheme.gold.opacity(0.10))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
+    }
+}
+
 private struct FeedStatColumns: View {
     let stats: [FeedStat]
 
@@ -978,6 +978,22 @@ private struct FeedStatColumns: View {
     }
 }
 
+// MARK: - Post deep link
+
+/// A shareable link that opens a specific feed post in the app
+/// (`truecarry://post/<uuid>`). Handled in BallStrikeCameraApp.onOpenURL →
+/// DeepLinkRouter → the feed opens that post's detail.
+enum PostLink {
+    static func url(for id: UUID) -> URL {
+        URL(string: "truecarry://post/\(id.uuidString)")!
+    }
+    /// Parses a post id out of a truecarry://post/<uuid> URL, if it is one.
+    static func postId(from url: URL) -> UUID? {
+        guard url.scheme == "truecarry", url.host == "post" else { return nil }
+        return UUID(uuidString: url.lastPathComponent)
+    }
+}
+
 // MARK: - Feed Post Card (Strava-style, full-bleed)
 
 private struct FeedPostRow: View {
@@ -996,6 +1012,7 @@ private struct FeedPostRow: View {
     @State private var loadedPhoto: Image?
     @State private var shareURL: URL?
     @State private var showShareSheet = false
+    @State private var expanded = false
 
     /// Decodes the post photo downsampled to roughly its on-screen size (`ImageIO` thumbnailing
     /// never allocates the full-resolution bitmap). The old computed-property version called
@@ -1089,6 +1106,26 @@ private struct FeedPostRow: View {
             .buttonStyle(.plain)
             .disabled(onOpenDetail == nil)
 
+            // Overview shows averages; expand reveals the full session breakdown inline.
+            if let metadata = post.activityMetadata {
+                Button { withAnimation(.easeInOut(duration: 0.2)) { expanded.toggle() } } label: {
+                    HStack(spacing: 6) {
+                        Text(expanded ? "Hide full details" : "Expand full details")
+                            .font(.system(size: 12, weight: .semibold))
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundColor(TCTheme.gold)
+                }
+                .buttonStyle(.plain)
+                if expanded {
+                    FeedActivityFullStats(metadata: metadata,
+                                          fallbackStats: post.stats,
+                                          isRound: post.type == .round,
+                                          onOpenDetail: onOpenDetail)
+                }
+            }
+
             if post.activityMetadata == nil, post.stats.isEmpty, !post.subtitle.isEmpty {
                 Text(post.subtitle)
                     .font(.system(size: 14))
@@ -1163,7 +1200,8 @@ private struct FeedPostRow: View {
         .background(TCTheme.background)
         .sheet(isPresented: $showShareSheet) {
             if let url = shareURL {
-                ShareSheet(items: [url])
+                // Share the branded card image AND a link that opens this exact post.
+                ShareSheet(items: [url, PostLink.url(for: post.id)])
             }
         }
         .task(id: post.photoPath) {
@@ -1209,7 +1247,10 @@ private struct FeedPostRow: View {
 private struct FeedComposeSheet: View {
     @Environment(\.dismiss) private var dismiss
     let authorName: String
-    let onPost: (String, String, FeedPostType, String, FeedVisibility, Data?, [FeedStat]) async -> Void
+    /// The source session when this composer was prefilled — carried back through
+    /// onPost so the posted card keeps the full session metadata. nil for a blank post.
+    private let prefillPost: FeedPost?
+    let onPost: (String, String, FeedPostType, String, FeedVisibility, Data?, [FeedStat], FeedPost?) async -> Void
 
     @State private var title = ""
     @State private var bodyText = ""
@@ -1222,6 +1263,21 @@ private struct FeedComposeSheet: View {
     @State private var statLabel = ""
     @State private var statValue = ""
     @State private var isPosting = false
+
+    init(authorName: String, prefill: FeedPost? = nil,
+         onPost: @escaping (String, String, FeedPostType, String, FeedVisibility, Data?, [FeedStat], FeedPost?) async -> Void) {
+        self.authorName = authorName
+        self.prefillPost = prefill
+        self.onPost = onPost
+        if let p = prefill {
+            _title = State(initialValue: p.title)
+            _bodyText = State(initialValue: p.subtitle)
+            _highlight = State(initialValue: p.metricHighlight)
+            _type = State(initialValue: p.type)
+            _statChips = State(initialValue: p.stats)
+            if let v = p.visibility { _visibility = State(initialValue: v) }
+        }
+    }
 
     private var canPost: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
@@ -1267,7 +1323,7 @@ private struct FeedComposeSheet: View {
                         guard canPost, !isPosting else { return }
                         isPosting = true
                         Task {
-                            await onPost(title, bodyText, type, highlight, visibility, photoData, statChips)
+                            await onPost(title, bodyText, type, highlight, visibility, photoData, statChips, prefillPost)
                             dismiss()
                         }
                     }

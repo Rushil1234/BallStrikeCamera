@@ -106,6 +106,8 @@ final class DeepLinkRouter: ObservableObject {
     /// Pairing code from truecarry://livesim?code=…; cleared when the sim
     /// screen consumes it and starts connecting.
     @Published var pendingSimCode: String?
+    /// Post id from truecarry://post/<uuid>; cleared when the feed opens it.
+    @Published var pendingPostId: UUID?
 }
 
 @MainActor
