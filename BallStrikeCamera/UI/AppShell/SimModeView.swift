@@ -216,13 +216,14 @@ struct SimModeView: View {
                     defaultName: saveSheetDefaultName,
                     date: simVM.activeSession?.startedAt ?? Date()
                 ),
-                onSave: { name, desc in
+                onSave: { name, desc, share in
                 Task {
                     await simVM.endSessionWithDetails(
                         name: name,
                         description: desc,
                         usedOGS: usedOGSNow,
-                        provider: providerEnum
+                        provider: providerEnum,
+                        share: share
                     )
                     dismiss()
                 }

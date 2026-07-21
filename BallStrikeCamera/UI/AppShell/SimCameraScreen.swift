@@ -111,12 +111,13 @@ struct SimCameraScreen: View {
                     defaultName: saveSheetDefaultName,
                     date: simVM.activeSession?.startedAt ?? Date()
                 ),
-                onSave: { name, desc in
+                onSave: { name, desc, share in
                     Task {
                         await simVM.endSessionWithDetails(
                             name: name,
                             description: desc,
-                            usedOGS: ogsVM.connectionState.isConnected
+                            usedOGS: ogsVM.connectionState.isConnected,
+                            share: share
                         )
                         dismiss()
                     }

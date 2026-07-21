@@ -820,8 +820,11 @@ struct LessonsHomeView: View {
     /// point-to-point Canvas behind staggered circles.
     private func roadPath(_ track: LessonTrack) -> some View {
         let nodeList = nodes(for: track)
-        let rowH: CGFloat = 96
-        let offsets: [CGFloat] = [0, -68, -96, -68, 0, 68, 96, 68]
+        // Taller rows so the 78px halo + label + caption never spill into the next node,
+        // and a gentler horizontal swing so the (up to 130px) labels can't collide with a
+        // neighbouring node's circle. Previously 96px rows + ±96 offsets overlapped.
+        let rowH: CGFloat = 164
+        let offsets: [CGFloat] = [0, -54, -76, -54, 0, 54, 76, 54]
         func xOffset(_ i: Int) -> CGFloat { offsets[i % offsets.count] }
 
         // How far down this unit the player has actually gotten — the connector is
@@ -998,18 +1001,35 @@ struct LessonsHomeView: View {
                             .offset(y: 24)
                     }
                 }
-                Text(label)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundColor(state == .locked ? TCTheme.textUltraMuted : TCTheme.textPrimary)
-                    .lineLimit(1)
-                    .frame(maxWidth: 150)
-                if let caption {
-                    Text(caption)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(state == .current ? TCTheme.gold : TCTheme.textUltraMuted)
-                        .lineLimit(1)
-                        .frame(maxWidth: 150)
+                // Label + caption in a solid card so the dotted connector reads as
+                // passing BEHIND the text, never through the letter gaps.
+                VStack(spacing: 2) {
+                    Text(label)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(state == .locked ? TCTheme.textUltraMuted : TCTheme.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let caption {
+                        Text(caption)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(state == .current ? TCTheme.gold : TCTheme.textUltraMuted)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .frame(maxWidth: 132)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(TCTheme.panelRaised)
+                        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .strokeBorder(state == .current ? TCTheme.gold.opacity(0.55) : TCTheme.border,
+                                          lineWidth: 1))
+                        .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+                )
             }
         }
         .buttonStyle(.plain)

@@ -24,7 +24,9 @@ struct CoachReport {
 }
 
 struct AICoachService {
-    enum Mode: String { case shot, session }
+    /// `course` reads on-course shots that only carry a total distance + a lateral miss
+    /// (GPS start→end + verified round data) — no launch-monitor numbers.
+    enum Mode: String { case shot, session, course }
 
     struct ShotPayload {
         var clubName: String?
@@ -43,6 +45,17 @@ struct AICoachService {
         var clubPathDegrees: Double?
         var faceAngleDegrees: Double?
         var faceToPathDegrees: Double?
+        /// On-course only: signed lateral miss in yards (− left, + right). Set on shots
+        /// built from GPS round data, which carry no launch-monitor metrics.
+        var lateralYards: Double?
+
+        /// On-course shot: a measured total distance (GPS start→end) and a signed
+        /// lateral miss in yards. Everything else stays nil — it doesn't exist here.
+        init(courseDistance: Double, lateralYards: Double, clubName: String?) {
+            self.clubName = clubName
+            self.totalYards = courseDistance
+            self.lateralYards = lateralYards
+        }
 
         init(_ m: SavedShotMetrics, clubName: String? = nil) {
             self.clubName = clubName
@@ -76,6 +89,7 @@ struct AICoachService {
         switch mode {
         case .shot:    return CoachEngine.shotReport(shots[0])
         case .session: return CoachEngine.sessionReport(shots)
+        case .course:  return CoachEngine.courseReport(shots)
         }
     }
 }
@@ -194,6 +208,89 @@ private enum CoachEngine {
 
         if insights.isEmpty {
             insights.append(.init(icon: "sparkles", tone: .info, text: "Clean, repeatable numbers — keep grooving it."))
+        }
+
+        let more = ordered.count - 1
+        let sub = "\(gs.count) shot\(gs.count == 1 ? "" : "s")"
+            + (more > 0 ? " · +\(more) other club\(more == 1 ? "" : "s")" : "")
+        let focus = priorities.max(by: { $0.0 < $1.0 })?.1
+
+        return CoachReport(headline: club, sub: sub, stats: Array(stats.prefix(3)),
+                           insights: Array(insights.prefix(3)), focus: focus)
+    }
+
+    // MARK: on-course session (total distance + lateral miss only)
+
+    /// The same "read like a coach" summary as `sessionReport`, but for on-course shots
+    /// whose only signals are how far they went (GPS total) and how far offline they
+    /// finished. Distance control + start line, no launch-monitor numbers.
+    static func courseReport(_ shots: [AICoachService.ShotPayload]) -> CoachReport {
+        var groups: [String: [AICoachService.ShotPayload]] = [:]
+        for s in shots { groups[s.clubName ?? "On-course", default: []].append(s) }
+        let ordered = groups.sorted { $0.value.count > $1.value.count }
+        guard let primary = ordered.first else {
+            return CoachReport(headline: "No data", sub: "", stats: [], insights: [], focus: nil)
+        }
+        let club = primary.key
+        let gs = primary.value
+
+        let dists = pos(gs.map(\.totalYards))
+        let laterals = gs.compactMap(\.lateralYards)
+        let absLat = laterals.map { abs($0) }
+        let biasMean = laterals.isEmpty ? 0 : mean(laterals)
+        let side = biasMean >= 0 ? "right" : "left"
+        let onLine = laterals.isEmpty ? 0
+            : Double(laterals.filter { abs($0) <= 20 }.count) / Double(laterals.count) * 100
+
+        // stat tiles
+        var stats: [CoachReport.Stat] = []
+        if !dists.isEmpty { stats.append(.init(value: i(mean(dists)), label: "TOTAL yd")) }
+        if !laterals.isEmpty { stats.append(.init(value: i(onLine) + "%", label: "ON LINE")) }
+        if !absLat.isEmpty { stats.append(.init(value: "±" + i(mean(absLat)), label: "MISS yd")) }
+
+        var insights: [CoachReport.Insight] = []
+        var priorities: [(Double, String)] = []
+
+        // start line / miss bias
+        if !laterals.isEmpty {
+            let sd = stdev(laterals)
+            let arrow = biasMean >= 0 ? "arrow.up.right" : "arrow.up.left"
+            if abs(biasMean) >= 5 {
+                insights.append(.init(icon: arrow, tone: .watch,
+                    text: "Misses ~\(i(abs(biasMean)))y \(side) on average — aim for it or square the face up."))
+                priorities.append((abs(biasMean) + 3, "\(club) miss leans \(i(abs(biasMean)))y \(side) — aim-off or face-control work."))
+            } else if sd >= 18 {
+                insights.append(.init(icon: "arrow.left.and.right", tone: .watch,
+                    text: "Two-way miss (±\(i(sd))y offline) — start-line control is the lever."))
+                priorities.append((sd / 2, "\(club) start line swings ±\(i(sd))y — alignment + face at impact."))
+            } else {
+                insights.append(.init(icon: "checkmark", tone: .good, text: "Dispersion is tight and centered."))
+            }
+        }
+
+        // distance control
+        if dists.count >= 3 {
+            let sd = stdev(dists)
+            let rel = mean(dists) > 0 ? sd / mean(dists) : 0
+            if rel <= 0.08 {
+                insights.append(.init(icon: "target", tone: .good, text: "Your \(club) distances repeat within ±\(i(sd))y."))
+            } else if rel >= 0.16 {
+                insights.append(.init(icon: "target", tone: .watch, text: "Distances swing ±\(i(sd))y — strike or club selection."))
+                priorities.append((sd / 3, "\(club) distance control — carries vary ±\(i(sd))y."))
+            }
+        }
+
+        // finding the line
+        if laterals.count >= 4 {
+            if onLine >= 70 {
+                insights.append(.init(icon: "flag.fill", tone: .good, text: "You find your line \(i(onLine))% of the time (within 20y)."))
+            } else if onLine <= 40 {
+                insights.append(.init(icon: "flag", tone: .watch, text: "Only \(i(onLine))% land within 20y of line — accuracy is the focus."))
+            }
+        }
+
+        if insights.isEmpty {
+            insights.append(.init(icon: "sparkles", tone: .info, text: "Solid on-course numbers — keep building the sample."))
         }
 
         let more = ordered.count - 1

@@ -353,7 +353,7 @@ struct GripDiagram: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            GripHandsDemo()
+            GripHologramDemo()
                 .frame(height: 300)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(alignment: .topLeading) {

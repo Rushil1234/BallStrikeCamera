@@ -34,15 +34,37 @@ struct SessionSaveSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let config: SessionSaveConfig
-    let onSave:   (String, String?) -> Void
+    /// (name, description, shareVisibility). `shareVisibility` is nil to keep the session
+    /// private (History only, no feed post), else the chosen feed audience.
+    let onSave:   (String, String?, FeedVisibility?) -> Void
     var onDelete: (() -> Void)? = nil
 
     @State private var name: String
     @State private var description: String = ""
     @State private var showDeleteConfirm = false
+    @State private var share: ShareChoice = .justSave
+
+    /// The three ways a saved session can go out — mirrors the course-mode Post/Private flow.
+    private enum ShareChoice: String, CaseIterable {
+        case justSave = "Just Save", friends = "Friends", everyone = "Public"
+        var visibility: FeedVisibility? {
+            switch self {
+            case .justSave: return nil
+            case .friends:  return .friends
+            case .everyone: return .everyone
+            }
+        }
+        var caption: String {
+            switch self {
+            case .justSave: return "Saved to your History only — nothing is posted."
+            case .friends:  return "Posts to the feed for your friends and home-course golfers."
+            case .everyone: return "Posts to the feed for everyone."
+            }
+        }
+    }
 
     init(config: SessionSaveConfig,
-         onSave: @escaping (String, String?) -> Void,
+         onSave: @escaping (String, String?, FeedVisibility?) -> Void,
          onDelete: (() -> Void)? = nil) {
         self.config = config
         self.onSave = onSave
@@ -89,6 +111,20 @@ struct SessionSaveSheet: View {
                     Text("Description (Optional)")
                 }
 
+                Section {
+                    Picker("Share", selection: $share) {
+                        ForEach(ShareChoice.allCases, id: \.self) { c in
+                            Text(c.rawValue).tag(c)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Text(share.caption)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                } header: {
+                    Text("Share to Feed")
+                }
+
                 if onDelete != nil {
                     Section {
                         Button(role: .destructive) {
@@ -114,7 +150,7 @@ struct SessionSaveSheet: View {
                     Button("Save") {
                         let finalName = trimmedName.isEmpty ? config.defaultName : trimmedName
                         let desc = description.trimmingCharacters(in: .whitespacesAndNewlines)
-                        onSave(finalName, desc.isEmpty ? nil : desc)
+                        onSave(finalName, desc.isEmpty ? nil : desc, share.visibility)
                         dismiss()
                     }
                     .fontWeight(.semibold)

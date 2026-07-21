@@ -264,13 +264,29 @@ struct SwingPhases: Codable {
         return backswingSeconds / downswingSeconds
     }
 
+    /// The takeaway CHECKPOINT shown to the user — deliberately later than the detected
+    /// `takeaway` (start of motion), which reads too early: it lands 1/3 of the way from
+    /// address to the top, where the club/hands are clearly moving up. Display-only; every
+    /// metric (tempo, plane windows) still uses the true `takeaway` start of motion.
+    var displayTakeawayFrame: Int {
+        max(takeaway, address + (top - address) / 3)
+    }
+
+    /// Display time for the takeaway checkpoint (1/3 address→top on the exact timeline).
+    private var displayTakeawaySeconds: Double? {
+        guard let times, times.count == 5 else { return nil }
+        return times[0] + (times[2] - times[0]) / 3
+    }
+
     var labelled: [(label: String, frame: Int)] {
-        [("Address", address), ("Takeaway", takeaway), ("Top", top),
+        [("Address", address), ("Takeaway", displayTakeawayFrame), ("Top", top),
          ("Impact", impact), ("Finish", finish)]
     }
 
-    /// Video time for the phase at `labelled` index — exact when available.
+    /// Video time for the phase at `labelled` index — exact when available. The takeaway
+    /// (index 1) resolves to its later DISPLAY moment, not the start-of-motion time.
     func seconds(forPhaseAt index: Int) -> Double {
+        if index == 1, let d = displayTakeawaySeconds { return d }
         if let times, times.count == 5, index < 5 { return times[index] }
         return Double(labelled[index].frame) / max(frameRate, 1)
     }
@@ -292,6 +308,8 @@ enum SwingMetricKind: String, Codable, CaseIterable {
     case deliveryPlane    = "delivery_plane"     // hands vs plane at hip height coming down (+ steep / − shallow)
     case earlyExtension   = "early_extension"    // hip drift toward the ball top→impact, % shoulder width
     case postureRetention = "posture_retention"  // spine-angle change address→impact, degrees (0 = held)
+    case shoulderTurnDeg  = "shoulder_turn_deg"   // shoulder rotation at top vs address, degrees (X-factor)
+    case hipTurnDeg       = "hip_turn_deg"        // hip rotation at top vs address, degrees
 
     var displayName: String {
         switch self {
@@ -302,6 +320,8 @@ enum SwingMetricKind: String, Codable, CaseIterable {
         case .leadArmAtTop:     return "Lead Arm"
         case .finishBalance:    return "Balance"
         case .shoulderTurn:     return "Shoulder Turn"
+        case .shoulderTurnDeg:  return "Shoulder Turn"
+        case .hipTurnDeg:       return "Hip Turn"
         case .transitionSeq:    return "Hips Lead"
         case .stanceWidth:      return "Stance Width"
         case .weightShift:      return "Weight Shift"
@@ -318,7 +338,7 @@ enum SwingMetricKind: String, Codable, CaseIterable {
         case .headSway, .hipSlide, .finishBalance, .shoulderTurn, .stanceWidth,
              .weightShift, .takeawayPath, .deliveryPlane, .earlyExtension: return "%"
         case .transitionSeq:                    return "ms"
-        case .spineTiltAddress, .leadArmAtTop, .postureRetention: return "°"
+        case .spineTiltAddress, .leadArmAtTop, .postureRetention, .shoulderTurnDeg, .hipTurnDeg: return "°"
         }
     }
 
@@ -351,6 +371,10 @@ enum SwingMetricKind: String, Codable, CaseIterable {
             return value.inBand ? ("Great Width", true) : ("Lead Arm Collapsing", false)
         case .shoulderTurn:
             return value.inBand ? ("Full Turn", true) : ("Short Turn", false)
+        case .shoulderTurnDeg:
+            return value.inBand ? ("Full Shoulder Turn", true) : (value.value < value.targetLow ? ("Short Shoulder Turn", false) : ("Over-Rotated", false))
+        case .hipTurnDeg:
+            return value.inBand ? ("Good Hip Turn", true) : (value.value < value.targetLow ? ("Restricted Hips", false) : ("Hips Over-Turning", false))
         case .stanceWidth:
             if value.inBand { return ("Shoulder-Width Base", true) }
             return value.value < value.targetLow ? ("Stance Too Narrow", false) : ("Stance Too Wide", false)

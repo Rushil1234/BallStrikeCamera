@@ -77,33 +77,39 @@ enum SwingPoseExtractor {
             guard let pb = CMSampleBufferGetImageBuffer(sample) else { continue }
             let time = CMSampleBufferGetPresentationTimeStamp(sample).seconds
 
-            let request = VNDetectHumanBodyPoseRequest()
-            let handler = VNImageRequestHandler(cvPixelBuffer: pb, orientation: orientation)
-            try? handler.perform([request])
+            // Per-frame autorelease pool: Vision + CoreMedia hand back autoreleased buffers
+            // every iteration, and this loop runs over the WHOLE clip (hundreds of frames) in
+            // one Task. Without draining per frame those temporaries accumulate until iOS
+            // jetsam-kills the app mid-analysis (looks like "the app just closed on every swing").
+            autoreleasepool {
+                let request = VNDetectHumanBodyPoseRequest()
+                let handler = VNImageRequestHandler(cvPixelBuffer: pb, orientation: orientation)
+                try? handler.perform([request])
 
-            var joints: [VNHumanBodyPoseObservation.JointName: SwingJoint] = [:]
-            // Ranges have bystanders: track the LARGEST person in frame (torso span),
-            // not whoever Vision happens to list first — a spectator behind the golfer
-            // otherwise hijacks the whole analysis.
-            func torsoSpan(_ obs: VNHumanBodyPoseObservation) -> CGFloat {
-                guard let pts = try? obs.recognizedPoints(.all),
-                      let ls = pts[.leftShoulder], let rs = pts[.rightShoulder],
-                      let lh = pts[.leftHip], let rh = pts[.rightHip],
-                      ls.confidence > 0.1, rs.confidence > 0.1,
-                      lh.confidence > 0.1, rh.confidence > 0.1 else { return 0 }
-                let sh = CGPoint(x: (ls.location.x + rs.location.x) / 2,
-                                 y: (ls.location.y + rs.location.y) / 2)
-                let hip = CGPoint(x: (lh.location.x + rh.location.x) / 2,
-                                  y: (lh.location.y + rh.location.y) / 2)
-                return hypot(sh.x - hip.x, sh.y - hip.y)
-            }
-            if let obs = request.results?.max(by: { torsoSpan($0) < torsoSpan($1) }),
-               let recognized = try? obs.recognizedPoints(.all) {
-                for (name, pt) in recognized where pt.confidence > 0.1 {
-                    joints[name] = SwingJoint(point: pt.location, confidence: Double(pt.confidence))
+                var joints: [VNHumanBodyPoseObservation.JointName: SwingJoint] = [:]
+                // Ranges have bystanders: track the LARGEST person in frame (torso span),
+                // not whoever Vision happens to list first — a spectator behind the golfer
+                // otherwise hijacks the whole analysis.
+                func torsoSpan(_ obs: VNHumanBodyPoseObservation) -> CGFloat {
+                    guard let pts = try? obs.recognizedPoints(.all),
+                          let ls = pts[.leftShoulder], let rs = pts[.rightShoulder],
+                          let lh = pts[.leftHip], let rh = pts[.rightHip],
+                          ls.confidence > 0.1, rs.confidence > 0.1,
+                          lh.confidence > 0.1, rh.confidence > 0.1 else { return 0 }
+                    let sh = CGPoint(x: (ls.location.x + rs.location.x) / 2,
+                                     y: (ls.location.y + rs.location.y) / 2)
+                    let hip = CGPoint(x: (lh.location.x + rh.location.x) / 2,
+                                      y: (lh.location.y + rh.location.y) / 2)
+                    return hypot(sh.x - hip.x, sh.y - hip.y)
                 }
+                if let obs = request.results?.max(by: { torsoSpan($0) < torsoSpan($1) }),
+                   let recognized = try? obs.recognizedPoints(.all) {
+                    for (name, pt) in recognized where pt.confidence > 0.1 {
+                        joints[name] = SwingJoint(point: pt.location, confidence: Double(pt.confidence))
+                    }
+                }
+                frames.append(SwingPoseFrame(index: frames.count, time: time, joints: joints))
             }
-            frames.append(SwingPoseFrame(index: frames.count, time: time, joints: joints))
         }
         reader.cancelReading()
 
@@ -351,6 +357,8 @@ enum SwingMetricsEngine {
         // Reference-calibrated: Rory holds spine angle within ~4° address→impact; a
         // 25-handicap reference collapsed 21°. Aspect cancels in the DIFFERENCE.
         case .postureRetention: return loose ? (0, 14)    : (0, 8)
+        case .shoulderTurnDeg:  return loose ? (60, 120)  : (75, 115)   // calibrated below
+        case .hipTurnDeg:       return loose ? (25, 75)   : (30, 65)
         }
     }
 
@@ -462,6 +470,29 @@ enum SwingMetricsEngine {
         return out
     }
 
+    /// Shoulder/hip TURN at the top, in degrees — the X-factor read from the image.
+    /// 2D can't see rotation directly, but a line spanning two joints FORESHORTENS as the
+    /// torso turns away from square-to-camera. `turn = acos(min/max width) * 180/π` gives a
+    /// view-agnostic 0-90° rotation magnitude (face-on: address widest; DTL: top widest —
+    /// min/max handles both). Scaled ×1.15 so a full pro turn reads near broadcast numbers.
+    static func turnDegrees(frames: [SwingPoseFrame], phases: SwingPhases,
+                            _ a: VNHumanBodyPoseObservation.JointName,
+                            _ b: VNHumanBodyPoseObservation.JointName) -> Double? {
+        func width(_ i: Int) -> Double? {
+            guard i >= 0, i < frames.count,
+                  let pa = frames[i].joint(a), let pb = frames[i].joint(b) else { return nil }
+            return Double(hypot(pa.x - pb.x, pa.y - pb.y))
+        }
+        // Squarest address width (max over the address neighborhood) and the top width.
+        let addrWidths = (max(0, phases.address - 2)...min(phases.address + 2, frames.count - 1)).compactMap(width)
+        let topWidths = (max(0, phases.top - 3)...min(phases.top + 3, frames.count - 1)).compactMap(width)
+        guard let wa = addrWidths.max(), let wt = topWidths.min() ?? topWidths.max(),
+              wa > 0.02 || wt > 0.02 else { return nil }
+        let ratio = min(wa, wt) / max(max(wa, wt), 0.001)
+        let deg = acos(max(0.02, min(1, ratio))) * 180 / .pi
+        return min(120, (deg * 1.15)).rounded()
+    }
+
     private static func computeFaceOn(frames: [SwingPoseFrame], phases: SwingPhases,
                                       skill: SkillLevel, isLefty: Bool,
                                       limitedMobility: Bool = false) -> [SwingMetricValue] {
@@ -561,6 +592,14 @@ enum SwingMetricsEngine {
                 out.append(SwingMetricValue(kind: .spineTiltAddress, value: tilt.rounded(),
                                             targetLow: 0, targetHigh: 12, confidence: 0.75))
             }
+
+        // Shoulder & hip turn at the top (X-factor) — degrees, view-agnostic foreshortening.
+        if let st = turnDegrees(frames: frames, phases: phases, .leftShoulder, .rightShoulder) {
+            add(.shoulderTurnDeg, st, confidence: 0.6)
+        }
+        if let ht = turnDegrees(frames: frames, phases: phases, .leftHip, .rightHip) {
+            add(.hipTurnDeg, ht, confidence: 0.55)
+        }
         }
 
         // Lead-arm bend at the top (degrees short of straight). Lead arm = left for righties.
@@ -615,7 +654,8 @@ enum SwingScorer {
         .transitionSeq: "tempo",
         .finishBalance: "balance",
         .takeawayPath: "plane", .deliveryPlane: "plane", .earlyExtension: "plane",
-        .postureRetention: "posture"
+        .postureRetention: "posture",
+        .shoulderTurnDeg: "turn", .hipTurnDeg: "turn"
     ]
 
     static func score(metrics: [SwingMetricValue], faults: [SwingFault]) -> Result {
@@ -846,29 +886,33 @@ enum SwingClubTracer {
                 defer { rawIndex += 1 }
                 if rawIndex % frameStride != 0 { continue }
                 guard let pb = CMSampleBufferGetImageBuffer(sample) else { continue }
-                let t = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-                let hp = hands(at: t)
-                if ballAnchor == nil, let hp {
-                    // One-time ball fix from the first (address) frame.
-                    ballAnchor = Self.findBall(
-                        plane: Self.uprightPlane(from: pb, orientation: orientation),
-                        handsUpright: hp)
-                }
-                if let det = detector.detect(pixelBuffer: pb, orientation: orientation),
-                   let hit = det.clubheadWithConfidence(hands: hp),
-                   // Strict before the top (body lock-ons live in the slow backswing);
-                   // relaxed after it — downswing blur naturally lowers confidence, and
-                   // dropping those anchors decouples the trail's TIMING from the club.
-                   hit.conf >= (t < times[2] ? 0.45 : 0.25) {
-                    let head = hit.point
-                    // Mid/late backswing the clubhead is ABOVE the hands — hip-height
-                    // detections there are body false-positives (the club is often half
-                    // out of frame at the top and the detector hallucinates low).
-                    let midBackswing = t > times[1] + 0.25 && t < times[3] - 0.15
-                    if midBackswing, let hp, Double(head.y) < Double(hp.y) - 0.05 {
-                        // skip — geometrically impossible
-                    } else {
-                        trail.append([Double(head.x), Double(head.y), t])
+                // Per-frame pool: CoreML detect + CoreMedia buffers over the whole clip
+                // otherwise pile up and jetsam-kill the app mid-analysis. See extract().
+                autoreleasepool {
+                    let t = CMSampleBufferGetPresentationTimeStamp(sample).seconds
+                    let hp = hands(at: t)
+                    if ballAnchor == nil, let hp {
+                        // One-time ball fix from the first (address) frame.
+                        ballAnchor = Self.findBall(
+                            plane: Self.uprightPlane(from: pb, orientation: orientation),
+                            handsUpright: hp)
+                    }
+                    if let det = detector.detect(pixelBuffer: pb, orientation: orientation),
+                       let hit = det.clubheadWithConfidence(hands: hp),
+                       // Strict before the top (body lock-ons live in the slow backswing);
+                       // relaxed after it — downswing blur naturally lowers confidence, and
+                       // dropping those anchors decouples the trail's TIMING from the club.
+                       hit.conf >= (t < times[2] ? 0.45 : 0.25) {
+                        let head = hit.point
+                        // Mid/late backswing the clubhead is ABOVE the hands — hip-height
+                        // detections there are body false-positives (the club is often half
+                        // out of frame at the top and the detector hallucinates low).
+                        let midBackswing = t > times[1] + 0.25 && t < times[3] - 0.15
+                        if midBackswing, let hp, Double(head.y) < Double(hp.y) - 0.05 {
+                            // skip — geometrically impossible
+                        } else {
+                            trail.append([Double(head.x), Double(head.y), t])
+                        }
                     }
                 }
             }
@@ -891,7 +935,9 @@ enum SwingClubTracer {
             if rawIndex % frameStride != 0 { continue }
             guard let pb = CMSampleBufferGetImageBuffer(sample) else { continue }
             let t = CMSampleBufferGetPresentationTimeStamp(sample).seconds
-            window.append((t, Self.uprightPlane(from: pb, orientation: orientation)))
+            // Drain the pixel-buffer→plane conversion temporaries per frame (whole-clip loop).
+            let plane = autoreleasepool { Self.uprightPlane(from: pb, orientation: orientation) }
+            window.append((t, plane))
             if window.count < windowSize { continue }
             if window.count > windowSize { window.removeFirst() }
             let tCur = window[baseline].t

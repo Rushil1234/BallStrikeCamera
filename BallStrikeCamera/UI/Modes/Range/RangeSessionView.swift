@@ -84,8 +84,8 @@ struct RangeSessionView: View {
                     defaultName: saveSheetDefaultName,
                     date: vm.activeSession?.startedAt ?? Date()
                 ),
-                onSave: { name, desc in
-                    Task { await vm.endSessionWithDetails(name: name, description: desc); dismiss() }
+                onSave: { name, desc, share in
+                    Task { await vm.endSessionWithDetails(name: name, description: desc, share: share); dismiss() }
                 },
                 onDelete: {
                     Task { await vm.discardSession(); dismiss() }

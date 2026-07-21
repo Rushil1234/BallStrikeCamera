@@ -18,6 +18,8 @@ struct TrueCarryInsightsView: View {
     @State private var allMode = false
     @State private var showProfile = false
     @State private var dispersionMetric: DispersionMetric = .carry
+    /// The color/marking legend under the chart starts collapsed — tap to expand.
+    @State private var keyExpanded = false
     /// Range/Sim vs On-Course — the whole page shows ONE world at a time, never a blend.
     @AppStorage("tc_insights_source") private var insightsSourceRaw: String = InsightsSource.range.rawValue
     /// Rounds by id so a tapped course shot can name the round it came from.
@@ -118,6 +120,38 @@ struct TrueCarryInsightsView: View {
 
     private var selectedRoundShots: [VerifiedRoundShot] {
         selectedClub.map { roundShotsFor($0) } ?? []
+    }
+
+    // MARK: - On-Course samples (total distance + signed lateral only)
+
+    /// One unified sample per on-course shot of `club`: total distance travelled and the
+    /// signed lateral miss (− left, + right). Folds camera captures taken during rounds
+    /// together with verified GPS round shots — the two things On-Course insights read.
+    private func onCourseSamples(for club: String) -> [(dist: Double, lateral: Double, club: String?)] {
+        var out: [(dist: Double, lateral: Double, club: String?)] = []
+        for shot in shotsFor(club) {   // On-Course source → camera captures during rounds
+            if let p = rangePoint(for: shot) { out.append((p.carry, p.lateral, shot.clubName ?? club)) }
+        }
+        for rs in roundShotsFor(club) {   // verified GPS shots (On-Course only)
+            out.append((rs.distanceYards, rs.lateralYards, rs.clubName ?? club))
+        }
+        return out
+    }
+
+    /// On-course samples the coach reads: the selected club, or every club in ALL mode.
+    private var onCourseCoachSamples: [(dist: Double, lateral: Double, club: String?)] {
+        if allMode {
+            return availableClubs.flatMap { onCourseSamples(for: $0) }
+        } else if let club = selectedClub {
+            return onCourseSamples(for: club)
+        }
+        return []
+    }
+
+    private var onCourseCoachShots: [AICoachService.ShotPayload] {
+        onCourseCoachSamples.map {
+            AICoachService.ShotPayload(courseDistance: $0.dist, lateralYards: $0.lateral, clubName: $0.club)
+        }
     }
 
     // MARK: - Stat helpers
@@ -470,7 +504,26 @@ struct TrueCarryInsightsView: View {
 
     /// Coach + bag gapping — shown right beneath the dispersion chart (Noah).
     @ViewBuilder private var coachAndGapping: some View {
-        if !coachShots.isEmpty {
+        coachCard
+        if !gappingRows.isEmpty { gappingSection }
+    }
+
+    /// The coach reads whichever world the page is in: launch-monitor numbers for
+    /// Range & Sim, total distance + dispersion for On-Course — same card, same "give
+    /// me a read" button either way.
+    @ViewBuilder private var coachCard: some View {
+        if insightsSource == .course {
+            let payloads = onCourseCoachShots
+            if !payloads.isEmpty {
+                AICoachCard(
+                    mode: .course,
+                    shots: payloads,
+                    isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
+                    subtitle: coachScopeLabel
+                )
+                .id(coachScopeKey)   // new club/source → fresh card, old analysis cleared
+            }
+        } else if !coachShots.isEmpty {
             AICoachCard(
                 mode: .session,
                 shots: coachShots,
@@ -479,20 +532,96 @@ struct TrueCarryInsightsView: View {
             )
             .id(coachScopeKey)   // new club/source → fresh card, old analysis cleared
         }
-        if !gappingRows.isEmpty { gappingSection }
     }
 
     @ViewBuilder
     private var statsContent: some View {
         let s = selectedShots
+        if insightsSource == .course {
+            onCourseStatsContent(s)
+        } else {
+            dispersionCard(s)
+            coachAndGapping
+            singleClubKeyCard
+            metricsCard(s)
+            carryTrendCard(s)
+            spinCard(s)
+            advancedCard(s)
+            Spacer(minLength: 140)
+        }
+    }
+
+    /// On-Course shows only what GPS gives us — total distance + dispersion — so it
+    /// swaps the launch-monitor cards (carry/ball speed/spin/smash) for distance and
+    /// accuracy pills derived from those two signals, plus the same coach + gapping.
+    @ViewBuilder
+    private func onCourseStatsContent(_ s: [SavedShot]) -> some View {
+        let samples = selectedClub.map { onCourseSamples(for: $0) } ?? []
         dispersionCard(s)
         coachAndGapping
+        onCourseDistanceCard(samples)
+        onCourseAccuracyCard(samples)
         singleClubKeyCard
-        metricsCard(s)
-        carryTrendCard(s)
-        spinCard(s)
-        advancedCard(s)
         Spacer(minLength: 140)
+    }
+
+    // MARK: - On-Course pills (distance + accuracy from total + dispersion)
+
+    private func onCourseDistanceCard(_ samples: [(dist: Double, lateral: Double, club: String?)]) -> some View {
+        let dists    = samples.map(\.dist).filter { $0 > 0 }
+        let avgD     = avg(dists)
+        let longest  = dists.max()
+        let shortest = dists.min()
+        let med      = median(dists)
+        return VStack(alignment: .leading, spacing: 16) {
+            cardHeader("On-Course Distance", "Measured start → end (GPS + verified)")
+            HStack(spacing: 0) {
+                statCol("AVG TOTAL", fmt(avgD),     avgD     == nil ? "" : "yds")
+                verticalDivider(height: 40)
+                statCol("LONGEST",   fmt(longest),  longest  == nil ? "" : "yds")
+                verticalDivider(height: 40)
+                statCol("MEDIAN",    fmt(med),      med      == nil ? "" : "yds")
+                verticalDivider(height: 40)
+                statCol("SHORTEST",  fmt(shortest), shortest == nil ? "" : "yds")
+            }
+        }
+        .tcCard(padding: 16)
+    }
+
+    private func onCourseAccuracyCard(_ samples: [(dist: Double, lateral: Double, club: String?)]) -> some View {
+        let laterals   = samples.map(\.lateral)
+        let n          = laterals.count
+        let onLinePct: Double? = n == 0 ? nil
+            : Double(laterals.filter { abs($0) <= 20 }.count) / Double(n) * 100
+        let avgMiss    = avg(laterals.map { abs($0) })                 // mean absolute offline
+        let biasMean: Double? = n == 0 ? nil : laterals.reduce(0, +) / Double(n)
+        return VStack(alignment: .leading, spacing: 16) {
+            cardHeader("Accuracy", "How close to your target line")
+            HStack(spacing: 0) {
+                statCol("ON LINE ±20y", onLinePct.map { "\(Int($0.rounded()))" } ?? "—", onLinePct == nil ? "" : "%")
+                verticalDivider(height: 40)
+                statCol("AVG MISS", fmt(avgMiss), avgMiss == nil ? "" : "yds")
+                verticalDivider(height: 40)
+                missBiasCol(biasMean)
+                verticalDivider(height: 40)
+                statCol("SHOTS", n == 0 ? "—" : "\(n)", "")
+            }
+        }
+        .tcCard(padding: 16)
+    }
+
+    /// Average signed miss as its own pill: magnitude + which side it favours.
+    private func missBiasCol(_ bias: Double?) -> some View {
+        let value: String
+        let unit: String
+        if let b = bias {
+            let mag = Int(abs(b).rounded())
+            if mag == 0 { value = "Straight"; unit = "" }
+            else { value = "\(mag)"; unit = b >= 0 ? "yd R" : "yd L" }
+        } else {
+            value = "—"; unit = ""
+        }
+        return statCol("MISS BIAS", value, unit)
     }
 
     // MARK: - ALL mode (top-tracer: every club, colored clusters)
@@ -566,60 +695,98 @@ struct TrueCarryInsightsView: View {
         .padding(.horizontal, -TCTheme.hPad)
     }
 
-    /// Legend: which color is which club, plus what the rings mean.
+    /// Legend: which color is which club, plus what the rings mean. Collapsed by default.
     private func allClubsKeyCard(_ series: [TCRangeFinderDispersion.ClubSeries]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            cardHeader("Key", "Colors & clusters")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 8)], alignment: .leading, spacing: 8) {
-                ForEach(series) { club in
-                    HStack(spacing: 6) {
-                        Circle().fill(club.color).frame(width: 10, height: 10)
-                        Text(club.name)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(TCTheme.textPrimary)
-                            .lineLimit(1)
-                        Text("\(club.points.count)")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(TCTheme.textUltraMuted)
+            keyDisclosureHeader
+            if keyExpanded {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 8)], alignment: .leading, spacing: 8) {
+                    ForEach(series) { club in
+                        HStack(spacing: 6) {
+                            Circle().fill(club.color).frame(width: 10, height: 10)
+                            Text(club.name)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(TCTheme.textPrimary)
+                                .lineLimit(1)
+                            Text("\(club.points.count)")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(TCTheme.textUltraMuted)
+                        }
                     }
                 }
+                TCDivider()
+                keyRow(swatch: AnyView(
+                    Circle().strokeBorder(TCTheme.textMuted, lineWidth: 1.6).frame(width: 12, height: 12)
+                ), text: "Ring = that club's typical grouping (2σ of its shots)")
+                keyRow(swatch: AnyView(
+                    RoundedRectangle(cornerRadius: 2).fill(Color(red: 0.14, green: 0.30, blue: 0.12)).frame(width: 12, height: 12)
+                ), text: "Green stripe = fairway width (±20 yd of your target line)")
             }
-            TCDivider()
-            keyRow(swatch: AnyView(
-                Circle().strokeBorder(TCTheme.textMuted, lineWidth: 1.6).frame(width: 12, height: 12)
-            ), text: "Ring = that club's typical grouping (2σ of its shots)")
-            keyRow(swatch: AnyView(
-                RoundedRectangle(cornerRadius: 2).fill(Color(red: 0.14, green: 0.30, blue: 0.12)).frame(width: 12, height: 12)
-            ), text: "Green stripe = fairway width (±20 yd of your target line)")
         }
         .tcCard(padding: 14)
     }
 
     /// Single-club key: what the dot colors mean (graded by how far offline the shot landed).
+    /// Collapsed by default — tap the header to reveal the color guide.
     private var singleClubKeyCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            cardHeader("Key", "Dot colors = distance offline")
-            keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(0)).frame(width: 12, height: 12)),
-                   text: "Dark green — dead straight (within 5 yd of center)")
-            keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(8)).frame(width: 12, height: 12)),
-                   text: "Light green — close (5–12 yd offline)")
-            keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(18)).frame(width: 12, height: 12)),
-                   text: "Yellow — drifting (12–25 yd offline)")
-            keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(30)).frame(width: 12, height: 12)),
-                   text: "Red — offline by 25+ yd")
-            TCDivider()
-            keyRow(swatch: AnyView(
-                Circle().strokeBorder(TCTheme.textMuted, lineWidth: 1.6).frame(width: 12, height: 12)
-            ), text: "White ring = your typical grouping (2σ)")
-            keyRow(swatch: AnyView(
-                RoundedRectangle(cornerRadius: 2).fill(Color(red: 0.14, green: 0.30, blue: 0.12)).frame(width: 12, height: 12)
-            ), text: "Green stripe = fairway width (±20 yd of your target line)")
-            keyRow(swatch: AnyView(
-                Circle().fill(TCDispersionColor.byLateral(0)).frame(width: 12, height: 12)
-                    .overlay(Circle().strokeBorder(.white.opacity(0.85), lineWidth: 1))
-            ), text: "Bigger dot = several shots landed on the same spot")
+            keyDisclosureHeader
+            if keyExpanded {
+                keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(0)).frame(width: 12, height: 12)),
+                       text: "Dark green — dead straight (within 5 yd of center)")
+                keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(8)).frame(width: 12, height: 12)),
+                       text: "Light green — close (5–12 yd offline)")
+                keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(18)).frame(width: 12, height: 12)),
+                       text: "Yellow — drifting (12–25 yd offline)")
+                keyRow(swatch: AnyView(Circle().fill(TCDispersionColor.byLateral(30)).frame(width: 12, height: 12)),
+                       text: "Red — offline by 25+ yd")
+                TCDivider()
+                keyRow(swatch: AnyView(
+                    Circle().strokeBorder(TCTheme.textMuted, lineWidth: 1.6).frame(width: 12, height: 12)
+                ), text: "White ring = your typical grouping (2σ)")
+                keyRow(swatch: AnyView(
+                    RoundedRectangle(cornerRadius: 2).fill(Color(red: 0.14, green: 0.30, blue: 0.12)).frame(width: 12, height: 12)
+                ), text: "Green stripe = fairway width (±20 yd of your target line)")
+                keyRow(swatch: AnyView(
+                    Circle().fill(TCDispersionColor.byLateral(0)).frame(width: 12, height: 12)
+                        .overlay(Circle().strokeBorder(.white.opacity(0.85), lineWidth: 1))
+                ), text: "Bigger dot = several shots landed on the same spot")
+            }
         }
         .tcCard(padding: 14)
+    }
+
+    /// Tappable header shared by both legend cards: a gold tick, the word "Key", a hint
+    /// line, and a chevron that rotates as the color guide expands/collapses.
+    private var keyDisclosureHeader: some View {
+        Button {
+            withAnimation(.spring(response: 0.30, dampingFraction: 0.85)) { keyExpanded.toggle() }
+        } label: {
+            HStack(alignment: .top, spacing: 8) {
+                Rectangle()
+                    .fill(TCTheme.gold)
+                    .frame(width: 3, height: 14)
+                    .clipShape(Capsule())
+                    .padding(.top, 3)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Key")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(TCTheme.textPrimary)
+                    Text(keyExpanded ? "Dot colors, rings & markings" : "Tap to show what the colors mean")
+                        .font(.system(size: 12))
+                        .foregroundColor(TCTheme.textMuted)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(TCTheme.textMuted)
+                    .rotationEffect(.degrees(keyExpanded ? 0 : -90))
+                    .padding(.top, 3)
+            }
+            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.plain)
     }
 
     private func keyRow(swatch: AnyView, text: String) -> some View {
@@ -826,11 +993,20 @@ struct TrueCarryInsightsView: View {
             return String(format: "%.0f yds", d)
         }()
 
+        // On-Course has no HLA — count how many finished within the fairway band
+        // (±20y of line) from the lateral of every plotted dot, GPS shots included.
         let onTarget: String = {
+            if insightsSource == .course {
+                let lats = rangePoints.map { abs($0.lateral) }
+                guard !lats.isEmpty else { return "—" }
+                let n = lats.filter { $0 <= 20 }.count
+                return "\(Int(Double(n) / Double(lats.count) * 100))%"
+            }
             guard !shots.isEmpty else { return "—" }
             let n = shots.filter { $0.metrics.hlaDegrees < 5.0 }.count
             return "\(Int(Double(n) / Double(shots.count) * 100))%"
         }()
+        let onTargetLabel = insightsSource == .course ? "ON LINE (±20y)" : "ON TARGET (<5°)"
 
         // Manually build the card so the chart can bleed to the card edges (no horizontal padding)
         return VStack(alignment: .leading, spacing: 0) {
@@ -853,7 +1029,7 @@ struct TrueCarryInsightsView: View {
             HStack(spacing: 0) {
                 inlineStat(avgDispStr,                             "AVG DISPERSION")
                 verticalDivider(height: 28)
-                inlineStat(onTarget,                               "ON TARGET (<5°)")
+                inlineStat(onTarget,                               onTargetLabel)
                 verticalDivider(height: 28)
                 inlineStat(rangePoints.isEmpty ? "—" : "\(rangePoints.count)", "SHOTS")
             }

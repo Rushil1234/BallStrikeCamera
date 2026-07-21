@@ -86,7 +86,7 @@ struct AICoachCard: View {
                     Text("Reading your shots…")
                 } else {
                     Image(systemName: "wand.and.stars")
-                    Text(mode == .session ? "Analyze these shots" : "Coach me on this shot")
+                    Text(mode == .shot ? "Coach me on this shot" : "Analyze these shots")
                 }
             }
             .font(.system(size: 15, weight: .bold))

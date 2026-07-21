@@ -450,7 +450,7 @@ private struct DebugSnapshotHarness: View {
         switch name {
         case "gripdemo":
             VStack {
-                GripHandsDemo()
+                GripHologramDemo()
                     .frame(height: 320)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
@@ -488,6 +488,10 @@ private struct DebugSnapshotHarness: View {
                 LessonsHomeView()
                     .environmentObject(AuthSessionStore())
             }
+        case "coachpath":
+            // Faithful preview of the winding roadmap geometry (rowH/offsets/label wrap)
+            // at full height, so the staggered mid-path nodes are visible without scroll.
+            RoadmapGeometryPreview()
         case "shotedit":
             // Hole shots editor: club menus, add-missed-shot form.
             shotEditSample(addOpen: false)
@@ -579,6 +583,89 @@ private struct DebugSnapshotHarness: View {
             onAddShot: { _, _, _, _ in },
             startWithAddForm: addOpen
         )
+    }
+}
+
+/// Standalone reproduction of LessonsHomeView's roadmap geometry — same rowH, offsets,
+/// circle sizes, and label/caption fonts — so the winding path's spacing can be verified in
+/// one screenshot. Uses the LONGEST realistic labels/captions to stress-test overlap.
+private struct RoadmapGeometryPreview: View {
+    private let rowH: CGFloat = 164
+    private let offsets: [CGFloat] = [0, -54, -76, -54, 0, 54, 76, 54]
+    private struct Node { let icon: String; let label: String; let caption: String; let current: Bool; let done: Bool }
+    private let nodes: [Node] = [
+        .init(icon: "bag.fill", label: "Know Your Clubs", caption: "Up next · 7 min", current: true, done: false),
+        .init(icon: "figure.golf", label: "Grip & Setup Fundamentals", caption: "After Know Your Clubs", current: false, done: false),
+        .init(icon: "arrow.up.right", label: "The Takeaway", caption: "2 graded swings, no lesson", current: false, done: false),
+        .init(icon: "target", label: "Impact Position", caption: "Opens with your first pass", current: false, done: false),
+        .init(icon: "flag.checkered", label: "Unit Checkpoint", caption: "Pass every lesson above", current: false, done: false),
+        .init(icon: "book.fill", label: "Ball Flight Basics", caption: "After Impact Position", current: false, done: false),
+    ]
+    private func xOffset(_ i: Int) -> CGFloat { offsets[i % offsets.count] }
+
+    var body: some View {
+        ZStack {
+            TrueCarryBackground().ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 8) {
+                    Text("YOUR PATH").font(.system(size: 13, weight: .black))
+                        .foregroundColor(TCTheme.textMuted).tracking(1.6)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20)
+                    ZStack {
+                        Canvas { ctx, size in
+                            let cx = size.width / 2
+                            func center(_ i: Int) -> CGPoint { CGPoint(x: cx + xOffset(i), y: CGFloat(i) * rowH + rowH / 2) }
+                            var path = Path(); path.move(to: center(0))
+                            for i in 1..<nodes.count {
+                                let mid = CGPoint(x: (center(i - 1).x + center(i).x) / 2, y: (center(i - 1).y + center(i).y) / 2)
+                                path.addQuadCurve(to: mid, control: center(i - 1)); path.addLine(to: center(i))
+                            }
+                            ctx.stroke(path, with: .color(TCTheme.textUltraMuted.opacity(0.5)),
+                                       style: StrokeStyle(lineWidth: 4, lineCap: .round, dash: [1, 11]))
+                        }
+                        VStack(spacing: 0) {
+                            ForEach(Array(nodes.enumerated()), id: \.offset) { i, n in
+                                node(n).frame(height: rowH).offset(x: xOffset(i))
+                            }
+                        }
+                    }
+                    .frame(height: rowH * CGFloat(nodes.count))
+                }
+                .padding(.vertical, 20)
+            }
+        }
+    }
+
+    private func node(_ n: Node) -> some View {
+        VStack(spacing: 5) {
+            ZStack {
+                if n.current {
+                    Circle().stroke(TCTheme.gold.opacity(0.45), lineWidth: 5).frame(width: 78, height: 78)
+                }
+                Circle().fill((n.current ? TCTheme.gold : n.done ? TCTheme.sage : TCTheme.panelRaised).opacity(0.55))
+                    .frame(width: 62, height: 62).offset(y: 4)
+                Circle().fill(n.current ? TCTheme.gold : n.done ? TCTheme.sage : TCTheme.panelRaised).frame(width: 62, height: 62)
+                Image(systemName: n.icon).font(.system(size: 22, weight: .bold)).foregroundColor(.white)
+            }
+            VStack(spacing: 2) {
+                Text(n.label).font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundColor(TCTheme.textPrimary).multilineTextAlignment(.center)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                Text(n.caption).font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(n.current ? TCTheme.gold : TCTheme.textUltraMuted)
+                    .multilineTextAlignment(.center).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: 132)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(TCTheme.panelRaised)
+                    .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(n.current ? TCTheme.gold.opacity(0.55) : TCTheme.border, lineWidth: 1))
+                    .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
+            )
+        }
     }
 }
 #endif

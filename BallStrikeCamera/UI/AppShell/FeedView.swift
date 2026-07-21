@@ -126,23 +126,21 @@ struct FeedView: View {
             ScrollViewReader { scrollProxy in
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    TCHeaderBar(initials: userInitials) {
-                        TCHeaderIconButton(icon: "trophy.fill") { showLeaderboards = true }
-                        TCHeaderIconButton(icon: "bell.fill", badge: unreadNotifs) { showNotifications = true }
+                    TCHeaderBar(initials: userInitials, rightContent: {
                         TCHeaderIconButton(icon: "person.2.fill") { showFriends = true }
                         TCProfileAvatarButton(initials: userInitials,
                                               devMode: session.entitlementVM.isDeveloperMode) { showProfile = true }
-                    }
+                    }, leftContent: {
+                        // Leaderboard + notifications balance the logo on the left.
+                        TCHeaderIconButton(icon: "trophy.fill") { showLeaderboards = true }
+                        TCHeaderIconButton(icon: "bell.fill", badge: unreadNotifs) { showNotifications = true }
+                    })
                     if let r = unfinishedRound {
                         resumeRoundBanner(r)
                         sectionGap
                     }
                     activityHero
                     sectionGap
-                    if !vm.drafts.isEmpty {
-                        draftsSection
-                        sectionGap
-                    }
                     homeSummarySection
                     sectionGap
                     if !savedCourses.isEmpty {

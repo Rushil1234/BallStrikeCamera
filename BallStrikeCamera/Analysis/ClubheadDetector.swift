@@ -80,6 +80,15 @@ final class ClubheadDetector {
 
     /// Shared path (CLI passes a runtime-compiled model URL).
     init?(compiledURL: URL) {
+        #if targetEnvironment(simulator)
+        // The iOS Simulator's software Metal backend ABORTS on this model — MPSGraph
+        // "MLIR pass manager failed" is an uncatchable assert, not a throw, so it can't be
+        // guarded with try? or computeUnits. Disable the learned detector in the Simulator
+        // entirely: SwingClubTracer falls back to the motion tracker, so analyze-swing runs
+        // (with a simpler club trail) instead of crashing. A physical device runs the model
+        // for real on the Neural Engine. (macOS CLI is NOT a simulator env → uses the model.)
+        return nil
+        #else
         let cfg = MLModelConfiguration()
         cfg.computeUnits = .all
         guard let m = try? MLModel(contentsOf: compiledURL, configuration: cfg),
@@ -87,6 +96,7 @@ final class ClubheadDetector {
         model = m
         vnModel = vn
         inputName = m.modelDescription.inputDescriptionsByName.keys.first ?? "image"
+        #endif
     }
 
     /// Runs one frame. `orientation` maps the buffer to upright exactly like the pose path.

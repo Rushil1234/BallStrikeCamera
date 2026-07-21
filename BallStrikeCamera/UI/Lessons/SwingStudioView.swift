@@ -442,6 +442,10 @@ struct SwingReplayView: View {
     /// True capture rate; high-fps clips default to slow-motion playback (240fps shown
     /// at 30fps = 8× slow — the whole point of capturing DTL at speed).
     @State private var videoFPS: Double = 30
+    /// The player mirrors front-camera clips via preferredTransform, but the stored pose is
+    /// in unmirrored Vision space — so the overlay must flip x to sit ON the body. Detected
+    /// from the transform's determinant (negative = horizontally mirrored).
+    @State private var videoMirrored = false
     @State private var slowMo = true
     @State private var showGhost = true
     /// nil = view default (club for down-the-line, hands face-on); user toggle overrides.
@@ -483,6 +487,9 @@ struct SwingReplayView: View {
                     let s = natural.applying(transform)
                     videoPixelSize = CGSize(width: abs(s.width), height: abs(s.height))
                     videoFPS = Double(fps)
+                    // Negative determinant = the displayed frame is horizontally mirrored
+                    // (front-camera selfie recordings) → flip the pose overlay to match.
+                    videoMirrored = (transform.a * transform.d - transform.b * transform.c) < 0
                     applyPlaybackRate()
                 }
             }
@@ -695,7 +702,8 @@ struct SwingReplayView: View {
                                     headBox: headBox,
                                     planeAnchors: planeAnchors,
                                     isFaceOn: swing.viewAngle == .faceOn,
-                                    topTime: swing.phases?.times.flatMap { $0.count == 5 ? $0[2] : nil }
+                                    topTime: swing.phases?.times.flatMap { $0.count == 5 ? $0[2] : nil },
+                                    mirrored: videoMirrored
                                 )
                             }
                             .allowsHitTesting(false)
@@ -1081,6 +1089,9 @@ struct RichPoseOverlay: View {
     /// Top-of-backswing time: PATH mode draws the backswing and downswing in different
     /// colors when trail rows carry timestamps.
     var topTime: Double? = nil
+    /// Horizontally flip all drawing (front-camera clips play mirrored, but the pose is in
+    /// unmirrored space) so the skeleton/trail/gauges sit ON the displayed body.
+    var mirrored: Bool = false
 
     // Reference-app palette: one hue per idea, not per body part.
     private static let boneColor  = Color(red: 0.25, green: 0.90, blue: 1.0)    // cyan
@@ -1092,8 +1103,9 @@ struct RichPoseOverlay: View {
     var body: some View {
         Canvas { ctx, _ in
             func toScreen(_ x: Double, _ y: Double) -> CGPoint {
-                CGPoint(x: videoRect.minX + x * videoRect.width,
-                        y: videoRect.minY + (1 - y) * videoRect.height)
+                let mx = mirrored ? 1 - x : x
+                return CGPoint(x: videoRect.minX + mx * videoRect.width,
+                               y: videoRect.minY + (1 - y) * videoRect.height)
             }
             func pt(_ i: Int) -> CGPoint? {
                 guard let pose, i < pose.points.count, pose.points[i][2] > 0.3 else { return nil }
@@ -1115,7 +1127,8 @@ struct RichPoseOverlay: View {
                               pt: (Int) -> CGPoint?,
                               toScreen: (Double, Double) -> CGPoint) {
         if let headBox {
-            let r = CGRect(x: videoRect.minX + headBox.minX * videoRect.width,
+            let boxMinX = mirrored ? 1 - headBox.maxX : headBox.minX
+            let r = CGRect(x: videoRect.minX + boxMinX * videoRect.width,
                            y: videoRect.minY + (1 - headBox.maxY) * videoRect.height,
                            width: headBox.width * videoRect.width,
                            height: headBox.height * videoRect.height)

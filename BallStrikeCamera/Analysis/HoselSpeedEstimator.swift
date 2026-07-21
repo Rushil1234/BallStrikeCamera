@@ -23,6 +23,11 @@ final class HoselSpeedEstimator {
 
     private init() {
         var vn: VNCoreMLModel? = nil
+        // The iOS Simulator's software Metal backend ABORTS on CoreML vision models
+        // (MPSGraph "MLIR pass manager failed" — an uncatchable assert). Skip loading in the
+        // Simulator entirely so shot processing never crashes there; a physical device runs
+        // it on the Neural Engine.
+        #if !targetEnvironment(simulator)
         if let url = Bundle.main.url(forResource: "ClubDetectorV2", withExtension: "mlmodelc") {
             let cfg = MLModelConfiguration()
             cfg.computeUnits = .all
@@ -30,6 +35,7 @@ final class HoselSpeedEstimator {
                 vn = try? VNCoreMLModel(for: m)
             }
         }
+        #endif
         vnModel = vn
         if vnModel == nil {
             print("[Hosel] ClubDetectorV2.mlmodelc not loadable — hosel club speed disabled")
