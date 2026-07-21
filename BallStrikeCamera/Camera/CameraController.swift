@@ -275,24 +275,6 @@ final class CameraController: NSObject, ObservableObject {
             // check in logFrameTiming can't fire against a stale value mid-converge.
             self._lockedExposureOffsetEV = .nan
 
-            // AUTO (dark-room fallback): hand exposure to the camera and leave it there — no
-            // custom underexposed lock. Continuous AE keeps adjusting, so the drift-relock stays
-            // suspended (baseline parked at .nan above). Frames may be blurry; this is a
-            // "does the ball even show up when we stop darkening it?" escape hatch.
-            if !preset.isCustomLock {
-                do {
-                    try device.lockForConfiguration()
-                    if device.isExposureModeSupported(.continuousAutoExposure) {
-                        device.exposureMode = .continuousAutoExposure
-                    }
-                    device.unlockForConfiguration()
-                    print("BallDetector exposure: AUTO mode — native continuous AE, no custom lock (dark-room fallback)")
-                } catch {
-                    print("BallDetector exposure: could not enable AUTO exposure: \(error.localizedDescription)")
-                }
-                Task { @MainActor in self.statusText = "Exposure: Auto (dark room)" }
-                return
-            }
 
             // Re-measure the scene before freezing exposure. Locking straight onto
             // device.iso (the old behavior) captures whatever transient ISO the sensor
@@ -383,9 +365,15 @@ final class CameraController: NSObject, ObservableObject {
                 // dims (ISO climbs off its sunny floor), ease toward −1EV and lift the ISO
                 // ceiling so the ball reaches a solid bright disc. Motion blur is moot for
                 // the at-rest lock. Bright/outdoor scenes (low metered ISO) are unchanged.
+                // FLASHLIGHT mode forces a fixed moderate underexposure and a tight ISO ceiling,
+                // bypassing the metered dim-light ramp: the flashlight lights only a central pool,
+                // so the scene meters "dim" (dark edges) and the ramp would over-brighten and blow
+                // the lit ground to white. ÷3 (~−1.6EV) + a ×5 ISO ceiling keeps the flashlight-lit
+                // ball's specular the brightest thing while the ground drops back (learned from the
+                // 20:31+ flashlight captures — ~0.65× of the over-brightened output isolates the ball).
                 let dimness = min(1.0, max(0.0, (meteredISO - 110.0) / 160.0))  // 0 sun → 1 dim
-                let underExpose = 4.0 - 2.0 * dimness    // ÷4 (−2EV) in sun → ÷2 (−1EV) dim
-                let ceilingMult = 4.0 + 4.0 * dimness    // ×4 in sun → ×8 dim
+                let underExpose = preset.isFlashlight ? 3.0 : (4.0 - 2.0 * dimness)  // ÷3 flash; ÷4 sun → ÷2 dim
+                let ceilingMult = preset.isFlashlight ? 5.0 : (4.0 + 4.0 * dimness)  // ×5 flash; ×4 sun → ×8 dim
                 let idealISO = neededISO / underExpose
                 let isoNoiseCeiling = meteredISO * ceilingMult
                 let targetISO = Float(min(max(idealISO, minISO), min(isoNoiseCeiling, maxISO)))
@@ -797,7 +785,7 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     let minISO = Double(device.activeFormat.minISO)
                     let maxISO = Double(device.activeFormat.maxISO)
                     var fitness: [ShutterPreset: ShutterFitness] = [:]
-                    for preset in ShutterPreset.allCases where preset.isCustomLock {
+                    for preset in ShutterPreset.allCases where !preset.isFlashlight {
                         let needed = hCorrect * Double(preset.denominator)
                         let target = needed / 4.0    // the -2EV operating point
                         if needed < minISO { fitness[preset] = .tooBright }
