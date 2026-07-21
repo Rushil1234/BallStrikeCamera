@@ -536,7 +536,7 @@ function LockerDashboard({
           </div>
           {dashboard.recentActivity.length ? (
             <div className="activity-list">
-              {dashboard.recentActivity.map((item) => (
+              {dashboard.recentActivity.slice(0, 6).map((item) => (
                 <div className="activity-row" key={`${item.type}-${item.id}`}>
                   <span className={`activity-dot activity-${item.type}`} />
                   <div>
@@ -546,6 +546,9 @@ function LockerDashboard({
                   <b>{item.metric}</b>
                 </div>
               ))}
+              {dashboard.recentActivity.length > 6 && (
+                <p className="activity-more">Full history lives in the app.</p>
+              )}
             </div>
           ) : (
             <EmptyState title="No shots or rounds yet" body="Once your iPhone syncs practice, sim, or course activity, it will land here." />
@@ -672,7 +675,7 @@ function BagPanel({ clubs, userId, onChanged }: { clubs: AccountClub[]; userId: 
   }
 
   return (
-    <div className="card account-panel account-panel-wide">
+    <div className="card account-panel account-panel-full">
       <div className="panel-head">
         <div>
           <span className="badge">Club bag</span>
