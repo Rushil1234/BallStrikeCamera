@@ -79,6 +79,7 @@ struct SessionDetailView: View {
 
     @State private var shots: [SavedShot] = []
     @State private var isLoading = true
+    @State private var loadError = false
     // Shot deletion / multi-select
     @State private var isSelecting = false
     @State private var selectedShotIDs: Set<UUID> = []
@@ -656,7 +657,20 @@ struct SessionDetailView: View {
     private var shotsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             TCSectionHeader(title: "Shots")
-            if shots.isEmpty {
+            if shots.isEmpty, loadError {
+                VStack(spacing: 10) {
+                    Image(systemName: "wifi.exclamationmark").font(.system(size: 22)).foregroundColor(TCTheme.textUltraMuted)
+                    Text("Couldn't load shots.").font(.system(size: 14)).foregroundColor(TCTheme.textMuted)
+                    Button { Task { await loadShots() } } label: {
+                        Text("Retry").font(.system(size: 13, weight: .bold))
+                            .foregroundColor(TCTheme.onPrimary)
+                            .padding(.horizontal, 22).padding(.vertical, 9)
+                            .background(TCTheme.gold).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, 20)
+            } else if shots.isEmpty {
                 Text("No shots recorded.")
                     .font(.system(size: 14))
                     .foregroundColor(TCTheme.textMuted)
@@ -841,10 +855,14 @@ struct SessionDetailView: View {
 
     private func loadShots() async {
         guard let uid = session.currentUser?.id else { isLoading = false; return }
-        let ids = item.shotIds
-        let all = (try? await session.backend.loadShots(userId: uid)) ?? []
-        let ordered = ids.compactMap { id in all.first(where: { $0.id == id }) }
-        shots = ordered
+        loadError = false
+        do {
+            let all = try await session.backend.loadShots(userId: uid)
+            let ids = item.shotIds
+            shots = ids.compactMap { id in all.first(where: { $0.id == id }) }
+        } catch {
+            loadError = true   // distinguish a real failure from a genuinely empty session
+        }
         isLoading = false
     }
 }
