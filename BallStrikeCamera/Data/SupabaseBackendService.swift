@@ -751,6 +751,10 @@ final class SupabaseBackendService: AppBackend {
         try await rpcVoid("respond_follow_request", body: ["follower": follower.uuidString, "accept": accept])
     }
 
+    func loadFollowList(target: UUID, followers: Bool) async throws -> [FollowListEntry] {
+        try await rpc("follow_list", body: ["target": target.uuidString, "want_followers": followers])
+    }
+
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage {
         var queryItems = [
             URLQueryItem(name: "order", value: "timestamp.desc"),

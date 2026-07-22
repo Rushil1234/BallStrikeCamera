@@ -77,6 +77,9 @@ protocol AppBackend {
     func setProfilePrivacy(_ isPrivate: Bool) async throws
     func loadIncomingFollowRequests() async throws -> [IncomingFollowRequest]
     func respondFollowRequest(follower: UUID, accept: Bool) async throws
+    /// The followers (`followers: true`) or following (`false`) list for a profile.
+    /// Gated server-side by the same visibility rule as `profileSocial.canView`.
+    func loadFollowList(target: UUID, followers: Bool) async throws -> [FollowListEntry]
 
     func loadHomeSummary(userId: UUID) async throws -> FeedHomeSummary
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage
@@ -193,6 +196,7 @@ extension AppBackend {
     func setProfilePrivacy(_ isPrivate: Bool) async throws {}
     func loadIncomingFollowRequests() async throws -> [IncomingFollowRequest] { [] }
     func respondFollowRequest(follower: UUID, accept: Bool) async throws {}
+    func loadFollowList(target: UUID, followers: Bool) async throws -> [FollowListEntry] { [] }
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)

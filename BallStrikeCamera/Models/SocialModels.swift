@@ -196,6 +196,24 @@ struct IncomingFollowRequest: Identifiable, Decodable, Equatable {
     var id: UUID { followerId }
 }
 
+/// One row of a profile's followers / following list, from follow_list()
+/// (decoder uses convertFromSnakeCase). `iFollow` = the caller already follows
+/// this person, so the list can show a Follow / Following affordance inline.
+struct FollowListEntry: Identifiable, Decodable, Equatable {
+    var userId: UUID
+    var displayName: String
+    var homeCourse: String?
+    var isPrivate: Bool
+    var iFollow: Bool
+    var id: UUID { userId }
+
+    /// Base home-course name (tees stripped) for display, if any.
+    var homeCourseBase: String? {
+        guard let hc = homeCourse, !hc.isEmpty else { return nil }
+        return hc.components(separatedBy: " ~ ").first ?? hc
+    }
+}
+
 // MARK: - Feed Notification (gimmes / comments on your posts)
 
 struct FeedNotification: Identifiable, Equatable {

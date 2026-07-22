@@ -22,6 +22,7 @@ struct PublicProfileView: View {
     @State private var showAllActivities = false
     @State private var shareURL: URL?
     @State private var showShare = false
+    @State private var followListSheet: FollowListSheet?
 
     private var isSelf: Bool { currentUserId != nil && currentUserId == userId }
     private var canViewActivity: Bool { isSelf || social.canView }
@@ -83,6 +84,17 @@ struct PublicProfileView: View {
         .sheet(isPresented: $showAllActivities) {
             NavigationStack { AllActivitiesView(name: name, posts: activities) }
                 .tcAppearance()
+        }
+        .sheet(item: $followListSheet, onDismiss: {
+            // A follow-back inside the list changes counts — refresh the summary.
+            Task { social = (try? await backend.profileSocial(target: userId)) ?? social }
+        }) { sheet in
+            NavigationStack {
+                FollowListView(targetId: userId, followers: sheet.followers,
+                               title: sheet.title, profileName: sheet.name,
+                               currentUserId: currentUserId, backend: backend)
+            }
+            .tcAppearance()
         }
     }
 
@@ -267,21 +279,29 @@ struct PublicProfileView: View {
 
     private var followRow: some View {
         HStack(spacing: 0) {
-            countTile("\(social.followerCount)", "Followers")
+            countTile("\(social.followerCount)", "Followers", followers: true)
             Rectangle().fill(TCTheme.border).frame(width: 1, height: 30)
-            countTile("\(social.followingCount)", "Following")
+            countTile("\(social.followingCount)", "Following", followers: false)
         }
         .padding(.vertical, 14)
         .background(TCTheme.panel)
         .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
     }
 
-    private func countTile(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 3) {
-            Text(value).font(.system(size: 20, weight: .bold, design: .rounded)).foregroundColor(TCTheme.textPrimary)
-            Text(label.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(0.6).foregroundColor(TCTheme.textMuted)
+    /// A tappable follower/following count. Opens the list — gated server-side, so
+    /// tapping a private account you don't follow simply shows an empty/locked list.
+    private func countTile(_ value: String, _ label: String, followers: Bool) -> some View {
+        Button {
+            followListSheet = FollowListSheet(followers: followers, title: label, name: name)
+        } label: {
+            VStack(spacing: 3) {
+                Text(value).font(.system(size: 20, weight: .bold, design: .rounded)).foregroundColor(TCTheme.textPrimary)
+                Text(label.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(0.6).foregroundColor(TCTheme.textMuted)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
     }
 
     // MARK: Achievements (milestone badges, derived from activity)
@@ -337,6 +357,148 @@ struct PublicProfileView: View {
         posts = (await p ?? []).filter { $0.userId == userId }
         profile = await pr ?? nil
         social = await so ?? .empty
+        loaded = true
+    }
+}
+
+/// Which list a tapped count opens (followers vs following) + display strings.
+private struct FollowListSheet: Identifiable {
+    let id = UUID()
+    let followers: Bool
+    let title: String       // "Followers" / "Following"
+    let name: String        // whose list
+}
+
+/// The followers / following list for a profile. Each row is tappable (opens that
+/// golfer's profile) and carries a Follow / Following affordance for follow-back.
+/// Server-gates visibility, so a private account you don't follow shows empty.
+private struct FollowListView: View {
+    let targetId: UUID
+    let followers: Bool
+    let title: String
+    let profileName: String
+    var currentUserId: UUID?
+    let backend: AppBackend
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var entries: [FollowListEntry] = []
+    @State private var loaded = false
+    @State private var followState: [UUID: Bool] = [:]   // userId → I follow them
+    @State private var profileTarget: ProfileTarget?
+
+    var body: some View {
+        ZStack {
+            TrueCarryBackground(pattern: .plain)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 12) {
+                    header
+                    if entries.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(entries) { entry in row(entry) }
+                    }
+                    Spacer(minLength: 40)
+                }
+                .padding(.horizontal, TCTheme.hPad)
+                .padding(.top, 8)
+            }
+        }
+        .navigationBarHidden(true)
+        .task { await load() }
+        .sheet(item: $profileTarget) { t in
+            NavigationStack {
+                PublicProfileView(userId: t.id, seedName: t.name, seedHomeCourse: t.homeCourse,
+                                  seedPosts: t.seedPosts, currentUserId: currentUserId, backend: backend)
+            }
+            .tcAppearance()
+        }
+    }
+
+    private var header: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(TCTheme.textPrimary)
+                Text(profileName)
+                    .font(.system(size: 13)).foregroundColor(TCTheme.textMuted)
+            }
+            Spacer()
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(TCTheme.textMuted)
+                    .frame(width: 32, height: 32)
+                    .background(TCTheme.panel).clipShape(Circle())
+            }
+        }
+        .padding(.bottom, 4)
+    }
+
+    @ViewBuilder private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: loaded ? "person.2" : "hourglass")
+                .font(.system(size: 24)).foregroundColor(TCTheme.textUltraMuted)
+            Text(loaded ? "Nobody here yet." : "Loading…")
+                .font(.system(size: 13)).foregroundColor(TCTheme.textMuted)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 40)
+    }
+
+    private func row(_ entry: FollowListEntry) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                profileTarget = ProfileTarget(id: entry.userId, name: entry.displayName,
+                                              homeCourse: entry.homeCourse, seedPosts: [])
+            } label: {
+                HStack(spacing: 12) {
+                    AvatarCircle(name: entry.displayName, size: 40)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.displayName)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(TCTheme.textPrimary)
+                            .lineLimit(1)
+                        if let hc = entry.homeCourseBase {
+                            Text(hc).font(.system(size: 12)).foregroundColor(TCTheme.textMuted).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            followBackButton(entry)
+        }
+        .padding(12)
+        .background(TCTheme.panel)
+        .clipShape(RoundedRectangle(cornerRadius: TCTheme.rowRadius, style: .continuous))
+    }
+
+    /// Follow-back — hidden on your own row (you can't follow yourself).
+    @ViewBuilder private func followBackButton(_ entry: FollowListEntry) -> some View {
+        if entry.userId == currentUserId {
+            Text("You").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.textMuted)
+        } else if followState[entry.userId] ?? entry.iFollow {
+            Text("Following").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.sage)
+        } else {
+            Button {
+                Task {
+                    let s = (try? await backend.followUser(target: entry.userId)) ?? "accepted"
+                    if s == "accepted" { followState[entry.userId] = true }
+                }
+            } label: {
+                Text("Follow")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(TCTheme.onPrimary)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(TCTheme.gold).clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func load() async {
+        entries = (try? await backend.loadFollowList(target: targetId, followers: followers)) ?? []
         loaded = true
     }
 }
