@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>True Carry — Course Label Editor · Lake Lackawanna</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css"/>
+<style>
+  :root{
+    --bg:#0e1613; --panel:#152420; --panel2:#1c322b; --border:#2c463d;
+    --ink:#eaf3ee; --muted:#9db3a9; --gold:#d8b25a; --sage:#79bb60;
+    --good:#57c26b; --warn:#e0b23c; --bad:#e2694f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  #app{display:flex;height:100vh;width:100vw}
+  #map{flex:1;height:100%}
+  #side{width:340px;min-width:340px;height:100%;overflow-y:auto;background:var(--panel);border-left:1px solid var(--border);padding:14px 14px 60px}
+  h1{font-size:16px;margin:0 0 2px}
+  .sub{font-size:11px;color:var(--muted);margin-bottom:12px}
+  .card{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px}
+  .card h2{font-size:10px;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted);margin:0 0 10px;font-weight:700}
+  .holebar{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;margin-bottom:8px}
+  .holebar button{padding:7px 0;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--muted);font-weight:700;font-size:13px;cursor:pointer}
+  .holebar button.active{background:var(--gold);color:#101a16;border-color:var(--gold)}
+  .holebar button.has{color:var(--ink);border-color:var(--sage)}
+  .navrow{display:flex;gap:6px;margin-bottom:6px}
+  .navrow button{flex:1;padding:6px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--ink);cursor:pointer;font-size:12px}
+  .tools{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .tools button{padding:9px 8px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--ink);cursor:pointer;font-size:12px;text-align:left;display:flex;align-items:center;gap:7px}
+  .tools button:hover{border-color:var(--gold)}
+  .tools button.armed{outline:2px solid var(--gold);outline-offset:-1px;background:#26382f}
+  .sw{width:12px;height:12px;border-radius:3px;flex:none;border:1px solid rgba(255,255,255,.35)}
+  .sw.round{border-radius:50%}
+  .rowbtns{display:flex;gap:6px;margin-top:8px}
+  .rowbtns button{flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--muted);cursor:pointer;font-size:11px}
+  .rowbtns button.danger{color:var(--bad);border-color:#4a2b25}
+  .stat{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--border)}
+  .stat:last-child{border-bottom:none}
+  .stat .k{font-size:12px;color:var(--muted)}
+  .stat .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+  .big{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .delta{font-size:12px;font-weight:700;padding:2px 7px;border-radius:20px}
+  .delta.good{background:rgba(87,194,107,.18);color:var(--good)}
+  .delta.warn{background:rgba(224,178,60,.18);color:var(--warn)}
+  .delta.bad{background:rgba(226,105,79,.18);color:var(--bad)}
+  .distline{display:flex;align-items:center;gap:10px;margin:4px 0 10px}
+  .chips{display:flex;flex-wrap:wrap;gap:5px}
+  .chip{font-size:11px;padding:3px 8px;border-radius:20px;border:1px solid var(--border);color:var(--muted)}
+  .chip.on{color:#101a16;background:var(--sage);border-color:var(--sage);font-weight:700}
+  .exp{display:flex;gap:6px}
+  .exp button{flex:1;padding:10px;border-radius:9px;border:none;cursor:pointer;font-weight:700;font-size:12px}
+  .exp .primary{background:var(--gold);color:#101a16}
+  .exp .ghost{background:var(--panel);color:var(--ink);border:1px solid var(--border)}
+  .hint{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
+  .gorow{display:flex;gap:6px;margin-top:8px}
+  .gorow input{flex:1;background:var(--panel);border:1px solid var(--border);color:var(--ink);border-radius:8px;padding:6px 8px;font-size:11px}
+  .gorow button{padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--ink);cursor:pointer;font-size:11px}
+  select{width:100%;background:var(--panel);border:1px solid var(--border);color:var(--ink);border-radius:8px;padding:8px;font-size:12px}
+  .pt-ic div{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.6)}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#101a16;border:1px solid var(--gold);color:var(--ink);padding:9px 16px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:9999}
+  .toast.show{opacity:1}
+  a{color:var(--gold)}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <div id="side">
+    <h1>Lake Lackawanna</h1>
+    <div class="sub">Byram Twp (Stanhope), NJ · 9 holes · par 34 · White 2240y</div>
+
+    <div class="card">
+      <h2>Imagery · shadow buster</h2>
+      <select id="basemap"></select>
+      <div class="rowbtns">
+        <button id="savePng">⬇ Save this view (PNG)</button>
+      </div>
+      <div class="hint">Tree shadows? Switch to <b>NJ leaf-off orthos</b> (flown in spring, no canopy) or flip through <b>Wayback</b> dates for a cleaner capture. “Save this view” downloads the current hole + your labels (NJ / Esri only — Wayback blocks export).</div>
+    </div>
+
+    <div class="card">
+      <h2>Hole</h2>
+      <div class="navrow">
+        <button id="prev">‹ Prev</button>
+        <button id="next">Next ›</button>
+      </div>
+      <div class="holebar" id="holebar"></div>
+    </div>
+
+    <div class="card">
+      <h2>Live hole summary</h2>
+      <div id="summary"></div>
+    </div>
+
+    <div class="card">
+      <h2>Add to this hole</h2>
+      <div class="tools" id="tools"></div>
+      <div class="rowbtns">
+        <button id="undo">↶ Undo last</button>
+        <button id="clearHole" class="danger">Clear hole</button>
+      </div>
+      <div class="hint" id="toolHint">Pick a tool, then click the map. Polygons: click each corner, then click the first point (or double-click) to finish. Click any placed shape to delete it.</div>
+    </div>
+
+    <div class="card">
+      <h2>Export</h2>
+      <div class="exp">
+        <button class="primary" id="download">Download JSON</button>
+        <button class="ghost" id="copy">Copy JSON</button>
+      </div>
+      <div class="exp" style="margin-top:6px">
+        <button class="ghost" id="showAll">Show all holes</button>
+        <button class="ghost" id="reset">Reset all</button>
+      </div>
+      <div class="gorow">
+        <input id="goInput" placeholder="paste lat,lng to recenter"/>
+        <button id="goBtn">Go</button>
+      </div>
+      <div class="hint">Autosaves to this browser. JSON matches the app's course model (Coordinate / PolygonRing). Basemap: Esri World Imagery.</div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+<script>
+/* ---------------- Scorecard (White tees) ---------------- */
+const SCORECARD = {
+  1:{par:4,hcp:3,yds:315}, 2:{par:3,hcp:7,yds:165}, 3:{par:3,hcp:6,yds:150},
+  4:{par:4,hcp:4,yds:215}, 5:{par:3,hcp:8,yds:135}, 6:{par:5,hcp:1,yds:400},
+  7:{par:5,hcp:2,yds:440}, 8:{par:4,hcp:9,yds:200}, 9:{par:3,hcp:5,yds:220}
+};
+const COURSE = {
+  name:"Lake Lackawanna Golf Course", city:"Byram Township", state:"NJ",
+  teeName:"White", rating:33.1, slope:79, ratingW:34.9, slopeW:83
+};
+
+/* ---------------- Tool defs ---------------- */
+const TOOLS = {
+  tee:        {label:"Tee",         geom:"point",   color:"#ffffff", letter:"T", single:true},
+  greenFront: {label:"Green front", geom:"point",   color:"#bfe3a8", letter:"F", single:true},
+  greenCenter:{label:"Green center",geom:"point",   color:"#e2694f", letter:"C", single:true},
+  greenBack:  {label:"Green back",  geom:"point",   color:"#3d6f52", letter:"B", single:true},
+  path:       {label:"Fairway line",geom:"line",    color:"#e8c74a", single:true},
+  fairway:    {label:"Fairway",     geom:"polygon", color:"#4f8a3c", single:true},
+  green:      {label:"Green",       geom:"polygon", color:"#79bb60", single:true},
+  bunker:     {label:"Bunker",      geom:"polygon", color:"#dcc995", single:false},
+  water:      {label:"Water",       geom:"polygon", color:"#2a86b4", single:false}
+};
+const POINT_KEYS = ["tee","greenFront","greenCenter","greenBack"];
+
+/* ---------------- State ---------------- */
+const LS_KEY = "tc_labeler_lake_lackawanna_v1";
+function blankHole(){return{tee:null,greenFront:null,greenCenter:null,greenBack:null,path:null,fairway:null,green:null,bunkers:[],water:[]};}
+let state = load() || {hole:1, holes:{}};
+for(let h=1;h<=9;h++){ if(!state.holes[h]) state.holes[h]=blankHole(); }
+if(!state.hole) state.hole=1;
+let armed = null;        // currently armed tool key
+let drawHandler = null;  // active Leaflet.Draw handler
+let showAll = false;
+
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+function load(){ try{return JSON.parse(localStorage.getItem(LS_KEY));}catch(e){return null;} }
+
+/* ---------------- Basemaps (imagery from different dates / seasons) ---------------- */
+function WB(r){return `https://wayback.maptiles.arcgis.com/arcgis/rest/services/world_imagery/wmts/1.0.0/default028mm/mapserver/tile/${r}/{z}/{y}/{x}`;}
+const NJ=y=>`https://maps.nj.gov/arcgis/rest/services/Basemap/Orthos_Natural_${y}_NJ_WM/MapServer/tile/{z}/{y}/{x}`;
+const BASEMAPS=[
+  {id:'nj2020',group:'NJ leaf-off orthophotos (see under trees)',name:'NJ 2020 — 1 ft leaf-off',max:20,tpl:NJ(2020),attr:'NJ OGIS 2020'},
+  {id:'nj2015',group:'NJ leaf-off orthophotos (see under trees)',name:'NJ 2015 — 1 ft leaf-off',max:20,tpl:NJ(2015),attr:'NJ OGIS 2015'},
+  {id:'nj2012',group:'NJ leaf-off orthophotos (see under trees)',name:'NJ 2012 — leaf-off',max:20,tpl:NJ(2012),attr:'NJ OGIS 2012'},
+  {id:'esri', group:'Esri (default)',name:'Esri World Imagery (current)',max:19,tpl:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',attr:'© Esri'},
+  // Distinct World Imagery captures for THIS course (Esri Wayback), newest first:
+  {id:'wb32246',group:'Esri Wayback — historical captures',name:'Wayback · 2026 (spring)',max:19,tpl:WB(32246),cors:false},
+  {id:'wb64001',group:'Esri Wayback — historical captures',name:'Wayback · 2024–2026',max:19,tpl:WB(64001),cors:false},
+  {id:'wb37965',group:'Esri Wayback — historical captures',name:'Wayback · 2023–2024',max:19,tpl:WB(37965),cors:false},
+  {id:'wb46399',group:'Esri Wayback — historical captures',name:'Wayback · 2023 (spring)',max:19,tpl:WB(46399),cors:false},
+  {id:'wb57965',group:'Esri Wayback — historical captures',name:'Wayback · 2022–2023',max:19,tpl:WB(57965),cors:false},
+  {id:'wb26120',group:'Esri Wayback — historical captures',name:'Wayback · 2021',max:19,tpl:WB(26120),cors:false},
+  {id:'wb6863', group:'Esri Wayback — historical captures',name:'Wayback · 2020–2021',max:19,tpl:WB(6863),cors:false},
+  {id:'wb11135',group:'Esri Wayback — historical captures',name:'Wayback · 2019–2020',max:19,tpl:WB(11135),cors:false},
+  {id:'wb9598', group:'Esri Wayback — historical captures',name:'Wayback · 2018–2019',max:19,tpl:WB(9598),cors:false},
+  {id:'wb32337',group:'Esri Wayback — historical captures',name:'Wayback · 2018',max:19,tpl:WB(32337),cors:false},
+  {id:'wb25521',group:'Esri Wayback — historical captures',name:'Wayback · 2014–2017',max:19,tpl:WB(25521),cors:false}
+];
+if(!state.basemap) state.basemap='nj2020';
+function activeBasemap(){ return BASEMAPS.find(b=>b.id===state.basemap)||BASEMAPS[0]; }
+
+/* ---------------- Map ---------------- */
+const map = L.map('map',{zoomControl:true,maxZoom:20}).setView([40.9268,-74.7009], 16);
+let baseLayer=null;
+function setBasemap(id){
+  state.basemap=id; save();
+  const bm=activeBasemap();
+  if(baseLayer) map.removeLayer(baseLayer);
+  // crossOrigin only where the server grants CORS — setting it on Wayback (no CORS
+  // header) would make those tiles fail to display entirely.
+  const opts={maxNativeZoom:bm.max,maxZoom:20,attribution:(bm.attr||'Esri Wayback')+' · basemap'};
+  if(bm.cors!==false) opts.crossOrigin=true;
+  baseLayer=L.tileLayer(bm.tpl,opts).addTo(map);
+  baseLayer.bringToBack();
+  const sel=document.getElementById('basemap'); if(sel) sel.value=id;
+}
+function paintBasemapSelect(){
+  const sel=document.getElementById('basemap'); sel.innerHTML='';
+  const seen=new Set();
+  BASEMAPS.forEach(b=>{ if(seen.has(b.group))return; seen.add(b.group);
+    const og=document.createElement('optgroup'); og.label=b.group;
+    BASEMAPS.filter(x=>x.group===b.group).forEach(x=>{
+      const o=document.createElement('option'); o.value=x.id; o.textContent=x.name; og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+  sel.value=state.basemap; sel.onchange=()=>setBasemap(sel.value);
+}
+const drawn = L.featureGroup().addTo(map);   // current hole
+const ghost = L.featureGroup().addTo(map);   // other holes (faint)
+
+/* ---------------- Geometry helpers ---------------- */
+function distYd(a,b){
+  const R=6371000, tr=x=>x*Math.PI/180;
+  const dLat=tr(b.lat-a.lat), dLng=tr(b.lng-a.lng), la1=tr(a.lat), la2=tr(b.lat);
+  const h=Math.sin(dLat/2)**2+Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h))*1.09361;
+}
+function pathYd(pts){ let d=0; for(let i=1;i<pts.length;i++) d+=distYd(pts[i-1],pts[i]); return d; }
+function centroid(ring){
+  if(!ring||!ring.length) return null;
+  let la=0,ln=0; ring.forEach(p=>{la+=p.lat;ln+=p.lng;});
+  return {lat:la/ring.length, lng:ln/ring.length};
+}
+function letterIcon(t){ return L.divIcon({className:'pt-ic', html:`<div style="background:${t.color};color:${t.color==='#ffffff'?'#111':'#fff'}">${t.letter}</div>`, iconSize:[22,22], iconAnchor:[11,11]}); }
+
+/* ---------------- Rendering ---------------- */
+function redraw(){
+  drawn.clearLayers(); ghost.clearLayers();
+  const h = state.holes[state.hole];
+
+  // other holes faint
+  if(showAll){
+    for(let n=1;n<=9;n++){
+      if(n===state.hole) continue;
+      const o=state.holes[n];
+      const t=o.tee, c=o.greenCenter||centroid(o.green);
+      if(t&&c) L.polyline([[t.lat,t.lng],[c.lat,c.lng]],{color:'#ffffff',weight:1,opacity:.35,dashArray:'4,4'}).addTo(ghost);
+      if(t) L.circleMarker([t.lat,t.lng],{radius:3,color:'#fff',opacity:.5,fillOpacity:.5}).bindTooltip('T'+n).addTo(ghost);
+    }
+  }
+
+  const polyOpts=(t,fill)=>({color:t.color,weight:2,fillColor:t.color,fillOpacity:fill});
+  const addPoly=(ring,t,fill,kind,idx)=>{
+    const layer=L.polygon(ring.map(p=>[p.lat,p.lng]),polyOpts(t,fill)).addTo(drawn);
+    layer.on('click',(e)=>{L.DomEvent.stop(e); deleteShape(kind,idx);});
+    layer.bindTooltip(t.label,{sticky:true});
+  };
+  if(h.fairway) addPoly(h.fairway,TOOLS.fairway,.28,'fairway');
+  if(h.green)   addPoly(h.green,TOOLS.green,.5,'green');
+  h.bunkers.forEach((r,i)=>addPoly(r,TOOLS.bunker,.6,'bunker',i));
+  h.water.forEach((r,i)=>addPoly(r,TOOLS.water,.55,'water',i));
+
+  if(h.path){
+    const pl=L.polyline(h.path.map(p=>[p.lat,p.lng]),{color:TOOLS.path.color,weight:3,dashArray:'6,5'}).addTo(drawn);
+    pl.on('click',(e)=>{L.DomEvent.stop(e); deleteShape('path');});
+    h.path.forEach(p=>L.circleMarker([p.lat,p.lng],{radius:3,color:TOOLS.path.color,fillOpacity:1}).addTo(drawn));
+  }
+  POINT_KEYS.forEach(k=>{
+    if(!h[k]) return;
+    const t=TOOLS[k];
+    const m=L.marker([h[k].lat,h[k].lng],{icon:letterIcon(t)}).addTo(drawn);
+    m.on('click',(e)=>{L.DomEvent.stop(e); deleteShape(k);});
+    m.bindTooltip(t.label);
+  });
+
+  updateSummary(); paintHolebar(); paintTools(); save();
+}
+
+function deleteShape(kind,idx){
+  const h=state.holes[state.hole];
+  if(kind==='bunker'||kind==='water'){ h[kind].splice(idx,1); }
+  else { h[kind]=null; }
+  redraw();
+}
+
+/* ---------------- Summary ---------------- */
+function deltaClass(d){ const a=Math.abs(d); return a<=8?'good':a<=20?'warn':'bad'; }
+function updateSummary(){
+  const n=state.hole, h=state.holes[n], sc=SCORECARD[n];
+  const gc = h.greenCenter || centroid(h.green);
+  const gcApprox = !h.greenCenter && !!h.green;
+  let distHTML='';
+  if(h.tee && gc){
+    const d=distYd(h.tee,gc), delta=d-sc.yds, dc=deltaClass(delta);
+    distHTML=`<div class="distline">
+        <span class="big">${Math.round(d)}<span style="font-size:13px;font-weight:600;color:var(--muted)"> yd</span></span>
+        <span class="delta ${dc}">${delta>=0?'+':''}${Math.round(delta)} vs card</span>
+      </div>
+      <div class="hint" style="margin-top:-4px">Tee → green ${gcApprox?'center (polygon centroid)':'center'} · scorecard ${sc.yds}y</div>`;
+  } else {
+    distHTML=`<div class="hint">Place a <b>Tee</b> and <b>Green center</b> to check the distance against the ${sc.yds}y scorecard.</div>`;
+  }
+  let depth = (h.greenFront&&h.greenBack)? Math.round(distYd(h.greenFront,h.greenBack)) : null;
+  let plen = h.path? Math.round(pathYd(h.path)) : null;
+  const chip=(on,txt)=>`<span class="chip ${on?'on':''}">${txt}</span>`;
+  document.getElementById('summary').innerHTML = `
+    <div class="stat"><span class="k">Hole ${n} · Par ${sc.par} · Hcp ${sc.hcp}</span><span class="v">${sc.yds} yd</span></div>
+    ${distHTML}
+    <div class="stat"><span class="k">Green depth (F→B)</span><span class="v">${depth!=null?depth+' yd':'—'}</span></div>
+    <div class="stat"><span class="k">Fairway line length</span><span class="v">${plen!=null?plen+' yd':'—'}</span></div>
+    <div style="margin-top:10px" class="chips">
+      ${chip(!!h.tee,'Tee')}${chip(!!h.greenFront,'G-front')}${chip(!!h.greenCenter,'G-center')}${chip(!!h.greenBack,'G-back')}
+      ${chip(!!h.fairway,'Fairway')}${chip(!!h.green,'Green')}${chip(h.bunkers.length>0,'Bunkers '+h.bunkers.length)}${chip(h.water.length>0,'Water '+h.water.length)}${chip(!!h.path,'Line')}
+    </div>`;
+}
+
+/* ---------------- Hole bar + tools ---------------- */
+function holeHasData(n){ const h=state.holes[n]; return h.tee||h.greenCenter||h.fairway||h.green||h.bunkers.length||h.water.length||h.greenFront||h.greenBack||h.path; }
+function paintHolebar(){
+  const bar=document.getElementById('holebar'); bar.innerHTML='';
+  for(let n=1;n<=9;n++){
+    const b=document.createElement('button');
+    b.textContent=n;
+    if(n===state.hole) b.className='active'; else if(holeHasData(n)) b.className='has';
+    b.onclick=()=>{cancelDraw(); state.hole=n; redraw(); map.setView(recenterTarget(n)||map.getCenter());};
+    bar.appendChild(b);
+  }
+}
+function recenterTarget(n){ const h=state.holes[n]; const t=h.tee||h.greenCenter; return t?[t.lat,t.lng]:null; }
+function paintTools(){
+  const box=document.getElementById('tools'); box.innerHTML='';
+  Object.entries(TOOLS).forEach(([key,t])=>{
+    const b=document.createElement('button');
+    if(armed===key) b.className='armed';
+    const sw=`<span class="sw ${t.geom==='point'?'round':''}" style="background:${t.color}"></span>`;
+    b.innerHTML=`${sw}<span>${t.label}${t.single?'':' +'}</span>`;
+    b.onclick=()=>arm(key);
+    box.appendChild(b);
+  });
+}
+
+/* ---------------- Drawing ---------------- */
+function cancelDraw(){ if(drawHandler){drawHandler.disable(); drawHandler=null;} armed=null; }
+function arm(key){
+  cancelDraw();
+  armed=key; paintTools();
+  const t=TOOLS[key];
+  if(t.geom==='point'){
+    drawHandler=new L.Draw.Marker(map,{icon:letterIcon(t)});
+  } else if(t.geom==='line'){
+    drawHandler=new L.Draw.Polyline(map,{shapeOptions:{color:t.color,weight:3}});
+  } else {
+    drawHandler=new L.Draw.Polygon(map,{allowIntersection:false,shapeOptions:{color:t.color}});
+  }
+  drawHandler.enable();
+  document.getElementById('toolHint').textContent =
+    t.geom==='point' ? `Click the map to place the ${t.label.toLowerCase()}.`
+    : `Click each point of the ${t.label.toLowerCase()}${t.geom==='polygon'?', then click the first point (or double-click) to close it.':', then double-click to finish.'}`;
+}
+map.on(L.Draw.Event.CREATED, e=>{
+  const key=armed; if(!key) return;
+  const t=TOOLS[key], h=state.holes[state.hole];
+  if(t.geom==='point'){
+    const ll=e.layer.getLatLng(); h[key]={lat:ll.lat,lng:ll.lng};
+  } else {
+    const ring=e.layer.getLatLngs()[0]? e.layer.getLatLngs()[0] : e.layer.getLatLngs();
+    const pts=(Array.isArray(ring)?ring:e.layer.getLatLngs()).map(p=>({lat:p.lat,lng:p.lng}));
+    if(t.geom==='line'){ h.path=pts; }
+    else if(t.single){ h[key]=pts; }
+    else { h[key].push(pts); }
+  }
+  // multi-shape tools stay armed for rapid entry; singles disarm
+  if(t.single){ armed=null; drawHandler=null; }
+  else { drawHandler=null; setTimeout(()=>arm(key),0); }
+  redraw();
+});
+
+/* ---------------- Buttons ---------------- */
+document.getElementById('prev').onclick=()=>{cancelDraw(); state.hole=state.hole>1?state.hole-1:9; redraw();};
+document.getElementById('next').onclick=()=>{cancelDraw(); state.hole=state.hole<9?state.hole+1:1; redraw();};
+document.getElementById('undo').onclick=()=>{
+  const h=state.holes[state.hole];
+  // undo priority: last multi (water,bunker) then singles in reverse add-likelihood
+  if(h.water.length){h.water.pop();}
+  else if(h.bunkers.length){h.bunkers.pop();}
+  else { for(const k of ['path','green','fairway','greenBack','greenFront','greenCenter','tee']){ if(h[k]){h[k]=null;break;} } }
+  redraw();
+};
+document.getElementById('clearHole').onclick=()=>{ if(confirm('Clear all shapes on hole '+state.hole+'?')){ state.holes[state.hole]=blankHole(); redraw(); } };
+document.getElementById('showAll').onclick=()=>{ showAll=!showAll; document.getElementById('showAll').textContent=showAll?'Hide other holes':'Show all holes'; redraw(); };
+document.getElementById('reset').onclick=()=>{ if(confirm('Erase ALL labeling for every hole? This cannot be undone.')){ state={hole:1,holes:{}}; for(let h=1;h<=9;h++) state.holes[h]=blankHole(); redraw(); } };
+document.getElementById('goBtn').onclick=()=>{
+  const v=document.getElementById('goInput').value.split(/[, ]+/).map(Number).filter(x=>!isNaN(x));
+  if(v.length===2) map.setView([v[0],v[1]],17);
+};
+
+/* ---------------- Export ---------------- */
+function coord(p){ return {latitude:+p.lat.toFixed(7), longitude:+p.lng.toFixed(7)}; }
+function ring(r){ return {coordinates:r.map(coord)}; }
+function buildJSON(){
+  const holes=[];
+  for(let n=1;n<=9;n++){
+    const h=state.holes[n], sc=SCORECARD[n], o={number:n,par:sc.par,handicap:sc.hcp,teeYardsByTeeBox:{[COURSE.teeName]:sc.yds}};
+    if(h.tee){ o.teeCoordinate=coord(h.tee); o.teeCoordinateByTeeBox={[COURSE.teeName]:coord(h.tee)}; }
+    if(h.greenFront)  o.greenFrontCoordinate=coord(h.greenFront);
+    if(h.greenCenter) o.greenCenterCoordinate=coord(h.greenCenter);
+    if(h.greenBack)   o.greenBackCoordinate=coord(h.greenBack);
+    if(h.fairway) o.fairwayPolygon=ring(h.fairway);
+    if(h.green)   o.greenPolygon=ring(h.green);
+    if(h.bunkers.length) o.bunkerPolygons=h.bunkers.map(ring);
+    if(h.water.length)   o.waterPolygons=h.water.map(ring);
+    if(h.path)    o.pathCoordinates=h.path.map(coord);
+    holes.push(o);
+  }
+  const c=map.getCenter();
+  return {courseName:COURSE.name,city:COURSE.city,state:COURSE.state,
+          rating:COURSE.rating,slope:COURSE.slope,par:34,
+          center:{latitude:+c.lat.toFixed(6),longitude:+c.lng.toFixed(6)},
+          holes};
+}
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); }
+document.getElementById('download').onclick=()=>{
+  const blob=new Blob([JSON.stringify(buildJSON(),null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='lake_lackawanna_labels.json'; a.click();
+  toast('Downloaded lake_lackawanna_labels.json');
+};
+document.getElementById('copy').onclick=async()=>{
+  try{ await navigator.clipboard.writeText(JSON.stringify(buildJSON(),null,2)); toast('JSON copied'); }
+  catch(e){ toast('Copy failed — use Download'); }
+};
+
+/* ---------------- Save view as PNG ---------------- */
+function fillTpl(t,z,x,y){ return t.replace('{z}',z).replace('{x}',x).replace('{y}',y); }
+function hexA(hex,a){ const n=parseInt(hex.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+function drawLabels(ctx){
+  const h=state.holes[state.hole];
+  const P=ll=>{const p=map.latLngToContainerPoint([ll.lat,ll.lng]); return [p.x,p.y];};
+  const poly=(ring,color,fill)=>{ if(!ring)return; ctx.beginPath(); ring.forEach((pt,i)=>{const[x,y]=P(pt); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}); ctx.closePath(); ctx.fillStyle=hexA(color,fill); ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle=color; ctx.stroke(); };
+  poly(h.fairway,TOOLS.fairway.color,.25); poly(h.green,TOOLS.green.color,.45);
+  h.bunkers.forEach(r=>poly(r,TOOLS.bunker.color,.55)); h.water.forEach(r=>poly(r,TOOLS.water.color,.5));
+  if(h.path){ ctx.beginPath(); h.path.forEach((pt,i)=>{const[x,y]=P(pt); i?ctx.lineTo(x,y):ctx.moveTo(x,y);}); ctx.strokeStyle=TOOLS.path.color; ctx.lineWidth=3; ctx.setLineDash([6,5]); ctx.stroke(); ctx.setLineDash([]); }
+  POINT_KEYS.forEach(k=>{ if(!h[k])return; const t=TOOLS[k]; const[x,y]=P(h[k]);
+    ctx.beginPath(); ctx.arc(x,y,9,0,7); ctx.fillStyle=t.color; ctx.fill(); ctx.lineWidth=2; ctx.strokeStyle='#fff'; ctx.stroke();
+    ctx.fillStyle=t.color==='#ffffff'?'#111':'#fff'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(t.letter,x,y); });
+}
+async function exportPNG(){
+  const bm=activeBasemap(), size=map.getSize(), w=size.x, h=size.y, z=Math.round(map.getZoom());
+  const min=map.getPixelBounds().min, n=Math.pow(2,z);
+  const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+  const ctx=canvas.getContext('2d'); ctx.fillStyle='#000'; ctx.fillRect(0,0,w,h);
+  const jobs=[];
+  for(let ty=Math.floor(min.y/256); ty<=Math.floor((min.y+h)/256); ty++){
+    for(let tx=Math.floor(min.x/256); tx<=Math.floor((min.x+w)/256); tx++){
+      const wx=((tx%n)+n)%n, url=fillTpl(bm.tpl,z,wx,ty), dx=tx*256-min.x, dy=ty*256-min.y;
+      jobs.push(new Promise(res=>{ const img=new Image(); img.crossOrigin='anonymous';
+        img.onload=()=>{try{ctx.drawImage(img,dx,dy);}catch(e){} res();}; img.onerror=()=>res(); img.src=url; }));
+    }
+  }
+  toast('Rendering image…');
+  await Promise.all(jobs);
+  drawLabels(ctx);
+  let dataURL;
+  try{ dataURL=canvas.toDataURL('image/png'); }
+  catch(e){ toast('This layer blocks export — switch to NJ or Esri, or screenshot.'); return; }
+  const a=document.createElement('a'); a.download=`lake_lackawanna_h${state.hole}_${bm.id}.png`; a.href=dataURL; a.click();
+  toast('Saved hole '+state.hole+' ('+bm.name+')');
+}
+document.getElementById('savePng').onclick=exportPNG;
+
+/* ---------------- Go ---------------- */
+paintBasemapSelect();
+setBasemap(state.basemap);
+redraw();
+</script>
+</body>
+</html>
