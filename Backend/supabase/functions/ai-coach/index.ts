@@ -205,6 +205,24 @@ function deriveLabel(mode: string, shots: Metrics[], round?: RoundCtx): string |
   }
 }
 
+// Cost guard: this endpoint spends real OpenRouter credits per call, and the Pro gate alone
+// wouldn't stop a Pro user (or a leaked Pro JWT) from hammering it. Cap successful reads per
+// user using the saved-note timestamps — cheap (two COUNT queries) and it counts exactly the
+// billed calls (errors don't save a note). Generous for real use, protective against abuse.
+const RATE_PER_HOUR = 20;
+const RATE_PER_DAY = 120;
+async function withinRateLimit(userId: string): Promise<boolean> {
+  const since = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const hour = await supabase.from("ai_coach_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId).gte("created_at", since(3_600_000));
+  if ((hour.count ?? 0) >= RATE_PER_HOUR) return false;
+  const day = await supabase.from("ai_coach_notes")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId).gte("created_at", since(86_400_000));
+  return (day.count ?? 0) < RATE_PER_DAY;
+}
+
 async function saveNote(userId: string, mode: string, summary: string, label: string | null) {
   const { error } = await supabase
     .from("ai_coach_notes")
@@ -258,6 +276,10 @@ Deno.serve(async (req: Request) => {
     return json({ error: "AI Coach is a Pro feature. Upgrade to unlock coaching." }, 403);
   }
   if (!OPENROUTER_KEY) return json({ error: "AI coach is not configured yet." }, 503);
+  // Rate-limit BEFORE spending any OpenRouter credits.
+  if (!(await withinRateLimit(user.id))) {
+    return json({ error: "You've reached the AI Coach limit for now — try again a little later." }, 429);
+  }
 
   let body: { mode?: string; shots?: Metrics[]; clubs?: ClubStat[]; round?: RoundCtx; notes?: string };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON body" }, 400); }
