@@ -39,6 +39,7 @@ final class FeedViewModel: ObservableObject {
         // feed page, engagement, leaderboard) skipped it via the catch — which is why
         // comment/gimme notifications never appeared for some users.
         await refreshNotifications()
+        errorMessage = nil   // clear any prior failure so a successful reload dismisses the error state
         do {
             homeSummary = try await backend.loadHomeSummary(userId: userId)
             friendsCount = homeSummary.friendsCount
