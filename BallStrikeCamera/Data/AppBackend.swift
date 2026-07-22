@@ -80,6 +80,8 @@ protocol AppBackend {
     /// The followers (`followers: true`) or following (`false`) list for a profile.
     /// Gated server-side by the same visibility rule as `profileSocial.canView`.
     func loadFollowList(target: UUID, followers: Bool) async throws -> [FollowListEntry]
+    /// The caller's saved AI Coach summaries (most recent first), RLS-scoped to them.
+    func loadCoachNotes() async throws -> [CoachNote]
 
     func loadHomeSummary(userId: UUID) async throws -> FeedHomeSummary
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage
@@ -197,6 +199,7 @@ extension AppBackend {
     func loadIncomingFollowRequests() async throws -> [IncomingFollowRequest] { [] }
     func respondFollowRequest(follower: UUID, accept: Bool) async throws {}
     func loadFollowList(target: UUID, followers: Bool) async throws -> [FollowListEntry] { [] }
+    func loadCoachNotes() async throws -> [CoachNote] { [] }
 
     func loadEntitlement(userId: UUID) async throws -> UserEntitlement {
         UserEntitlement.freeTier(userId: userId)

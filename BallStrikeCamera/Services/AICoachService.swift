@@ -6,7 +6,17 @@ import SwiftUI
 /// one focus) that the card renders visually. Runs on-device in microseconds.
 enum AICoachError: LocalizedError {
     case noData
-    var errorDescription: String? { "Hit a few shots first and I'll read them for you." }
+    case notConfigured
+    case notSignedIn
+    case server(String)
+    var errorDescription: String? {
+        switch self {
+        case .noData:        return "Hit a few shots first and I'll read them for you."
+        case .notConfigured: return "AI Coach isn't available right now."
+        case .notSignedIn:   return "Sign in to use the AI Coach."
+        case .server(let m): return m
+        }
+    }
 }
 
 /// What the card draws. Kept small and visual — a headline, a few key numbers,
@@ -24,9 +34,9 @@ struct CoachReport {
 }
 
 struct AICoachService {
-    enum Mode: String { case shot, session }
+    enum Mode: String { case shot, session, round, bag }
 
-    struct ShotPayload {
+    struct ShotPayload: Encodable {
         var clubName: String?
         var carryYards: Double?
         var totalYards: Double?
@@ -70,13 +80,114 @@ struct AICoachService {
         }
     }
 
-    /// Kept async so callers don't change; returns instantly, never hits the network.
+    /// The free, instant, on-device structured read (shot/session). Never hits the network.
     static func report(mode: Mode, shots: [ShotPayload]) async throws -> CoachReport {
         guard !shots.isEmpty else { throw AICoachError.noData }
         switch mode {
-        case .shot:    return CoachEngine.shotReport(shots[0])
-        case .session: return CoachEngine.sessionReport(shots)
+        case .shot:            return CoachEngine.shotReport(shots[0])
+        case .session, .round, .bag: return CoachEngine.sessionReport(shots)
         }
+    }
+
+    // MARK: - Deep read (opt-in LLM via OpenRouter edge function)
+
+    /// Per-club rollup sent as baseline context so the LLM can talk gapping + dispersion,
+    /// not just one instant. Keys match the edge function's ClubStat type.
+    struct ClubStat: Encodable {
+        var clubName: String
+        var count: Int
+        var avgCarry: Double?
+        var carrySD: Double?
+        var avgBall: Double?
+        var avgSmash: Double?
+        var avgLaunch: Double?
+        var avgSideDeg: Double?   // signed: + right, − left
+    }
+
+    /// On-course context for a round deep-read. Keys match the edge function's RoundCtx.
+    struct RoundContext: Encodable {
+        var courseName: String?
+        var score: Int?
+        var toPar: Int?
+        var holes: Int?
+        var fairwaysHit: Int?
+        var fairwaysTotal: Int?
+        var gir: Int?
+        var girTotal: Int?
+        var putts: Int?
+    }
+
+    /// The JSON body POSTed to the ai-coach edge function.
+    struct DeepReadRequest: Encodable {
+        var mode: String
+        var shots: [ShotPayload]?
+        var clubs: [ClubStat]?
+        var round: RoundContext?
+        var notes: String?
+
+        static func forShot(_ p: ShotPayload) -> DeepReadRequest { .init(mode: "shot", shots: [p]) }
+        static func forSession(_ ps: [ShotPayload]) -> DeepReadRequest { .init(mode: "session", shots: ps) }
+        static func forRound(_ ps: [ShotPayload], round: RoundContext) -> DeepReadRequest {
+            .init(mode: "round", shots: ps.isEmpty ? nil : ps, round: round)
+        }
+        static func forBag(_ clubs: [ClubStat]) -> DeepReadRequest { .init(mode: "bag", clubs: clubs) }
+    }
+
+    private struct DeepReadResponse: Decodable { let coaching: String; let mode: String? }
+    private struct DeepReadErrorBody: Decodable { let error: String }
+
+    /// Calls the Pro-gated OpenRouter coach and returns the coaching text. Only fires on an
+    /// explicit user tap (the card never auto-runs it), so tokens follow intent.
+    static func deepRead(_ request: DeepReadRequest) async throws -> String {
+        guard let config = SupabaseConfig.load() else { throw AICoachError.notConfigured }
+        guard let token = UserDefaults.standard.string(forKey: "sb_access_token"), !token.isEmpty else {
+            throw AICoachError.notSignedIn
+        }
+        var req = URLRequest(url: config.functionsBaseURL.appendingPathComponent("ai-coach"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = 30
+        req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(request)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 200, let decoded = try? JSONDecoder().decode(DeepReadResponse.self, from: data) {
+            let text = decoded.coaching.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.isEmpty { throw AICoachError.server("No coaching returned.") }
+            return text
+        }
+        // Surface the function's own message (Pro gate, config, rate) when present.
+        if let body = try? JSONDecoder().decode(DeepReadErrorBody.self, from: data) {
+            throw AICoachError.server(body.error)
+        }
+        throw AICoachError.server("Coaching is unavailable right now. Try again in a moment.")
+    }
+
+    /// Groups shots into per-club baselines for the `bag` / session deep-read context.
+    static func clubStats(from shots: [ShotPayload]) -> [ClubStat] {
+        var groups: [String: [ShotPayload]] = [:]
+        for s in shots where (s.clubName?.isEmpty == false) {
+            groups[s.clubName!, default: []].append(s)
+        }
+        func mean(_ xs: [Double]) -> Double? { xs.isEmpty ? nil : xs.reduce(0,+) / Double(xs.count) }
+        func sd(_ xs: [Double]) -> Double? {
+            guard xs.count > 1, let m = mean(xs) else { return nil }
+            return (xs.reduce(0) { $0 + ($1-m)*($1-m) } / Double(xs.count-1)).squareRoot()
+        }
+        func pos(_ xs: [Double?]) -> [Double] { xs.compactMap { $0 }.filter { $0 > 0 } }
+        return groups.map { name, gs in
+            ClubStat(
+                clubName: name, count: gs.count,
+                avgCarry: mean(pos(gs.map(\.carryYards))),
+                carrySD: sd(pos(gs.map(\.carryYards))),
+                avgBall: mean(pos(gs.map(\.ballSpeedMph))),
+                avgSmash: mean(pos(gs.map(\.smashFactor))),
+                avgLaunch: mean(pos(gs.map(\.vlaDegrees))),
+                avgSideDeg: mean(gs.compactMap(\.signedHLA))
+            )
+        }.sorted { ($0.avgCarry ?? 0) > ($1.avgCarry ?? 0) }
     }
 }
 
