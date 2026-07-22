@@ -304,7 +304,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've reached the AI Coach limit for now — try again a little later." }, 429);
   }
 
-  let body: { mode?: string; shots?: Metrics[]; clubs?: ClubStat[]; round?: RoundCtx; notes?: string };
+  let body: { mode?: string; shots?: Metrics[]; clubs?: ClubStat[]; round?: RoundCtx; notes?: string; contextLabel?: string };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON body" }, 400); }
 
   const mode = ["session", "round", "bag"].includes(body.mode ?? "") ? body.mode! : "shot";
@@ -343,7 +343,14 @@ Deno.serve(async (req: Request) => {
   if (!orRes.ok) {
     const detail = await orRes.text();
     console.error("OpenRouter error", orRes.status, detail);
-    return json({ error: "Coaching is unavailable right now. Try again in a moment." }, 502);
+    // Map the common upstream failures to clearer guidance. 402 = the OpenRouter key is out
+    // of credit / over its spend cap; 429 = upstream rate limit.
+    const msg = orRes.status === 402
+      ? "The AI Coach is temporarily unavailable (out of credits). Please try again later."
+      : orRes.status === 429
+      ? "The AI Coach is busy right now — give it a few seconds and try again."
+      : "Coaching is unavailable right now. Try again in a moment.";
+    return json({ error: msg }, 502);
   }
 
   const data = await orRes.json();
@@ -352,7 +359,8 @@ Deno.serve(async (req: Request) => {
 
   // Persist the summary with the golfer's profile so it feeds future context and their
   // coach history. Best-effort — a save failure must not fail the coaching response.
-  await saveNote(user.id, mode, coaching, deriveLabel(mode, shots, body.round));
+  const label = (body.contextLabel && body.contextLabel.trim()) || deriveLabel(mode, shots, body.round);
+  await saveNote(user.id, mode, coaching, label);
 
   return json({ coaching, mode, saved: true });
 });

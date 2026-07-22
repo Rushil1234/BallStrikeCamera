@@ -21,6 +21,7 @@ struct AICoachCard: View {
     @State private var deepText: String?
     @State private var deepLoading = false
     @State private var deepError: String?
+    @State private var prefilledFromSaved = false   // deepText came from a saved note, not a fresh call
 
     private var canRun: Bool { isPro && !shots.isEmpty }
 
@@ -67,6 +68,7 @@ struct AICoachCard: View {
             }
         }
         .tcCard()
+        .task(id: effectiveDeepRead?.contextLabel) { await loadSavedNote() }
     }
 
     // MARK: Header
@@ -233,16 +235,27 @@ struct AICoachCard: View {
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles").font(.system(size: 13, weight: .bold)).foregroundColor(TCTheme.gold)
                     Text("AI Coach").font(.system(size: 13, weight: .bold)).foregroundColor(TCTheme.textPrimary)
-                    Spacer()
-                    Button { Task { await runDeepRead() } } label: {
-                        Image(systemName: "arrow.clockwise").font(.system(size: 12, weight: .bold)).foregroundColor(TCTheme.gold)
+                    if prefilledFromSaved {
+                        Text("· saved").font(.system(size: 11)).foregroundColor(TCTheme.textMuted)
                     }
-                    .buttonStyle(.plain).disabled(deepLoading)
+                    Spacer()
+                    if deepLoading {
+                        ProgressView().controlSize(.small).tint(TCTheme.gold)
+                    } else {
+                        Button { Task { await runDeepRead() } } label: {
+                            Image(systemName: "arrow.clockwise").font(.system(size: 12, weight: .bold)).foregroundColor(TCTheme.gold)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 Text(deepText)
                     .font(.system(size: 14))
                     .foregroundColor(TCTheme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
+                if prefilledFromSaved {
+                    Text("Tap ↻ for a fresh read")
+                        .font(.system(size: 11)).foregroundColor(TCTheme.textMuted)
+                }
             } else {
                 Button { Task { await runDeepRead() } } label: {
                     HStack(spacing: 8) {
@@ -286,11 +299,20 @@ struct AICoachCard: View {
         deepError = nil
         do {
             let text = try await AICoachService.deepRead(request)
-            withAnimation(.easeInOut(duration: 0.25)) { deepText = text }
+            withAnimation(.easeInOut(duration: 0.25)) { deepText = text; prefilledFromSaved = false }
         } catch {
             deepError = error.localizedDescription
         }
         deepLoading = false
+    }
+
+    /// On appear, show the most recent SAVED read for this context (free) instead of making
+    /// the golfer re-spend to see coaching they already got. Refresh re-calls the model.
+    private func loadSavedNote() async {
+        guard isPro, deepText == nil, let req = effectiveDeepRead else { return }
+        if let saved = await AICoachService.latestNoteSummary(mode: req.mode, contextLabel: req.contextLabel) {
+            withAnimation(.easeInOut(duration: 0.2)) { deepText = saved; prefilledFromSaved = true }
+        }
     }
 
     // MARK: Locked
