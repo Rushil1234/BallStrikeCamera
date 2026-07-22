@@ -28,11 +28,14 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 // free models are throttled (429s happen — we retry once) and get retired periodically; if one
 // starts 404-ing, pick a replacement from `GET https://openrouter.ai/api/v1/models` (pricing 0)
 // that is an *instruct/chat* model (avoid reasoning, safety, code, audio, vision variants).
+// One non-reasoning instruct model for every mode: it returns clean `content` directly.
+// (Reasoning models like gpt-oss/nemotron intermittently return EMPTY content — round mode
+// failed ~half the time — so they're avoided here despite being free.)
 const MODELS: Record<string, string> = {
-  shot:    "google/gemma-4-26b-a4b-it:free", // fast per-shot read
-  session: "openai/gpt-oss-20b:free",        // deeper multi-shot / round / bag
-  round:   "openai/gpt-oss-20b:free",
-  bag:     "openai/gpt-oss-20b:free",
+  shot:    "google/gemma-4-26b-a4b-it:free",
+  session: "google/gemma-4-26b-a4b-it:free",
+  round:   "google/gemma-4-26b-a4b-it:free",
+  bag:     "google/gemma-4-26b-a4b-it:free",
 };
 
 const MAX_TOKENS: Record<string, number> = {
