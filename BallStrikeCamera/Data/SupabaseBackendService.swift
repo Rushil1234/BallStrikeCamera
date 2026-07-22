@@ -751,6 +751,26 @@ final class SupabaseBackendService: AppBackend {
         try await rpcVoid("respond_follow_request", body: ["follower": follower.uuidString, "accept": accept])
     }
 
+    func loadFollowList(target: UUID, followers: Bool) async throws -> [FollowListEntry] {
+        try await rpc("follow_list", body: ["target": target.uuidString, "want_followers": followers])
+    }
+
+    func loadCoachNotes() async throws -> [CoachNote] {
+        // RLS scopes ai_coach_notes to the caller, so no user filter is needed here.
+        var components = URLComponents(url: restURL("ai_coach_notes"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: "100")
+        ]
+        let req = authorizedRequest(url: components.url!)
+        let (data, response) = try await performAuthorizedRequest(req)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+            logError("select:ai_coach_notes", data: data, response: response)
+            throw BackendError.loadFailed("ai_coach_notes")
+        }
+        return try decoder.decode([CoachNote].self, from: data)
+    }
+
     func loadFeedPage(userId: UUID, cursor: Date?, limit: Int) async throws -> FeedPage {
         var queryItems = [
             URLQueryItem(name: "order", value: "timestamp.desc"),

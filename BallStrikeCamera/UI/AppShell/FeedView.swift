@@ -163,7 +163,11 @@ struct FeedView: View {
                     challengesSection
                         .id("tc.feed.challenges")
                     sectionGap
-                    if vm.posts.isEmpty && !vm.isLoading {
+                    if vm.posts.isEmpty && !vm.isLoading && vm.errorMessage != nil {
+                        // A failed load must look different from a genuinely empty feed —
+                        // otherwise a network drop reads as "you have no friends yet."
+                        feedErrorState
+                    } else if vm.posts.isEmpty && !vm.isLoading {
                         emptyState
                     } else {
                         feedSectionHeader
@@ -622,6 +626,36 @@ struct FeedView: View {
         )
         .padding(.horizontal, TCTheme.hPad)
         .padding(.vertical, 28)
+    }
+
+    /// Shown when a feed load actually failed (vs. an empty feed). Gives the user a
+    /// reason and a Retry, instead of silently showing the "quiet feed" empty state.
+    private var feedErrorState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 30))
+                .foregroundColor(TCTheme.textUltraMuted)
+            Text("Couldn't load your feed")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(TCTheme.textPrimary)
+            Text("Check your connection and try again.")
+                .font(.system(size: 13))
+                .foregroundColor(TCTheme.textMuted)
+                .multilineTextAlignment(.center)
+            Button { Task { await vm.load() } } label: {
+                Text("Retry")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(TCTheme.onPrimary)
+                    .padding(.horizontal, 28).padding(.vertical, 11)
+                    .background(TCTheme.gold)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, TCTheme.hPad)
+        .padding(.vertical, 40)
     }
 
     private var caughtUpNote: some View {

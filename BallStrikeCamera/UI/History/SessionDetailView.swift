@@ -92,6 +92,30 @@ struct SessionDetailView: View {
     @State private var isGeneratingLink = false
     @State private var shareLinkURL: URL?
 
+    // MARK: AI coach payloads
+
+    private var coachPayloads: [AICoachService.ShotPayload] {
+        shots.map { AICoachService.ShotPayload($0.metrics, clubName: $0.clubName) }
+    }
+    private var coachIsPro: Bool { session.entitlementVM.entitlement.tier.canAccessAdvancedInsights }
+
+    /// On-course context for the round deep-read, mirroring what courseStatsCard shows.
+    private func roundContext(_ r: CourseRound) -> AICoachService.RoundContext {
+        let s = r.scoreSummary
+        let played = r.holes.filter { $0.score != nil }.count
+        return AICoachService.RoundContext(
+            courseName: r.courseName.isEmpty ? nil : r.courseName,
+            score: s.totalScore == 0 ? nil : s.totalScore,
+            toPar: s.totalPar == 0 ? nil : (s.totalScore - s.totalPar),
+            holes: played == 0 ? nil : played,
+            fairwaysHit: s.fairwaysHit,
+            fairwaysTotal: nil,
+            gir: s.greensInReg,
+            girTotal: played == 0 ? nil : played,
+            putts: s.totalPutts == 0 ? nil : s.totalPutts
+        )
+    }
+
     /// Range/sim sessions render the per-shot list; course rounds use the shot map instead.
     private var showsShotsList: Bool {
         if case .course = item { return false }
@@ -118,7 +142,21 @@ struct SessionDetailView: View {
                         VStack(spacing: TCTheme.sectionGap) {
                             headerCard
                             if case .range(let rs) = item { rangeStatsCard(rs) }
+                            if case .range = item, !coachPayloads.isEmpty {
+                                AICoachCard(mode: .session, shots: coachPayloads, isPro: coachIsPro,
+                                            title: "AI Session Coach", subtitle: "A read on this range session")
+                            }
+                            if case .sim = item, !coachPayloads.isEmpty {
+                                AICoachCard(mode: .session, shots: coachPayloads, isPro: coachIsPro,
+                                            title: "AI Session Coach", subtitle: "A read on this sim session")
+                            }
                             if case .course(let r)  = item { courseStatsCard(r) }
+                            if case .course(let r) = item {
+                                AICoachCard(mode: .round,
+                                            deepReadRequest: .forRound(coachPayloads, round: roundContext(r)),
+                                            isPro: coachIsPro, title: "AI Round Coach",
+                                            subtitle: "What to practice before next time")
+                            }
                             if case .course = item { attestSection }
                             if case .course(let r) = item,
                                r.holes.contains(where: { !$0.trackedShots.isEmpty }) {

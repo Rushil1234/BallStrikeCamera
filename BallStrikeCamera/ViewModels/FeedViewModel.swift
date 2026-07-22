@@ -39,6 +39,7 @@ final class FeedViewModel: ObservableObject {
         // feed page, engagement, leaderboard) skipped it via the catch — which is why
         // comment/gimme notifications never appeared for some users.
         await refreshNotifications()
+        errorMessage = nil   // clear any prior failure so a successful reload dismisses the error state
         do {
             homeSummary = try await backend.loadHomeSummary(userId: userId)
             friendsCount = homeSummary.friendsCount
@@ -342,6 +343,7 @@ final class FriendsViewModel: ObservableObject {
     @Published var results: [FriendProfile] = []
     @Published var friends: [FriendProfile] = []
     @Published var requests: [IncomingFriendRequest] = []
+    @Published var followRequests: [IncomingFollowRequest] = []
     @Published var attestations: [IncomingAttestation] = []
     @Published var sentRequestIds: Set<UUID> = []
     @Published var inviteCode: String?
@@ -360,7 +362,19 @@ final class FriendsViewModel: ObservableObject {
     func loadAll() async {
         friends = (try? await backend.loadFriends()) ?? []
         requests = (try? await backend.loadIncomingRequests()) ?? []
+        followRequests = (try? await backend.loadIncomingFollowRequests()) ?? []
         attestations = (try? await backend.loadIncomingAttestations(userId: userId)) ?? []
+    }
+
+    /// Approve or deny a follow request for a private account.
+    func respondFollow(_ req: IncomingFollowRequest, accept: Bool) async {
+        do {
+            try await backend.respondFollowRequest(follower: req.followerId, accept: accept)
+            followRequests.removeAll { $0.followerId == req.followerId }
+            statusMessage = accept ? "\(req.displayName) can now follow you." : "Request declined."
+        } catch {
+            statusMessage = "Couldn't respond to the request."
+        }
     }
 
     func respondAttestation(_ attestation: IncomingAttestation, accept: Bool) async {

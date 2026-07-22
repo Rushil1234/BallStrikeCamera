@@ -196,6 +196,53 @@ struct IncomingFollowRequest: Identifiable, Decodable, Equatable {
     var id: UUID { followerId }
 }
 
+/// One row of a profile's followers / following list, from follow_list()
+/// (decoder uses convertFromSnakeCase). `iFollow` = the caller already follows
+/// this person, so the list can show a Follow / Following affordance inline.
+struct FollowListEntry: Identifiable, Decodable, Equatable {
+    var userId: UUID
+    var displayName: String
+    var homeCourse: String?
+    var isPrivate: Bool
+    var iFollow: Bool
+    var id: UUID { userId }
+
+    /// Base home-course name (tees stripped) for display, if any.
+    var homeCourseBase: String? {
+        guard let hc = homeCourse, !hc.isEmpty else { return nil }
+        return hc.components(separatedBy: " ~ ").first ?? hc
+    }
+}
+
+// MARK: - Saved AI coaching note
+
+/// One saved AI Coach summary, persisted with the profile (from ai_coach_notes; decoder
+/// uses convertFromSnakeCase). Feeds future coaching context and the golfer's coach history.
+struct CoachNote: Identifiable, Decodable, Equatable {
+    var id: UUID
+    var mode: String            // shot | session | round | bag
+    var summary: String
+    var contextLabel: String?
+    var createdAt: Date?
+
+    var modeTitle: String {
+        switch mode {
+        case "round":   return "Round"
+        case "session": return "Session"
+        case "bag":     return "Bag gapping"
+        default:        return "Shot"
+        }
+    }
+    var modeIcon: String {
+        switch mode {
+        case "round":   return "flag.fill"
+        case "session": return "scope"
+        case "bag":     return "bag.fill"
+        default:        return "figure.golf"
+        }
+    }
+}
+
 // MARK: - Feed Notification (gimmes / comments on your posts)
 
 struct FeedNotification: Identifiable, Equatable {

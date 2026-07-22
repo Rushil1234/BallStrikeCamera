@@ -1,13 +1,14 @@
 import SwiftUI
 
 enum ProfileRoute: Identifiable {
-    case edit, clubs, homeGolfers
+    case edit, clubs, homeGolfers, coachHistory
     case info(TCInfoPage)
     var id: String {
         switch self {
         case .edit: return "edit"
         case .clubs: return "clubs"
         case .homeGolfers: return "golfers"
+        case .coachHistory: return "coachHistory"
         case .info(let p): return "info-\(p.rawValue)"
         }
     }
@@ -85,6 +86,7 @@ struct TrueCarryProfileView: View {
                         displayCard
                         preferencesCard
                         bagCard
+                        coachHistoryCard
                         communityCard
                         accountCard
                         appCard
@@ -110,6 +112,7 @@ struct TrueCarryProfileView: View {
                 case .clubs:
                     if let uid = user?.id { ClubsInBagView(userId: uid, backend: session.backend) }
                 case .homeGolfers: HomeCourseGolfersView()
+                case .coachHistory: CoachHistoryView(backend: session.backend)
                 case .info(let p): TCInfoPageView(page: p)
                 }
             }
@@ -330,6 +333,19 @@ struct TrueCarryProfileView: View {
             sectionLabel("BAG")
             Button { route = .clubs } label: {
                 settingRow(icon: "figure.golf", title: "Manage Clubs")
+            }
+            .buttonStyle(.plain)
+            .tcCard()
+        }
+    }
+
+    // MARK: - AI Coach history
+
+    private var coachHistoryCard: some View {
+        VStack(spacing: 0) {
+            sectionLabel("AI COACH")
+            Button { route = .coachHistory } label: {
+                settingRow(icon: "sparkles", title: "Coaching History")
             }
             .buttonStyle(.plain)
             .tcCard()

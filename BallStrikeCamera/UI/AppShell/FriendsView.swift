@@ -20,6 +20,7 @@ struct FriendsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: TCTheme.sectionGap) {
                     searchSection
+                    if !vm.followRequests.isEmpty { followRequestsSection }
                     if !vm.requests.isEmpty { requestsSection }
                     if !vm.attestations.isEmpty { attestationsSection }
                     inviteSection
@@ -54,17 +55,41 @@ struct FriendsView: View {
     }
 
     /// Follow / Following / Requested button for a discovery result (asymmetric follow).
+    /// You never see a Follow button on your own row — you can't follow yourself.
     @ViewBuilder private func followTrailing(_ profile: FriendProfile) -> some View {
-        switch followState[profile.userId] {
-        case "accepted":
-            Text("Following").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.sage)
-        case "pending":
-            Text("Requested").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.textMuted)
-        default:
-            actionButton("Follow", filled: true) {
-                Task {
-                    let s = (try? await backend.followUser(target: profile.userId)) ?? "accepted"
-                    followState[profile.userId] = s
+        if profile.userId == currentUserId {
+            Text("You").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.textMuted)
+        } else {
+            switch followState[profile.userId] {
+            case "accepted":
+                Text("Following").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.sage)
+            case "pending":
+                Text("Requested").font(.system(size: 12, weight: .semibold)).foregroundColor(TCTheme.textMuted)
+            default:
+                actionButton("Follow", filled: true) {
+                    Task {
+                        let s = (try? await backend.followUser(target: profile.userId)) ?? "accepted"
+                        // 'invalid' comes back only for a self / null target — ignore it
+                        // rather than storing a bogus state that re-renders as "Follow".
+                        if s == "accepted" || s == "pending" { followState[profile.userId] = s }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Follow requests (private-account approvals)
+
+    private var followRequestsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("Follow requests")
+            ForEach(vm.followRequests) { req in
+                let profile = FriendProfile(userId: req.followerId, displayName: req.displayName, homeCourseName: nil)
+                personRow(profile) {
+                    HStack(spacing: 8) {
+                        actionButton("Accept", filled: true) { Task { await vm.respondFollow(req, accept: true) } }
+                        actionButton("Decline", filled: false) { Task { await vm.respondFollow(req, accept: false) } }
+                    }
                 }
             }
         }

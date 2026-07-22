@@ -532,6 +532,20 @@ struct TrueCarryInsightsView: View {
             )
             .id(coachScopeKey)   // new club/source → fresh card, old analysis cleared
         }
+        if !gappingRows.isEmpty { gappingSection }
+        // AI bag-gapping deep-read — only in all-clubs mode, where cross-club data exists.
+        if allMode {
+            let stats = AICoachService.clubStats(from: coachShots)
+            if stats.count >= 2 {
+                AICoachCard(
+                    mode: .bag,
+                    deepReadRequest: .forBag(stats),
+                    isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
+                    title: "AI Bag Gapping",
+                    subtitle: "Gaps, overlaps, and your least consistent club"
+                )
+            }
+        }
     }
 
     @ViewBuilder
