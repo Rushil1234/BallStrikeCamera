@@ -12,6 +12,9 @@ struct BallStrikeCameraApp: App {
         // Install crash/error reporting first so early failures are captured.
         // Reads an optional Sentry DSN from Secrets.plist (`SentryDSN`); nil = first-party only.
         CrashReporter.shared.configure(dsn: CrashReporter.secretsDSN())
+        // Field diagnostics: when enabled (Developer card), capture the console to a file on
+        // device so range/sun tracking failures can be read back without a cable. No-op when off.
+        FieldLog.shared.startIfEnabled()
         WatchConnectivityBridge.shared.activate()
         // Touch the singleton so CBCentralManager is created and begins scanning
         // as soon as Bluetooth is available — before any camera screen opens.
@@ -460,8 +463,8 @@ private struct DebugSnapshotHarness: View {
         switch name {
         case "gripdemo":
             VStack {
-                GripHologramDemo()
-                    .frame(height: 320)
+                GripSequenceView()
+                    .aspectRatio(760.0 / 905.0, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .padding(20)

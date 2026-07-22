@@ -353,8 +353,9 @@ struct GripDiagram: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            GripHologramDemo()
-                .frame(height: 300)
+            GripSequenceView()
+                .aspectRatio(760.0 / 905.0, contentMode: .fit)
+                .frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(alignment: .topLeading) {
                     Text("TAKE THE GRIP")

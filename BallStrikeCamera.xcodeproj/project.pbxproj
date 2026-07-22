@@ -38,7 +38,6 @@
 		BF0000010000000000000007 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000107 /* ContentView.swift */; };
 		BF0000010000000000000008 /* CameraPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000108 /* CameraPreview.swift */; };
 		BF0000010000000000000009 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000109 /* Assets.xcassets */; };
-		BF0000010000000000HAND1 /* HandModel.usdz in Resources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000HAND2 /* HandModel.usdz */; };
 		BF000001000000000000000A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000011B /* LaunchScreen.storyboard */; };
 		BF0000010000000000000012 /* RangeCameraScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000112 /* RangeCameraScreen.swift */; };
 		BF0000010000000000000013 /* LaunchMonitorScaffoldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000113 /* LaunchMonitorScaffoldView.swift */; };
@@ -81,6 +80,7 @@
 		BF0000010000000000000039 /* VLAModelPredictor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000139 /* VLAModelPredictor.swift */; };
 		BF000001000000000000003A /* ExperimentalVLAModelPredictor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000013A /* ExperimentalVLAModelPredictor.swift */; };
 		BF000001000000000000003B /* SampleShots in Resources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000013B /* SampleShots */; };
+		BF0000010000000000000GF1 /* GripFrames in Resources */ = {isa = PBXBuildFile; fileRef = BF0000010000000000000GF2 /* GripFrames */; };
 		BF000001000000000000003C /* SampleShotLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000013C /* SampleShotLoader.swift */; };
 		BF000001000000000000003D /* ShotResultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000013D /* ShotResultView.swift */; };
 		BF000001000000000000003E /* BallFlightPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000001000000000000013E /* BallFlightPreviewView.swift */; };
@@ -191,6 +191,7 @@
 		BF000008000000000000NFC1 /* NFCManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000007000000000000NFC1 /* NFCManager.swift */; };
 		BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0000090000000000000001 /* TrueCarryProfileView.swift */; };
 		BF00000A000000000000CRS1 /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000009000000000000CRS1 /* CrashReporter.swift */; };
+		BF00000A000000000000FLD1 /* FieldLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF000009000000000000FLD1 /* FieldLog.swift */; };
 		BF00SECRETS00000000000002 /* Secrets.plist in Resources */ = {isa = PBXBuildFile; fileRef = BF00SECRETS00000000000001 /* Secrets.plist */; };
 		BFE1E2E300000000000000A2 /* ElevationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFE1E2E300000000000000A1 /* ElevationService.swift */; };
 		CA0000000000000000000004 /* RoundWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0000000000000000000001 /* RoundWidget.swift */; };
@@ -224,8 +225,7 @@
 		GCO00000000000000000002 /* GoalCelebrationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = GCO00000000000000000001 /* GoalCelebrationOverlay.swift */; };
 		GDE00000000000000000002 /* TCGuide.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000001 /* TCGuide.swift */; };
 		GDE00000000000000000004 /* LessonDiagrams.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000003 /* LessonDiagrams.swift */; };
-		GDE00000000000000000RP1 /* GripReferencePose.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000RP2 /* GripReferencePose.swift */; };
-		GDE00000000000000000HG1 /* GripHologramDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000HG2 /* GripHologramDemo.swift */; };
+		GDE00000000000000000SQ1 /* GripSequenceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000SQ2 /* GripSequenceView.swift */; };
 		GDE00000000000000000006 /* CoachLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = GDE00000000000000000005 /* CoachLabView.swift */; };
 		LIVE00000000000000000001 /* LiveSimService.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000002 /* LiveSimService.swift */; };
 		LIVE00000000000000000003 /* LiveSimCodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LIVE00000000000000000004 /* LiveSimCodeView.swift */; };
@@ -304,7 +304,6 @@
 		BF0000010000000000000106 /* CameraController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraController.swift; sourceTree = "<group>"; };
 		BF0000010000000000000107 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		BF0000010000000000000108 /* CameraPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreview.swift; sourceTree = "<group>"; };
-		BF0000010000000000HAND2 /* HandModel.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = HandModel.usdz; sourceTree = "<group>"; };
 		BF0000010000000000000109 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BF0000010000000000000110 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BF0000010000000000000111 /* BallStrikeCamera.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BallStrikeCamera.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -350,6 +349,7 @@
 		BF0000010000000000000139 /* VLAModelPredictor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VLAModelPredictor.swift; sourceTree = "<group>"; };
 		BF000001000000000000013A /* ExperimentalVLAModelPredictor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalVLAModelPredictor.swift; sourceTree = "<group>"; };
 		BF000001000000000000013B /* SampleShots */ = {isa = PBXFileReference; lastKnownFileType = folder; path = SampleShots; sourceTree = "<group>"; };
+		BF0000010000000000000GF2 /* GripFrames */ = {isa = PBXFileReference; lastKnownFileType = folder; path = GripFrames; sourceTree = "<group>"; };
 		BF000001000000000000013C /* SampleShotLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SampleShotLoader.swift; sourceTree = "<group>"; };
 		BF000001000000000000013D /* ShotResultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShotResultView.swift; sourceTree = "<group>"; };
 		BF000001000000000000013E /* BallFlightPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BallFlightPreviewView.swift; sourceTree = "<group>"; };
@@ -460,6 +460,7 @@
 		BF000008000000000000000D /* TrackedShotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackedShotModels.swift; sourceTree = "<group>"; };
 		BF0000090000000000000001 /* TrueCarryProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueCarryProfileView.swift; sourceTree = "<group>"; };
 		BF000009000000000000CRS1 /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
+		BF000009000000000000FLD1 /* FieldLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FieldLog.swift; sourceTree = "<group>"; };
 		BF00SECRETS00000000000001 /* Secrets.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Secrets.plist; sourceTree = "<group>"; };
 		BFB5776A18583750032B3FF9 /* WeeklyChallenge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WeeklyChallenge.swift; path = BallStrikeCamera/UI/AppShell/WeeklyChallenge.swift; sourceTree = SOURCE_ROOT; };
 		BFE1E2E300000000000000A1 /* ElevationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevationService.swift; sourceTree = "<group>"; };
@@ -504,8 +505,7 @@
 		GCO00000000000000000001 /* GoalCelebrationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoalCelebrationOverlay.swift; sourceTree = "<group>"; };
 		GDE00000000000000000001 /* TCGuide.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TCGuide.swift; sourceTree = "<group>"; };
 		GDE00000000000000000003 /* LessonDiagrams.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LessonDiagrams.swift; sourceTree = "<group>"; };
-		GDE00000000000000000RP2 /* GripReferencePose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GripReferencePose.swift; sourceTree = "<group>"; };
-		GDE00000000000000000HG2 /* GripHologramDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GripHologramDemo.swift; sourceTree = "<group>"; };
+		GDE00000000000000000SQ2 /* GripSequenceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GripSequenceView.swift; sourceTree = "<group>"; };
 		GDE00000000000000000005 /* CoachLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachLabView.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000002 /* LiveSimService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimService.swift; sourceTree = "<group>"; };
 		LIVE00000000000000000004 /* LiveSimCodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveSimCodeView.swift; sourceTree = "<group>"; };
@@ -717,6 +717,7 @@
 				BF00SECRETS00000000000001 /* Secrets.plist */,
 				BF000001000000000000011B /* LaunchScreen.storyboard */,
 				BF000001000000000000013B /* SampleShots */,
+				BF0000010000000000000GF2 /* GripFrames */,
 				BF000001000000000000013F /* Models */,
 				LSN00000000000000000019 /* Lessons */,
 			);
@@ -1029,6 +1030,7 @@
 				BF0000070000000000000007 /* EntitlementService.swift */,
 				BF000007000000000000BLE1 /* RFIDHubManager.swift */,
 				BF000009000000000000CRS1 /* CrashReporter.swift */,
+				BF000009000000000000FLD1 /* FieldLog.swift */,
 				LIVE00000000000000000002 /* LiveSimService.swift */,
 				CAFE00000000000000000120 /* TCLog.swift */,
 				BF000007000000000000000A /* Golf */,
@@ -1095,9 +1097,7 @@
 			children = (
 				LSN00000000000000000015 /* LessonsHomeView.swift */,
 				GDE00000000000000000003 /* LessonDiagrams.swift */,
-				BF0000010000000000HAND2 /* HandModel.usdz */,
-				GDE00000000000000000RP2 /* GripReferencePose.swift */,
-				GDE00000000000000000HG2 /* GripHologramDemo.swift */,
+				GDE00000000000000000SQ2 /* GripSequenceView.swift */,
 				GDE00000000000000000005 /* CoachLabView.swift */,
 				LSN00000000000000000016 /* LessonPlayerView.swift */,
 				LSN00000000000000000017 /* SwingStudioView.swift */,
@@ -1188,10 +1188,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				BF0000010000000000000009 /* Assets.xcassets in Resources */,
-				BF0000010000000000HAND1 /* HandModel.usdz in Resources */,
 				BF00SECRETS00000000000002 /* Secrets.plist in Resources */,
 				BF000001000000000000000A /* LaunchScreen.storyboard in Resources */,
 				BF000001000000000000003B /* SampleShots in Resources */,
+				BF0000010000000000000GF1 /* GripFrames in Resources */,
 				BF000001000000000000003F /* Models in Resources */,
 				LSN00000000000000000008 /* Lessons in Resources */,
 			);
@@ -1353,8 +1353,7 @@
 				GCO00000000000000000002 /* GoalCelebrationOverlay.swift in Sources */,
 				GDE00000000000000000002 /* TCGuide.swift in Sources */,
 				GDE00000000000000000004 /* LessonDiagrams.swift in Sources */,
-				GDE00000000000000000RP1 /* GripReferencePose.swift in Sources */,
-				GDE00000000000000000HG1 /* GripHologramDemo.swift in Sources */,
+				GDE00000000000000000SQ1 /* GripSequenceView.swift in Sources */,
 				GDE00000000000000000006 /* CoachLabView.swift in Sources */,
 				BF0000060000000000000030 /* SpinningGolfBallView.swift in Sources */,
 				BF000006000000000000000A /* TrueCarryHomeView.swift in Sources */,
@@ -1421,6 +1420,7 @@
 				BF000008000000000000NFC1 /* NFCManager.swift in Sources */,
 				BF000008000000000000BLE1 /* RFIDHubManager.swift in Sources */,
 				BF00000A000000000000CRS1 /* CrashReporter.swift in Sources */,
+				BF00000A000000000000FLD1 /* FieldLog.swift in Sources */,
 				BF0000080000000000000C01 /* CourseCatalogService.swift in Sources */,
 				BF0000090000000000000002 /* TrueCarryProfileView.swift in Sources */,
 				AA99CCFA875B0F87C1A65A88 /* FeedPostFactory.swift in Sources */,
@@ -1521,6 +1521,7 @@
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_COMPILATION_MODE = incremental;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 			};
 			name = Debug;
