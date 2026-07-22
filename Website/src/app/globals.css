@@ -1470,11 +1470,13 @@ code {
 /* Solo: no copy, just the live phone demo, centred and enlarged. */
 .round .app-demo.app-demo-solo{ grid-template-columns:1fr; justify-items:center; }
 .round .app-demo.app-demo-solo .app-demo-phone .phone{ transform:scale(1.12); transform-origin:center; }
-/* Solo demo as ONE looping 16:9 video (First+Second concatenated, back-to-back). Fills most of
-   the section width. object-fit:cover on an already-16:9 file = no crop. */
-.round .app-demo-video{ width:100%; max-width:min(1280px,94vw); margin:0 auto; aspect-ratio:16/9;
-  border-radius:18px; overflow:hidden; background:#000; box-shadow:0 30px 90px -32px rgba(0,0,0,.6); }
-.round .app-demo-video video{ width:100%; height:100%; object-fit:cover; display:block; }
+/* Solo demo as ONE looping video (First+Second concatenated, back-to-back). Shows the FULL native
+   frame — height:auto, no crop — and the h03 wrap is widened below so it runs big and wide. */
+.round .app-demo-video{ width:100%; margin:0 auto; border-radius:18px; overflow:hidden;
+  background:#000; box-shadow:0 30px 90px -32px rgba(0,0,0,.6); }
+.round .app-demo-video video{ width:100%; height:auto; display:block; }
+/* This section runs wider than the standard 980px wrap so the demo is large. */
+.round .h03 .wrap{ max-width:1400px; }
 @media (max-width:880px){
   .round .app-demo{ grid-template-columns:1fr; gap:44px; }
   .round .app-demo .app-demo-phone{ order:-1; }
