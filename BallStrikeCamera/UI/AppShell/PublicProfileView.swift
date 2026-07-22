@@ -18,6 +18,7 @@ struct PublicProfileView: View {
     @State private var profile: UserProfile?
     @State private var social: ProfileSocial = .empty
     @State private var loaded = false
+    @State private var loadFailed = false
     @State private var busyFollow = false
     @State private var showAllActivities = false
     @State private var shareURL: URL?
@@ -211,10 +212,20 @@ struct PublicProfileView: View {
             }
         }
         if activities.isEmpty {
-            VStack(spacing: 8) {
-                Image(systemName: loaded ? "figure.golf" : "hourglass").font(.system(size: 22)).foregroundColor(TCTheme.textUltraMuted)
-                Text(loaded ? "No shared activities yet." : "Loading…")
+            VStack(spacing: 10) {
+                Image(systemName: loadFailed ? "wifi.exclamationmark" : (loaded ? "figure.golf" : "hourglass"))
+                    .font(.system(size: 22)).foregroundColor(TCTheme.textUltraMuted)
+                Text(loadFailed ? "Couldn't load activity." : (loaded ? "No shared activities yet." : "Loading…"))
                     .font(.system(size: 13)).foregroundColor(TCTheme.textMuted)
+                if loadFailed {
+                    Button { Task { await load() } } label: {
+                        Text("Retry").font(.system(size: 13, weight: .bold))
+                            .foregroundColor(TCTheme.onPrimary)
+                            .padding(.horizontal, 22).padding(.vertical, 9)
+                            .background(TCTheme.gold).clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .frame(maxWidth: .infinity).padding(.vertical, 30)
         } else {
@@ -351,13 +362,24 @@ struct PublicProfileView: View {
     }
 
     private func load() async {
-        async let p = try? await backend.loadUserPosts(userId: userId)
+        loadFailed = false
+        async let postsResult = loadPostsResult()
         async let pr = try? await backend.loadUserProfile(userId: userId)
         async let so = try? await backend.profileSocial(target: userId)
-        posts = (await p ?? []).filter { $0.userId == userId }
+        switch await postsResult {
+        case .success(let ps): posts = ps.filter { $0.userId == userId }
+        case .failure:         loadFailed = true
+        }
         profile = await pr ?? nil
         social = await so ?? .empty
         loaded = true
+    }
+
+    /// The posts fetch as a Result so we can tell a real failure apart from a genuinely
+    /// empty profile (the other two loads stay best-effort — name/counts degrade gracefully).
+    private func loadPostsResult() async -> Result<[FeedPost], Error> {
+        do { return .success(try await backend.loadUserPosts(userId: userId)) }
+        catch { return .failure(error) }
     }
 }
 
