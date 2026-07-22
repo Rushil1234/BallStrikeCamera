@@ -224,10 +224,33 @@ async function withinRateLimit(userId: string): Promise<boolean> {
 }
 
 async function saveNote(userId: string, mode: string, summary: string, label: string | null) {
+  // Collapse rapid re-reads of the SAME thing (e.g. the card's refresh button, or reopening a
+  // shot minutes later) into one history entry — otherwise near-duplicates pile up and re-feed
+  // themselves as context. A refresh within 10 min UPDATES the existing note instead of inserting.
+  const tenMinAgo = new Date(Date.now() - 600_000).toISOString();
+  let recentQ = supabase
+    .from("ai_coach_notes")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("mode", mode)
+    .gte("created_at", tenMinAgo)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  recentQ = label === null ? recentQ.is("context_label", null) : recentQ.eq("context_label", label);
+  const { data: recent } = await recentQ.maybeSingle();
+
+  if (recent?.id) {
+    const { error } = await supabase
+      .from("ai_coach_notes")
+      .update({ summary, created_at: new Date().toISOString() })
+      .eq("id", recent.id);
+    if (error) console.error("saveNote update failed", error.message);
+    return;
+  }
   const { error } = await supabase
     .from("ai_coach_notes")
     .insert({ user_id: userId, mode, summary, context_label: label });
-  if (error) console.error("saveNote failed", error.message); // best-effort, don't fail the request
+  if (error) console.error("saveNote insert failed", error.message); // best-effort, don't fail the request
 }
 
 function buildUserPrompt(
