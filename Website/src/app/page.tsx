@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import EmbeddedCheckoutPanel from "@/components/EmbeddedCheckoutPanel";
-import PhoneDemo from "@/components/PhoneDemo";
 import SimDemo from "@/components/SimDemo";
 import ProductArt from "@/components/ProductArt";
 import SiteNav from "@/components/SiteNav";
@@ -223,10 +222,17 @@ export default function HomePage() {
           <section className="hole h03" id="h03">
             <div className="wrap">
               <HoleStrip hole={HOLES[1]} />
-              <div className="app-demo app-demo-solo">
-                <div className="app-demo-phone">
-                  <PhoneDemo />
-                </div>
+              <div className="app-demo-video">
+                <video
+                  src="/app-demo.mp4"
+                  poster="/app-demo-poster.jpg"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="auto"
+                  aria-label="TrueCarry app demo"
+                />
               </div>
             </div>
           </section>
