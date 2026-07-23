@@ -1,13 +1,14 @@
 import SwiftUI
 
-/// "Take the grip" — a cross-fading photo sequence of real hands forming the grip on the
-/// club. Ten frames (grip_01…grip_10) shot on a fixed camera against turf; cross-dissolving
-/// through them reads as one continuous motion. Plays forward, lingers on the finished grip,
-/// fades back to the open hand, and loops. Replaces the old procedural 3D grip scene.
+/// "Take the grip" — a swipeable photo sequence of real hands forming the grip on the club.
+/// Fixed-camera frames (grip_01…grip_NN) shown in a paged carousel: the user can swipe
+/// through them manually, and it also auto-advances every few seconds on its own. Page dots
+/// show progress. Loops back to the first frame.
 struct GripSequenceView: View {
 
-    /// Loaded once. Bundled as a folder reference ("GripFrames"), so the subdirectory is kept.
-    private static let frames: [UIImage] = (1...10).compactMap { i in
+    /// Loaded once. Bundled as a folder reference ("GripFrames"); count is discovered so
+    /// adding/removing frames needs no code change.
+    private static let frames: [UIImage] = (1...40).compactMap { i in
         let name = String(format: "grip_%02d", i)
         let url = Bundle.main.url(forResource: name, withExtension: "jpg", subdirectory: "GripFrames")
             ?? Bundle.main.url(forResource: name, withExtension: "jpg")
@@ -15,35 +16,31 @@ struct GripSequenceView: View {
     }
 
     @State private var idx = 0
+    // Auto-advance every 2.5s; a manual swipe just moves `idx` and the timer carries on.
+    private let auto = Timer.publish(every: 2.5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        ZStack {
+        Group {
             if Self.frames.isEmpty {
                 Rectangle().fill(Color.black.opacity(0.15))
             } else {
-                ForEach(Self.frames.indices, id: \.self) { i in
-                    Image(uiImage: Self.frames[i])
-                        .resizable()
-                        .scaledToFit()
-                        .opacity(i == idx ? 1 : 0)
+                TabView(selection: $idx) {
+                    ForEach(Self.frames.indices, id: \.self) { i in
+                        Image(uiImage: Self.frames[i])
+                            .resizable()
+                            .scaledToFit()
+                            .tag(i)
+                    }
                 }
+                .tabViewStyle(.page(indexDisplayMode: .always))
+                .indexViewStyle(.page(backgroundDisplayMode: .interactive))
             }
         }
-        .task { await play() }
-    }
-
-    private func play() async {
-        let n = Self.frames.count
-        guard n > 1 else { return }
-        while !Task.isCancelled {
-            for i in 0..<n {
-                withAnimation(.easeInOut(duration: 0.32)) { idx = i }
-                let hold = (i == n - 1) ? 1.5 : 0.5      // linger on the finished grip
-                try? await Task.sleep(nanoseconds: UInt64(hold * 1_000_000_000))
-                if Task.isCancelled { return }
+        .onReceive(auto) { _ in
+            guard Self.frames.count > 1 else { return }
+            withAnimation(.easeInOut(duration: 0.45)) {
+                idx = (idx + 1) % Self.frames.count
             }
-            withAnimation(.easeInOut(duration: 0.55)) { idx = 0 }   // fade back to the open hand
-            try? await Task.sleep(nanoseconds: 700_000_000)
         }
     }
 }
