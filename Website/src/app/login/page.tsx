@@ -5,6 +5,7 @@ import { useEffect, useState, Suspense } from "react";
 import { supabase } from "@/lib/supabase";
 import { GoogleIcon, AppleIcon } from "@/components/AuthIcons";
 import { oauthCopy, signInWithProvider, type OAuthProvider } from "@/lib/oauth";
+import { isUndeliverableEmail } from "@/lib/email";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function safeRedirectPath(value: string | null) {
@@ -82,6 +83,9 @@ function LoginForm() {
         if (error) throw error;
         router.push(redirect);
       } else {
+        if (isUndeliverableEmail(email)) {
+          throw new Error("Please use a real, deliverable email address.");
+        }
         const { error } = await supabase.auth.signUp({
           email,
           password,

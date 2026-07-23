@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { GoogleIcon, AppleIcon } from "@/components/AuthIcons";
 import { oauthCopy, signInWithProvider, type OAuthProvider } from "@/lib/oauth";
+import { isUndeliverableEmail } from "@/lib/email";
 
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = publishableKey ? loadStripe(publishableKey) : null;
@@ -67,6 +68,9 @@ export default function EmbeddedCheckoutPanel({ onClose, tier = "pro", billingIn
         if (error) throw error;
         if (data.session) setToken(data.session.access_token);
       } else {
+        if (isUndeliverableEmail(email)) {
+          throw new Error("Please use a real, deliverable email address.");
+        }
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
