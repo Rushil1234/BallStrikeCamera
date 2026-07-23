@@ -1395,51 +1395,68 @@ struct CoachReadDetailView: View {
         }
     }
 
-    /// Measured ball flight: spin axis per shot (fade right, draw left) + the averages.
+    /// The exact shots this read is about, plotted where they finished down range — same
+    /// dispersion graph as the Insights page, but colored by direction: orange finished right,
+    /// blue left, green straight. Spin axis, shot count, and shape tendency sit beneath.
     @ViewBuilder
     private var ballFlightCard: some View {
         let recent = shots.suffix(20).filter { !$0.isBadShot && $0.metrics.ballSpeedMph > 0 }
-        if recent.count >= 5 {
-            let axes = Array(recent.enumerated())
+        let points = recent.compactMap { Self.dispersionPoint($0) }
+        if points.count >= 5 {
             let avgAxis = recent.map { $0.metrics.spinAxisDegrees }.reduce(0, +) / Double(recent.count)
             VStack(alignment: .leading, spacing: 10) {
-                TCSectionHeader(title: "Measured Ball Flight")
-                Chart {
-                    RuleMark(y: .value("straight", 0))
-                        .foregroundStyle(TCTheme.textMuted.opacity(0.6))
-                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    ForEach(axes, id: \.offset) { i, shot in
-                        // Integer x has no unit, so Charts logs a "falling back to fixed
-                        // dimension" complaint on every render without an explicit width.
-                        BarMark(x: .value("Shot", i), y: .value("Spin Axis", shot.metrics.spinAxisDegrees),
-                                width: .fixed(10))
-                            .foregroundStyle(shot.metrics.spinAxisDegrees >= 0
-                                             ? Color(red: 0.9, green: 0.45, blue: 0.25)
-                                             : LessonsHomeView.accent)
-                            .cornerRadius(2)
-                    }
+                TCSectionHeader(title: "Where These Shots Finished")
+                TCRangeFinderDispersion(shots: points, colorMode: .direction)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 300)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                HStack(spacing: 16) {
+                    legendDot(TCDispersionColor.byDirection(10),  "Right")
+                    legendDot(TCDispersionColor.byDirection(0),   "Straight")
+                    legendDot(TCDispersionColor.byDirection(-10), "Left")
+                    Spacer(minLength: 0)
                 }
-                .chartXAxis(.hidden)
-                .chartYAxis {
-                    AxisMarks(position: .leading) { _ in
-                        AxisGridLine().foregroundStyle(TCTheme.border.opacity(0.5))
-                        AxisValueLabel().foregroundStyle(TCTheme.textMuted)
-                    }
-                }
-                .frame(height: 130)
                 HStack(spacing: 0) {
                     ballStat(String(format: "%+.1f°", avgAxis), "AVG SPIN AXIS")
                     Rectangle().fill(TCTheme.border).frame(width: 1, height: 26)
-                    ballStat("\(recent.count)", "SHOTS")
+                    ballStat("\(points.count)", "SHOTS")
                     Rectangle().fill(TCTheme.border).frame(width: 1, height: 26)
                     ballStat(avgAxis > 2 ? "FADE/SLICE" : (avgAxis < -2 ? "DRAW/HOOK" : "NEUTRAL"), "TENDENCY")
                 }
-                Text("Orange bars curve right, blue curve left — from your launch monitor shots.")
+                Text("Each dot is one of these shots, plotted where it finished down range.")
                     .font(.system(size: 10))
                     .foregroundColor(TCTheme.textUltraMuted)
             }
             .tcCard(padding: 14)
         }
+    }
+
+    private func legendDot(_ color: Color, _ label: String) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 9, height: 9)
+            Text(label).font(.system(size: 11, weight: .medium)).foregroundColor(TCTheme.textMuted)
+        }
+    }
+
+    /// SavedShot → dispersion point (carry vs net lateral landing offset). Mirrors the math in
+    /// TrueCarryInsightsView.rangePoint so this reads like the Insights dispersion.
+    private static func dispersionPoint(_ shot: SavedShot) -> TCRangeFinderDispersion.ShotPoint? {
+        let m = shot.metrics
+        let carry = m.carryYards
+        guard carry > 0 else { return nil }
+        let total = m.totalYards > 0 ? m.totalYards : carry
+        let signedHLA = m.hlaDirection.lowercased() == "left" ? -m.hlaDegrees : m.hlaDegrees
+        let hlaRad = signedHLA * .pi / 180.0
+        let spinAxis = m.spinAxisDegrees, sidespin = m.sidespinRpm
+        let curveStrength: Double
+        if abs(spinAxis) > 0.5      { curveStrength = (spinAxis > 0 ? 1 : -1) * min(abs(spinAxis) / 16.0, 1.0) }
+        else if abs(sidespin) > 30  { curveStrength = (sidespin > 0 ? 1 : -1) * min(abs(sidespin) / 1100.0, 1.0) }
+        else                        { curveStrength = 0 }
+        let curveMag = abs(curveStrength) * max(total * 0.10, 8.0)
+        let curveSign: Double = curveStrength >= 0 ? 1 : -1
+        let carryFrac = carry / total
+        let lateral = tan(hlaRad) * total * carryFrac + curveSign * curveMag * pow(carryFrac, 1.6)
+        return TCRangeFinderDispersion.ShotPoint(carry: carry, lateral: lateral)
     }
 
     private func ballStat(_ value: String, _ label: String) -> some View {

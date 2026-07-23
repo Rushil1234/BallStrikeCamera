@@ -486,6 +486,11 @@ struct TCRangeFinderDispersion: View {
     var clubSeries: [ClubSeries]? = nil
     /// Called with the tapped point's `tag` when the user taps near a tagged dot.
     var onTapShot: ((Int) -> Void)? = nil
+    /// How single-club dots are colored. `.offlineTiers` (default) tiers green→red by how far
+    /// offline. `.direction` = orange (finished right) / blue (left) / green (straight) — used
+    /// by the coach's read to show where the exact shots it's talking about went.
+    enum DotColorMode { case offlineTiers, direction }
+    var colorMode: DotColorMode = .offlineTiers
 
     private var valid: [ShotPoint] { shots.filter { $0.carry > 0 } }
 
@@ -569,6 +574,7 @@ struct TCRangeFinderDispersion: View {
             let carrySpan = max(mCarry - loCarry, 1)
             let mLateral = maxLateral
             let pts      = filtered
+            let mode     = colorMode
 
             func xCG(_ lat: Double) -> CGFloat {
                 plotLeft + CGFloat((lat + mLateral) / (2 * mLateral)) * plotW
@@ -593,10 +599,12 @@ struct TCRangeFinderDispersion: View {
             // ── Constant-distance arcs, adaptive density ───────────────────
             // Each line is the set of points the same TOTAL distance from the tee — it
             // bows downward at the edges (carry = √(d² − lat²)). Density follows the
-            // VISIBLE span (the window may be zoomed onto a tight cluster), so a 60-yd
-            // close-up gets 5-yd lines with 25-yd labels and a full-bag view stays sparse.
-            let minorStep: Double = carrySpan <= 100 ? 5 : (carrySpan <= 200 ? 5 : (carrySpan <= 320 ? 10 : 25))
-            let majorStep: Double = carrySpan <= 100 ? 25 : (carrySpan <= 320 ? 50 : 100)
+            // VISIBLE span (the window may be zoomed onto a tight cluster). A single-club
+            // close-up gets a LABEL every 10 yds (70,80,90,…) so the distance scale is
+            // readable, not just two numbers; wider views step the labels up so they never
+            // crowd. majorStep is always a multiple of minorStep so labelled arcs line up.
+            let minorStep: Double = carrySpan <= 130 ? 5 : (carrySpan <= 260 ? 10 : (carrySpan <= 400 ? 25 : 50))
+            let majorStep: Double = carrySpan <= 130 ? 10 : (carrySpan <= 260 ? 20 : (carrySpan <= 400 ? 50 : 100))
             let firstArc = (floor(loCarry / minorStep) + 1) * minorStep
             for rawC in stride(from: firstArc, through: mCarry - 1, by: minorStep) {
                 guard yCG(rawC) > plotTop && yCG(rawC) < plotBot else { continue }
@@ -678,7 +686,9 @@ struct TCRangeFinderDispersion: View {
                     let pt = CGPoint(x: xCG(lat), y: yCG(carry))
                     guard pt.x >= plotLeft - 8 && pt.x <= plotRight + 8 &&
                           pt.y >= plotTop  - 8 && pt.y <= plotBot  + 8 else { continue }
-                    let col = fixedColor ?? TCDispersionColor.byLateral(abs(lat))
+                    let col = fixedColor ?? (mode == .direction
+                        ? TCDispersionColor.byDirection(lat)
+                        : TCDispersionColor.byLateral(abs(lat)))
                     let r: CGFloat = min(5 + CGFloat(g.n - 1) * 1.3, 11)   // grow per extra shot, capped
                     ctx.fill(Path(ellipseIn: CGRect(x: pt.x-r, y: pt.y-r, width: r*2, height: r*2)),
                              with: .color(col))
@@ -758,6 +768,14 @@ enum TCDispersionColor {
         case ..<25:  return Color(red: 0.97, green: 0.80, blue: 0.27)   // yellow
         default:     return Color(red: 0.91, green: 0.30, blue: 0.33)   // red
         }
+    }
+
+    /// Coach's read: color a shot by where it FINISHED relative to the target line —
+    /// orange = right, blue = left, green = straight (within ±4 yds).
+    static func byDirection(_ lateral: Double) -> Color {
+        if lateral >  4 { return Color(red: 1.00, green: 0.54, blue: 0.20) }   // orange — finished right
+        if lateral < -4 { return Color(red: 0.24, green: 0.62, blue: 1.00) }   // blue — finished left
+        return Color(red: 0.34, green: 0.91, blue: 0.34)                       // green — straight
     }
 
     /// Course overlay (approach / par 3): shaded by distance in yards to the green center.
