@@ -7,7 +7,12 @@ import UIKit
 final class AuthSessionStore: ObservableObject {
     @Published var currentUser: AppUser? {
         // Bind the RFID hub to this user so it only auto-connects to their paired device.
-        didSet { RFIDHubManager.shared.currentUserId = currentUser?.id }
+        didSet {
+            RFIDHubManager.shared.currentUserId = currentUser?.id
+            // One-time cleanup of the dead per-shot replay bursts older builds wrote (self-heals
+            // devices that ballooned to multiple GB of frames nothing ever read back).
+            if let uid = currentUser?.id { ShotPersistenceService.purgeDeadReplayBurstsOnce(userId: uid) }
+        }
     }
     @Published var userProfile: UserProfile?
     @Published var isLoading = true

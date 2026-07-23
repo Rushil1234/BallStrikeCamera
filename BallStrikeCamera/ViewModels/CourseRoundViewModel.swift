@@ -859,6 +859,14 @@ final class CourseRoundViewModel: ObservableObject {
         round.scoreSummary = computeSummary(round)
         do {
             try await backend.saveRound(round)
+            // Arm the prefilled composer so a finished round is offered for sharing
+            // next time the feed opens — matching range/sim. Gated so it only fires
+            // after a session, never on a plain app open. "Save Privately" opts out.
+            if shareToFeed == false {
+                FeedComposeStore.markHandled(round.id)
+            } else {
+                FeedComposeStore.armAfterSession()
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

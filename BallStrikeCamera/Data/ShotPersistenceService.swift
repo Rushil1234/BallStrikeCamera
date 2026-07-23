@@ -81,24 +81,15 @@ final class ShotPersistenceService {
             }
         }
 
-        // Local replay burst: a capped, downscaled JPEG sequence for the scrubbing
-        // replay player. Local-only (never uploaded) — the composite remains the
-        // cross-device replay image. deleteShot removes the whole media dir.
-        if !replayFrames.isEmpty {
-            let maxFrames = 40
-            let step = max(1, Int((Double(replayFrames.count) / Double(maxFrames)).rounded(.up)))
-            var written = 0
-            for (i, img) in replayFrames.enumerated() where i % step == 0 {
-                guard let small = img.resizedToWidth(540),
-                      let data = small.jpegData(compressionQuality: 0.55) else { continue }
-                let path = mediaDir.appendingPathComponent(String(format: "frame_%03d.jpg", written))
-                try? data.write(to: path)
-                written += 1
-            }
-            media.frameCount = written
-            media.saveOriginalFrames = written > 0
-            media.originalFramesFolderPath = written > 0 ? mediaDir.path : nil
-        }
+        // NOTE: we intentionally no longer persist a per-shot "replay burst" (the ~40
+        // downscaled JPEGs that used to land in media/shotFrames/<id>/). Nothing read them
+        // back: the scrubbing ReplayPlayerView is unused, history shows the composite only
+        // (ShotDetailView), and the post-shot "Frame Replay" plays the in-memory analysis
+        // frames. So the burst was pure dead storage (~1 MB/shot). The composite JPEG remains
+        // the saved/cross-device replay image; the raw 41-frame burst still goes to the
+        // AllFramesArchive when "Save All Frames" is on (deletable), which is where it belongs.
+        // `replayFrames` is kept in the signature for source compatibility but is unused.
+        _ = replayFrames
 
         // Metrics JSON sidecar
         if let jsonData = try? AppStorageManager.encoder.encode(metrics) {
@@ -186,6 +177,54 @@ final class ShotPersistenceService {
         try? FileManager.default.removeItem(at: mediaDir)
         await MainActor.run {
             NotificationCenter.default.post(name: .tcDataChanged, object: nil)
+        }
+    }
+
+    // MARK: - Dead replay-burst cleanup
+
+    /// Older builds wrote a per-shot "replay burst" (`frame_*.jpg`, ~40 downscaled frames)
+    /// into every shot's media folder. Nothing ever read them back — the scrubbing
+    /// ReplayPlayerView is unused and history renders the composite — so they were pure dead
+    /// storage (~1 MB/shot). This deletes them, keeping `composite.jpg`/`thumb.jpg`/`metrics.json`.
+    /// Only touches `…/media/shotFrames/<id>/` — never the AllFramesArchive or the composite.
+    @discardableResult
+    static func purgeDeadReplayBursts(userId: UUID) -> (files: Int, bytes: Int64) {
+        let fm = FileManager.default
+        let root = AppStorageManager.userRoot(for: userId).appendingPathComponent("media/shotFrames")
+        guard let shotDirs = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else {
+            return (0, 0)
+        }
+        var files = 0
+        var bytes: Int64 = 0
+        for shotDir in shotDirs {
+            // A non-directory (stray file) makes this throw → skipped.
+            guard let items = try? fm.contentsOfDirectory(at: shotDir, includingPropertiesForKeys: [.fileSizeKey]) else { continue }
+            for url in items where url.lastPathComponent.hasPrefix("frame_") && url.pathExtension == "jpg" {
+                let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+                if (try? fm.removeItem(at: url)) != nil {
+                    files += 1
+                    bytes += size
+                }
+            }
+        }
+        return (files, bytes)
+    }
+
+    /// Runs the dead-burst purge at most once per install (background), so existing devices
+    /// self-heal after this update without any user action. Call when a user id is known.
+    private static let purgeDoneKey = "tc_purged_dead_replay_bursts_v1"
+    static func purgeDeadReplayBurstsOnce(userId: UUID) {
+        guard !UserDefaults.standard.bool(forKey: purgeDoneKey) else { return }
+        Task.detached(priority: .utility) {
+            let r = purgeDeadReplayBursts(userId: userId)
+            // Set the flag only after a completed pass so an interrupted run finishes next launch.
+            UserDefaults.standard.set(true, forKey: purgeDoneKey)
+            if r.files > 0 {
+                let mb = Double(r.bytes) / 1_000_000
+                let msg = "[ShotMedia] purged \(r.files) dead replay frames, freed \(String(format: "%.1f", mb)) MB"
+                print(msg)
+                FieldLog.shared.event(msg)
+            }
         }
     }
 }

@@ -927,7 +927,7 @@ struct PastSessionsView: View {
             baseItems = rangeSessions.map(HistoryTimelineItem.range)
                 + simSessions.map(HistoryTimelineItem.sim)
                 + rounds.map(HistoryTimelineItem.course)
-                + lessonLibrary.lessonSessions.map(HistoryTimelineItem.coach)
+                + lessonLibrary.analyzeSessions.map(HistoryTimelineItem.coach)
                 + standaloneShots.map(HistoryTimelineItem.shot)
         case .range:
             baseItems = rangeSessions.map(HistoryTimelineItem.range)
@@ -936,7 +936,7 @@ struct PastSessionsView: View {
         case .course:
             baseItems = rounds.map(HistoryTimelineItem.course)
         case .coach:
-            baseItems = lessonLibrary.lessonSessions.map(HistoryTimelineItem.coach)
+            baseItems = lessonLibrary.analyzeSessions.map(HistoryTimelineItem.coach)
         case .shots:
             baseItems = shots.map(HistoryTimelineItem.shot)
         }
@@ -955,11 +955,11 @@ struct PastSessionsView: View {
     private func count(for filter: HistoryFilter) -> Int {
         switch filter {
         case .all: return rangeSessions.count + simSessions.count + rounds.count
-            + lessonLibrary.lessonSessions.count + standaloneShots.count
+            + lessonLibrary.analyzeSessions.count + standaloneShots.count
         case .range: return rangeSessions.count
         case .sim: return simSessions.count
         case .course: return rounds.count
-        case .coach: return lessonLibrary.lessonSessions.count
+        case .coach: return lessonLibrary.analyzeSessions.count
         case .shots: return shots.count
         }
     }

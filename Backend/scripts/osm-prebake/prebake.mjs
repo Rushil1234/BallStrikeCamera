@@ -22,7 +22,7 @@
 // Run a small --limit / --dry-run first. Be polite to Overpass: the script throttles requests.
 
 import { createClient } from "@supabase/supabase-js";
-import { inferHoles, centroid, yardsBetween } from "./geometry.mjs";
+import { inferHoles, centroid, yardsBetween, distToSegmentYds } from "./geometry.mjs";
 
 // ---- args / env -----------------------------------------------------------
 
@@ -73,7 +73,12 @@ async function main() {
         continue;
       }
       if (DRY_RUN) {
-        console.log(`[dry-run] ${result.name} — ${result.holes.length} holes`);
+        const nb = result.holes.reduce((s, h) => s + (h.bunker_polygons?.length || 0), 0);
+        const nw = result.holes.reduce((s, h) => s + (h.water_polygons?.length || 0), 0);
+        const nf = result.holes.filter((h) => h.fairway_polygon).length;
+        const nfb = result.holes.filter((h) => h.green_front_coordinate && h.green_back_coordinate).length;
+        console.log(`[dry-run] ${result.name} — ${result.holes.length} holes, `
+          + `front/back ${nfb}, fairways ${nf}, bunkers ${nb}, water ${nw}`);
         if (args.print && baked === 0) console.log(JSON.stringify(result.holes[0], null, 2));
         if (args.emit && baked === 0) {
           const fs = await import("node:fs");
@@ -138,12 +143,18 @@ async function enumerateCourses() {
 // ---- step 2-4: bake one course -------------------------------------------
 
 async function bakeCourse(course) {
+  const c = `${PER_COURSE_RADIUS_M},${course.lat},${course.lon}`;
   const query = `[out:json][timeout:60];
-    ( way["golf"="green"](around:${PER_COURSE_RADIUS_M},${course.lat},${course.lon});
-      way["golf"="tee"](around:${PER_COURSE_RADIUS_M},${course.lat},${course.lon});
-      way["golf"="fairway"](around:${PER_COURSE_RADIUS_M},${course.lat},${course.lon});
-      way["golf"="hole"](around:${PER_COURSE_RADIUS_M},${course.lat},${course.lon});
-      node["golf"="pin"](around:${PER_COURSE_RADIUS_M},${course.lat},${course.lon});
+    ( way["golf"="green"](around:${c});
+      way["golf"="tee"](around:${c});
+      way["golf"="fairway"](around:${c});
+      way["golf"="hole"](around:${c});
+      node["golf"="pin"](around:${c});
+      way["golf"="bunker"](around:${c});
+      way["natural"="sand"](around:${c});
+      way["golf"="water_hazard"](around:${c});
+      way["golf"="lateral_water_hazard"](around:${c});
+      way["natural"="water"](around:${c});
     );
     out body; >; out skel qt;`;
   const elements = await overpass(query);
@@ -165,13 +176,20 @@ async function bakeCourse(course) {
     throw new Error(`only ${usable.length} usable holes`);
   }
 
+  // Attribute OSM hazards + fairways to the inferred holes (yards).
+  const hazards = {
+    bunkersByHole: attributeToHoles(classified.bunkers, usable, 60, false),
+    watersByHole: attributeToHoles(classified.waters, usable, 130, true),
+    fairwaysByHole: attributeToHoles(classified.fairways, usable, 70, false),
+  };
+
   // Optional scorecard from GolfCourseAPI.
   let scorecard = null;
   if (GCA_KEY) {
     scorecard = await fetchScorecard(course).catch(() => null);
   }
 
-  return buildPayload(course, usable, scorecard);
+  return buildPayload(course, usable, scorecard, hazards);
 }
 
 function classify(elements) {
@@ -186,7 +204,7 @@ function classify(elements) {
       if (coords.length >= 2) ways.set(e.id, { coords, tags: e.tags || {} });
     }
   }
-  const out = { greens: [], tees: [], fairways: [], holeWays: [], pins: [] };
+  const out = { greens: [], tees: [], fairways: [], holeWays: [], pins: [], bunkers: [], waters: [] };
   for (const e of elements) {
     if (e.type === "node" && e.tags && e.tags.golf === "pin" && e.lat != null) {
       out.pins.push({ lat: e.lat, lon: e.lon });
@@ -194,6 +212,7 @@ function classify(elements) {
   }
   for (const [, w] of ways) {
     const g = w.tags.golf;
+    const nat = w.tags.natural;
     if (g === "green") out.greens.push({ coords: w.coords });
     else if (g === "tee") out.tees.push({ coords: w.coords });
     else if (g === "fairway") out.fairways.push({ coords: w.coords });
@@ -203,19 +222,48 @@ function classify(elements) {
         ref: w.tags.ref ? parseInt(w.tags.ref, 10) : null,
         par: w.tags.par ? parseInt(w.tags.par, 10) : null,
       });
+    else if (g === "bunker" || nat === "sand") out.bunkers.push({ coords: w.coords });
+    else if (g === "water_hazard" || g === "lateral_water_hazard" || nat === "water")
+      out.waters.push({ coords: w.coords });
   }
   return out;
 }
 
+// Attribute hazard/fairway polygons to the hole whose tee->green corridor they
+// sit nearest, within maxYds. water may sit between holes, so it can attach to
+// several (multi); bunkers/fairways attach to their single nearest hole.
+function attributeToHoles(polys, holes, maxYds, multi) {
+  const byHole = new Map();
+  for (const poly of polys) {
+    const c = centroid(poly.coords);
+    if (!c || poly.coords.length < 3) continue;
+    const ranked = holes
+      .map((h) => [h, distToSegmentYds(c, h.tee || h.center, h.center)])
+      .filter(([, d]) => d <= maxYds)
+      .sort((a, b) => a[1] - b[1]);
+    if (ranked.length === 0) continue;
+    const targets = multi ? ranked.map(([h]) => h) : [ranked[0][0]];
+    for (const h of targets) {
+      if (!byHole.has(h.number)) byHole.set(h.number, []);
+      byHole.get(h.number).push(poly.coords);
+    }
+  }
+  return byHole;
+}
+
 // ---- step 5: build snake_case GolfCourse payload -------------------------
 
-function buildPayload(course, holes, scorecard) {
+function buildPayload(course, holes, scorecard, hazards = {}) {
   const now = new Date().toISOString();
   const teeBoxes = scorecard?.teeBoxes?.length
     ? scorecard.teeBoxes
     : [{ id: "gps", name: "Course GPS", color: "Gray", total_yards: 0 }];
 
   const scByNumber = new Map((scorecard?.holes || []).map((h) => [h.number, h]));
+  const bunkersByHole = hazards.bunkersByHole || new Map();
+  const watersByHole = hazards.watersByHole || new Map();
+  const fairwaysByHole = hazards.fairwaysByHole || new Map();
+  const ring = (c) => ({ coordinates: c.map(coord) });
 
   const payloadHoles = holes.map((h) => {
     const sc = scByNumber.get(h.number);
@@ -223,6 +271,7 @@ function buildPayload(course, holes, scorecard) {
     if (sc?.yardage) for (const t of teeBoxes) teeYards[t.id] = sc.yardage;
     const teeCoordByBox = {};
     if (h.tee) for (const t of teeBoxes) teeCoordByBox[t.id] = coord(h.tee);
+    const fw = fairwaysByHole.get(h.number) || [];
     return clean({
       id: `${course.id}-hole-${h.number}`,
       course_id: course.id,
@@ -238,9 +287,9 @@ function buildPayload(course, holes, scorecard) {
       hazards: [],
       tee_coordinate: h.tee ? coord(h.tee) : null,
       green_polygon: h.polygon ? { coordinates: h.polygon.map(coord) } : null,
-      fairway_polygon: null,
-      bunker_polygons: [],
-      water_polygons: [],
+      fairway_polygon: fw[0] ? ring(fw[0]) : null,
+      bunker_polygons: (bunkersByHole.get(h.number) || []).map(ring),
+      water_polygons: (watersByHole.get(h.number) || []).map(ring),
     });
   });
 
@@ -274,9 +323,75 @@ function coord(c) {
   return { latitude: c.lat, longitude: c.lon };
 }
 
-// ---- Supabase upsert ------------------------------------------------------
+// ---- additive merge helpers ----------------------------------------------
+// Stored rows may be camelCase (older uploaders) or snake_case; normalize to
+// snake so "already present" is detected and we never write a duplicate key.
+
+function camelToSnake(k) {
+  return k.replace(/([A-Z])/g, "_$1").toLowerCase();
+}
+function isEmpty(v) {
+  return v == null || (Array.isArray(v) && v.length === 0) ||
+    (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0);
+}
+function normalizeKeys(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    const sk = camelToSnake(k);
+    if (!(sk in out) || isEmpty(out[sk])) out[sk] = v;
+  }
+  return out;
+}
+
+const FILL_FIELDS = [
+  "green_center_coordinate", "green_front_coordinate", "green_back_coordinate",
+  "green_polygon", "fairway_polygon", "bunker_polygons", "water_polygons",
+  "tee_coordinate", "tee_coordinate_by_tee_box", "path_coordinates",
+  "tee_yards_by_tee_box", "par", "handicap",
+];
+
+// Additive: keep everything in the existing hole, only fill fields it's missing.
+function mergeHoles(existingHoles, newHoles) {
+  const byNum = new Map();
+  for (const e of existingHoles || []) {
+    const n = normalizeKeys(e);
+    if (n.number != null) byNum.set(n.number, n);
+  }
+  for (const nh of newHoles) {
+    if (!byNum.has(nh.number)) { byNum.set(nh.number, nh); continue; }
+    const e = byNum.get(nh.number);
+    for (const f of FILL_FIELDS) {
+      if (isEmpty(e[f]) && !isEmpty(nh[f])) e[f] = nh[f];
+    }
+  }
+  return [...byNum.keys()].sort((a, b) => a - b).map((k) => byNum.get(k));
+}
+
+// ---- Supabase upsert (additive) -------------------------------------------
 
 async function upsert(payload) {
+  // Read the existing row for this course_id and merge additively — never
+  // clobber geometry that's already there (e.g. a hand-fixed hole, or an
+  // earlier bake). Prebake uses osm-* ids, so this only ever touches its own
+  // rows; catalog-UUID rows are a different id space and stay untouched.
+  const { data: existing } = await supabase
+    .from("course_geometries")
+    .select("payload, geometry_state, scorecard_verified")
+    .eq("course_id", payload.id)
+    .maybeSingle();
+
+  let finalPayload = payload;
+  if (existing && existing.payload) {
+    const ex = normalizeKeys(existing.payload);
+    finalPayload = {
+      ...ex,
+      ...payload,
+      holes: mergeHoles(ex.holes || [], payload.holes),
+      tee_boxes: !isEmpty(ex.tee_boxes) ? ex.tee_boxes : payload.tee_boxes,
+      course_polygon: ex.course_polygon ?? payload.course_polygon,
+    };
+  }
+
   const row = {
     course_id: payload.id,
     course_name: payload.name,
@@ -290,9 +405,10 @@ async function upsert(payload) {
     validation_errors: [],
     latitude: payload.latitude,
     longitude: payload.longitude,
-    payload,
+    payload: finalPayload,
     updated_at: new Date().toISOString(),
   };
+  // scorecard_verified is intentionally omitted so an existing true flag survives.
   const { error } = await supabase
     .from("course_geometries")
     .upsert(row, { onConflict: "course_id" });

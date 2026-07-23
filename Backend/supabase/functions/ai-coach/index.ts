@@ -36,10 +36,11 @@ const MODELS: Record<string, string> = {
   session: "google/gemma-4-26b-a4b-it:free",
   round:   "google/gemma-4-26b-a4b-it:free",
   bag:     "google/gemma-4-26b-a4b-it:free",
+  ask:     "google/gemma-4-26b-a4b-it:free",
 };
 
 const MAX_TOKENS: Record<string, number> = {
-  shot: 320, session: 550, round: 600, bag: 550,
+  shot: 320, session: 550, round: 600, bag: 550, ask: 550,
 };
 
 const CORS_HEADERS = {
@@ -265,9 +266,16 @@ function buildUserPrompt(
   clubs: ClubStat[],
   round: RoundCtx | undefined,
   notes: string | undefined,
+  question: string | undefined,
 ): string {
   let body: string;
   switch (mode) {
+    case "ask":
+      // Free-text chat: the golfer's own question, answered against their bag + shot data.
+      body = `${(question ?? "").trim()}\n\n` +
+        (clubs.length ? `My per-club averages:\n${clubs.map((c) => `- ${clubLine(c)}`).join("\n")}\n\n` : "") +
+        (shots.length ? `My recent shots:\n${shots.map((s, i) => `Shot ${i + 1}: ${shotLine(s)}`).join("\n")}` : "");
+      break;
     case "session":
       body = `Here are my recent range shots. Find my main pattern (miss tendency, gapping, or strike) ` +
         `and give me a short practice plan.\n\n${shots.map((s, i) => `Shot ${i + 1}: ${shotLine(s)}`).join("\n")}`;
@@ -310,20 +318,21 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've reached the AI Coach limit for now — try again a little later." }, 429);
   }
 
-  let body: { mode?: string; shots?: Metrics[]; clubs?: ClubStat[]; round?: RoundCtx; notes?: string; contextLabel?: string };
+  let body: { mode?: string; shots?: Metrics[]; clubs?: ClubStat[]; round?: RoundCtx; notes?: string; contextLabel?: string; question?: string };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON body" }, 400); }
 
-  const mode = ["session", "round", "bag"].includes(body.mode ?? "") ? body.mode! : "shot";
+  const mode = ["session", "round", "bag", "ask"].includes(body.mode ?? "") ? body.mode! : "shot";
   const shots = Array.isArray(body.shots) ? body.shots.slice(0, 60) : [];
   const clubs = Array.isArray(body.clubs) ? body.clubs.slice(0, 16) : [];
 
   // Each mode needs its own minimum data.
   const hasData = mode === "bag" ? clubs.length > 0
     : mode === "round" ? (shots.length > 0 || !!body.round)
+    : mode === "ask" ? !!(body.question && body.question.trim())
     : shots.length > 0;
   if (!hasData) return json({ error: "No data provided" }, 400);
 
-  let userPrompt = buildUserPrompt(mode, shots, clubs, body.round, body.notes);
+  let userPrompt = buildUserPrompt(mode, shots, clubs, body.round, body.notes, body.question);
   const golferContext = await fetchGolferContext(user.id);
   if (golferContext) userPrompt += `\n\n--- What you know about this golfer ---\n${golferContext}`;
 
@@ -371,8 +380,11 @@ Deno.serve(async (req: Request) => {
 
   // Persist the summary with the golfer's profile so it feeds future context and their
   // coach history. Best-effort — a save failure must not fail the coaching response.
-  const label = (body.contextLabel && body.contextLabel.trim()) || deriveLabel(mode, shots, body.round);
-  await saveNote(user.id, mode, coaching, label);
+  // Chat ("ask") replies are ephemeral Q&A — don't persist them into coach history.
+  if (mode !== "ask") {
+    const label = (body.contextLabel && body.contextLabel.trim()) || deriveLabel(mode, shots, body.round);
+    await saveNote(user.id, mode, coaching, label);
+  }
 
-  return json({ coaching, mode, saved: true });
+  return json({ coaching, mode, saved: mode !== "ask" });
 });

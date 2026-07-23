@@ -166,18 +166,25 @@ struct ShotMetricsCalculator {
                 ballLaunch.ballSpeedMph ?? 0, configuration.puttBallSpeedThresholdMph)]
             print(String(format: "[VLA] putt/roll: ball speed %.1f mph < %.0f → VLA 0° (model skipped)",
                          ballLaunch.ballSpeedMph ?? 0, configuration.puttBallSpeedThresholdMph))
-        } else if let growthVLA = diameterGrowthVLA(analysis: analysis) {
+        } else if let rawGrowthVLA = diameterGrowthVLA(analysis: analysis) {
             // Physics beats the trained model here: the model was fit on footage from a
             // different tripod height/lighting and reads 45-50° on near-flat shots. The ball's
             // apparent diameter directly encodes height (it grows as the ball rises toward the
             // camera; constant size = flat flight), which needs no training data at all.
+            //
+            // (July 21: a speed-ramped "fast-shot" VLA correction was tried here and removed —
+            // on correctly TIME-paired data it was flat on carry/total and double-counted through
+            // the flight model, which was trained on the RAW diameter-growth VLA. VLA already
+            // matches TopTracer on average; the real systematic error is ball speed reading low
+            // at high swing speed, which is where the carry deficit comes from.)
+            let growthVLA = rawGrowthVLA
             ballLaunch.vlaLegacyDegrees       = ballLaunch.vlaDegrees
             ballLaunch.vlaTrainedModelDegrees = nil
             ballLaunch.vlaFinalDegrees        = growthVLA
             ballLaunch.vlaDegrees             = growthVLA
             ballLaunch.vlaModelUsed           = "diameter_growth_physics"
             ballLaunch.vlaModelWarnings       = ["VLA measured from apparent ball-diameter growth (camera-height geometry); trained model bypassed."]
-            print(String(format: "[VLA] diameter-growth physics: %.1f°", growthVLA))
+            print(String(format: "[VLA] diameter-growth %.1f°", growthVLA))
         } else {
             // No usable diameter-growth measurement. Do NOT fall back to the trained model —
             // it was fit on a different rig and reads 45-55° on near-flat shots, and the

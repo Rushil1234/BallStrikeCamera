@@ -199,9 +199,14 @@ struct SwingRecording: Codable, Identifiable {
     var viewAngle: SwingViewAngle = .faceOn
     var source: SwingCameraSource = .backGuided
     var fps: Double = 60
-    var videoPath: String              // relative to the swings dir
+    var videoPath: String              // relative to the swings dir (deleted after analysis — see keyFramePaths)
     var thumbnailPath: String? = nil
     var lessonId: String? = nil        // captured inside a lesson (nil = free analysis)
+    /// The 5 phase stills (address, takeaway, top, impact, finish) extracted at analysis time,
+    /// relative to the swings dir, in SwingPhases.labelled order. Coach mode keeps ONLY these —
+    /// the full .mov is deleted once analyzed — so replay/storage stays lean. Empty for swings
+    /// saved before this field or whose analysis failed (replay falls back to the video if present).
+    var keyFramePaths: [String] = []
 
     // Analysis results
     var analyzed = false

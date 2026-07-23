@@ -445,3 +445,101 @@ struct CoachHistoryView: View {
         .clipShape(RoundedRectangle(cornerRadius: TCTheme.cardRadius, style: .continuous))
     }
 }
+
+/// Free-text "ask the coach" card on the Insights page. Type a question about your bag or
+/// shots and the OpenRouter coach answers using YOUR measured data (per-club averages +
+/// recent shots on the current page). Pro-gated; single-turn Q&A. Replaced the old
+/// "AI Bag Gapping" deep-read card (July 23 — Noah).
+struct CoachChatCard: View {
+    let shots: [AICoachService.ShotPayload]
+    let clubs: [AICoachService.ClubStat]
+    let isPro: Bool
+
+    @State private var question = ""
+    @State private var answer: String?
+    @State private var loading = false
+    @State private var errorText: String?
+    @FocusState private var focused: Bool
+
+    private var trimmed: String { question.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canAsk: Bool { isPro && !loading && !trimmed.isEmpty }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "bubble.left.and.text.bubble.right.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(TCTheme.gold)
+                Text("Ask the Coach")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(TCTheme.textPrimary)
+                Spacer()
+                if !isPro {
+                    Text("PRO").font(.system(size: 10, weight: .bold))
+                        .foregroundColor(TCTheme.gold).tracking(1)
+                }
+            }
+            Text("Ask anything about your bag or these shots — answered from your own numbers.")
+                .font(.system(size: 12))
+                .foregroundColor(TCTheme.textMuted)
+
+            if let answer {
+                Text(answer)
+                    .font(.system(size: 14))
+                    .foregroundColor(TCTheme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(TCTheme.panelRaised, in: RoundedRectangle(cornerRadius: 10))
+                    .textSelection(.enabled)
+            }
+            if let errorText {
+                Text(errorText).font(.system(size: 12)).foregroundColor(TCTheme.danger)
+            }
+
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField(isPro ? "e.g. Which club leaves my biggest gap?" : "Upgrade to Pro to ask",
+                          text: $question, axis: .vertical)
+                    .font(.system(size: 14))
+                    .foregroundColor(TCTheme.textPrimary)
+                    .lineLimit(1...4)
+                    .focused($focused)
+                    .disabled(!isPro)
+                    .padding(10)
+                    .background(TCTheme.panel, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(TCTheme.border, lineWidth: 1))
+                    .onSubmit(ask)
+                Button(action: ask) {
+                    Group {
+                        if loading {
+                            ProgressView().tint(TCTheme.onPrimary)
+                        } else {
+                            Image(systemName: "arrow.up").font(.system(size: 16, weight: .bold))
+                                .foregroundColor(TCTheme.onPrimary)
+                        }
+                    }
+                    .frame(width: 42, height: 42)
+                    .background(canAsk ? AnyShapeStyle(TCTheme.primaryFill) : AnyShapeStyle(TCTheme.panelRaised),
+                                in: RoundedRectangle(cornerRadius: 10))
+                }
+                .disabled(!canAsk)
+            }
+        }
+        .tcCard(padding: 14)
+    }
+
+    private func ask() {
+        let q = trimmed
+        guard canAsk else { return }
+        focused = false
+        loading = true
+        errorText = nil
+        Task {
+            do {
+                let reply = try await AICoachService.deepRead(.forAsk(q, shots: shots, clubs: clubs))
+                await MainActor.run { answer = reply; question = ""; loading = false }
+            } catch {
+                await MainActor.run { errorText = error.localizedDescription; loading = false }
+            }
+        }
+    }
+}

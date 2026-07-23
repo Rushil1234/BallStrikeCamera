@@ -90,6 +90,7 @@ final class BallDetector {
         var maxBrightnessSeen = 0
         var brightIgnoringSpread = 0   // brightness passed, but spread (saturation) did not
         var limePixelCount = 0         // pixels admitted via the lime range-ball signature
+        var whitePixelCount = 0        // pixels admitted via the colourless-white (dim-light) signature
         var sampledPixels = 0
 
         // Collect qualifying sample points instead of folding them into one running bbox —
@@ -104,6 +105,10 @@ final class BallDetector {
         // this frame's histogram sets the threshold for the next one. brightnessThreshold is the
         // ceiling, so in bright light scanThreshold == the configured value and nothing changes.
         let scanThreshold = adaptiveThreshold
+        // Dim scene → enable the colourless-white path below. When the adaptive threshold has dropped
+        // well under the 155 daylight ceiling, the scene is dark; in bright light (threshold == ceiling)
+        // this stays off so sunlit/flashlit capture is byte-for-byte unchanged.
+        let dimScene = scanThreshold < 140
         var histogram = [Int](repeating: 0, count: 256)
 
         // Scan only within ROI, downsampled. BGRA byte order.
@@ -147,6 +152,17 @@ final class BallDetector {
                     limePixelCount += 1
                     brightX.append(x)
                     brightY.append(y)
+                } else if dimScene, spread <= 24, brightness >= 90, g < r + 20 {
+                    // WHITE-BY-ABSENCE-OF-COLOUR (July 22): in the dark a white ball is barely brighter
+                    // than turf (~128 vs ~114), so the brightness gate LOSES it — but it's the only
+                    // COLOURLESS object in frame. Measured dark turf is green-dominant (R79 G143 B119,
+                    // spread 72); a white ball is R≈G≈B (spread <20). So a strictly colourless
+                    // (spread ≤ 24) NON-green (g < r+20) pixel above a low floor IS the ball — chroma
+                    // survives the dark where brightness can't. This is the white mirror of the lime
+                    // census that makes yellow work in the same conditions.
+                    whitePixelCount += 1
+                    brightX.append(x)
+                    brightY.append(y)
                 }
             }
         }
@@ -187,7 +203,7 @@ final class BallDetector {
                              scanThreshold, configuration.brightnessThreshold, configuration.maxChannelSpread,
                              configuration.minimumBrightPixels))
             }
-            print("[BD] max=\(maxBrightnessSeen) thr=\(scanThreshold) w=\(brightX.count) c=\(brightIgnoringSpread) l=\(limePixelCount)")
+            print("[BD] max=\(maxBrightnessSeen) thr=\(scanThreshold) w=\(brightX.count) c=\(brightIgnoringSpread) l=\(limePixelCount) wht=\(whitePixelCount)")
         }
 
         guard brightX.count >= configuration.minimumBrightPixels else {
@@ -443,8 +459,14 @@ final class BallDetector {
         // Sanity: the tight square must actually be tighter than (or equal to) the padded
         // lock rect, and not so small that we latched onto a glint. Outside that range the
         // scan hit something odd (mat glare bleeding, logo-only cluster) — keep the original.
+        // A teed ball sits a few inches closer to the camera than a grounded one, so its true disc
+        // reads meaningfully bigger than the initial lock guessed (measured rest_r ~5.9 on a tee vs
+        // ~4.0 on the ground; observed rejections 96 vs 89, 84 vs 65, 94 vs 89). The old 1.05 cap
+        // rejected exactly those and kept the fat padded rect. Let the tight fit CORRECT upward to
+        // the real ball — the rim-bleed guard above already caps runaway at core×1.5 (grass bleed),
+        // and the 0.30 floor stops latching onto a glint. This is the fix for the "big circle".
         let originalSidePx = rect.width * CGFloat(width)
-        guard side <= originalSidePx * 1.05, side >= originalSidePx * 0.30 else {
+        guard side <= originalSidePx * 1.40, side >= originalSidePx * 0.30 else {
             print(String(format: "[BD] TIGHT rejected: side=%.0fpx vs locked %.0fpx", side, originalSidePx))
             return nil
         }

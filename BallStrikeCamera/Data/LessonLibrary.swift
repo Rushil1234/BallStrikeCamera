@@ -333,10 +333,22 @@ final class LessonLibrary: ObservableObject {
         persist(lessonSessions, "sessions.json")
     }
 
+    /// History surfaces ONLY free "Analyze Swing" sittings — curriculum lessons and drills stay
+    /// inside the coach/lessons flow and never appear on the History timeline. `recordStudioSession`
+    /// tags those with `lessonId == "studio.analyze"`; everything else is a lesson/drill.
+    var analyzeSessions: [LessonSessionRecord] {
+        lessonSessions.filter { $0.lessonId == "studio.analyze" }
+    }
+
     // MARK: Swing records
+
+    /// Coach page keeps only the most recent swings — the review loop is about your LAST session,
+    /// not an unbounded archive of every clip + its stills forever.
+    static let swingLimit = 20
 
     func addSwing(_ swing: SwingRecording) {
         swings.append(swing)
+        trimSwings()
         persist(swings, "swings.json")
         if swing.analyzed {
             playerModel.absorb(swing)
@@ -361,17 +373,44 @@ final class LessonLibrary: ObservableObject {
     }
 
     func deleteSwing(id: UUID) {
-        if let s = swings.first(where: { $0.id == id }) {
-            try? FileManager.default.removeItem(at: videoURL(for: s))
-        }
+        if let s = swings.first(where: { $0.id == id }) { deleteFiles(for: s) }
         swings.removeAll { $0.id == id }
         persist(swings, "swings.json")
     }
 
+    /// Evict oldest swings beyond `swingLimit`, deleting their files. The best swing is always
+    /// kept (the ghost / "vs best" comparison depends on it) even if it ages out of the window.
+    private func trimSwings() {
+        guard swings.count > Self.swingLimit else { return }
+        var keep = swings.sorted { $0.recordedAt > $1.recordedAt }.prefix(Self.swingLimit).map(\.id)
+        if let best = playerModel.bestSwingId, !keep.contains(best) { keep.append(best) }
+        let keepIds = Set(keep)
+        for s in swings where !keepIds.contains(s.id) { deleteFiles(for: s) }
+        swings = swings.filter { keepIds.contains($0.id) }
+    }
+
+    /// Remove every on-disk artifact for a swing — the clip, its thumbnail, and the phase stills.
+    private func deleteFiles(for swing: SwingRecording) {
+        let fm = FileManager.default
+        let dir = Self.swingsDir(userId: swing.userId)
+        try? fm.removeItem(at: dir.appendingPathComponent(swing.videoPath))
+        if let t = swing.thumbnailPath { try? fm.removeItem(at: dir.appendingPathComponent(t)) }
+        for kf in swing.keyFramePaths { try? fm.removeItem(at: dir.appendingPathComponent(kf)) }
+    }
+
     // MARK: Paths
 
-    static func swingsDir(userId: UUID) -> URL {
+    // nonisolated: pure path building (no actor state) so the background analyzer can locate the
+    // swings dir to write phase stills.
+    nonisolated static func swingsDir(userId: UUID) -> URL {
         AppStorageManager.userRoot(for: userId).appendingPathComponent("swings")
+    }
+
+    /// The 5 phase-still URLs (address…finish) for a swing, in phase order. Empty if the swing
+    /// predates keyframe extraction or its analysis failed.
+    func keyFrameURLs(for swing: SwingRecording) -> [URL] {
+        let dir = Self.swingsDir(userId: swing.userId)
+        return swing.keyFramePaths.map { dir.appendingPathComponent($0) }
     }
 
     private func dir(_ uid: UUID) -> URL {

@@ -83,8 +83,15 @@ enum SwingPoseExtractor {
             // jetsam-kills the app mid-analysis (looks like "the app just closed on every swing").
             autoreleasepool {
                 let request = VNDetectHumanBodyPoseRequest()
+                // VNDetectHumanBodyPoseRequest's CoreML graph hard-ABORTS on the Simulator's
+                // software Metal backend ("MPSGraph: MLIR pass manager failed") — an uncatchable
+                // assert, not a throw, so the try? below can't save us and the app exits mid-
+                // analyze-swing. Skip pose on the Simulator (which has no camera anyway); a physical
+                // device runs it for real on the Neural Engine. Same guard ClubDetector/HoselSpeed use.
+                #if !targetEnvironment(simulator)
                 let handler = VNImageRequestHandler(cvPixelBuffer: pb, orientation: orientation)
                 try? handler.perform([request])
+                #endif
 
                 var joints: [VNHumanBodyPoseObservation.JointName: SwingJoint] = [:]
                 // Ranges have bystanders: track the LARGEST person in frame (torso span),
@@ -318,6 +325,79 @@ enum SwingPhaseSegmenter {
             if best > 0.08 { break }
         }
         return best > 0 ? best : 0.12
+    }
+
+    /// Hand-center speed trace (normalized units/sec) — the same signal `segment` builds,
+    /// exposed so a clubhead-refined impact can re-derive the finish frame post-hoc.
+    static func handSpeedTrace(_ frames: [SwingPoseFrame], fps: Double) -> [Double] {
+        var hand = [CGPoint?](repeating: nil, count: frames.count)
+        for (i, f) in frames.enumerated() {
+            hand[i] = f.mid(.leftWrist, .rightWrist)
+                ?? f.joint(.leftWrist) ?? f.joint(.rightWrist)
+                ?? f.mid(.leftElbow, .rightElbow)
+        }
+        var last: CGPoint? = nil
+        for i in hand.indices { if hand[i] == nil { hand[i] = last } else { last = hand[i] } }
+        let first = hand.compactMap { $0 }.first ?? .zero
+        let pts = hand.map { $0 ?? first }
+        var speed = [Double](repeating: 0, count: pts.count)
+        for i in 1..<pts.count {
+            speed[i] = Double(hypot(pts[i].x - pts[i-1].x, pts[i].y - pts[i-1].y)) * fps
+        }
+        return speed
+    }
+
+    /// Correct impact using the CLUBHEAD trail. The hand-based impact from `segment` lands a
+    /// few frames early: at impact the hands are only thigh-high and the clubhead is at the
+    /// ball, and the hands reach their speed peak / low point BEFORE the clubhead strikes (the
+    /// release/lag). The clubhead's low point in the downswing IS the strike, so snap impact to
+    /// it and re-derive finish (which is anchored to impact). Conservative: returns the phases
+    /// UNCHANGED whenever the club trail is missing/weak (e.g. Simulator, poor detection), so it
+    /// can never do worse than the hand-based result.
+    static func refineImpactWithClubhead(_ phases: SwingPhases, clubTrail: [[Double]]?,
+                                         frames: [SwingPoseFrame], fps: Double) -> SwingPhases {
+        guard let trail = clubTrail, trail.count >= 6,
+              let times = phases.times, times.count == 5, frames.count > 2 else { return phases }
+        let topT = times[2], handImpactT = times[3]
+        // Clubhead low point (lowest on screen = smallest Vision y) from just past the top to a
+        // hair past the hand-impact — the club reaches the ball slightly AFTER the hands bottom.
+        let lo = topT + 0.02, hi = handImpactT + 0.20
+        var bestT: Double? = nil
+        var bestY = Double.greatestFiniteMagnitude
+        for p in trail where p.count >= 3 && p[2] >= lo && p[2] <= hi {
+            if p[1] < bestY { bestY = p[1]; bestT = p[2] }
+        }
+        guard let impactT = bestT else { return phases }
+        // Nearest frame index to the clubhead-low time.
+        var impact = phases.impact
+        var bestDT = Double.greatestFiniteMagnitude
+        for (i, f) in frames.enumerated() {
+            let dt = abs(f.time - impactT)
+            if dt < bestDT { bestDT = dt; impact = i }
+        }
+        guard impact > phases.top, impact < frames.count - 1 else { return phases }
+
+        // Re-derive finish (first sustained stillness after impact) from the corrected impact.
+        let speed = handSpeedTrace(frames, fps: fps)
+        let stillThresh = Double(max(motionScale(frames), 0.05)) * 0.45
+        let finishHold = max(2, Int(fps * 0.2))
+        var finish = min(frames.count - 1, impact + Int(fps * 1.2))
+        if impact + 1 < speed.count - finishHold {
+            for i in (impact + 1)..<min(speed.count - finishHold, impact + Int(fps * 1.2)) {
+                if (i..<(i + finishHold)).allSatisfy({ speed[$0] < stillThresh }) { finish = i; break }
+            }
+        }
+
+        var refined = SwingPhases(address: phases.address, takeaway: phases.takeaway, top: phases.top,
+                                  impact: impact, finish: finish,
+                                  frameCount: phases.frameCount, frameRate: phases.frameRate)
+        refined.times = [phases.address, phases.takeaway, phases.top, impact, finish].map {
+            frames[min($0, frames.count - 1)].time
+        }
+        // If the correction broke the swing envelope, keep the hand-based phases.
+        guard refined.backswingSeconds > 0.25, refined.backswingSeconds < 4.0,
+              refined.downswingSeconds > 0.08, refined.downswingSeconds < 2.5 else { return phases }
+        return refined
     }
 }
 
@@ -1311,12 +1391,20 @@ enum SwingAnalyzer {
         var rec = recording
         do {
             let (frames, fps) = try await SwingPoseExtractor.extract(videoURL: videoURL)
-            guard let phases = SwingPhaseSegmenter.segment(frames: frames, fps: fps) else {
+            guard var phases = SwingPhaseSegmenter.segment(frames: frames, fps: fps) else {
                 rec.analyzed = false
                 rec.headline = "Couldn't find a swing in that clip."
                 rec.focusPoint = "Make sure your whole body is in frame and take one full swing."
                 return rec
             }
+            // Trace the clubhead first (it only needs a rough window from the hand-based phases),
+            // then snap impact to the clubhead's low point — the actual strike. Hand-based impact
+            // reads early because the hands bottom out a few frames before the clubhead reaches the
+            // ball; finish is re-derived from the corrected impact. No-op when the club trail is
+            // weak (Simulator / poor detection), so it never regresses the hand-based result.
+            let clubTrail = await SwingClubTracer.trace(videoURL: videoURL, frames: frames, phases: phases)
+            phases = SwingPhaseSegmenter.refineImpactWithClubhead(phases, clubTrail: clubTrail,
+                                                                  frames: frames, fps: fps)
             let metrics = SwingMetricsEngine.compute(frames: frames, phases: phases,
                                                      skill: skill, isLefty: isLefty,
                                                      viewAngle: rec.viewAngle,
@@ -1334,6 +1422,12 @@ enum SwingAnalyzer {
             rec.keyPoses = phases.labelled.map { _, frameIdx in
                 SwingSkeleton.stored(from: frames[min(frameIdx, frames.count - 1)], at: frameIdx)
             }
+            // The 5 phase stills — coach mode keeps ONLY these (the caller deletes the .mov once
+            // analyzed), so replay/storage stays lean instead of holding every full-res clip forever.
+            let baseName = (recording.videoPath as NSString).deletingPathExtension
+            rec.keyFramePaths = SwingAnalyzer.extractKeyframes(
+                videoURL: videoURL, phases: phases,
+                dir: LessonLibrary.swingsDir(userId: recording.userId), baseName: baseName)
             // Head trail address→impact — powers the drawn-on-video sway box.
             let headRange = phases.address...min(phases.impact, frames.count - 1)
             rec.headTrail = headRange.compactMap { i -> [Double]? in
@@ -1351,11 +1445,10 @@ enum SwingAnalyzer {
                 else { return nil }
                 return [Double(h.x), Double(h.y)]
             }
-            // Clubhead trace for BOTH views: down-the-line it IS the ribbon (hands
-            // occlude each other); face-on it's the optional second view next to the
-            // hand path — the replay lets the player flip between them.
-            rec.clubTrail = await SwingClubTracer.trace(videoURL: videoURL,
-                                                        frames: frames, phases: phases)
+            // Clubhead trace for BOTH views (already computed above to refine impact): down-the-line
+            // it IS the ribbon (hands occlude each other); face-on it's the optional second view
+            // next to the hand path — the replay lets the player flip between them.
+            rec.clubTrail = clubTrail
             if #available(iOS 17.0, *) { rec.poseEngine = "vision2d+3dready" }
         } catch {
             rec.analyzed = false
@@ -1374,5 +1467,30 @@ enum SwingAnalyzer {
            let data = UIImage(cgImage: cg).jpegData(compressionQuality: 0.7) {
             try? data.write(to: destination)
         }
+    }
+
+    /// Extract the 5 swing-phase stills (address, takeaway, top, impact, finish) at their exact
+    /// video times into `<baseName>_p0.jpg … _p4.jpg`. Returns the written filenames (relative to
+    /// the swings dir), in SwingPhases.labelled order. These replace the full clip for replay, so
+    /// the recording survives after the .mov is deleted. Exact-frame tolerance so a fast
+    /// impact/top lands on the right frame, not ±100ms off.
+    static func extractKeyframes(videoURL: URL, phases: SwingPhases, dir: URL, baseName: String) -> [String] {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: videoURL))
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 720, height: 720)
+        gen.requestedTimeToleranceBefore = .zero
+        gen.requestedTimeToleranceAfter = .zero
+        var paths: [String] = []
+        for i in 0..<phases.labelled.count {
+            let t = max(0, phases.seconds(forPhaseAt: i))
+            let name = "\(baseName)_p\(i).jpg"
+            if let cg = try? gen.copyCGImage(at: CMTime(seconds: t, preferredTimescale: 600), actualTime: nil),
+               let data = UIImage(cgImage: cg).jpegData(compressionQuality: 0.82) {
+                try? data.write(to: dir.appendingPathComponent(name))
+                paths.append(name)
+            }
+        }
+        return paths
     }
 }

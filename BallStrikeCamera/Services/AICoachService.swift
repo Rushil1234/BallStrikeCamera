@@ -141,6 +141,7 @@ struct AICoachService {
         var round: RoundContext?
         var notes: String?
         var contextLabel: String?
+        var question: String?
 
         static func forShot(_ p: ShotPayload) -> DeepReadRequest {
             .init(mode: "shot", shots: [p], contextLabel: p.clubName?.isEmpty == false ? p.clubName : "Shot")
@@ -154,6 +155,11 @@ struct AICoachService {
         }
         static func forBag(_ clubs: [ClubStat]) -> DeepReadRequest {
             .init(mode: "bag", clubs: clubs, contextLabel: "Bag gapping")
+        }
+        /// Free-text chat: the golfer's question answered against their bag + recent shots.
+        static func forAsk(_ question: String, shots: [ShotPayload], clubs: [ClubStat]) -> DeepReadRequest {
+            .init(mode: "ask", shots: shots.isEmpty ? nil : shots,
+                  clubs: clubs.isEmpty ? nil : clubs, question: question)
         }
     }
 

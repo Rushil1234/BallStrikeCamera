@@ -71,6 +71,9 @@ final class FeedViewModel: ObservableObject {
     /// posts automatically; skipping the composer marks it handled too.
     func checkPendingCompose() async {
         guard pendingCompose == nil else { return }   // never stack offers
+        // Only offer right after a session just finished — never on a plain app open.
+        // (Set by RangeSessionViewModel/SimSessionViewModel when a session ends.)
+        guard FeedComposeStore.consumeArmed() else { return }
         let cutoff = Date().addingTimeInterval(-14 * 24 * 3600)
         let name = ((try? await backend.loadUserProfile(userId: userId))?.displayName).flatMap { $0.isEmpty ? nil : $0 } ?? "Golfer"
         async let roundsT = try? await backend.loadCourseRounds(userId: userId)
@@ -464,6 +467,7 @@ struct ComposePrefill: Identifiable, Equatable {
 /// Local (UserDefaults) — these are just one-time prompts for recent activity.
 enum FeedComposeStore {
     private static let key = "tc_compose_handled_ids"
+    private static let armedKey = "tc_compose_armed"
 
     static func isHandled(_ id: UUID) -> Bool { ids().contains(id.uuidString) }
     static func markHandled(_ id: UUID) {
@@ -472,5 +476,16 @@ enum FeedComposeStore {
     }
     private static func ids() -> Set<String> {
         Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+    }
+
+    /// One-time gate for the prefilled composer: set ONLY when a range/sim session
+    /// just finished, consumed by checkPendingCompose. This is what keeps the "share
+    /// this?" composer from popping on a plain app open — it now surfaces only after
+    /// a session. Persisted so it survives closing the app before reaching the feed.
+    static func armAfterSession() { UserDefaults.standard.set(true, forKey: armedKey) }
+    static func consumeArmed() -> Bool {
+        guard UserDefaults.standard.bool(forKey: armedKey) else { return false }
+        UserDefaults.standard.set(false, forKey: armedKey)
+        return true
     }
 }

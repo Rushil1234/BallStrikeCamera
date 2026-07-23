@@ -104,63 +104,11 @@
               "title": "The neutral grip",
               "body": "Lead hand first: fingers wrap the BACK of the grip, then the squishy pad of the thumb sits flat on top. Trail hand covers the lead thumbnail and the pinky interlocks. Watch the hands take it — next step the camera does it with you.",
               "asset3D": "grip_interlock",
-              "checkpoints": [
-                "Lead hand: fingers wrap first, thumb pad flat on TOP of the grip",
-                "Looking down you see 2 knuckles — index and middle",
-                "The thumb-index crease points up at your TRAIL shoulder",
-                "Trail hand: fingers around the back, its thumb pad covers the lead thumbnail",
-                "INTERLOCK: trail pinky links with the lead index finger",
-                "All 8 fingers sit on the back of the grip — thumbs on top, nothing strangling",
-                "Pressure 5/10 — snug, never squeezed"
-              ]
-            },
-            {
-              "id": "grip.check",
-              "kind": "check3D",
-              "title": "Show me your grip",
-              "body": "Prop the phone on the tripod with the screen facing you and step back with your club. The camera finds the club, shows the hands going on, and confirms your grip live — or use the checklist.",
-              "checkpoints": [
-                "Hands touching and interlocked — no gap",
-                "Two lead-hand knuckles visible looking down",
-                "Both creases point at your trail shoulder",
-                "Thumbs run down the top of the shaft, pressure 5/10"
-              ]
-            },
-            {
-              "id": "grip.quiz",
-              "kind": "quiz",
-              "title": "Quick check",
-              "quiz": [
-                {
-                  "question": "Where should the club sit in your lead hand?",
-                  "answers": [
-                    "Across the palm",
-                    "In the fingers",
-                    "Doesn't matter"
-                  ],
-                  "correctIndex": 1,
-                  "why": "Fingers let the wrists hinge; palms lock them up."
-                },
-                {
-                  "question": "How many lead-hand knuckles should you see at address?",
-                  "answers": [
-                    "None",
-                    "Two",
-                    "All four"
-                  ],
-                  "correctIndex": 1,
-                  "why": "Two knuckles = neutral. More = strong (hook bias), fewer = weak (slice bias)."
-                },
-                {
-                  "question": "How tight should you hold the club (out of 10)?",
-                  "answers": [
-                    "10 — never let it slip",
-                    "5 — snug but relaxed",
-                    "1 — barely touching"
-                  ],
-                  "correctIndex": 1,
-                  "why": "Strangle the grip and every muscle up the arms tenses — speed and feel die. Aim for 5/10."
-                }
+              "points": [
+                "Grip pressure about 5/10 — snug, never strangled",
+                "Set the clubface square to your target before your hands go on",
+                "The club sits in the fingers of your lead hand, not the palm",
+                "Both hands act as one unit — thumbs down the top, trail pinky interlocked"
               ]
             }
           ]

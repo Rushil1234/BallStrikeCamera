@@ -11,7 +11,9 @@ struct ShotTrackingReviewView: View {
     let onDismiss: () -> Void
 
     @State private var currentIndex: Int
-    @State private var displayMode:      FrameNormalizationMode = .darkenedHighContrast
+    // Default to the full-quality 720 "Original" view (was .darkenedHighContrast, a 360 tracking
+    // view — which is why replays looked like 360px). Darkened stays available for tracking review.
+    @State private var displayMode:      FrameNormalizationMode = .original
     @State private var showComposite:    Bool = false
     @State private var isExporting:      Bool = false
     @State private var showShareSheet:   Bool = false
@@ -222,7 +224,7 @@ struct ShotTrackingReviewView: View {
             let shot = try await service.saveShot(
                 metrics: SavedShotMetrics(metrics),
                 compositeImage: composite,
-                replayFrames: analysis.frames.map { $0.brightenedImage ?? $0.originalFrame.image },
+                replayFrames: analysis.frames.map { $0.originalFrame.hiRes ?? $0.brightenedImage ?? $0.originalFrame.image },
                 clubId: selectedClubId,
                 clubName: selectedClubName,
                 mode: context?.shotMode ?? .range,
@@ -242,9 +244,12 @@ struct ShotTrackingReviewView: View {
 
     private var displayedImage: UIImage? {
         switch displayMode {
-        case .original:            return currentFrame.originalFrame.image
-        case .darkenedHighContrast: return currentFrame.darkenedHighContrastImage ?? currentFrame.originalFrame.image
-        case .brightened:          return currentFrame.brightenedImage           ?? currentFrame.originalFrame.image
+        // Prefer the 720 hiRes for display — the replay was showing the 360 detection frame (that's
+        // the "I only see it in 360px"). The darkened/brightened tracking views stay 360 (that's the
+        // space they're normalized in), so "Original" is the full-quality 720 view.
+        case .original:            return currentFrame.originalFrame.hiRes ?? currentFrame.originalFrame.image
+        case .darkenedHighContrast: return currentFrame.darkenedHighContrastImage ?? currentFrame.originalFrame.hiRes ?? currentFrame.originalFrame.image
+        case .brightened:          return currentFrame.brightenedImage           ?? currentFrame.originalFrame.hiRes ?? currentFrame.originalFrame.image
         }
     }
 

@@ -197,6 +197,56 @@ function finishHole({ number, par, tee, center, greenCoords, path }) {
     polygon = synth.polygon;
     front = synth.front;
     back = synth.back;
+  } else if (tee) {
+    // Real OSM green: derive front/back from the traced polygon along the hole's
+    // line of play (tee -> center) instead of leaving them null.
+    const fb = greenFrontBack(polygon, tee, center);
+    front = fb.front;
+    back = fb.back;
   }
   return { number, par, tee, center, front, back, polygon, path };
+}
+
+// Front/back points of a green polygon along the approach->center line of play.
+// front = polygon vertex nearest the player; back = farthest. approach is the
+// tee (or fairway) the hole is played from. Returns { front, back } (may be null).
+export function greenFrontBack(polygon, approach, center) {
+  if (!polygon || polygon.length < 3 || !approach || !center) {
+    return { front: null, back: null };
+  }
+  const mLat = 111_320;
+  const mLon = 111_320 * Math.cos((center.lat * Math.PI) / 180);
+  const dx = (center.lon - approach.lon) * mLon;
+  const dy = (center.lat - approach.lat) * mLat;
+  const n = Math.hypot(dx, dy);
+  if (n < 1) return { front: null, back: null }; // approach ~ on the green
+  const ux = dx / n;
+  const uy = dy / n;
+  let lo = { a: Infinity, p: null };
+  let hi = { a: -Infinity, p: null };
+  for (const c of polygon) {
+    const a = (c.lon - center.lon) * mLon * ux + (c.lat - center.lat) * mLat * uy;
+    if (a < lo.a) lo = { a, p: c };
+    if (a > hi.a) hi = { a, p: c };
+  }
+  return { front: lo.p, back: hi.p };
+}
+
+// Distance (yards) from a point to the tee->green segment, for attributing a
+// hazard polygon to the hole whose corridor it actually sits in.
+export function distToSegmentYds(pt, a, b) {
+  const mLon = 111_320 * Math.cos((pt.lat * Math.PI) / 180);
+  const px = pt.lon * mLon;
+  const py = pt.lat * 111_320;
+  const ax = a.lon * mLon;
+  const ay = a.lat * 111_320;
+  const bx = b.lon * mLon;
+  const by = b.lat * 111_320;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const L2 = dx * dx + dy * dy;
+  const t = L2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2));
+  const cx = ax + t * dx;
+  const cy = ay + t * dy;
+  return Math.hypot(px - cx, py - cy) / 0.9144;
 }

@@ -158,6 +158,12 @@ struct SessionDetailView: View {
                                             isPro: coachIsPro, title: "AI Round Coach",
                                             subtitle: "What to practice before next time")
                             }
+                            // Bottom: free-text chat about this session/round (same setup as Insights).
+                            if !coachPayloads.isEmpty {
+                                CoachChatCard(shots: coachPayloads,
+                                              clubs: AICoachService.clubStats(from: coachPayloads),
+                                              isPro: coachIsPro)
+                            }
                             if case .course = item { attestSection }
                             if case .course(let r) = item,
                                r.holes.contains(where: { !$0.trackedShots.isEmpty }) {

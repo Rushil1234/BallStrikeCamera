@@ -91,6 +91,24 @@ struct TrueCarryInsightsView: View {
         coachSourceShots.map { AICoachService.ShotPayload($0.metrics, clubName: $0.clubName) }
     }
 
+    /// Shots the chat coach reasons over — the current page's scope (range/sim or on-course).
+    private var chatShots: [AICoachService.ShotPayload] {
+        insightsSource == .course ? onCourseCoachShots : coachShots
+    }
+
+    /// Per-club averages from RANGE/SIM shots (roundId == nil) — the launch-monitor baseline.
+    private var rangeClubStats: [AICoachService.ClubStat] {
+        let range = shots.filter { !$0.isBadShot && $0.metrics.carryYards > 0 && $0.roundId == nil }
+            .map { AICoachService.ShotPayload($0.metrics, clubName: $0.clubName) }
+        return AICoachService.clubStats(from: range)
+    }
+
+    /// Club context for the chat coach. On-course: feed the range/sim baseline so it can compare
+    /// the on-course shots against them ("your 7i carried 155 on the range but 148 out here").
+    private var chatClubs: [AICoachService.ClubStat] {
+        insightsSource == .course ? rangeClubStats : AICoachService.clubStats(from: chatShots)
+    }
+
     /// Human label for what the coach is reading, shown as the card subtitle.
     private var coachScopeLabel: String {
         if allMode { return "All your clubs, read like a coach" }
@@ -532,20 +550,13 @@ struct TrueCarryInsightsView: View {
             )
             .id(coachScopeKey)   // new club/source → fresh card, old analysis cleared
         }
-        if !gappingRows.isEmpty { gappingSection }
-        // AI bag-gapping deep-read — only in all-clubs mode, where cross-club data exists.
-        if allMode {
-            let stats = AICoachService.clubStats(from: coachShots)
-            if stats.count >= 2 {
-                AICoachCard(
-                    mode: .bag,
-                    deepReadRequest: .forBag(stats),
-                    isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
-                    title: "AI Bag Gapping",
-                    subtitle: "Gaps, overlaps, and your least consistent club"
-                )
-            }
-        }
+        // The second card is now a free-text CHAT (replaced the AI Bag Gapping deep-read, July 23):
+        // ask anything about your bag/shots and the coach answers from the current page's data.
+        CoachChatCard(
+            shots: chatShots,
+            clubs: chatClubs,
+            isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights
+        )
     }
 
     @ViewBuilder
@@ -555,8 +566,8 @@ struct TrueCarryInsightsView: View {
             onCourseStatsContent(s)
         } else {
             dispersionCard(s)
-            coachAndGapping
             singleClubKeyCard
+            coachAndGapping
             metricsCard(s)
             carryTrendCard(s)
             spinCard(s)
@@ -572,10 +583,10 @@ struct TrueCarryInsightsView: View {
     private func onCourseStatsContent(_ s: [SavedShot]) -> some View {
         let samples = selectedClub.map { onCourseSamples(for: $0) } ?? []
         dispersionCard(s)
+        singleClubKeyCard
         coachAndGapping
         onCourseDistanceCard(samples)
         onCourseAccuracyCard(samples)
-        singleClubKeyCard
         Spacer(minLength: 140)
     }
 
@@ -670,8 +681,8 @@ struct TrueCarryInsightsView: View {
                 .tcCard(padding: 16)
         } else {
             allClubsCard(series)
-            coachAndGapping
             allClubsKeyCard(series)
+            coachAndGapping
         }
         Spacer(minLength: 140)
     }

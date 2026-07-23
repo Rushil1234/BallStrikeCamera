@@ -67,6 +67,26 @@ struct LaunchMonitorScaffoldView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
+                // Too dark to freeze the ball on the current shutter → prompt the tripod flashlight.
+                if camera.recommendFlashlight {
+                    VStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "flashlight.on.fill")
+                            Text("Too dark — turn on Flashlight mode")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color(red: 0.15, green: 0.35, blue: 0.75).opacity(0.95))
+                        .clipShape(Capsule())
+                        .padding(.top, camera.captureHealthWarning != nil ? 44 : 6)
+                        Spacer()
+                    }
+                    .zIndex(10)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         ZStack(alignment: .top) {

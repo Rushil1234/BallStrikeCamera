@@ -127,6 +127,7 @@ final class RangeSessionViewModel: ObservableObject {
         session.summary = summary
         do {
             try await backend.saveRangeSession(session)
+            FeedComposeStore.armAfterSession()   // offer the "share this?" composer next time the feed opens
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -142,6 +143,7 @@ final class RangeSessionViewModel: ObservableObject {
         session.summary = summary
         do {
             try await backend.saveRangeSession(session)
+            FeedComposeStore.armAfterSession()   // offer the "share this?" composer next time the feed opens
         } catch {
             errorMessage = error.localizedDescription
         }

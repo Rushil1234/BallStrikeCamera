@@ -90,7 +90,13 @@ final class ClubheadDetector {
         return nil
         #else
         let cfg = MLModelConfiguration()
-        cfg.computeUnits = .all
+        // .cpuOnly, NOT .all: this detector runs the MOMENT a swing is found (SwingClubTracer),
+        // which is exactly Noah's "crashes every time it sees a swing" in Analyze Swing. The crash
+        // is "MPSGraph: MLIR pass manager failed" — an UNCATCHABLE assert where the model's Metal
+        // graph fails to compile (the ANE is tried first — "numANECores: Unknown" — then the GPU
+        // graph aborts). CPU-only skips Metal entirely, so it can't fire. This runs ~30 frames
+        // ONCE per analysis (not a live loop), so the CPU cost is a one-time couple of seconds.
+        cfg.computeUnits = .cpuOnly
         guard let m = try? MLModel(contentsOf: compiledURL, configuration: cfg),
               let vn = try? VNCoreMLModel(for: m) else { return nil }
         model = m

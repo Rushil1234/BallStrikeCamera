@@ -30,7 +30,8 @@ final class HoselSpeedEstimator {
         #if !targetEnvironment(simulator)
         if let url = Bundle.main.url(forResource: "ClubDetectorV2", withExtension: "mlmodelc") {
             let cfg = MLModelConfiguration()
-            cfg.computeUnits = .all
+            // .cpuAndGPU, NOT .all — same ANE "MLIR pass manager failed" abort as ClubheadDetector.
+            cfg.computeUnits = .cpuAndGPU
             if let m = try? MLModel(contentsOf: url, configuration: cfg) {
                 vn = try? VNCoreMLModel(for: m)
             }

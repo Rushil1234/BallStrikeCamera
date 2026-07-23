@@ -13,6 +13,12 @@ final class GoogleDriveUploadService: ObservableObject {
     static let enabledKey = "tc_dev_mode_drive_upload"
     var isEnabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
 
+    /// July 23: uploads go straight into the organized `TrueCarry-Training/frames` folder on Drive so
+    /// every session self-organizes (was a flat "TrueCarry Frames" dump in root). Garmin CSVs still
+    /// land in the flat root when exported; the training manifest indexes both. If this folder is ever
+    /// deleted, clear the id to fall back to find/create-by-name below.
+    static let organizedFramesFolderId = "1MZZcaQOpzyeIhx_rxWA473VpDUEUsra7"
+
     private var cachedFolderId: String?
 
     // MARK: - Bulk archive upload state
@@ -153,6 +159,17 @@ final class GoogleDriveUploadService: ObservableObject {
         }
     }
 
+    // MARK: - Diagnostics (field log)
+
+    /// Upload an arbitrary diagnostics file (the field-log zip) straight to the "TrueCarry Frames"
+    /// Drive folder. Reuses the resumable uploader so a large log never loads into memory. Throws
+    /// on auth/network failure so the UI can surface it.
+    func uploadDiagnostics(_ fileURL: URL) async throws {
+        let token = try await GoogleDriveAuthService.shared.validAccessToken()
+        let folder = try await folderId(token: token)
+        _ = try await Self.uploadFileResumable(fileURL, folderId: folder, token: token)
+    }
+
     // MARK: - Local zip (mirrors FrameArchiveService's per-shot layout: PNGs + timestamps.json)
 
     private static func writeAndZip(snapshot: [(Int, UIImage, TimeInterval)],
@@ -203,6 +220,12 @@ final class GoogleDriveUploadService: ObservableObject {
 
     private func folderId(token: String) async throws -> String {
         if let cachedFolderId { return cachedFolderId }
+        // Prefer the organized frames folder (July 23). Fall back to find/create-by-name only if the
+        // hardcoded id was cleared (folder deleted) — keeps uploads working no matter what.
+        if !Self.organizedFramesFolderId.isEmpty {
+            cachedFolderId = Self.organizedFramesFolderId
+            return Self.organizedFramesFolderId
+        }
         if let found = try await Self.findFolder(token: token) {
             cachedFolderId = found
             return found

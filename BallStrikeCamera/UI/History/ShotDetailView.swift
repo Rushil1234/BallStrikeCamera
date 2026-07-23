@@ -239,12 +239,21 @@ struct ShotDetailView: View {
     /// Per-shot AI coaching (tap-to-run). Uses the same reusable card as the
     /// Insights session summary; non-Pro golfers see the locked upsell state.
     private var coachSection: some View {
-        AICoachCard(
-            mode: .shot,
-            shots: [AICoachService.ShotPayload(m, clubName: shot.clubName)],
-            isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
-            subtitle: "A PGA-level read on this shot"
-        )
+        VStack(spacing: TCTheme.sectionGap) {
+            // Top: the real read on THIS shot.
+            AICoachCard(
+                mode: .shot,
+                shots: [AICoachService.ShotPayload(m, clubName: shot.clubName)],
+                isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights,
+                subtitle: "A PGA-level read on this shot"
+            )
+            // Bottom: free-text chat about this shot (same setup as Insights).
+            CoachChatCard(
+                shots: [AICoachService.ShotPayload(m, clubName: shot.clubName)],
+                clubs: [],
+                isPro: session.entitlementVM.entitlement.tier.canAccessAdvancedInsights
+            )
+        }
     }
 
     // MARK: - Formatted values

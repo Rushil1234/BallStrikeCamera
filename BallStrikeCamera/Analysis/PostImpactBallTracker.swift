@@ -93,6 +93,10 @@ final class PostImpactBallTracker {
         // band by the first stored post frame (12.5ms gap @ VLA 15° ≈ 5 ball-widths of climb).
         var postVertScaleUntracked: CGFloat = 4.0   // ball-widths lateral when no prior post-hit
         var postVertScaleTracked: CGFloat = 3.0     // ball-widths lateral once tracking started
+        // (July 21: tried 3.0→4.0 to catch 12 laterally-outside-corridor misses; harness-measured
+        // it pushed flight misplacement 0.90%→1.02% (over the <1% bar) for no match gain — the
+        // wider corridor admits clutter. Reverted. A per-frame direction fix, not a blanket widen,
+        // is the right approach for those.)
         // 0° = ball goes right (+x). Sign-based so it follows the hand-aware direction:
         // righty (sign −1) → 180°, lefty (sign +1, buffer rotated) → 0°. Config is built fresh
         // per shot, so it picks up the current hand.
@@ -976,6 +980,12 @@ final class PostImpactBallTracker {
                         let maxProgress: CGFloat = lastPostCenter.map {
                             hypot($0.x - initCenter.x, $0.y - initCenter.y)
                         } ?? 0
+                        // (July 21: tried extending this 3-miss limit to 6 while the ball still
+                        // extrapolates in-frame — harness-measured a pure no-op: on fast shots the
+                        // extrapolation over several missed frames overshoots to the edge so the
+                        // limit stayed 3, and the extra frames still missed. The terminated frames
+                        // need the ball to be DETECTABLE there, which is the rescan/direction work,
+                        // not a longer leash. Reverted to the tight limit.)
                         if consecutiveMissesAfterLaunch >= 3 && maxProgress >= cfg.terminationMinProgressNorm {
                             ballTerminated = true
                             dbg(String(format: "Ball track terminated at frame %d after %d misses maxProgress=%.4f",
@@ -1413,6 +1423,10 @@ final class PostImpactBallTracker {
         // Never go blind from suppression alone: if the baseline filtered out every last
         // pixel (ball dim, or still overlapping its own pre-impact position on a slow shot),
         // rescan this frame the old unsuppressed way — worst case is the old behavior.
+        // (July 21: an "accepted.isEmpty → rescan unsuppressed" variant was harness-tested to
+        // recover ~6 missed flight frames but it raised flight misplacement 0.78%→1.01% by
+        // admitting clutter — reverted. The real fix must constrain the rescan to a ball-like
+        // candidate near the predicted position; see tracking-miss review.)
         if blobs.isEmpty, baseline != nil {
             dbg("[PostImpactBallTracker] f=\(frameIndex) glare-suppressed scan empty — falling back to unsuppressed")
             return findCandidates(pd, roi: roi, config: config, preferredCenter: preferredCenter,
@@ -1424,6 +1438,32 @@ final class PostImpactBallTracker {
             evaluateBlob($0, step: step, width: width, height: height, config: config)
         }
         let accepted = candidates.filter { $0.accepted }
+
+        // CONSTRAINED unsuppressed rescan (July 21, harness-tuned): glare/baseline suppression can
+        // shred a bright ball flying over a baseline-bright patch (its own rest spot, turf glare,
+        // sky) below the accept gate — 100+ genuinely-bright ball pixels scan down to 1 and the
+        // frame is lost as too_few_pixels. When suppression leaves NO acceptable ball, rescan this
+        // frame unsuppressed, but ADOPT its pick only if that pick is size-consistent with the
+        // known ball AND lands where the ball is predicted. A blind rescan (adopt any nearest
+        // bright blob) recovered ~6 misses but re-admitted clutter and pushed flight misplacement
+        // 0.78%→1.01%; the size+proximity gate keeps the recoverable misses without the clutter.
+        // baseline==nil in the recursive call can't re-enter this branch.
+        if accepted.isEmpty, baseline != nil, let exp = expectedDiameter, exp > 1e-6 {
+            let (unsuppCands, unsuppChosen) = findCandidates(
+                pd, roi: roi, config: config, preferredCenter: preferredCenter,
+                expectedDiameter: expectedDiameter, frameIndex: frameIndex,
+                rescueMayReplacePick: rescueMayReplacePick, glareBaseline: nil)
+            if let c = unsuppChosen {
+                let ratio = c.diameter / exp
+                let dist = hypot(c.center.x - preferredCenter.x, c.center.y - preferredCenter.y)
+                if ratio >= cfg.chosenDiameterRatioMin, ratio <= cfg.chosenDiameterRatioMax,
+                   dist <= max(exp, 0.03) * 1.5 {
+                    dbg("[PostImpactBallTracker] f=\(frameIndex) suppression-shredded ball recovered unsuppressed (dRatio \(String(format: "%.2f", ratio)) dist \(String(format: "%.3f", dist)))")
+                    return (unsuppCands, c)
+                }
+            }
+            // no trustworthy unsuppressed ball — fall through to the normal (miss) path
+        }
 
         // Prefer candidates whose size matches the known ball diameter. A bright putter
         // marking (alignment line, chrome glare) can sit closer to the previous center than

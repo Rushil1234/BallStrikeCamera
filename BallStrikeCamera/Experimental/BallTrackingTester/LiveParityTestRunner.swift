@@ -283,8 +283,13 @@ final class LiveParityTestRunner {
             r.map { ["x": Double($0.minX), "y": Double($0.minY), "w": Double($0.width), "h": Double($0.height)] } ?? NSNull()
         }
 
+        // Per-frame capture time (relativeTime) so offline analysis can fit velocity on the true
+        // (non-uniform, drop-aware) time axis — frame index is NOT proportional to elapsed time.
+        let tByIndex = Dictionary(sequence.frames.map { ($0.frameIndex, $0.relativeTime) },
+                                  uniquingKeysWith: { a, _ in a })
         let frames: [[String: Any]] = result.observations.map { o in
             var d: [String: Any] = ["i": o.frameIndex, "reason": o.debugReason]
+            if let t = tByIndex[o.frameIndex] { d["t"] = t }
             if let x = o.centerX, let y = o.centerY {
                 d["cx"] = Double(x); d["cy"] = Double(y)
                 d["d"] = Double(o.diameter ?? 0)

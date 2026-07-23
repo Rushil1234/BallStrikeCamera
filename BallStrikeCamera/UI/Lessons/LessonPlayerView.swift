@@ -357,6 +357,21 @@ private struct Model3DStepView: View {
                     .font(.system(size: 14))
                     .foregroundColor(TCTheme.textSecondary)
             }
+            // Short advice bullets (rendered pretty) — used in place of tap-through
+            // checkpoints where a checklist doesn't fit the step.
+            ForEach(step.points, id: \.self) { point in
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundColor(TCTheme.sage)
+                        .padding(.top, 1)
+                    Text(point)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(TCTheme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+            }
             ForEach(step.checkpoints, id: \.self) { cp in
                 Button {
                     if checked.contains(cp) { checked.remove(cp) } else { checked.insert(cp) }

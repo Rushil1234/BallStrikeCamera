@@ -4,6 +4,7 @@ import CoreImage
 import CoreMedia
 import UIKit
 import QuartzCore
+import Metal
 
 final class CameraController: NSObject, ObservableObject {
     @Published var phase: CameraPhase = .searching {
@@ -13,6 +14,9 @@ final class CameraController: NSObject, ObservableObject {
     /// Live per-preset lighting fitness + the fastest clean choice, for the picker's badges.
     @Published var shutterFitness: [ShutterPreset: ShutterFitness] = [:]
     @Published var recommendedShutter: ShutterPreset? = nil
+    // Set when the scene is too dark for the current preset to freeze the ball — the UI surfaces a
+    // "turn on Flashlight mode" hint so the player lights the ball (see exposure lock).
+    @Published var recommendFlashlight = false
     @Published var currentBallRect: CGRect?
     @Published var capturedFrames: [CapturedFrame] = []
     @Published var statusText: String = "Looking for ball"
@@ -35,7 +39,20 @@ final class CameraController: NSObject, ObservableObject {
     private let videoQueue = DispatchQueue(label: "com.ballstrike.camera.video", qos: .userInteractive)
     private let detector = BallDetector()
     private let impactDetector = ImpactDetector()
-    private let ciContext = CIContext()
+    // Explicitly Metal-backed with intermediate caching OFF. makeCapturedFrame renders the frame
+    // TWICE (720 measurement + 360 detection) at 240fps, so the per-frame render is the capture hot
+    // path. cacheIntermediates:false stops CoreImage from retaining a per-render intermediate graph
+    // (pure overhead here — every frame is a one-shot scale, never reused) and pins the GPU device
+    // so we don't re-pick it each render. Color management is deliberately LEFT ON: the tracker's
+    // brightness/lime thresholds and the trained models are all calibrated on the color-managed
+    // pixel values the old CIContext() produced — changing them would silently shift accuracy. (July 22)
+    private let ciContext: CIContext = {
+        let opts: [CIContextOption: Any] = [.cacheIntermediates: false]
+        if let device = MTLCreateSystemDefaultDevice() {
+            return CIContext(mtlDevice: device, options: opts)
+        }
+        return CIContext(options: opts)
+    }()
 
     private var device: AVCaptureDevice?
     private var videoOutputRef: AVCaptureVideoDataOutput?
@@ -76,13 +93,17 @@ final class CameraController: NSObject, ObservableObject {
     }
 
     private var rollingBuffer: [CapturedFrame] = []
-    private let rollingBufferLimit = 120
+    // The pre-impact ring only needs to hold preHitFrames (+ a small margin for detect/trim jitter).
+    // It was a flat 120 — 6× more than the ball case needs — and now that EVERY frame carries a full
+    // 720px hiRes (~1.6MB each), 120 held ~190MB of frames live. Sizing it to preHitFrames+6 (26 for
+    // a full swing, 56 for a putt) drops that to ~40MB with no loss: the analysis only ever consumes
+    // preHitFrames of them, and post-impact frames are appended live. (July 22)
+    private var rollingBufferLimit: Int { preHitFrames + 6 }
     // Putter shots move far slower than a full swing — more frames both before and after impact
     // give the tracker more samples to fit a reliable speed from, at the cost of a longer capture
     // window (~630ms vs ~171ms at 240fps). The post-impact window is the putt engine's whole
     // observation of the roll: break curvature grows with the square of observed time, so 100
-    // post frames (0.42s) quadruples the bend signal vs the old 50. rollingBufferLimit (120)
-    // already covers preHitFrames+1 in both cases; post frames are appended live.
+    // post frames (0.42s) quadruples the bend signal vs the old 50; post frames are appended live.
     private var preHitFrames: Int { isPutterMode ? 50 : 20 }
     private var postHitFrames: Int { isPutterMode ? 100 : 20 }
 
@@ -115,6 +136,10 @@ final class CameraController: NSObject, ObservableObject {
 
     // How many consecutive missing/invalid frames are tolerated before leaving .ready.
     private var readyLostFrameCount = 0
+    // Last time a hit capture fired — gates the post-shot refractory (kills phantom double-captures).
+    private var lastCaptureTriggerTime = Date.distantPast
+    // Rolling window of accepted tight-fit diameters → the learned ground-ball size (see sizeCorrectedLock).
+    nonisolated(unsafe) private var recentLockDiameters: [CGFloat] = []
     // Throttles the "club pull-back suppressed" log (fires per-frame while suppressing).
     private var clubPullSuppressCount = 0
     // Throttles automatic exposure re-locks when lighting drifts (see relockExposureIfDrifted).
@@ -150,11 +175,18 @@ final class CameraController: NSObject, ObservableObject {
     // overheating suspect) is skipped entirely. Buffering resumes at .tracking, a full
     // stability window (~20 frames + 0.25s) before any capture could trigger.
     nonisolated(unsafe) private var _framesNeeded = false
+    // True only while holding a stationary lock (.ready). The capture path then renders every OTHER
+    // frame for the archive ring — a ball at rest doesn't need 240 distinct frames, and halving the
+    // GPU load while waiting leaves thermal headroom so the FLIGHT (post-impact, full-rate) stops
+    // dropping frames. .tracking and post-impact capture render every frame. (July 22)
+    nonisolated(unsafe) private var _halfRateRender = false
+    nonisolated(unsafe) private var _readyRenderToggle: UInt = 0
 
     private func syncFramesNeeded() {
         let needed = phase == .tracking || phase == .ready || pendingPostCapture
         roiLock.lock()
         _framesNeeded = needed
+        _halfRateRender = (phase == .ready)
         roiLock.unlock()
     }
     private var eventFrames: [CapturedFrame] = []
@@ -406,6 +438,12 @@ final class CameraController: NSObject, ObservableObject {
                     print(String(format: "BallDetector exposure: holding shutter %@ at %.1f stops under metered (iso %.0f, target -2.0, noise ceiling %.0f)",
                                  preset.label, stopsUnder, targetISO, isoNoiseCeiling))
                 }
+                // Too dark for this preset to freeze the ball without going deeply underexposed — the
+                // white ball fades and fast shots blur. Tell the player to switch on the tripod
+                // flashlight (lights the ball pool for a sharp lock + short flight). Only when NOT
+                // already on the Flash preset. (July 22)
+                let recommendFlash = stopsUnder > 2.3 && !preset.isFlashlight
+                Task { @MainActor in self.recommendFlashlight = recommendFlash }
                 print(String(format: "BallDetector exposure: LOCKING preset=%@ iso=%.1f (metered %.1f @ 1/%.0f, range %.0f-%.0f) duration=1/%.0f",
                              preset.label, targetISO, meteredISO,
                              autoSeconds > 0 ? 1.0 / autoSeconds : 0,
@@ -592,18 +630,44 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             }
         }
 
+        impactLock.lock()
+        let impactROI = _impactROI
+        impactLock.unlock()
+
         let raw = detector.detect(in: pixelBuffer, roi: roi)
         // Discard detections whose center falls in the corners of the bounding rect
         // but outside the actual circular placement boundary (ellipse equation check).
-        let observation = raw.flatMap { obs -> BallObservation? in
+        var observation = raw.flatMap { obs -> BallObservation? in
             guard roi.width > 0, roi.height > 0 else { return obs }
             let dx = (obs.center.x - roi.midX) / (roi.width  / 2)
             let dy = (obs.center.y - roi.midY) / (roi.height / 2)
             return dx * dx + dy * dy <= 1 ? obs : nil
         }
-        impactLock.lock()
-        let impactROI = _impactROI
-        impactLock.unlock()
+        // RELIABLE RE-DETECTION (July 22): the full-ROI scan drops a STATIONARY ball for 100+ frames
+        // in shade (adaptive-threshold flicker on a dim, low-contrast ball) — the log showed 108/111
+        // consecutive "lost" frames on a ball that never moved. That reads as "ball gone", so the
+        // circle stops following AND a real hit becomes indistinguishable from a dropout. When we hold
+        // a lock but the scan missed, run a focused, dim-tolerant tightRect at the lock region.
+        //
+        // Two things the first cut got wrong (yellow locked but NEVER triggered):
+        //  1. tightRect returns the ball's bright CORE, which on a lime ball collapses well below the
+        //     locked size (0.035 vs 0.046 wide) → isPlausibleBallObservation's size gate DISCARDED the
+        //     synthesized obs → "ball missing" while [BD] TIGHT kept succeeding. Fix: synthesize at the
+        //     tight CENTER but with the LOCKED ball's SIZE (same ball, same size — always plausible).
+        //  2. It recovered the ball anywhere in the 2.5× ROI, so it re-synthesized a DEPARTING ball in
+        //     place and masked the strike. Fix: STATIONARY-only — accept only if the fit is still at
+        //     the lock centre (≤0.6 ball-widths). A struck ball lands off-centre → stays "gone" → fires.
+        if observation == nil, let lockRegion = impactROI,
+           let tight = detector.tightRect(in: pixelBuffer, around: lockRegion) {
+            let ballW = lockRegion.width  / 2.5   // expandedImpactROI scale
+            let ballH = lockRegion.height / 2.5
+            let dist = hypot(tight.midX - lockRegion.midX, tight.midY - lockRegion.midY)
+            if dist <= ballW * 0.6 {
+                let rect = CGRect(x: tight.midX - ballW / 2, y: tight.midY - ballH / 2,
+                                  width: ballW, height: ballH)
+                observation = BallObservation(normalizedRect: rect, confidence: 0.5)
+            }
+        }
 
         var impactDetected = false
         if let impactROI {
@@ -624,14 +688,23 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         // through the same serial render queue so frames, detections, and impact flags reach
         // processFrame strictly in capture order.
         if framesNeeded {
+            // .ready half-rate: skip every other frame's GPU render while the ball sits at rest.
+            roiLock.lock(); let halfRate = _halfRateRender; roiLock.unlock()
+            var halfRateSkip = false
+            if halfRate {
+                _readyRenderToggle &+= 1
+                halfRateSkip = (_readyRenderToggle & 1) == 0
+            } else {
+                _readyRenderToggle = 0
+            }
             eventLock.lock()
             let backlogged = _rendersInFlight >= 3
-            if !backlogged { _rendersInFlight += 1 }
+            if !backlogged && !halfRateSkip { _rendersInFlight += 1 }
             eventLock.unlock()
-            if backlogged {
-                // GPU can't keep up (thermal): sacrifice THIS frame's image, keep its
-                // detection/impact event and, crucially, keep the camera itself flowing —
-                // one archive gap beats a multi-frame pool-starvation burst.
+            if backlogged || halfRateSkip {
+                // GPU can't keep up (thermal), or we're deliberately halving the rate on a resting
+                // lock: sacrifice THIS frame's image, keep its detection/impact event and, crucially,
+                // keep the camera itself flowing — one archive gap beats a pool-starvation burst.
                 renderQueue.async { [weak self] in
                     self?.stageFrameEvent(nil, observation, impactDetected)
                 }
@@ -814,22 +887,53 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
 
     nonisolated private func makeCapturedFrame(from pixelBuffer: CVPixelBuffer, timestamp: TimeInterval) -> CapturedFrame? {
         let image = CIImage(cvPixelBuffer: pixelBuffer)
-        // Dual-resolution capture (July 17): 720px for the measurement stage (subpixel
-        // centroid/diameter → speed and VLA at 2× precision), 360px for every detector —
-        // all trained models and pixel thresholds stay in the validated 360 space.
-        // Field kill-switch (July 18): if 720 capture causes frame drops at the range,
-        // set UserDefaults "tc_capture_720" = false to revert to 360-only mid-session.
-        let use720 = UserDefaults.standard.object(forKey: "tc_capture_720") as? Bool ?? true
-        let hiWidth: CGFloat = use720 ? 720 : 360
-        let hiScale = min(1.0, hiWidth / image.extent.width)
+        // 720px is UNCONDITIONAL now (July 22). The old "tc_capture_720" kill-switch, when off,
+        // dropped hi to 360 AND lo to 180 — degrading both the measurement (grainy replay) and the
+        // detector. With the Metal CIContext above, the two renders hold 240fps, so there is no
+        // reason to ever degrade. hi = 720 (subpixel measurement → speed/VLA at 2× precision);
+        // lo = 360 (the validated space every detector and trained model runs in — NOT a quality
+        // knob, just where the ball-finding math is calibrated; the images you see/measure are 720).
+        let hiScale = min(1.0, 720.0 / image.extent.width)
         let hi = image.transformed(by: CGAffineTransform(scaleX: hiScale, y: hiScale))
-        let lo = hi.transformed(by: CGAffineTransform(scaleX: 0.5, y: 0.5))
 
-        guard let loCG = ciContext.createCGImage(lo, from: lo.extent) else { return nil }
-        // hi-res render failing (memory pressure) must never cost the frame itself.
-        let hiCG = ciContext.createCGImage(hi, from: hi.extent)
+        // ONE GPU render per frame (July 22). The 720 measurement frame is rendered on the GPU; the
+        // 360 detection frame is a CPU downscale of that SAME CGImage — NOT a second GPU render +
+        // readback. Two GPU readbacks per frame at 240fps was the standing thermal load that dropped
+        // 720 capture below 240 after ~a second. Value-safe: planes()/pixelBytes() redraw whatever
+        // image they're given into their own DeviceRGB context, and the downscale preserves the 720's
+        // color space, so the values the tracker/models see are unchanged (only the downscale filter
+        // differs — sub-1-level). Falls back to a second GPU render if the CPU scale can't be built.
+        guard let hiCG = ciContext.createCGImage(hi, from: hi.extent) else {
+            // 720 render failed (memory pressure) — a source-rendered 360 still feeds detection;
+            // measurement borrows neighbouring frames' hiRes. Never cost the frame itself.
+            let lo = hi.transformed(by: CGAffineTransform(scaleX: 0.5, y: 0.5))
+            guard let loOnly = ciContext.createCGImage(lo, from: lo.extent) else { return nil }
+            return CapturedFrame(image: UIImage(cgImage: loOnly), timestamp: timestamp, hiRes: nil)
+        }
+        let loCG: CGImage
+        if let scaled = Self.downscaleCGImage(hiCG, toWidth: 360) {
+            loCG = scaled
+        } else {
+            let lo = hi.transformed(by: CGAffineTransform(scaleX: 0.5, y: 0.5))
+            guard let fallback = ciContext.createCGImage(lo, from: lo.extent) else { return nil }
+            loCG = fallback
+        }
         return CapturedFrame(image: UIImage(cgImage: loCG), timestamp: timestamp,
-                             hiRes: hiCG.map { UIImage(cgImage: $0) })
+                             hiRes: UIImage(cgImage: hiCG))
+    }
+
+    /// CPU downscale that preserves the source's color space, so downstream redraws (planes /
+    /// pixelBytes, which normalize into their own DeviceRGB context) convert exactly as they did for
+    /// the GPU-rendered original. Returns nil for non-RGB sources → caller keeps the two-render path.
+    nonisolated private static func downscaleCGImage(_ src: CGImage, toWidth w: Int) -> CGImage? {
+        guard src.width > w, let cs = src.colorSpace, cs.model == .rgb else { return nil }
+        let h = Int((Double(src.height) * Double(w) / Double(src.width)).rounded())
+        guard h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
+                                         bytesPerRow: 0, space: cs,
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .medium
+        ctx.draw(src, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()
     }
 
     @MainActor
@@ -852,12 +956,11 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                 capturedFrames = Array(eventFrames.prefix(preHitFrames + postHitFrames + 1))
                 let expectedTotal = preHitFrames + postHitFrames + 1
                 print("Shot capture complete: totalFrames=\(capturedFrames.count) expected=\(expectedTotal)")
-                // Testing mode: persist every raw burst (even ones analysis will later discard) so
-                // they can be batch-exported and compared against a reference monitor. No-op unless
-                // the developer "Save all frames" toggle is on.
-                FrameArchiveService.shared.archive(frames: capturedFrames, impactIndex: preHitFrames,
-                                                   lockedBallRect: lockedBallRect,
-                                                   lockedImpactROI: lockedImpactROI)
+                // Archiving moved OUT of the capture path (July 22): it used to persist EVERY raw
+                // burst here — before analysis — so a shot the user then Discarded was already on
+                // disk and "Discard frames" couldn't unsave it (and a Saved untracked shot got
+                // double-written). Now a TRACKED shot archives in the .result case and an untracked
+                // one only if the user picks Save on the prompt — so Discard writes nothing at all.
                 print("Resetting shot pipeline")
                 let savedLockedBallRect  = lockedBallRect   // capture before reset clears them
                 let savedLockedImpactROI = lockedImpactROI
@@ -914,6 +1017,13 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     }
                     return
                 }
+                // Require the ball GONE for ≥2 frames, not a 1-frame detection blip during fast club
+                // motion. A club pull-back drops the ROI census deeply (the club leaves the ROI) AND
+                // can blank the ball for a single blurred frame → !nearLock + census drop → a false
+                // "impact" (ball still there → "repositioned" in the log, 4 this run). A real strike
+                // keeps the ball gone, so this costs ~2 frames (still inside the 20-frame pre-buffer).
+                readyLostFrameCount += 1
+                guard readyLostFrameCount >= 2 else { return }
                 print("ROI IMPACT DETECTED — triggering capture")
                 triggerHitCapture()
                 return
@@ -926,8 +1036,52 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     print("[RDY] re-acq after \(readyLostFrameCount) lost")
                 }
                 readyLostFrameCount = 0
+                // FOLLOW THE BALL (July 22): keep the tight circle ON the ball as it's repositioned
+                // WITHIN the circle. It was frozen at the initial lock, so nudging the ball left the
+                // circle behind and you had to move it fully out and back to re-lock. Follow only a
+                // REAL move (> 0.3 ball-widths — not per-frame detection jitter) and re-arm the impact
+                // ROI + baseline at the new spot so the trigger tracks the moving lock. A big/fast
+                // move lands OUTSIDE "near" → the else branch → impact, so a strike still fires.
+                if let obs = observation, let curLock = lockedBallRect {
+                    let newRect = obs.normalizedRect
+                    let moved = hypot(newRect.midX - curLock.midX, newRect.midY - curLock.midY)
+                    if moved > max(curLock.width, 0.02) * 0.3 {
+                        lockedBallRect = newRect
+                        currentBallRect = newRect
+                        stableRect = newRect
+                        let newImpactROI = expandedImpactROI(from: newRect)
+                        lockedImpactROI = newImpactROI
+                        impactLock.lock(); _impactROI = newImpactROI; impactLock.unlock()
+                        impactDetector.reset()
+                        // Re-tighten at the new spot (the follow used the LOOSE detect rect, so the
+                        // circle ballooned while you repositioned the ball). Same one-shot tight-fit
+                        // the initial lock uses — applied next frame on the video queue.
+                        roiLock.lock(); _pendingTightRefineRect = newRect; roiLock.unlock()
+                    }
+                }
             } else {
                 readyLostFrameCount += 1
+                // SHADE IMPACT (ball-departure + dim): the white-ratio drop alone is too weak in
+                // shade to clear the 0.55 gate — a real strike only dims the impact ROI to ~0.78
+                // of baseline (the ball is barely brighter than the turf), so shots never fired.
+                // The ball LEAVING the lock is unambiguous, but ball-absence alone false-fires on
+                // detection hiccups (~11 frames absent while the ball is still sitting there). So
+                // require BOTH: the ball is gone from the lock AND the ROI is meaningfully dimmed
+                // (< 0.90 of baseline) — a hiccup keeps the ball bright (~1.0), a strike does not.
+                // lockAge gate = ball had settled; valid baseline = a real ball was locked.
+                // Check the dim over a WINDOW (frames 3–15), not one exact frame. A white ball leaves
+                // cleanly so the ROI is dim by frame 3; a lime ball's blur/lingering pixels dim the ROI
+                // a few frames later, so an `== 3` check missed every yellow strike (locked, never
+                // triggered). The dim requirement still rules out a stationary hiccup (ball present →
+                // ~1.0, never < 0.90), so widening the window can't false-fire on a ball that's there.
+                let lockAge = lockedStateEnteredAt.map { Date().timeIntervalSince($0) } ?? 0
+                if readyLostFrameCount >= 3, readyLostFrameCount <= 15, lockAge >= 0.25,
+                   impactDetector.hasValidBaseline, impactDetector.lastDropRatio < 0.90 {
+                    print(String(format: "ROI IMPACT (shade): ball departed lock @ f%d, ROI dimmed to %.0f%% — triggering capture",
+                                 readyLostFrameCount, impactDetector.lastDropRatio * 100))
+                    triggerHitCapture()
+                    return
+                }
                 if readyLostFrameCount == 30 || readyLostFrameCount == 90 {
                     print("[RDY] ball missing x\(readyLostFrameCount) — holding lock")
                 }
@@ -1062,6 +1216,32 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
     /// Swap the padded lock rect for the stride-1 tight fit measured on the video queue.
     /// Deliberately does NOT touch the impact ROI or the ImpactDetector baseline — those were
     /// armed from the padded rect and the trigger behavior should stay exactly as validated.
+    // ---- Ground-ball size lock (July 22) ----
+    // On the ground at a fixed setup the ball is a near-constant apparent size: in Noah's field data
+    // EVERY circle he called "perfect" was 25-26px @720 — identical for white and yellow — while the
+    // tight-fit occasionally over-shot (sunlit halo → 55px) or under-shot (dim core → 17px). Those
+    // off-size locks were EXACTLY the shots that then failed to track (discarded as "no flight" /
+    // "repositioned"). Learn the true size as a running median of accepted locks and snap extreme
+    // outliers back to it, so the circle — and the tracker anchor built from it — stays true.
+    @MainActor private var groundBallDiameter: CGFloat? {
+        guard recentLockDiameters.count >= 5 else { return nil }
+        let s = recentLockDiameters.sorted()
+        return s[s.count / 2]
+    }
+    @MainActor private func recordLockDiameter(_ d: CGFloat) {
+        recentLockDiameters.append(d)
+        if recentLockDiameters.count > 15 { recentLockDiameters.removeFirst(recentLockDiameters.count - 15) }
+    }
+    /// Snap a tight-fit whose size is wildly off the learned ground-ball size back to that size
+    /// (keeping its centre). In-range fits (0.65–1.4×) are trusted untouched; no-op until 5 seen.
+    @MainActor private func sizeCorrectedLock(_ rect: CGRect) -> CGRect {
+        guard let target = groundBallDiameter, target > 0 else { return rect }
+        let ratio = rect.width / target
+        guard ratio > 1.4 || ratio < 0.65 else { return rect }
+        print(String(format: "[SIZE] off-size lock %.0f%% of ground — snapping %.4f→%.4f", ratio * 100, rect.width, target))
+        return CGRect(x: rect.midX - target / 2, y: rect.midY - target / 2, width: target, height: target)
+    }
+
     @MainActor
     private func applyTightLockRect(_ tight: CGRect?, paddedRect: CGRect) {
         // The lock may have been lost or replaced between request and result — only apply
@@ -1071,9 +1251,11 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
             print("[BD] TIGHT no-fit — keeping padded lock rect")
             return
         }
-        lockedBallRect = tight
-        currentBallRect = tight
-        stableRect = tight
+        recordLockDiameter(tight.width)
+        let corrected = sizeCorrectedLock(tight)
+        lockedBallRect = corrected
+        currentBallRect = corrected
+        stableRect = corrected
     }
 
     // Center must sit within ~77% of the setup-circle radius (ellipse test in normalized
@@ -1150,6 +1332,16 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
     @MainActor
     private func triggerHitCapture() {
         guard !pendingPostCapture, phase != .captured else { return }
+        // Refractory (July 22): a real strike sends the ball away for good, so a SECOND trigger a
+        // couple seconds later is the phantom re-lock on the divot/aftermath re-firing — the field
+        // data showed 4 shots each double-captured ~2s apart. Block re-triggers within 2.5s; a
+        // genuine next shot is always slower than that to re-tee and address.
+        guard Date().timeIntervalSince(lastCaptureTriggerTime) > 2.5 else {
+            print(String(format: "[TRIG] refractory — ignoring re-trigger %.1fs after last capture",
+                         Date().timeIntervalSince(lastCaptureTriggerTime)))
+            return
+        }
+        lastCaptureTriggerTime = Date()
         phase = .captured
         statusText = "Impact detected — capturing"
         pendingPostCapture = true
@@ -1210,6 +1402,8 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     // analyzing cover and tell the user WHY — a real shot silently vanishing is
                     // indistinguishable from the trigger never firing.
                     print("[ShotValidation] ❌ SHOT DISCARDED — \(reason)")
+                    FieldLog.shared.logShot(self.fieldShotDiag(outcome: "discarded", reason: reason,
+                                                               frameCount: frames.count, result: nil))
                     self.isAnalyzingShot = false
                     self.showShotResult = false
                     if self.offerSaveFilteredFrames(frames, impactIndex: preHit, reason: reason,
@@ -1219,6 +1413,9 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     self.resetShotPipeline(to: .searching, status: "Shot discarded: \(reason)")
                 case .repositioned:
                     // Ball was moved within the circle, not struck. Quietly re-arm and re-lock.
+                    FieldLog.shared.logShot(self.fieldShotDiag(outcome: "repositioned",
+                                                               reason: "ball repositioned / not a strike",
+                                                               frameCount: frames.count, result: nil))
                     self.isAnalyzingShot = false
                     self.showShotResult = false
                     if self.offerSaveFilteredFrames(frames, impactIndex: preHit, reason: "Not tracked",
@@ -1227,6 +1424,15 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
                     self.setLiveProcessingPaused(false)
                     self.resetShotPipeline(to: .searching, status: "Ball moved — re-locking")
                 case .result(let result):
+                    // Real, tracked shot → this is the one worth archiving for offline comparison
+                    // (no-op unless the "Save all frames" toggle is on). Untracked shots archive
+                    // only via the Save-frames prompt, so Discard leaves nothing on disk.
+                    FrameArchiveService.shared.archive(frames: frames, impactIndex: preHit,
+                                                       lockedBallRect: lockedBallRect,
+                                                       lockedImpactROI: lockedImpactROI)
+                    FieldLog.shared.logShot(self.fieldShotDiag(outcome: "tracked",
+                                                               reason: result.impactDetectionReason,
+                                                               frameCount: frames.count, result: result))
                     self.latestShotAnalysis = result
                     self.isAnalyzingShot = false
                     self.analysisStatusText = "Analysis complete"
@@ -1246,6 +1452,29 @@ extension CameraController: AVCaptureVideoDataOutputSampleBufferDelegate {
         // really left the setup area) — not a strike. Resume searching and re-lock quietly.
         case repositioned
         case result(ShotAnalysisResult)
+    }
+
+    /// Build one field-diagnostics CSV row from the current exposure state + shot outcome.
+    /// Used only when field logging is on; captures the exact preset/ISO/shutter in effect so a
+    /// sun/glare failure can be tied back to the exposure that produced it.
+    private func fieldShotDiag(outcome: String, reason: String,
+                               frameCount: Int, result: ShotAnalysisResult?) -> FieldLog.ShotDiag {
+        let secs = device?.exposureDuration.seconds ?? 0
+        let ball = result?.metrics?.ballLaunch
+        return FieldLog.ShotDiag(
+            outcome: outcome,
+            reason: reason,
+            preset: selectedShutter.label,
+            iso: device.map { Double($0.iso) },
+            shutterDenom: secs > 0 ? 1.0 / secs : nil,
+            exposureOffsetEV: device.map { Double($0.exposureTargetOffset) },
+            frameCount: frameCount,
+            ballSpeedMph: ball?.ballSpeedMph,
+            carryYards: result?.metrics?.distance.carryYards,
+            vlaDegrees: ball?.vlaDegrees,
+            hlaDegrees: ball?.hlaDegrees,
+            method: ball?.method
+        )
     }
 
     /// A shot that reached the analyze stage but produced no metrics (discarded / repositioned).

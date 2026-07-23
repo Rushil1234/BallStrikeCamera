@@ -145,6 +145,7 @@ final class SimSessionViewModel: ObservableObject {
         session.endedAt = Date()
         do {
             try await backend.saveSimSession(session)
+            FeedComposeStore.armAfterSession()   // offer the "share this?" composer next time the feed opens
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -168,6 +169,7 @@ final class SimSessionViewModel: ObservableObject {
         session.endedAt = Date()
         do {
             try await backend.saveSimSession(session)
+            FeedComposeStore.armAfterSession()   // offer the "share this?" composer next time the feed opens
         } catch {
             errorMessage = error.localizedDescription
         }

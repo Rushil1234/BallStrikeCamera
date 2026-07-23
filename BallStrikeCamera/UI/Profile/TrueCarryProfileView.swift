@@ -21,7 +21,6 @@ struct TrueCarryProfileView: View {
     @AppStorage(AppearanceStore.key) private var appearanceRaw = AppAppearance.dark.rawValue
     @AppStorage("tc_default_visibility") private var defaultVisibilityRaw = ShotVisibility.friends.rawValue
     @AppStorage(FrameArchiveService.enabledKey) private var saveAllFrames = false
-    @AppStorage("tc_capture_720") private var capture720 = true
     @AppStorage(CameraController.promptSaveUntrackedKey) private var promptSaveUntracked = true
 
     // Frame-archive export (developer testing tool)
@@ -38,6 +37,15 @@ struct TrueCarryProfileView: View {
     @StateObject private var driveUploader = GoogleDriveUploadService.shared
     @State private var isConnectingDrive = false
     @State private var driveConnectError: String?
+
+    // Field diagnostics logger (developer testing tool)
+    @AppStorage(FieldLog.enabledKey) private var fieldLogEnabled = false
+    @State private var diagExportURL: URL?
+    @State private var diagStatus: String = ""
+    @State private var fieldLogRefresh = 0   // bump to re-read the on-disk log size
+
+    // Dead per-shot replay-burst cleanup (storage reclaim)
+    @State private var reclaimStatus: String = ""
 
     private var profile: UserProfile? { session.userProfile }
     private var user: AppUser?        { session.currentUser }
@@ -508,26 +516,6 @@ struct TrueCarryProfileView: View {
 
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("720p Measurement Capture")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(TCTheme.textPrimary)
-                        Text("2x precision for speed/VLA. Turn OFF if you see frame-drop warnings at the range.")
-                            .font(.system(size: 11))
-                            .foregroundColor(TCTheme.textMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer()
-                    Toggle("", isOn: $capture720)
-                        .tint(Color(red: 1, green: 0.6, blue: 0))
-                        .labelsHidden()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 13)
-
-                rowDivider
-
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
                         Text("Ask to Save Untracked Shots")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(TCTheme.textPrimary)
@@ -543,6 +531,71 @@ struct TrueCarryProfileView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 13)
+
+                rowDivider
+
+                // Field diagnostics: capture the tracking/exposure console to a file ON the
+                // phone (no cable) so sun/glare lock failures can be read back and shared.
+                let _ = fieldLogRefresh   // recompute the size string when bumped
+                HStack(spacing: 14) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(red: 1, green: 0.6, blue: 0))
+                        .frame(width: 24, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Field Diagnostics Logging")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(TCTheme.textPrimary)
+                        Text(fieldLogEnabled
+                             ? "Recording tracking/exposure logs to this phone · \(fieldLogSizeString)"
+                             : "Record WHY shots fail to lock/track — read it back without Xcode")
+                            .font(.system(size: 11))
+                            .foregroundColor(TCTheme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $fieldLogEnabled)
+                        .tint(Color(red: 1, green: 0.6, blue: 0))
+                        .labelsHidden()
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 13)
+                .onChange(of: fieldLogEnabled) { on in
+                    if on { FieldLog.shared.startIfEnabled() }
+                    fieldLogRefresh &+= 1
+                }
+
+                rowDivider
+
+                Button { exportFieldLog() } label: {
+                    settingRow(icon: "square.and.arrow.up", title: "Export Diagnostics",
+                               value: diagStatus, showChevron: false)
+                }
+                .buttonStyle(.plain)
+                .disabled(FieldLog.shared.totalBytes() == 0)
+
+                rowDivider
+
+                // One-tap send to the same "TrueCarry Frames" Drive folder the archive uses.
+                Button { uploadFieldLogToDrive() } label: {
+                    settingRow(icon: "icloud.and.arrow.up", title: "Upload Diagnostics to Drive",
+                               value: driveAuth.isSignedIn ? "" : "connect Drive below first",
+                               showChevron: false)
+                }
+                .buttonStyle(.plain)
+                .disabled(!driveAuth.isSignedIn || FieldLog.shared.totalBytes() == 0)
+
+                rowDivider
+
+                Button {
+                    FieldLog.shared.clear()
+                    diagStatus = ""
+                    fieldLogRefresh &+= 1
+                } label: {
+                    settingRow(icon: "trash", title: "Clear Diagnostics Log")
+                }
+                .buttonStyle(.plain)
+                .disabled(FieldLog.shared.totalBytes() == 0)
 
                 rowDivider
 
@@ -608,6 +661,17 @@ struct TrueCarryProfileView: View {
 
                 rowDivider
 
+                // Reclaim the dead per-shot replay bursts older builds wrote into every shot's
+                // media folder (~1 MB/shot, never read back). Safe — keeps the composite JPEG.
+                // Runs automatically once at login; this is the manual on-demand trigger.
+                Button { reclaimShotFrames() } label: {
+                    settingRow(icon: "sparkles", title: "Reclaim Shot Frame Storage",
+                               value: reclaimStatus, showChevron: false)
+                }
+                .buttonStyle(.plain)
+
+                rowDivider
+
                 // Real-time uploader: every accepted shot auto-sends straight to Drive, no
                 // manual export tap. Complements the local archive above.
                 HStack(spacing: 14) {
@@ -666,6 +730,12 @@ struct TrueCarryProfileView: View {
             set: { if !$0 { frameExportURL = nil } }
         )) {
             if let url = frameExportURL { ShareSheet(items: [url]) }
+        }
+        .sheet(isPresented: Binding(
+            get: { diagExportURL != nil },
+            set: { if !$0 { diagExportURL = nil } }
+        )) {
+            if let url = diagExportURL { ShareSheet(items: [url]) }
         }
         .alert("Export failed", isPresented: Binding(
             get: { frameArchiveError != nil },
@@ -733,6 +803,58 @@ struct TrueCarryProfileView: View {
     private func clearFrameArchive() {
         FrameArchiveService.shared.clear()
         archiveRefresh &+= 1
+    }
+
+    /// Delete the orphaned per-shot replay bursts (off-main, since it walks every shot folder),
+    /// then report how much was freed.
+    private func reclaimShotFrames() {
+        guard let uid = user?.id else { reclaimStatus = "not signed in"; return }
+        reclaimStatus = "cleaning…"
+        Task {
+            let r = await Task.detached(priority: .utility) {
+                ShotPersistenceService.purgeDeadReplayBursts(userId: uid)
+            }.value
+            let mb = Double(r.bytes) / 1_000_000
+            reclaimStatus = r.files == 0
+                ? "already clean"
+                : String(format: "freed %.0f MB · %d files", mb, r.files)
+        }
+    }
+
+    // MARK: - Field diagnostics
+
+    private var fieldLogSizeString: String {
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        return f.string(fromByteCount: FieldLog.shared.totalBytes())
+    }
+
+    /// Zip the log + CSV and present the share sheet (→ Google Drive / Files / AirDrop).
+    private func exportFieldLog() {
+        guard let url = FieldLog.shared.makeExportZip() else {
+            diagStatus = "nothing logged yet"
+            return
+        }
+        diagStatus = ""
+        diagExportURL = url
+    }
+
+    /// Push the same zip straight to the "TrueCarry Frames" Drive folder — no share-sheet tap.
+    private func uploadFieldLogToDrive() {
+        guard let url = FieldLog.shared.makeExportZip() else {
+            diagStatus = "nothing logged yet"
+            return
+        }
+        diagStatus = "uploading…"
+        Task {
+            do {
+                try await GoogleDriveUploadService.shared.uploadDiagnostics(url)
+                diagStatus = "uploaded to Drive"
+            } catch {
+                diagStatus = "upload failed"
+                driveConnectError = "Diagnostics upload failed: \(error.localizedDescription)"
+            }
+        }
     }
 
     // MARK: - Sign Out

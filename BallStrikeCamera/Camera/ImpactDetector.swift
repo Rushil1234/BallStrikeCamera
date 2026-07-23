@@ -23,6 +23,18 @@ final class ImpactDetector {
     private var baselineWhiteRatio: Double?
     private var consecutiveImpactFrames: Int = 0
     private var debugFrameCounter: Int = 0
+    /// current/baseline from the last checkForImpact. In shade the ball is barely brighter than
+    /// the background, so the white-ratio drop alone never clears dropRatioThreshold (measured
+    /// floor ~0.78 vs the 0.55 gate). The caller pairs THIS partial-dim signal with ball-departure
+    /// (ball no longer at the lock) for a shade-robust trigger — the dim rules out detection
+    /// hiccups (ball still there = still bright), the departure rules out club pull-back.
+    private(set) var lastDropRatio: Double = 1.0
+
+    /// True once a real ball (baseline ≥ the floor) has been locked — gates the departure trigger.
+    var hasValidBaseline: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return (baselineWhiteRatio ?? 0) >= configuration.minimumBaselineRatio
+    }
 
     init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
@@ -60,6 +72,7 @@ final class ImpactDetector {
         }
         let baseline = baselineWhiteRatio!
         let threshold = baseline * configuration.dropRatioThreshold
+        lastDropRatio = baseline > 0 ? current / baseline : 1.0
 
         debugFrameCounter += 1
         if debugFrameCounter % configuration.debugPrintEveryNFrames == 0 {

@@ -1,0 +1,18 @@
+{
+  "_comment": "TrueCarry training data index. Frames + Garmin CSVs live on Google Drive (flat, folder 0AB-hpMM103nJUk9PVA). Colab loads them by file ID. Garmin timestamps are UTC; frame-zip stamps are local (~UTC-4 EDT). Pair each frame session to the Garmin CSV whose UTC time == local time + 4h.",
+  "_ids":"organized copies in frames/ + garmin/ (July 23)", "drive_project_folder": "145BzESan3TtLW71h0_alTmse4kEYmMqy",
+  "sessions": [
+    {"date":"2026-07-16","local_time":"19:57","conditions":"daylight","ball":"white","res":"360","shots":94,"frames_zip_id":"1I8ArjfQiglU7RLmxkwHuwk7uKYKy-fh7","garmin_csv_id":null},
+    {"date":"2026-07-17","local_time":"16:07","conditions":"daylight","ball":"white","res":"720","shots":164,"frames_zip_id":"1PNi9t8pwR-2rDa2NoHYsTAqEVRy4uUmM","garmin_csv_id":"1JLZp_ZWu9O5DxyzewVurLJhn4xNSUlP7","garmin_shots":58},
+    {"date":"2026-07-20","local_time":"19:26","conditions":"dim","ball":"white","res":"720","shots":15,"frames_zip_id":"1U0UEVc1xX_XdY_AsQRGKzbmOk0pE3XL6","garmin_csv_id":null},
+    {"date":"2026-07-20","local_time":"20:59","conditions":"flashlight_dark_room","ball":"white","res":"720","shots":55,"frames_zip_id":"19MmeVn-_hn5gU8iy_uA4um31K-j_cznq","garmin_csv_id":"129Q19wFDzk4BJHcxQmSQGuPmacAVbWXl","garmin_shots":58},
+    {"date":"2026-07-21","local_time":"01:03","conditions":"flashlight_dark_room","ball":"white","res":"720","shots":61,"frames_zip_id":"1EfTqnv3VETxBa_kXeArfCerJGAuw3ICU","garmin_csv_id":null},
+    {"date":"2026-07-21","local_time":"15:39","conditions":"daylight","ball":"white","res":"720","shots":55,"frames_zip_id":"1-z98jT5chEK5mKVL286FmZGiJwWTVt6e","garmin_csv_id":"1YxdXphgYDr_1dTotnpZroYmrRA7OLpUr","garmin_shots":20},
+    {"date":"2026-07-22","local_time":"16:26","conditions":"daylight","ball":"mixed","res":"720","shots":19,"frames_zip_id":"1OgT1pvzrt7pJTRKjL1r7egVjKg2Hz6FC","garmin_csv_id":null},
+    {"date":"2026-07-22","local_time":"18:40","conditions":"daylight","ball":"mixed","res":"720","shots":18,"frames_zip_id":"1gEOnxsIYah9m0DAHQaOyvm1gZvaoFYis","garmin_csv_id":null},
+    {"date":"2026-07-22","local_time":"19:10","conditions":"dusk","ball":"mixed","res":"720","shots":21,"frames_zip_id":"1lRNGjwuFzippSf8Oz9RRFc71rUVpAfRN","garmin_csv_id":"1sGZHrvVdb8zj-RGWcp_ovdbJJxCn6ulZ","garmin_shots":11,"notes":"6 tracked; VLA 5-26deg low; 4 double-captures"},
+    {"date":"2026-07-22","local_time":"20:17","conditions":"dark","ball":"yellow","res":"720","shots":21,"frames_zip_id":"1zyQWb1RQZCV5elCTPPnUq_eS05pY64VT","garmin_csv_id":"1XP4uyIQv_tMjSwkmdd8SQiYvSKWQjjkf","garmin_shots":21,"notes":"yellow lock 21/21; fast irons/wood blurred at 1/1001 -> repositioned; VLA nonlinear low"}
+  ],
+  "known_good_pairs_720_tracked": 13,
+  "vla_finding": "TrueCarry VLA reads 27% of Garmin truth on high launches, 67% on low -> nonlinear under-read. Lever: feed growth-VLA the 720 subpixel minor-axis diameter, not the 360 bbox."
+}

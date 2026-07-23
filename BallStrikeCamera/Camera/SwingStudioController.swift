@@ -339,7 +339,12 @@ extension SwingStudioController: AVCaptureVideoDataOutputSampleBufferDelegate {
         let dims = CGSize(width: CVPixelBufferGetWidth(pb), height: CVPixelBufferGetHeight(pb))
 
         let request = VNDetectHumanBodyPoseRequest()
+        // Skip on the Simulator: the pose CoreML graph hard-aborts on its software Metal backend
+        // (uncatchable MPSGraph "MLIR pass manager failed"). No camera on the Simulator anyway; a
+        // physical device runs it on the Neural Engine. (See the matching guard in SwingAnalysis.)
+        #if !targetEnvironment(simulator)
         try? VNImageRequestHandler(cvPixelBuffer: pb, orientation: .up).perform([request])
+        #endif
         var joints: [VNHumanBodyPoseObservation.JointName: SwingJoint] = [:]
         if let obs = request.results?.first,
            let recognized = try? obs.recognizedPoints(.all) {

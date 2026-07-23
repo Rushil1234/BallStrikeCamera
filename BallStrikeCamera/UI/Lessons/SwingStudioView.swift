@@ -1,6 +1,8 @@
 import SwiftUI
 import AVKit
 import AudioToolbox
+import PhotosUI
+import UniformTypeIdentifiers
 
 // MARK: - TrueCarry Coach: Swing Studio (capture screen)
 
@@ -23,6 +25,8 @@ struct SwingStudioView: View {
     /// The just-analyzed swing — presented automatically so every swing is immediately
     /// followed by its replay + suggestions.
     @State private var reviewSwing: SwingRecording? = nil
+    /// Picked-from-library video to analyze instead of recording live — same analyze→review path.
+    @State private var importItem: PhotosPickerItem? = nil
     /// Rep-based mastery: consecutive in-band swings this sitting (3 = lesson passes).
     @State private var currentStreak = 0
     @State private var showReport = false
@@ -108,6 +112,21 @@ struct SwingStudioView: View {
             .tcAppearance()
         }
         .tcGuide(.swingStudio, showButton: false)
+        .onChange(of: importItem) { newItem in
+            guard let newItem else { return }
+            Task {
+                let imported = try? await newItem.loadTransferable(type: SwingVideoImport.self)
+                await MainActor.run {
+                    importItem = nil
+                    if let imported {
+                        studio.say("Analyzing your video.")
+                        ingest(clipURL: imported.url)
+                    } else {
+                        studio.say("Couldn't read that video. Try a different clip.")
+                    }
+                }
+            }
+        }
     }
 
     private func startStudio() {
@@ -175,6 +194,16 @@ struct SwingStudioView: View {
                         .background(Circle().fill(Color.black.opacity(0.55)))
                 }
                 Spacer()
+                // Analyze a video you already have (range camera, a friend's clip) instead of
+                // recording live — feeds the SAME pose pipeline. Also the way to analyze on a
+                // device/Simulator with no usable camera.
+                PhotosPicker(selection: $importItem, matching: .videos, photoLibrary: .shared()) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(Color.black.opacity(0.55)))
+                }
                 Button {
                     NotificationCenter.default.post(name: .tcShowGuide, object: GuideScreen.swingStudio.rawValue)
                 } label: {
@@ -392,6 +421,11 @@ struct SwingStudioView: View {
                                                        faults: faults, limitedMobility: mobility)
             await MainActor.run {
                 library.updateSwing(analyzed)
+                // Coach keeps only the 5 phase stills — drop the heavy .mov now that they're
+                // extracted (but keep it if extraction failed, so the swing isn't lost entirely).
+                if !analyzed.keyFramePaths.isEmpty {
+                    try? FileManager.default.removeItem(at: library.videoURL(for: analyzed))
+                }
                 if let i = takes.firstIndex(where: { $0.id == analyzed.id }) { takes[i] = analyzed }
                 analyzing -= 1
                 if analyzed.analyzed {
@@ -427,6 +461,21 @@ struct SwingStudioView: View {
     }
 }
 
+/// Copies a picked library video into a temp .mov the swing analyzer can read (PhotosPicker
+/// hands back a security-scoped file that's gone after the transfer, so we copy it out).
+struct SwingVideoImport: Transferable {
+    let url: URL
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { SentTransferredFile($0.url) } importing: { received in
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent("swingimport_\(UUID().uuidString).mov")
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.copyItem(at: received.file, to: dest)
+            return SwingVideoImport(url: dest)
+        }
+    }
+}
+
 // MARK: - Swing replay (video + phases + skeleton + scores)
 
 struct SwingReplayView: View {
@@ -434,6 +483,10 @@ struct SwingReplayView: View {
 
     @ObservedObject private var library = LessonLibrary.shared
     @State private var player: AVPlayer?
+    /// Coach keeps only the 5 phase stills (not the .mov) — replay is a position carousel over
+    /// these. `player` is used ONLY for legacy swings saved before keyframes existed.
+    @State private var keyframeImages: [UIImage] = []
+    @State private var phaseIdx: Int = 0
     @State private var selectedPhase: String?
     @State private var showSkeleton = true
     /// Real pixel size of the clip (transform applied) — the overlay maps poses into the
@@ -478,19 +531,29 @@ struct SwingReplayView: View {
         .navigationTitle("Swing Replay")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            let url = library.videoURL(for: swing)
-            player = AVPlayer(url: url)
-            Task {
-                let asset = AVURLAsset(url: url)
-                if let track = try? await asset.loadTracks(withMediaType: .video).first,
-                   let (natural, transform, fps) = try? await track.load(.naturalSize, .preferredTransform, .nominalFrameRate) {
-                    let s = natural.applying(transform)
-                    videoPixelSize = CGSize(width: abs(s.width), height: abs(s.height))
-                    videoFPS = Double(fps)
-                    // Negative determinant = the displayed frame is horizontally mirrored
-                    // (front-camera selfie recordings) → flip the pose overlay to match.
-                    videoMirrored = (transform.a * transform.d - transform.b * transform.c) < 0
-                    applyPlaybackRate()
+            // Preferred path: the 5 phase stills. Replay is a position carousel over them —
+            // no video kept. Fall back to the .mov only for legacy swings saved before keyframes.
+            let images = library.keyFrameURLs(for: swing).compactMap { UIImage(contentsOfFile: $0.path) }
+            if !images.isEmpty {
+                keyframeImages = images
+                if let first = images.first { videoPixelSize = first.size }
+                // Extracted with appliesPreferredTransform, so front-camera stills are mirrored
+                // exactly like the video was — flip the pose overlay the same way.
+                videoMirrored = (swing.source == .frontMirror)
+                if selectedPhase == nil { selectedPhase = swing.phases?.labelled.first?.label }
+            } else {
+                let url = library.videoURL(for: swing)
+                player = AVPlayer(url: url)
+                Task {
+                    let asset = AVURLAsset(url: url)
+                    if let track = try? await asset.loadTracks(withMediaType: .video).first,
+                       let (natural, transform, fps) = try? await track.load(.naturalSize, .preferredTransform, .nominalFrameRate) {
+                        let s = natural.applying(transform)
+                        videoPixelSize = CGSize(width: abs(s.width), height: abs(s.height))
+                        videoFPS = Double(fps)
+                        videoMirrored = (transform.a * transform.d - transform.b * transform.c) < 0
+                        applyPlaybackRate()
+                    }
                 }
             }
         }
@@ -683,32 +746,40 @@ struct SwingReplayView: View {
 
     private var videoSection: some View {
         ZStack {
-            if let player {
-                VideoPlayer(player: player)
-                    .aspectRatio(9.0 / 16.0, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay {
-                        if showSkeleton {
-                            GeometryReader { geo in
-                                RichPoseOverlay(
-                                    pose: currentPose,
-                                    trail: activeTrail,
-                                    spineAngle: swing.metrics.first { $0.kind == .spineTiltAddress }?.value,
-                                    videoRect: AVMakeRect(aspectRatio: videoPixelSize,
-                                                          insideRect: CGRect(origin: .zero, size: geo.size)),
-                                    mode: activeOverlayMode,
-                                    trailLabel: usingClubTrail ? "CLUB PATH" : "HAND PATH",
-                                    ghostTrail: usingClubTrail ? nil : ghostTrail,
-                                    headBox: headBox,
-                                    planeAnchors: planeAnchors,
-                                    isFaceOn: swing.viewAngle == .faceOn,
-                                    topTime: swing.phases?.times.flatMap { $0.count == 5 ? $0[2] : nil },
-                                    mirrored: videoMirrored
-                                )
-                            }
-                            .allowsHitTesting(false)
-                        }
+            Group {
+                if !keyframeImages.isEmpty {
+                    // The 5-position carousel — tapping a phase chip swaps the still.
+                    Image(uiImage: keyframeImages[min(phaseIdx, keyframeImages.count - 1)])
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else if let player {
+                    VideoPlayer(player: player)          // legacy swings (pre-keyframe)
+                        .aspectRatio(9.0 / 16.0, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+            .overlay {
+                if showSkeleton {
+                    GeometryReader { geo in
+                        RichPoseOverlay(
+                            pose: currentPose,
+                            trail: activeTrail,
+                            spineAngle: swing.metrics.first { $0.kind == .spineTiltAddress }?.value,
+                            videoRect: AVMakeRect(aspectRatio: videoPixelSize,
+                                                  insideRect: CGRect(origin: .zero, size: geo.size)),
+                            mode: activeOverlayMode,
+                            trailLabel: usingClubTrail ? "CLUB PATH" : "HAND PATH",
+                            ghostTrail: usingClubTrail ? nil : ghostTrail,
+                            headBox: headBox,
+                            planeAnchors: planeAnchors,
+                            isFaceOn: swing.viewAngle == .faceOn,
+                            topTime: swing.phases?.times.flatMap { $0.count == 5 ? $0[2] : nil },
+                            mirrored: videoMirrored
+                        )
                     }
+                    .allowsHitTesting(false)
+                }
             }
         }
         .overlay(alignment: .topLeading) {
@@ -819,8 +890,9 @@ struct SwingReplayView: View {
                     ForEach(Array(phases.labelled.enumerated()), id: \.element.label) { idx, item in
                         Button {
                             selectedPhase = item.label
-                            // Exact stored timestamp — index ÷ nominal fps drifts on slo-mo
-                            // clips and lands the still on the wrong moment.
+                            phaseIdx = idx        // keyframe carousel: swap to this phase's still
+                            // Legacy video: exact stored timestamp — index ÷ nominal fps drifts on
+                            // slo-mo clips and lands the still on the wrong moment.
                             let t = phases.seconds(forPhaseAt: idx)
                             player?.pause()
                             player?.seek(to: CMTime(seconds: t, preferredTimescale: 600),

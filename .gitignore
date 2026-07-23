@@ -69,3 +69,14 @@ TrueCarryFrames_*.zip
 ScreenRecording_*.mov
 build_guard/
 build_merge/
+
+# --- July 23 cleanup: keep training/build clutter out of the repo ---
+TrueCarry-fieldlog-*.zip
+DrivingRange-*.csv
+hazard_mapper*.zip
+**/.venv/
+**/__pycache__/
+*.dSYM/
+# training pipeline lives here; feature CSVs + downloaded frames are NOT committed
+training/features/
+training/**/*.zip
