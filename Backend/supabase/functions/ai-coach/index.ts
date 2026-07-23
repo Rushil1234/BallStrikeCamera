@@ -22,14 +22,20 @@ const supabase = createClient(
 const OPENROUTER_KEY = Deno.env.get("OPENROUTER_API_KEY") ?? "";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
-// Model routing is decided server-side so the client can't request an expensive
-// model. Haiku for the quick per-shot read; Sonnet for the deeper multi-shot,
-// round, and bag plans.
+// Model routing is decided server-side so the client can't request an expensive one.
+// These are FREE OpenRouter models (":free"), so the coach costs $0 to run — both verified to
+// return clean, data-grounded coaching (not raw reasoning / safety classifier output). NOTE:
+// free models are throttled (429s happen — we retry once) and get retired periodically; if one
+// starts 404-ing, pick a replacement from `GET https://openrouter.ai/api/v1/models` (pricing 0)
+// that is an *instruct/chat* model (avoid reasoning, safety, code, audio, vision variants).
+// One non-reasoning instruct model for every mode: it returns clean `content` directly.
+// (Reasoning models like gpt-oss/nemotron intermittently return EMPTY content — round mode
+// failed ~half the time — so they're avoided here despite being free.)
 const MODELS: Record<string, string> = {
-  shot:    "anthropic/claude-haiku-4.5",
-  session: "anthropic/claude-sonnet-4.5",
-  round:   "anthropic/claude-sonnet-4.5",
-  bag:     "anthropic/claude-sonnet-4.5",
+  shot:    "google/gemma-4-26b-a4b-it:free",
+  session: "google/gemma-4-26b-a4b-it:free",
+  round:   "google/gemma-4-26b-a4b-it:free",
+  bag:     "google/gemma-4-26b-a4b-it:free",
 };
 
 const MAX_TOKENS: Record<string, number> = {
@@ -304,7 +310,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've reached the AI Coach limit for now — try again a little later." }, 429);
   }
 
-  let body: { mode?: string; shots?: Metrics[]; clubs?: ClubStat[]; round?: RoundCtx; notes?: string };
+  let body: { mode?: string; shots?: Metrics[]; clubs?: ClubStat[]; round?: RoundCtx; notes?: string; contextLabel?: string };
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON body" }, 400); }
 
   const mode = ["session", "round", "bag"].includes(body.mode ?? "") ? body.mode! : "shot";
@@ -321,7 +327,7 @@ Deno.serve(async (req: Request) => {
   const golferContext = await fetchGolferContext(user.id);
   if (golferContext) userPrompt += `\n\n--- What you know about this golfer ---\n${golferContext}`;
 
-  const orRes = await fetch(OPENROUTER_URL, {
+  const orReq: RequestInit = {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${OPENROUTER_KEY}`,
@@ -338,12 +344,25 @@ Deno.serve(async (req: Request) => {
         { role: "user", content: userPrompt },
       ],
     }),
-  });
+  };
+
+  // Free models get throttled upstream — retry once on a 429 after a short backoff.
+  let orRes = await fetch(OPENROUTER_URL, orReq);
+  if (orRes.status === 429) {
+    await new Promise((r) => setTimeout(r, 1200));
+    orRes = await fetch(OPENROUTER_URL, orReq);
+  }
 
   if (!orRes.ok) {
     const detail = await orRes.text();
     console.error("OpenRouter error", orRes.status, detail);
-    return json({ error: "Coaching is unavailable right now. Try again in a moment." }, 502);
+    // 402 = key out of credit / over spend cap; 429 = the free model is busy (throttled).
+    const msg = orRes.status === 402
+      ? "The AI Coach is temporarily unavailable (out of credits). Please try again later."
+      : orRes.status === 429
+      ? "The AI Coach is busy right now — give it a few seconds and try again."
+      : "Coaching is unavailable right now. Try again in a moment.";
+    return json({ error: msg }, 502);
   }
 
   const data = await orRes.json();
@@ -352,7 +371,8 @@ Deno.serve(async (req: Request) => {
 
   // Persist the summary with the golfer's profile so it feeds future context and their
   // coach history. Best-effort — a save failure must not fail the coaching response.
-  await saveNote(user.id, mode, coaching, deriveLabel(mode, shots, body.round));
+  const label = (body.contextLabel && body.contextLabel.trim()) || deriveLabel(mode, shots, body.round);
+  await saveNote(user.id, mode, coaching, label);
 
   return json({ coaching, mode, saved: true });
 });

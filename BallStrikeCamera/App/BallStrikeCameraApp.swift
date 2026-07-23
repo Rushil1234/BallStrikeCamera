@@ -513,8 +513,38 @@ private struct DebugSnapshotHarness: View {
         case "shotmapedit":
             // History map editor: numbered shot pins on the hole, tap/move/add on the image.
             shotMapEditSample
+        case "aicoach":
+            // AI coach card in its key states: Pro (local report + deep-read button),
+            // round (primary "Analyze with AI" CTA, no local report), and non-Pro (locked).
+            aiCoachSample
         default:
             Text("Unknown snapshot view: \(name)")
+        }
+    }
+
+    private var aiCoachSample: some View {
+        let m = SavedShotMetrics(carryYards: 158, totalYards: 166, ballSpeedMph: 112,
+                                 clubSpeedMph: 80, smashFactor: 1.40, hlaDegrees: 4.2,
+                                 hlaDirection: "right", vlaDegrees: 18.5, backspinRpm: 6200,
+                                 clubPathDegrees: 2.1, faceAngleDegrees: 5.0, faceToPathDegrees: 2.9)
+        let m2 = SavedShotMetrics(carryYards: 149, smashFactor: 1.33)
+        let shots = [AICoachService.ShotPayload(m, clubName: "7 Iron"),
+                     AICoachService.ShotPayload(m2, clubName: "7 Iron")]
+        let round = AICoachService.RoundContext(courseName: "Pebble Beach", score: 86, toPar: 14,
+                                                holes: 18, fairwaysHit: 6, gir: 5, putts: 34)
+        return ZStack {
+            TrueCarryBackground().ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 16) {
+                    AICoachCard(mode: .session, shots: shots, isPro: true,
+                                subtitle: "Your 7-iron, read like a coach")
+                    AICoachCard(mode: .round, deepReadRequest: .forRound([], round: round),
+                                isPro: true, title: "AI Round Coach",
+                                subtitle: "What to practice before next time")
+                    AICoachCard(mode: .shot, shots: shots, isPro: false)
+                }
+                .padding(16)
+            }
         }
     }
 

@@ -132,20 +132,29 @@ struct AICoachService {
         var putts: Int?
     }
 
-    /// The JSON body POSTed to the ai-coach edge function.
+    /// The JSON body POSTed to the ai-coach edge function. `contextLabel` is set by the
+    /// client so a saved note can be looked up again (persist coaching without re-spending).
     struct DeepReadRequest: Encodable {
         var mode: String
         var shots: [ShotPayload]?
         var clubs: [ClubStat]?
         var round: RoundContext?
         var notes: String?
+        var contextLabel: String?
 
-        static func forShot(_ p: ShotPayload) -> DeepReadRequest { .init(mode: "shot", shots: [p]) }
-        static func forSession(_ ps: [ShotPayload]) -> DeepReadRequest { .init(mode: "session", shots: ps) }
-        static func forRound(_ ps: [ShotPayload], round: RoundContext) -> DeepReadRequest {
-            .init(mode: "round", shots: ps.isEmpty ? nil : ps, round: round)
+        static func forShot(_ p: ShotPayload) -> DeepReadRequest {
+            .init(mode: "shot", shots: [p], contextLabel: p.clubName?.isEmpty == false ? p.clubName : "Shot")
         }
-        static func forBag(_ clubs: [ClubStat]) -> DeepReadRequest { .init(mode: "bag", clubs: clubs) }
+        static func forSession(_ ps: [ShotPayload]) -> DeepReadRequest {
+            .init(mode: "session", shots: ps, contextLabel: "Range session")
+        }
+        static func forRound(_ ps: [ShotPayload], round: RoundContext) -> DeepReadRequest {
+            .init(mode: "round", shots: ps.isEmpty ? nil : ps, round: round,
+                  contextLabel: round.courseName?.isEmpty == false ? round.courseName : "Round")
+        }
+        static func forBag(_ clubs: [ClubStat]) -> DeepReadRequest {
+            .init(mode: "bag", clubs: clubs, contextLabel: "Bag gapping")
+        }
     }
 
     private struct DeepReadResponse: Decodable { let coaching: String; let mode: String? }
@@ -178,6 +187,36 @@ struct AICoachService {
             throw AICoachError.server(body.error)
         }
         throw AICoachError.server("Coaching is unavailable right now. Try again in a moment.")
+    }
+
+    private struct NoteSummaryRow: Decodable { let summary: String }
+
+    /// The most recent SAVED coaching summary for this (mode, contextLabel), if any — so
+    /// reopening a shot/session/round shows the prior read instantly and for FREE instead of
+    /// re-calling the paid model. RLS scopes ai_coach_notes to the caller.
+    static func latestNoteSummary(mode: String, contextLabel: String?) async -> String? {
+        guard let config = SupabaseConfig.load(),
+              let token = UserDefaults.standard.string(forKey: "sb_access_token"), !token.isEmpty
+        else { return nil }
+        var comps = URLComponents(url: config.restBaseURL.appendingPathComponent("ai_coach_notes"),
+                                  resolvingAgainstBaseURL: false)!
+        var q = [
+            URLQueryItem(name: "select", value: "summary"),
+            URLQueryItem(name: "mode", value: "eq.\(mode)"),
+            URLQueryItem(name: "order", value: "created_at.desc"),
+            URLQueryItem(name: "limit", value: "1"),
+        ]
+        if let label = contextLabel { q.append(URLQueryItem(name: "context_label", value: "eq.\(label)")) }
+        comps.queryItems = q
+        guard let url = comps.url else { return nil }
+        var req = URLRequest(url: url)
+        req.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req),
+              (resp as? HTTPURLResponse)?.statusCode == 200,
+              let rows = try? JSONDecoder().decode([NoteSummaryRow].self, from: data)
+        else { return nil }
+        return rows.first?.summary
     }
 
     /// Groups shots into per-club baselines for the `bag` / session deep-read context.
