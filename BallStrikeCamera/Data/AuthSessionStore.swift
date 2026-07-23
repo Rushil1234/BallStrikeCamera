@@ -97,23 +97,86 @@ final class AuthSessionStore: ObservableObject {
 
     // MARK: - Session Restore
 
+    private static let cachedProfileKey = "tc_cached_profile"
+
     func restoreSession() async {
         isLoading = true
+
+        // ── Optimistic launch (fixes the weak-signal hang) ────────────────────────────────
+        // If this device was signed into the hosted backend, reconstruct the user from the
+        // stored token's JWT claims — NO network — and enter the app immediately. The old flow
+        // chained Supabase calls (currentUser → profile → entitlement → data) before clearing
+        // isLoading, and each could stall up to URLSession's timeout on weak signal, leaving the
+        // launch spinner rotating for minutes. Validation + data now run in the background and
+        // correct the state as they arrive.
+        if let supa = configuredBackend as? SupabaseBackendService, let user = supa.storedUser {
+            activateBackend(configuredBackend)
+            currentUser = user
+            userProfile = Self.loadCachedProfile()   // real profile fills in from backgroundRestore
+            isLoading = false
+            Task { await backgroundRestore() }
+            return
+        }
+
+        // ── No hosted session: guest disk session or login. Fast in the common case, but guard
+        // it with a ceiling so a stale token can never strand the spinner.
+        let work = Task { await performRestore() }
+        try? await Task.sleep(nanoseconds: 5_000_000_000)
+        isLoading = false
+        _ = work
+    }
+
+    /// Full restore, used when there's no optimistic hosted session to show first.
+    private func performRestore() async {
         if let user = try? await configuredBackend.currentUser() {
             activateBackend(configuredBackend)
             currentUser = user
-            await registerThisDevice()   // refresh last-seen; non-blocking on restore
             userProfile = await ensureProfileAndBag(for: user)
             await entitlementVM.load(userId: user.id)
-        await preloadData()
+            cacheProfile()
+            isLoading = false
+            Task { await registerThisDevice() }
+            Task { await preloadData() }
         } else if let user = try? await localGuestBackend.currentUser() {
             activateBackend(localGuestBackend)
             currentUser = user
             userProfile = await ensureProfileAndBag(for: user)
             await entitlementVM.load(userId: user.id)
-        await preloadData()
+            isLoading = false
+            Task { await preloadData() }
+        } else {
+            isLoading = false
         }
-        isLoading = false
+    }
+
+    /// After an optimistic launch: validate/refresh the hosted session in the background, then
+    /// warm caches. A definitive rejection (server says the token is dead — currentUser() returns
+    /// nil WITHOUT throwing) signs out; a network/timeout failure keeps the optimistic session so
+    /// weak signal never logs anyone out.
+    private func backgroundRestore() async {
+        do {
+            if let user = try await configuredBackend.currentUser() {
+                currentUser = user
+                userProfile = await ensureProfileAndBag(for: user)
+                await entitlementVM.load(userId: user.id)
+                cacheProfile()
+                await registerThisDevice()
+                await preloadData()
+            } else {
+                await signOut()
+            }
+        } catch {
+            // Network/timeout — keep the optimistic session; data warms on the next refresh.
+        }
+    }
+
+    private func cacheProfile() {
+        guard let p = userProfile, let data = try? JSONEncoder().encode(p) else { return }
+        UserDefaults.standard.set(data, forKey: Self.cachedProfileKey)
+    }
+    private static func loadCachedProfile() -> UserProfile? {
+        UserDefaults.standard.data(forKey: cachedProfileKey)
+            .flatMap { try? JSONDecoder().decode(UserProfile.self, from: $0) }
     }
 
     // MARK: - Auth Actions
@@ -125,6 +188,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        cacheProfile()
         await preloadData()
     }
 
@@ -135,6 +199,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        cacheProfile()
         await preloadData()
     }
 
@@ -194,6 +259,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        cacheProfile()
         await preloadData()
     }
 
@@ -203,6 +269,7 @@ final class AuthSessionStore: ObservableObject {
         activateBackend(configuredBackend)
         currentUser = nil
         userProfile = nil
+        UserDefaults.standard.removeObject(forKey: Self.cachedProfileKey)
     }
 
     // MARK: - Google Sign-In
@@ -234,6 +301,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        cacheProfile()
         await preloadData()
     }
 
@@ -248,6 +316,7 @@ final class AuthSessionStore: ObservableObject {
         currentUser = user
         userProfile = await ensureProfileAndBag(for: user)
         await entitlementVM.load(userId: user.id)
+        cacheProfile()
         await preloadData()
     }
 

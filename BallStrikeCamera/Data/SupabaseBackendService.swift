@@ -11,7 +11,17 @@ final class SupabaseBackendService: AppBackend {
     private let config: SupabaseConfig
     private var accessToken: String?
     private var refreshToken: String?
-    private let session: URLSession = .shared
+    // Custom session with a real per-request deadline. URLSession's default is 60s, so on weak
+    // signal the launch restore chain (currentUser → profile → entitlement → data) could hang the
+    // loading screen for minutes. 15s fails a stalled call fast; waitsForConnectivity=false means a
+    // request never silently parks waiting for a network that isn't there.
+    private let session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 15
+        cfg.timeoutIntervalForResource = 30
+        cfg.waitsForConnectivity = false
+        return URLSession(configuration: cfg)
+    }()
 
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -1372,6 +1382,28 @@ final class SupabaseBackendService: AppBackend {
 
     private static let appVersion: String =
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
+
+    /// True when a hosted session token is on disk (i.e. this device was signed in). No network.
+    var hasStoredSession: Bool { accessToken != nil || refreshToken != nil }
+
+    /// The signed-in user reconstructed from the access token's JWT claims — NO network — so the
+    /// app can launch straight into the logged-in UI on weak signal and validate in the
+    /// background. Returns nil when there's no usable session (no token, or an expired access
+    /// token with no refresh token to renew it).
+    var storedUser: AppUser? {
+        guard let token = accessToken else { return nil }
+        if let exp = Self.tokenExpiry(token), exp <= Date(), refreshToken == nil { return nil }
+        let parts = token.split(separator: ".")
+        guard parts.count >= 2 else { return nil }
+        var b64 = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        while b64.count % 4 != 0 { b64 += "=" }
+        guard let data = Data(base64Encoded: b64),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let sub = obj["sub"] as? String, let id = UUID(uuidString: sub) else { return nil }
+        let email = (obj["email"] as? String) ?? ""
+        let name = email.contains("@") ? String(email.split(separator: "@").first ?? "Golfer") : "Golfer"
+        return AppUser(id: id, name: name, email: email, subscriptionStatus: .free, isGuest: false)
+    }
 
     /// Decodes the `sub` (user id) claim from the current access token's JWT payload.
     private var accessTokenUserId: String? {
