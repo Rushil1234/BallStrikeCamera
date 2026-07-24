@@ -184,7 +184,10 @@ struct FeedView: View {
                                 onGimme: { Task { await vm.toggleGimme(post) } },
                                 onComment: { commentingPost = post },
                                 onDelete: { Task { await vm.deletePost(id: post.id) } },
-                                onOpenProfile: post.userId == userId ? nil : {
+                                // Every author is tappable, including your OWN posts — tapping
+                                // your name opens your profile (PublicProfileView treats it as
+                                // self: no Follow button, your own stats).
+                                onOpenProfile: {
                                     profileTarget = ProfileTarget(id: post.userId, name: post.authorName,
                                                                   homeCourse: nil,
                                                                   seedPosts: vm.posts.filter { $0.userId == post.userId })

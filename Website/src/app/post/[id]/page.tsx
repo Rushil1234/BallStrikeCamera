@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 
 interface PublicPost {
+  author_id: string | null;
   author_name: string | null;
   title: string | null;
   subtitle: string | null;
@@ -92,6 +93,14 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
                 )}
                 {post.subtitle && (
                   <p style={{ color: "var(--muted)", marginTop: 0, lineHeight: 1.6 }}>{post.subtitle}</p>
+                )}
+                {post.author_id && (
+                  <Link
+                    href={`/u/${post.author_id}`}
+                    style={{ display: "inline-block", marginTop: 6, color: "var(--gold)", fontWeight: 600, textDecoration: "none" }}
+                  >
+                    View {post.author_name || "this golfer"}’s profile →
+                  </Link>
                 )}
                 <a className="auth-submit" href={appLink} style={{ display: "block", textAlign: "center", marginTop: 18, textDecoration: "none" }}>
                   Open in the True Carry app
