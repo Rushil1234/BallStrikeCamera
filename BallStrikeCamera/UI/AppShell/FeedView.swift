@@ -1120,12 +1120,14 @@ private struct FeedStatColumns: View {
 
 // MARK: - Post deep link
 
-/// A shareable link that opens a specific feed post in the app
-/// (`truecarry://post/<uuid>`). Handled in BallStrikeCameraApp.onOpenURL →
-/// DeepLinkRouter → the feed opens that post's detail.
+/// A shareable link for a feed post. We SHARE an https link
+/// (`https://truecarry.golf/post/<uuid>`) so it works for everyone — non-app
+/// recipients get a web landing page (with a "Get True Carry" CTA + link preview),
+/// and that page bridges app users back into the app via `truecarry://post/<uuid>`,
+/// which is what `postId(from:)` still parses in BallStrikeCameraApp.onOpenURL.
 enum PostLink {
     static func url(for id: UUID) -> URL {
-        URL(string: "truecarry://post/\(id.uuidString)")!
+        URL(string: "https://truecarry.golf/post/\(id.uuidString)")!
     }
     /// Parses a post id out of a truecarry://post/<uuid> URL, if it is one.
     static func postId(from url: URL) -> UUID? {
@@ -1143,12 +1145,13 @@ struct ProfileTarget: Identifiable {
     let seedPosts: [FeedPost]
 }
 
-/// A shareable link that opens a specific golfer's profile in the app
-/// (`truecarry://user/<uuid>`). Handled in BallStrikeCameraApp.onOpenURL →
-/// DeepLinkRouter → the feed opens that profile.
+/// A shareable link for a golfer's profile. We SHARE an https link
+/// (`https://truecarry.golf/u/<uuid>`) so non-app recipients get a web landing page;
+/// that page bridges app users back via `truecarry://user/<uuid>`, which
+/// `userId(from:)` still parses in BallStrikeCameraApp.onOpenURL.
 enum ProfileLink {
     static func url(for id: UUID) -> URL {
-        URL(string: "truecarry://user/\(id.uuidString)")!
+        URL(string: "https://truecarry.golf/u/\(id.uuidString)")!
     }
     static func userId(from url: URL) -> UUID? {
         guard url.scheme == "truecarry", url.host == "user" else { return nil }
